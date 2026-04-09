@@ -1051,6 +1051,9 @@ class WebBridge(WebTaskBridge):
             "translate_f_import": settings.get("translate_f_import"),
             "tl_engine_f_import": settings.get("tl_engine_f_import"),
             "model_f_import": settings.get("model_f_import"),
+            "selenium_compact_level": settings.get("selenium_compact_level", 2),
+            "selenium_z_order_mode": settings.get("selenium_z_order_mode", "behind-main"),
+            "selenium_auto_close_on_task_done": settings.get("selenium_auto_close_on_task_done", True),
         }
 
         result = asdict(
