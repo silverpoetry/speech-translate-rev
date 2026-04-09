@@ -5,6 +5,7 @@ from html import escape
 from importlib import import_module
 from pathlib import Path
 import re
+import sys
 from tempfile import NamedTemporaryFile
 from typing import Iterable, List, Optional
 from urllib.parse import quote
@@ -23,6 +24,14 @@ class SeleniumTranslatorConfig:
     engine_height: int = 240
     engine_margin_right: int = 16
     engine_margin_top: int = 56
+    engine_margin_bottom: int = 48
+    engine_dock_bottom: bool = True
+    engine_content_opacity: float = 0.75
+    engine_page_zoom: float = 0.86
+    win_native_compact: bool = True
+    win_alpha: int = 176
+    win_borderless: bool = False
+    win_z_order_mode: str = "behind-main"
 
 
 class SeleniumWebTranslator:
@@ -41,6 +50,152 @@ class SeleniumWebTranslator:
         self._injected_html_path: Optional[Path] = None
         self._page_template_loaded = False
         self._template_lang_hint = ""
+        self._window_marker = "ST_ENGINE_WINDOW"
+
+    @staticmethod
+    def _iter_windows_hwnd_by_title_keyword(keyword: str) -> list[int]:
+        if not keyword:
+            return []
+
+        try:
+            import ctypes
+            from ctypes import wintypes
+        except Exception:
+            return []
+
+        user32 = ctypes.windll.user32
+        results: list[int] = []
+        key_lower = keyword.lower()
+
+        @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+        def _enum_proc(hwnd, _lparam):
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length <= 0:
+                return True
+            buf = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buf, length + 1)
+            title = str(buf.value or "")
+            if key_lower in title.lower():
+                results.append(int(hwnd))
+            return True
+
+        user32.EnumWindows(_enum_proc, 0)
+        return results
+
+    @staticmethod
+    def _window_title(hwnd: int) -> str:
+        try:
+            import ctypes
+        except Exception:
+            return ""
+
+        user32 = ctypes.windll.user32
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length <= 0:
+            return ""
+        buf = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buf, length + 1)
+        return str(buf.value or "")
+
+    def _find_main_app_hwnd(self) -> Optional[int]:
+        keywords = []
+        try:
+            from speech_translate._constants import APP_NAME
+
+            keywords.append(str(APP_NAME))
+        except Exception:
+            pass
+        keywords.extend(["Speech Translate", "语音翻译"])
+
+        for keyword in keywords:
+            if not keyword:
+                continue
+            for hwnd in self._iter_windows_hwnd_by_title_keyword(keyword):
+                title = self._window_title(hwnd)
+                if self._window_marker in title:
+                    continue
+                return int(hwnd)
+        return None
+
+    def _apply_windows_native_style(self) -> None:
+        if sys.platform != "win32" or not self.config.win_native_compact:
+            return
+
+        try:
+            import ctypes
+        except Exception:
+            return
+
+        hwnd_list = self._iter_windows_hwnd_by_title_keyword(self._window_marker)
+        if not hwnd_list:
+            return
+
+        user32 = ctypes.windll.user32
+        set_window_long = user32.SetWindowLongW
+        get_window_long = user32.GetWindowLongW
+
+        GWL_STYLE = -16
+        GWL_EXSTYLE = -20
+
+        WS_CAPTION = 0x00C00000
+        WS_THICKFRAME = 0x00040000
+        WS_SYSMENU = 0x00080000
+        WS_MINIMIZEBOX = 0x00020000
+        WS_MAXIMIZEBOX = 0x00010000
+
+        WS_EX_LAYERED = 0x00080000
+        LWA_ALPHA = 0x2
+        HWND_BOTTOM = 1
+        SWP_NOSIZE = 0x0001
+        SWP_NOMOVE = 0x0002
+        SWP_NOZORDER = 0x0004
+        SWP_FRAMECHANGED = 0x0020
+
+        alpha = int(max(96, min(255, int(self.config.win_alpha))))
+
+        for hwnd in hwnd_list:
+            try:
+                style = int(get_window_long(hwnd, GWL_STYLE))
+                ex_style = int(get_window_long(hwnd, GWL_EXSTYLE))
+
+                if self.config.win_borderless:
+                    style &= ~WS_CAPTION
+                    style &= ~WS_THICKFRAME
+                    style &= ~WS_SYSMENU
+                    style &= ~WS_MINIMIZEBOX
+                    style &= ~WS_MAXIMIZEBOX
+
+                ex_style |= WS_EX_LAYERED
+
+                set_window_long(hwnd, GWL_STYLE, style)
+                set_window_long(hwnd, GWL_EXSTYLE, ex_style)
+                user32.SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA)
+
+                z_mode = str(self.config.win_z_order_mode or "behind-main").strip().lower()
+                insert_after = 0
+                pos_flags = SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED | SWP_NOZORDER
+                if z_mode in {"bottom", "always-bottom", "all-bottom"}:
+                    insert_after = HWND_BOTTOM
+                    pos_flags = SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED
+                elif z_mode in {"behind-main", "behind_main", "main-behind", "behind-main-window"}:
+                    main_hwnd = self._find_main_app_hwnd()
+                    if main_hwnd and int(main_hwnd) != int(hwnd):
+                        insert_after = int(main_hwnd)
+                        pos_flags = SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED
+
+                user32.SetWindowPos(
+                    hwnd,
+                    insert_after,
+                    0,
+                    0,
+                    0,
+                    0,
+                    pos_flags,
+                )
+            except Exception:
+                continue
 
     @staticmethod
     def _default_chrome_user_data_dir() -> Path:
@@ -65,8 +220,7 @@ class SeleniumWebTranslator:
         options.add_argument("--window-size=1280,900")
 
         if self.config.engine_compact_mode:
-            # App mode removes most browser chrome and behaves like a lightweight tool window.
-            options.add_argument("--app=about:blank")
+            # Keep normal Chrome frame/taskbar presence while still using compact size/position.
             options.add_argument("--disable-infobars")
             options.add_argument("--disable-features=TranslateUI")
 
@@ -96,8 +250,8 @@ class SeleniumWebTranslator:
             return
 
         driver = self._ensure_driver()
-        width = max(300, int(self.config.engine_width))
-        height = max(180, int(self.config.engine_height))
+        width = max(260, int(self.config.engine_width))
+        height = max(140, int(self.config.engine_height))
 
         x = 20
         y = max(0, int(self.config.engine_margin_top))
@@ -106,7 +260,10 @@ class SeleniumWebTranslator:
                 "return {w: window.screen.availWidth || 1920, h: window.screen.availHeight || 1080};"
             )
             sw = int((screen or {}).get("w", 1920))
+            sh = int((screen or {}).get("h", 1080))
             x = max(0, sw - width - int(self.config.engine_margin_right))
+            if bool(self.config.engine_dock_bottom):
+                y = max(0, sh - height - int(self.config.engine_margin_bottom))
         except Exception:
             pass
 
@@ -117,6 +274,27 @@ class SeleniumWebTranslator:
                 driver.set_window_size(width, height)
             except Exception:
                 pass
+
+        # Browser window transparency is not available in Selenium/Chrome directly.
+        # Reduce visual presence by making page content slightly transparent and scaled down.
+        try:
+            opacity = float(self.config.engine_content_opacity)
+            zoom = float(self.config.engine_page_zoom)
+            opacity = max(0.4, min(1.0, opacity))
+            zoom = max(0.65, min(1.0, zoom))
+            driver.execute_script(
+                """
+                document.documentElement.style.background = '#f8fafc';
+                document.body.style.background = '#f8fafc';
+                document.body.style.opacity = arguments[0];
+                document.body.style.zoom = arguments[1];
+                document.body.style.overflow = 'hidden';
+                """,
+                opacity,
+                zoom,
+            )
+        except Exception:
+            pass
 
     def close(self) -> None:
         if self._injected_html_path is not None:
@@ -206,7 +384,7 @@ class SeleniumWebTranslator:
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title}</title>
+    <title>{self._window_marker} | {title}</title>
     <style>
         body {{ font-family: Arial, sans-serif; margin: 0; line-height: 1.5; }}
         main {{ max-width: 100%; }}
@@ -250,6 +428,7 @@ class SeleniumWebTranslator:
 
         self._open_blank_page_with_html(self._template_html(lang_hint))
         self._apply_engine_window_layout()
+        self._apply_windows_native_style()
         driver = self._ensure_driver()
         driver.execute_script(
             """

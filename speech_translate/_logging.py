@@ -38,6 +38,18 @@ class StreamStderrToLogger(object):
             "Downloading", "Fetching", "run_threaded", "Estimating duration from bitrate", "Translating", "Refine", "Align",
             "Running", "done", "Using cache found in", "%|#", "0%|", "model.bin", "Extracting", "Download"
         ]
+        # Progress-like lines that often come from tqdm/huggingface should not be logged as ERROR.
+        self.progress_patterns = [
+            re.compile(r"\b\d{1,3}%\|"),
+            re.compile(r"\b\d+(?:\.\d+)?[kMGT]?i?B/s\b", re.IGNORECASE),
+            re.compile(r"\?B/s\b", re.IGNORECASE),
+            re.compile(r"\b\d+(?:\.\d+)?[kMGT]?i?B/\d+(?:\.\d+)?[kMGT]?i?B\b", re.IGNORECASE),
+            re.compile(r"\[\d{2}:\d{2}<\d{2}:\d{2}"),
+            re.compile(r"\[\d{2}:\d{2},\s*\?B/s\]", re.IGNORECASE),
+        ]
+
+    def _is_progress_line(self, line: str) -> bool:
+        return any(p.search(line) for p in self.progress_patterns)
 
     def write(self, buf):
         for line in buf.rstrip().splitlines():
@@ -50,7 +62,7 @@ class StreamStderrToLogger(object):
                 continue
 
             # check where is it from. if keywords from considered_info is in the line then log as info
-            if any(x in line for x in self.considered_info):
+            if any(x in line for x in self.considered_info) or self._is_progress_line(line):
                 shorten = re.sub(r"(\d+%)(\s*)\|(.+?)\|", shorten_progress_bar, line)
                 logger.log("INFO", shorten)
                 recent_stderr.append(shorten)

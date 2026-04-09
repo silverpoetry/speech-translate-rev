@@ -5,6 +5,8 @@ import requests
 from loguru import logger
 from tqdm.auto import tqdm
 
+from speech_translate.linker import sj
+
 from ..helper import get_similar_keys, no_connection_notify
 from .language import GOOGLE_KEY_VAL, LIBRE_KEY_VAL, MYMEMORY_KEY_VAL
 
@@ -78,15 +80,84 @@ def _get_selenium_translator():
     if _selenium_translator is None:
         from .selenium_web_translator import SeleniumTranslatorConfig, SeleniumWebTranslator
 
+        level_raw = sj.cache.get("selenium_compact_level", 2)
+        try:
+            level = int(level_raw)
+        except Exception:
+            level = 2
+        level = max(0, min(3, level))
+
+        profile = {
+            0: {
+                "engine_width": 420,
+                "engine_height": 240,
+                "engine_content_opacity": 1.0,
+                "engine_page_zoom": 1.0,
+                "win_native_compact": False,
+                "win_alpha": 255,
+            },
+            1: {
+                "engine_width": 360,
+                "engine_height": 210,
+                "engine_content_opacity": 0.92,
+                "engine_page_zoom": 0.92,
+                "win_native_compact": True,
+                "win_alpha": 220,
+            },
+            2: {
+                "engine_width": 320,
+                "engine_height": 180,
+                "engine_content_opacity": 0.80,
+                "engine_page_zoom": 0.86,
+                "win_native_compact": True,
+                "win_alpha": 196,
+            },
+            3: {
+                "engine_width": 280,
+                "engine_height": 150,
+                "engine_content_opacity": 0.70,
+                "engine_page_zoom": 0.80,
+                "win_native_compact": True,
+                "win_alpha": 176,
+            },
+        }[level]
+
+        z_order_mode = str(sj.cache.get("selenium_z_order_mode", "behind-main"))
+
         _selenium_translator = SeleniumWebTranslator(
             SeleniumTranslatorConfig(
                 source_lang="auto",
                 target_lang="zh-CN",
                 headless=False,
                 engine_compact_mode=True,
+                engine_width=profile["engine_width"],
+                engine_height=profile["engine_height"],
+                engine_margin_right=8,
+                engine_margin_top=28,
+                engine_margin_bottom=40,
+                engine_dock_bottom=True,
+                engine_content_opacity=profile["engine_content_opacity"],
+                engine_page_zoom=profile["engine_page_zoom"],
+                win_native_compact=bool(profile["win_native_compact"]),
+                win_alpha=int(profile["win_alpha"]),
+                win_borderless=False,
+                win_z_order_mode=z_order_mode,
             )
         )
     return _selenium_translator
+
+
+def shutdown_selenium_translator() -> None:
+    """Close and reset the singleton Selenium translator instance."""
+    global _selenium_translator
+    if _selenium_translator is None:
+        return
+    try:
+        _selenium_translator.close()
+    except Exception as exc:
+        logger.debug(f"Failed to close Selenium translator cleanly: {exc}")
+    finally:
+        _selenium_translator = None
 
 
 def google_tl(text: List[str], from_lang: str, to_lang: str, proxies: Dict, debug_log: bool = False, **kwargs):

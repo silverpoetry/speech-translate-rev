@@ -9,6 +9,10 @@ const state = {
   eventsBound: false,
   uiEventsBound: false,
   pageScrollBound: false,
+  modelPollTimer: null,
+  modelCheckedOnce: false,
+  seleniumSaveInFlight: false,
+  seleniumSaveSeq: 0,
 };
 
 const els = {};
@@ -128,14 +132,14 @@ function renderPills(data) {
   els.logfile.textContent = data.current_log;
 }
 
-function populateSelect(selectEl, options, selectedValue) {
+function populateSelect(selectEl, options, selectedValue, keepMissingSelection = true) {
   const normalizedOptions = Array.isArray(options) ? options : [];
   const currentValue = selectedValue ?? '';
   selectEl.innerHTML = normalizedOptions
     .map((option) => `<option value="${escapeHtml(option)}">${escapeHtml(option)}</option>`)
     .join('');
 
-  if (currentValue && !normalizedOptions.includes(currentValue)) {
+  if (keepMissingSelection && currentValue && !normalizedOptions.includes(currentValue)) {
     const option = document.createElement('option');
     option.value = currentValue;
     option.textContent = currentValue;
@@ -151,6 +155,15 @@ function renderSettings(data) {
   els.logLevel.value = settings.log_level ?? data.log_level ?? 'DEBUG';
   els.dirExport.value = settings.dir_export ?? 'auto';
   els.dirModel.value = settings.dir_model ?? 'auto';
+  if (els.seleniumCompactLevel) {
+    els.seleniumCompactLevel.value = String(settings.selenium_compact_level ?? 2);
+  }
+  if (els.seleniumZOrderMode) {
+    els.seleniumZOrderMode.value = String(settings.selenium_z_order_mode ?? 'behind-main');
+  }
+  if (els.seleniumAutoCloseOnTaskDone) {
+    els.seleniumAutoCloseOnTaskDone.checked = Boolean(settings.selenium_auto_close_on_task_done ?? true);
+  }
   els.autoRefresh.textContent = `自动刷新：${settings.auto_refresh_log ? '开' : '关'}`;
   state.autoRefresh = Boolean(settings.auto_refresh_log);
 }
@@ -206,16 +219,23 @@ async function refreshAudioSourceOptions(hostApiValue, persistSelection = false)
 
 function renderImportSettings(data) {
   const importUi = data.import_ui || {};
-  populateSelect(els.modelImport, importUi.model_options || [], importUi.selected_model || '');
+  setSelectedImportModelEngine(importUi.selected_backend || 'whisper');
+  populateSelect(els.modelImport, importUi.model_options || [], importUi.selected_model || '', false);
   populateSelect(els.engineImport, importUi.engine_options || [], importUi.selected_engine || '');
   populateSelect(els.sourceImport, importUi.source_options || [], importUi.selected_source || '');
   populateSelect(els.targetImport, importUi.target_options || [], importUi.selected_target || '');
 
   els.transcribeImport.checked = Boolean(importUi.transcribe);
   els.translateImport.checked = Boolean(importUi.translate);
-  els.importModelPill.textContent = `模型：${importUi.selected_model_key || importUi.selected_model || '未知'}`;
+  els.importModelPill.textContent = `模型：${importUi.selected_model_key || importUi.selected_model || '未下载'}`;
   els.importEnginePill.textContent = `引擎：${importUi.selected_engine || '未知'}`;
   els.importLangPill.textContent = `语言：${importUi.selected_source || '自动'} → ${importUi.selected_target || '自动'}`;
+
+  if (els.btnLoadModel) {
+    const hasModel = Array.isArray(importUi.model_options) && importUi.model_options.length > 0;
+    els.btnLoadModel.disabled = !hasModel;
+    els.btnLoadModel.title = hasModel ? '加载模型' : '当前后端没有已下载模型';
+  }
 }
 
 function previewValue(value) {
@@ -555,16 +575,43 @@ function syncRecordingButton(recordingState) {
   els.btnRecordingToggle.classList.toggle('is-stop', active);
 }
 
+function getSelectedImportModelEngine() {
+  const active = document.querySelector('#model-import-engine-bar .model-engine-tab.is-active');
+  const value = active ? active.getAttribute('data-import-engine-option') : null;
+  return value || 'whisper';
+}
+
+function setSelectedImportModelEngine(engine) {
+  const targetEngine = engine || 'whisper';
+  const tabs = document.querySelectorAll('#model-import-engine-bar .model-engine-tab');
+  tabs.forEach((tab) => {
+    const isActive = (tab.getAttribute('data-import-engine-option') || '') === targetEngine;
+    tab.classList.toggle('is-active', isActive);
+    tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+}
+
+function getSelectedModelManagerEngine() {
+  const active = document.querySelector('#model-manager-engine-bar .model-engine-tab.is-active');
+  const value = active ? active.getAttribute('data-engine-option') : null;
+  return value || 'whisper';
+}
+
+function setSelectedModelManagerEngine(engine) {
+  const targetEngine = engine || 'whisper';
+  const tabs = document.querySelectorAll('#model-manager-engine-bar .model-engine-tab');
+  tabs.forEach((tab) => {
+    const isActive = (tab.getAttribute('data-engine-option') || '') === targetEngine;
+    tab.classList.toggle('is-active', isActive);
+    tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+}
+
 function renderModelManagerState(data) {
   const modelUi = data || {};
-  const engines = modelUi.engine_options || ['whisper', 'faster-whisper'];
-  const models = modelUi.model_options || [];
   const selectedEngine = modelUi.selected_engine || 'whisper';
-  const selectedModel = modelUi.selected_model || '';
   const rows = Array.isArray(modelUi.rows) ? modelUi.rows : [];
-
-  if (els.modelManagerEngine) populateSelect(els.modelManagerEngine, engines, selectedEngine);
-  if (els.modelManagerModel) populateSelect(els.modelManagerModel, models, selectedModel);
+  setSelectedModelManagerEngine(selectedEngine);
 
   if (els.modelManagerDirPill) {
     els.modelManagerDirPill.textContent = `模型目录：${modelUi.model_dir || 'auto'}`;
@@ -576,28 +623,39 @@ function renderModelManagerState(data) {
     els.modelManagerDownloadPill.textContent = `下载：${modelUi.download_running ? '进行中' : '空闲'}`;
   }
   if (els.modelManagerHint) {
-    const scope = modelUi.view_scope === 'both' ? '双引擎' : `当前引擎（${selectedEngine}）`;
-    els.modelManagerHint.textContent = `提示：刷新会读取缓存状态，检查操作会对${scope}执行真实检查。`;
+    els.modelManagerHint.textContent = `说明：当前展示 ${selectedEngine} 的全部模型。缺失项可点击下载按钮，下载进度会同步到卡片和底部状态栏。`;
   }
 
   if (els.modelStatusCard) {
     const renderedRows = rows
       .map((row) => {
-        const status = row.downloading
-          ? '下载中'
-          : row.downloaded === true
-            ? '已下载'
-            : row.downloaded === false
-                ? '缺失'
-                : '未知';
-              const note = row.error ? `错误：${row.error}` : '';
+        const rowModel = String(row.model || '-');
+        const rowEngine = String(row.engine || selectedEngine || 'whisper');
+        const rowProgress = Math.max(0, Math.min(100, Number(row.progress) || 0));
+        const rowSpeed = String(row.speed || '').trim();
+        const note = row.error ? `错误：${row.error}` : '';
+        const downloadAction = row.downloaded === true
+          ? `<button class="model-download-btn model-downloaded-btn" disabled>已下载</button>`
+          : row.downloaded === false && !row.downloading
+            ? `<button class="model-download-btn" data-action="download-model-row" data-model="${escapeHtml(rowModel)}" data-engine="${escapeHtml(rowEngine)}" title="下载 ${escapeHtml(rowModel)}">下载</button>`
+            : '';
+        const rowProgressHtml = row.downloading
+          ? `
+            <div class="model-download-progress" aria-label="下载进度">
+              <div class="model-download-progress-fill" style="width: ${rowProgress.toFixed(1)}%"></div>
+            </div>
+            <div class="model-download-meta">${rowProgress.toFixed(0)}%${rowSpeed ? ` | ${escapeHtml(rowSpeed)}` : ''}</div>
+          `
+          : '';
+
         return `
           <div class="model-status-item">
             <div class="model-status-head">
-              <span class="model-status-name">${escapeHtml(row.model || '-')}</span>
+              <span class="model-status-name">${escapeHtml(rowModel)}</span>
               <span class="pill pill-muted">${escapeHtml(row.engine || '-')}</span>
             </div>
-            <div class="model-status-value">${escapeHtml(status)}</div>
+            ${downloadAction ? `<div class="model-status-value ${row.downloaded === false && !row.downloading ? 'is-missing' : ''}">${downloadAction}</div>` : ''}
+            ${rowProgressHtml}
             ${note ? `<div class="error">${escapeHtml(note)}</div>` : ''}
           </div>
         `;
@@ -612,6 +670,45 @@ function renderModelManagerState(data) {
 async function refreshModelManagerState(engine) {
   const payload = await apiCall('get_model_manager_state', engine || null);
   renderModelManagerState(payload);
+  return payload;
+}
+
+async function checkAllModelManagerState(engine) {
+  const payload = await apiCall('check_all_models', engine || getSelectedModelManagerEngine());
+  renderModelManagerState(payload);
+  return payload;
+}
+
+function stopModelProgressPolling() {
+  if (state.modelPollTimer !== null) {
+    window.clearInterval(state.modelPollTimer);
+    state.modelPollTimer = null;
+  }
+}
+
+function startModelProgressPolling(engine) {
+  stopModelProgressPolling();
+  let sawRunning = false;
+  state.modelPollTimer = window.setInterval(async () => {
+    try {
+      const payload = await refreshModelManagerState(engine || getSelectedModelManagerEngine());
+      await refreshTaskState();
+      if (payload && payload.download_running) {
+        sawRunning = true;
+        return;
+      }
+
+      if (!payload || !payload.download_running) {
+        stopModelProgressPolling();
+        if (sawRunning) {
+          await refreshState();
+        }
+      }
+    } catch (error) {
+      console.debug('Model progress polling stopped', error);
+      stopModelProgressPolling();
+    }
+  }, 800);
 }
 
 function renderLog(content) {
@@ -648,7 +745,12 @@ async function refreshState() {
   renderGlobalStatusBar(task, data, recordingState);
   syncRecordingButton(recordingState);
   updatePageScrollIndicator();
-  await refreshModelManagerState();
+  if (!state.modelCheckedOnce) {
+    await checkAllModelManagerState(getSelectedModelManagerEngine());
+    state.modelCheckedOnce = true;
+  } else {
+    await refreshModelManagerState(getSelectedModelManagerEngine());
+  }
   await loadDetachedConfig('tc');
 }
 
@@ -691,28 +793,31 @@ async function refreshLog() {
 }
 
 async function saveSettings(shouldRefresh = true) {
+  const valueOf = (node, fallback = '') => (node && typeof node.value !== 'undefined' ? node.value : fallback);
+  const checkedOf = (node, fallback = false) => (node && typeof node.checked !== 'undefined' ? Boolean(node.checked) : fallback);
+
   const updates = [
-    ['theme', els.theme.value],
-    ['log_level', els.logLevel.value],
-    ['dir_export', els.dirExport.value],
-    ['dir_model', els.dirModel.value],
-    ['input', els.inputMode.value],
-    ['source_lang_mw', els.sourceLangMain.value],
-    ['target_lang_mw', els.targetLangMain.value],
-    ['tl_engine_mw', els.translateEngineMain.value],
-    ['transcribe_mw', els.transcribeMain ? els.transcribeMain.checked : true],
-    ['translate_mw', els.translateMain ? els.translateMain.checked : true],
-    ['auto_scroll_log', els.autoScrollLog.checked],
-    ['auto_refresh_log', els.autoRefreshLog.checked],
+    ['theme', valueOf(els.theme, '')],
+    ['log_level', valueOf(els.logLevel, 'DEBUG')],
+    ['dir_export', valueOf(els.dirExport, 'auto')],
+    ['dir_model', valueOf(els.dirModel, 'auto')],
+    ['input', valueOf(els.inputMode, 'mic')],
+    ['source_lang_mw', valueOf(els.sourceLangMain, 'English')],
+    ['target_lang_mw', valueOf(els.targetLangMain, 'Indonesian')],
+    ['tl_engine_mw', valueOf(els.translateEngineMain, 'Google Translate')],
+    ['transcribe_mw', checkedOf(els.transcribeMain, true)],
+    ['translate_mw', checkedOf(els.translateMain, true)],
+    ['auto_scroll_log', checkedOf(els.autoScrollLog, true)],
+    ['auto_refresh_log', checkedOf(els.autoRefreshLog, true)],
   ];
 
   for (const [key, value] of updates) {
     await apiCall('set_setting', key, value);
   }
 
-  await apiCall('set_record_setting', 'hostAPI', els.hostAPI ? els.hostAPI.value : '');
-  await apiCall('set_record_setting', 'mic', els.mic ? els.mic.value : '');
-  await apiCall('set_record_setting', 'speaker', els.speaker ? els.speaker.value : '');
+  await apiCall('set_record_setting', 'hostAPI', valueOf(els.hostAPI, ''));
+  await apiCall('set_record_setting', 'mic', valueOf(els.mic, ''));
+  await apiCall('set_record_setting', 'speaker', valueOf(els.speaker, ''));
 
   if (shouldRefresh) {
     await refreshState();
@@ -720,7 +825,115 @@ async function saveSettings(shouldRefresh = true) {
   }
 }
 
+async function saveSeleniumSettings(shouldRefresh = true) {
+  if (state.seleniumSaveInFlight) {
+    console.warn('[SeleniumSettings] save ignored: previous request still in-flight');
+    return;
+  }
+
+  state.seleniumSaveInFlight = true;
+  const requestId = ++state.seleniumSaveSeq;
+  const saveButtons = Array.from(document.querySelectorAll('button[data-action="save-selenium-settings"]'));
+  saveButtons.forEach((btn) => {
+    btn.disabled = true;
+  });
+
+  const compactEl = $('selenium_compact_level');
+  const zOrderEl = $('selenium_z_order_mode');
+  const autoCloseEl = $('selenium_auto_close_on_task_done');
+
+  const compactRaw = Number(compactEl ? compactEl.value : 2);
+  const compactLevel = Number.isFinite(compactRaw) ? Math.max(0, Math.min(3, Math.trunc(compactRaw))) : 2;
+  const zOrderRaw = String(zOrderEl ? zOrderEl.value : 'behind-main');
+  const zOrderMode = ['normal', 'behind-main', 'bottom'].includes(zOrderRaw) ? zOrderRaw : 'behind-main';
+  const autoClose = Boolean(autoCloseEl && autoCloseEl.checked);
+
+  console.info('[SeleniumSettings] save start', {
+    requestId,
+    compactRaw,
+    compactLevel,
+    zOrderRaw,
+    zOrderMode,
+    autoClose,
+  });
+
+  try {
+    try {
+      await apiCall('debug_selenium_settings_snapshot', 'save-start', {
+        requestId,
+        compactRaw,
+        compactLevel,
+        zOrderRaw,
+        zOrderMode,
+        autoClose,
+      });
+    } catch (error) {
+      console.debug('[SeleniumSettings] debug snapshot save-start failed', error);
+    }
+
+    const res = await apiCall('set_selenium_settings', compactLevel, zOrderMode, autoClose);
+    console.info('[SeleniumSettings] set_selenium_settings', { requestId, res });
+
+    const saved = res && res.cache
+      ? res.cache
+      : {
+          selenium_compact_level: compactLevel,
+          selenium_z_order_mode: zOrderMode,
+          selenium_auto_close_on_task_done: autoClose,
+        };
+
+    if (compactEl) compactEl.value = String(saved.selenium_compact_level ?? compactLevel);
+    if (zOrderEl) zOrderEl.value = String(saved.selenium_z_order_mode ?? zOrderMode);
+    if (autoCloseEl) autoCloseEl.checked = Boolean(saved.selenium_auto_close_on_task_done ?? autoClose);
+
+    if (state.data && state.data.settings) {
+      state.data.settings.selenium_compact_level = Number(saved.selenium_compact_level ?? compactLevel);
+      state.data.settings.selenium_z_order_mode = String(saved.selenium_z_order_mode ?? zOrderMode);
+      state.data.settings.selenium_auto_close_on_task_done = Boolean(saved.selenium_auto_close_on_task_done ?? autoClose);
+    }
+
+    if (shouldRefresh) {
+      try {
+        await apiCall(
+          'notify',
+          '语音翻译',
+          `Selenium 设置已保存：模式=${saved.selenium_compact_level}，层级=${saved.selenium_z_order_mode}，自动关闭=${saved.selenium_auto_close_on_task_done ? '开' : '关'}`
+        );
+      } catch (error) {
+        console.debug('Selenium settings save notify skipped', error);
+      }
+    }
+
+    try {
+      await apiCall('debug_selenium_settings_snapshot', 'save-end', {
+        requestId,
+        requested: {
+          compactLevel,
+          zOrderMode,
+          autoClose,
+        },
+        applied: saved,
+      });
+    } catch (error) {
+      console.debug('[SeleniumSettings] debug snapshot save-end failed', error);
+    }
+
+    console.info('[SeleniumSettings] save done', { requestId });
+  } catch (error) {
+    console.error('[SeleniumSettings] save failed', { requestId, error });
+    throw error;
+  } finally {
+    state.seleniumSaveInFlight = false;
+    saveButtons.forEach((btn) => {
+      btn.disabled = false;
+    });
+  }
+}
+
 async function saveImportSettings() {
+  const backend = getSelectedImportModelEngine();
+  await apiCall('set_setting', 'use_faster_whisper', backend === 'faster-whisper');
+
   const updates = [
     ['model_f_import', els.modelImport.value],
     ['tl_engine_f_import', els.engineImport.value],
@@ -1068,37 +1281,23 @@ function bindEvents() {
         await clearLog();
       } else if (action === 'open-repo') {
         await apiCall('open_link', 'https://github.com/Dadangdut33/Speech-Translate');
+      } else if (action === 'save-selenium-settings') {
+        await saveSeleniumSettings();
       } else if (action === 'save-settings') {
         await saveSettings();
-      } else if (action === 'refresh-model-manager') {
-        await refreshModelManagerState(els.modelManagerEngine ? els.modelManagerEngine.value : 'whisper');
-      } else if (action === 'check-model') {
-        const response = await apiCall(
-          'check_model',
-          els.modelManagerModel ? els.modelManagerModel.value : 'small',
-          els.modelManagerEngine ? els.modelManagerEngine.value : 'whisper',
-        );
-        renderModelManagerState(response);
-      } else if (action === 'check-model-all') {
-        const response = await apiCall(
-          'check_all_models',
-          els.modelManagerEngine ? els.modelManagerEngine.value : 'whisper',
-        );
-        renderModelManagerState(response);
-      } else if (action === 'check-model-all-both') {
-        const response = await apiCall('check_all_models', 'both');
-        renderModelManagerState(response);
-      } else if (action === 'download-model') {
-        const res = await apiCall(
-          'download_model',
-          els.modelManagerModel ? els.modelManagerModel.value : 'small',
-          els.modelManagerEngine ? els.modelManagerEngine.value : 'whisper',
-        );
+      } else if (action === 'download-model-row') {
+        const rowModel = button.dataset.model || '';
+        const rowEngine = button.dataset.engine || getSelectedModelManagerEngine();
+        if (!rowModel) {
+          throw new Error('缺少模型名称，无法下载');
+        }
+        const res = await apiCall('download_model', rowModel, rowEngine);
         if (!res || res.ok === false) {
           throw new Error((res && res.message) || '模型下载启动失败');
         }
-        await refreshModelManagerState(els.modelManagerEngine ? els.modelManagerEngine.value : 'whisper');
         await refreshTaskState();
+        await refreshModelManagerState(rowEngine);
+        startModelProgressPolling(rowEngine);
       } else if (action === 'save-record-settings') {
         await saveRecordSettings();
       } else if (action === 'create-detached-window') {
@@ -1175,9 +1374,32 @@ function bindEvents() {
     });
   }
 
-  if (els.modelManagerEngine) {
-    els.modelManagerEngine.addEventListener('change', async () => {
-      await refreshModelManagerState(els.modelManagerEngine.value);
+  if (els.modelManagerEngineBar) {
+    els.modelManagerEngineBar.addEventListener('click', async (event) => {
+      const tab = event.target && event.target.closest ? event.target.closest('.model-engine-tab') : null;
+      if (!tab) {
+        return;
+      }
+      const engine = tab.getAttribute('data-engine-option') || 'whisper';
+      setSelectedModelManagerEngine(engine);
+      await checkAllModelManagerState(engine);
+    });
+  }
+
+  if (els.modelImportEngineBar) {
+    els.modelImportEngineBar.addEventListener('click', async (event) => {
+      const tab = event.target && event.target.closest ? event.target.closest('.model-engine-tab') : null;
+      if (!tab) {
+        return;
+      }
+      const engine = tab.getAttribute('data-import-engine-option') || 'whisper';
+      const previous = getSelectedImportModelEngine();
+      if (engine === previous) {
+        return;
+      }
+      setSelectedImportModelEngine(engine);
+      await apiCall('set_setting', 'use_faster_whisper', engine === 'faster-whisper');
+      await refreshState();
     });
   }
 
@@ -1187,6 +1409,44 @@ function bindEvents() {
         await loadRuntimeModel();
       } catch (error) {
         console.error(error);
+      }
+    });
+  }
+
+  if (els.seleniumCompactLevel) {
+    els.seleniumCompactLevel.addEventListener('change', async () => {
+      try {
+        const raw = Number(els.seleniumCompactLevel.value);
+        const value = Number.isFinite(raw) ? Math.max(0, Math.min(3, Math.trunc(raw))) : 2;
+        console.info('[SeleniumSettings] compact level changed', { raw, value });
+        await apiCall('debug_selenium_settings_snapshot', 'change-compact', { raw, value });
+      } catch (error) {
+        console.error('[SeleniumSettings] compact level save failed', error);
+      }
+    });
+  }
+
+  if (els.seleniumZOrderMode) {
+    els.seleniumZOrderMode.addEventListener('change', async () => {
+      try {
+        const raw = String(els.seleniumZOrderMode.value || 'behind-main');
+        const value = ['normal', 'behind-main', 'bottom'].includes(raw) ? raw : 'behind-main';
+        console.info('[SeleniumSettings] z-order changed', { raw, value });
+        await apiCall('debug_selenium_settings_snapshot', 'change-z-order', { raw, value });
+      } catch (error) {
+        console.error('[SeleniumSettings] z-order save failed', error);
+      }
+    });
+  }
+
+  if (els.seleniumAutoCloseOnTaskDone) {
+    els.seleniumAutoCloseOnTaskDone.addEventListener('change', async () => {
+      try {
+        const value = Boolean(els.seleniumAutoCloseOnTaskDone.checked);
+        console.info('[SeleniumSettings] auto-close changed', { value });
+        await apiCall('debug_selenium_settings_snapshot', 'change-auto-close', { value });
+      } catch (error) {
+        console.error('[SeleniumSettings] auto-close save failed', error);
       }
     });
   }
@@ -1206,6 +1466,9 @@ async function init() {
   els.logLevel = $('log_level');
   els.dirExport = $('dir_export');
   els.dirModel = $('dir_model');
+  els.seleniumCompactLevel = $('selenium_compact_level');
+  els.seleniumZOrderMode = $('selenium_z_order_mode');
+  els.seleniumAutoCloseOnTaskDone = $('selenium_auto_close_on_task_done');
   els.inputMode = $('input_mode');
   els.sourceLangMain = $('source_lang_mw');
   els.targetLangMain = $('target_lang_mw');
@@ -1263,6 +1526,8 @@ async function init() {
   els.speakerThresholdSileroMin = $('threshold_silero_speaker_min');
   els.speakerThresholdDb = $('threshold_db_speaker');
   els.modelImport = $('model_f_import');
+  els.modelImportEngineBar = $('model-import-engine-bar');
+  els.btnLoadModel = $('btn-load-model');
   els.engineImport = $('tl_engine_f_import');
   els.sourceImport = $('source_lang_f_import');
   els.targetImport = $('target_lang_f_import');
@@ -1271,8 +1536,7 @@ async function init() {
   els.importModelPill = $('import-model-pill');
   els.importEnginePill = $('import-engine-pill');
   els.importLangPill = $('import-lang-pill');
-  els.modelManagerEngine = $('model_manager_engine');
-  els.modelManagerModel = $('model_manager_model');
+  els.modelManagerEngineBar = $('model-manager-engine-bar');
   els.modelManagerDirPill = $('model-manager-dir-pill');
   els.modelManagerEnginePill = $('model-manager-engine-pill');
   els.modelManagerDownloadPill = $('model-manager-download-pill');

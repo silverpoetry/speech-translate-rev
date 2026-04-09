@@ -46,7 +46,7 @@ default_setting: SettingDict = {
     "supress_device_warning": False,
     "supress_record_warning": False,
     "bypass_no_internet": False,
-    "mw_size": "1200x600",
+    "mw_size": "1140x680",
     "sw_size": "1100x630",
     "dir_log": "auto",
     "dir_model": "auto",
@@ -159,6 +159,10 @@ default_setting: SettingDict = {
     "use_faster_whisper": True,
     "use_en_model": True,
     "transcribe_rate": 300,
+    # Selenium Chrome translator compact-window controls
+    "selenium_compact_level": 2,
+    "selenium_z_order_mode": "behind-main",
+    "selenium_auto_close_on_task_done": True,
     # option for some DecodingOptions that is not available in the command line parameter is moved to the gui
     "decoding_preset": "beam search",  # greedy, beam search, custom
     "temperature": "0.0, 0.2, 0.4, 0.6, 0.8, 1.0",  # 0.0 - 1.0
@@ -203,7 +207,7 @@ default_setting: SettingDict = {
     "tb_mw_tl_font_size": 10,
     "tb_mw_tl_use_conf_color": True,
     # Tc sub
-    "ex_tc_geometry": "800x200",
+    "ex_tc_geometry": "900x240",
     "ex_tc_always_on_top": 1,
     "ex_tc_click_through": 0,
     "ex_tc_no_title_bar": 1,
@@ -221,7 +225,7 @@ default_setting: SettingDict = {
     "tb_ex_tc_bg_color": "#000000",
     "tb_ex_tc_use_conf_color": True,
     # Tl sub
-    "ex_tl_geometry": "800x200",
+    "ex_tl_geometry": "900x240",
     "ex_tl_always_on_top": 1,
     "ex_tl_click_through": 0,
     "ex_tl_no_title_bar": 1,
@@ -368,14 +372,27 @@ class SettingJson:
         """
         Save setting by key
         """
+        logger.debug(f"[SettingJson.save_key] request key={key} value={value!r}")
         if key not in self.cache:
-            logger.error(f"Error saving setting: {key}. It's not a valid setting key")
-            return
+            if key in default_setting:
+                # Backward compatibility: runtime may still hold an older cache loaded before new keys were added.
+                self.cache[key] = default_setting[key]  # type: ignore[index]
+                logger.debug(
+                    f"[SettingJson.save_key] key={key} missing in runtime cache, injected default={default_setting[key]!r}"
+                )
+            else:
+                logger.error(f"Error saving setting: {key}. It's not a valid setting key")
+                return
         if self.cache[key] == value:  # if same value
+            logger.debug(f"[SettingJson.save_key] key={key} unchanged, skip save")
             return
 
+        previous = self.cache.get(key)
         self.cache[key] = value
         success, msg = self.save(self.cache)
+        logger.debug(
+            f"[SettingJson.save_key] persisted key={key} previous={previous!r} new={value!r} success={success} msg={msg!r}"
+        )
 
         if not success:
             self.__notify("Error: Saving setting file", "Reason: " + msg)

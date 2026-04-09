@@ -1,8 +1,8 @@
 # pylint: disable=import-outside-toplevel, protected-access
 import hashlib
 import os
+from pathlib import Path
 
-from huggingface_hub import HfApi
 from huggingface_hub.file_download import repo_folder_name
 from loguru import logger
 
@@ -79,8 +79,9 @@ def verify_model_whisper(model_key, download_root=None):
 
 def verify_model_faster_whisper(model_key: str, cache_dir) -> bool:
     """
-    Verify downloaded faster whisper model, 
-    a somewhat hacky check to see if the model is already downloaded
+    Verify downloaded faster-whisper model using local Hugging Face cache structure.
+
+    This check intentionally avoids online calls so UI model checks stay responsive.
 
     Parameters
     ----------
@@ -104,37 +105,47 @@ def verify_model_faster_whisper(model_key: str, cache_dir) -> bool:
     if repo_id is None:
         raise ValueError(f"Invalid model size '{model_key}', expected one of: {', '.join(FW_MODELS.keys())}")
 
-    storage_folder = os.path.join(cache_dir, repo_folder_name(repo_id=repo_id, repo_type="model"))
-    try:
-        api = HfApi()
-        logger.debug("Connecting to huggingface server to verify model")
-        repo_info = api.repo_info(repo_id=repo_id, repo_type="model")
-        assert repo_info.sha is not None, "Repo info returned from server must have a revision sha."
-
-        commit_hash = repo_info.sha
-        snapshot_folder = os.path.join(storage_folder, "snapshots", commit_hash)
-        blob_folder = os.path.join(storage_folder, "blobs")
-
-        if not os.path.exists(snapshot_folder):
+    def _is_complete_model_dir(model_dir: Path) -> bool:
+        if not model_dir.exists() or not model_dir.is_dir():
             return False
-    except Exception:
-        logger.warning("Failed to connect to huggingface server, verifying using local cache instead")
-        blob_folder = os.path.join(storage_folder, "blobs")
 
-    # if blob folder does not exist, then model is not downloaded
-    if not os.path.exists(blob_folder):
+        has_config = (model_dir / "config.json").exists()
+        has_weights = (model_dir / "model.bin").exists() or (model_dir / "model.safetensors").exists()
+        if not (has_config and has_weights):
+            return False
+
+        if any(model_dir.rglob("*.incomplete")):
+            return False
+
+        return True
+
+    # Preferred local_dir layout used by our web download flow.
+    local_model_dir = Path(cache_dir) / f"faster-whisper-{model_key}"
+    if _is_complete_model_dir(local_model_dir):
+        return True
+
+    storage_folder = Path(cache_dir) / repo_folder_name(repo_id=repo_id, repo_type="model")
+    snapshot_root = storage_folder / "snapshots"
+
+    # snapshots directory must exist for a valid local model cache.
+    if not snapshot_root.exists():
         return False
 
-    # check if blob contain any .incomplete file or .lock file
-    # meaning that the download is not finished
-    for _root, _dirs, files in os.walk(blob_folder):
-        for file in files:
-            if file.endswith(".incomplete") or file.endswith(".lock"):
-                logger.warning("Found incomplete file in blob folder, meaning that the download is not finished")
-                return False
+    snapshot_dirs = [p for p in snapshot_root.iterdir() if p.is_dir()]
+    if not snapshot_dirs:
+        return False
 
-    # should be safe to assume that model is downloaded
-    return True
+    # Prefer latest snapshot first.
+    snapshot_dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+    # Validate presence of essential files in at least one snapshot.
+    # Do not scan global blobs for lock files because stale locks from other models
+    # can cause false negatives.
+    for snapshot in snapshot_dirs:
+        if _is_complete_model_dir(snapshot):
+            return True
+
+    return False
 
 
 # get default download root

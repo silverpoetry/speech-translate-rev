@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>语音翻译</title>
-  <link rel="stylesheet" href="styles.css?v=20260408-ui-cn-1" />
+  <link rel="stylesheet" href="styles.css?v=20260409-ui-cn-4" />
 </head>
 <body>
   <div class="bg-grid"></div>
@@ -44,24 +44,45 @@
             </div>
 
             <div class="inline-actions">
-              <button class="btn-with-icon btn-major" data-action="load-model">加载模型</button>
+              <button class="btn-with-icon btn-major" data-action="load-model" id="btn-load-model">加载模型</button>
             </div>
 
-            <div class="form-grid import-grid">
+            <div class="form-grid import-grid model-select-grid model-select-inline">
+              <div class="model-select-engine-inline">
+                <span>Whisper 后端</span>
+                <div class="model-engine-titlebar" id="model-import-engine-bar" role="tablist" aria-label="模型选择后端">
+                  <button type="button" class="model-engine-tab is-active" data-import-engine-option="whisper" role="tab" aria-selected="true">whisper</button>
+                  <button type="button" class="model-engine-tab" data-import-engine-option="faster-whisper" role="tab" aria-selected="false">faster-whisper</button>
+                </div>
+              </div>
               <label>
                 <span>模型</span>
                 <select id="model_f_import"></select>
               </label>
-              <label>
-                <span>翻译引擎</span>
-                <select id="tl_engine_f_import"></select>
-              </label>
             </div>
             <div class="status-row import-status core-status-bottom">
               <span class="pill pill-muted" id="import-model-pill">模型</span>
-              <span class="pill pill-muted" id="import-engine-pill">引擎</span>
             </div>
           </section>
+
+          <details class="advanced-panel" open>
+            <summary>模型检查与下载</summary>
+            <div class="advanced-panel-body">
+              <div class="model-engine-titlebar" id="model-manager-engine-bar" role="tablist" aria-label="模型引擎">
+                <button type="button" class="model-engine-tab is-active" data-engine-option="whisper" role="tab" aria-selected="true">whisper</button>
+                <button type="button" class="model-engine-tab" data-engine-option="faster-whisper" role="tab" aria-selected="false">faster-whisper</button>
+              </div>
+              <div id="model-status-card" class="state-card model-status-card"></div>
+              <div class="section-head model-manager-hint-wrap">
+                <p id="model-manager-hint">说明：页面会自动检查当前引擎的全部模型。缺失模型可直接点击下载按钮，卡片内显示下载进度。</p>
+              </div>
+              <div class="status-row import-status model-manager-summary-row">
+                <span class="pill pill-muted" id="model-manager-dir-pill">模型目录</span>
+                <span class="pill pill-muted" id="model-manager-engine-pill">引擎</span>
+                <span class="pill pill-muted" id="model-manager-download-pill">下载</span>
+              </div>
+            </div>
+          </details>
         </article>
 
         <article class="workflow-card tab-panel" id="tab-file" role="tabpanel">
@@ -88,6 +109,10 @@
                 <span>目标语言</span>
                 <select id="target_lang_f_import"></select>
               </label>
+              <label>
+                <span>翻译引擎</span>
+                <select id="tl_engine_f_import"></select>
+              </label>
             </div>
 
             <div class="inline-actions import-actions">
@@ -96,6 +121,7 @@
             </div>
             <div class="status-row import-status core-status-bottom">
               <span class="pill pill-muted" id="import-lang-pill">语言</span>
+              <span class="pill pill-muted" id="import-engine-pill">引擎</span>
             </div>
           </section>
         </article>
@@ -282,38 +308,37 @@
         </div>
       </details>
 
-      <details class="advanced-panel" open>
-        <summary>模型检查与下载</summary>
+      <details class="advanced-panel">
+        <summary>Selenium 翻译窗口</summary>
+        <div class="floating-action-row">
+          <button class="btn-icon" data-action="save-selenium-settings" data-tooltip="保存 Selenium 设置" title="保存 Selenium 设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+        </div>
         <div class="advanced-panel-body">
           <div class="form-grid">
             <label>
-              <span>引擎</span>
-              <select id="model_manager_engine">
-                <option value="whisper">whisper</option>
-                <option value="faster-whisper">faster-whisper</option>
+              <span>窗口模式</span>
+              <select id="selenium_compact_level">
+                <option value="0">标准窗口（完整显示）</option>
+                <option value="1">紧凑模式（较小窗口）</option>
+                <option value="2">紧凑+低干扰（推荐）</option>
+                <option value="3">最小化干扰（最小窗口）</option>
               </select>
             </label>
             <label>
-              <span>模型</span>
-              <select id="model_manager_model"></select>
+              <span>窗口层级</span>
+              <select id="selenium_z_order_mode">
+                <option value="behind-main">主窗体后层</option>
+                <option value="bottom">全局底层</option>
+                <option value="normal">常规层级</option>
+              </select>
             </label>
           </div>
-          <div class="inline-actions">
-            <button class="btn-with-icon" data-action="refresh-model-manager">刷新缓存状态（当前引擎）</button>
-            <button class="btn-with-icon" data-action="check-model">检查所选模型</button>
-            <button class="btn-with-icon" data-action="check-model-all">检查全部（当前引擎）</button>
-            <button class="btn-with-icon" data-action="check-model-all-both">检查全部（双引擎）</button>
-            <button class="btn-with-icon btn-major" data-action="download-model">下载所选模型</button>
-          </div>
-          <div class="section-head">
-            <p id="model-manager-hint">提示：刷新会读取缓存检查结果，点击检查才会执行真实检查。</p>
+          <div class="inline-actions import-actions compact-gap">
+            <label class="toggle-row"><input id="selenium_auto_close_on_task_done" type="checkbox" /> 转写任务结束后自动关闭 Selenium Chrome</label>
           </div>
           <div class="status-row import-status">
-            <span class="pill pill-muted" id="model-manager-dir-pill">模型目录</span>
-            <span class="pill pill-muted" id="model-manager-engine-pill">引擎</span>
-            <span class="pill pill-muted" id="model-manager-download-pill">下载</span>
+            <span class="pill pill-muted">仅在 Windows 有效</span>
           </div>
-          <div id="model-status-card" class="state-card model-status-card"></div>
         </div>
       </details>
 
@@ -515,6 +540,6 @@
     </div>
   </main>
 
-  <script src="app.js?v=20260408-ui-cn-1"></script>
+  <script src="app.js?v=20260409-ui-cn-4"></script>
 </body>
 </html>

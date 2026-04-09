@@ -1,4 +1,8 @@
 import os
+import ctypes
+import re
+import json
+import traceback
 import subprocess
 import sys
 from importlib import import_module
@@ -9,6 +13,7 @@ from signal import SIGINT, signal
 from threading import Thread
 from typing import Any, Dict, Optional, cast
 from time import sleep, strftime, time
+from urllib.request import Request, urlopen
 
 import pystray
 from loguru import logger
@@ -38,6 +43,7 @@ from speech_translate.utils.whisper.load import get_model, get_model_args, is_mo
 from speech_translate.utils.whisper.helper import model_select_dict, model_values
 from speech_translate.utils.types import SettingDict
 from speech_translate.utils.translate.language import TL_ENGINE_SOURCE_DICT, TL_ENGINE_TARGET_DICT, WHISPER_LANG_LIST
+from speech_translate.utils.translate.translator import shutdown_selenium_translator
 
 
 class NoConsolePopen(subprocess.Popen):
@@ -51,6 +57,24 @@ class NoConsolePopen(subprocess.Popen):
 
 
 subprocess.Popen = NoConsolePopen
+
+
+def _parse_window_size(raw_value: Any, default_width: int, default_height: int) -> tuple[int, int]:
+    text = str(raw_value or "").strip().lower()
+    match = re.match(r"^(\d+)\s*x\s*(\d+)$", text)
+    if match:
+        width = max(320, int(match.group(1)))
+        height = max(180, int(match.group(2)))
+        if system() == "Windows":
+            try:
+                screen_width = int(ctypes.windll.user32.GetSystemMetrics(0))
+                screen_height = int(ctypes.windll.user32.GetSystemMetrics(1))
+                width = min(width, max(320, screen_width - 80))
+                height = min(height, max(180, screen_height - 120))
+            except Exception:
+                pass
+        return width, height
+    return default_width, default_height
 
 
 def add_ffmpeg_to_path(weak: bool = False) -> bool:
@@ -142,7 +166,38 @@ class DetachedWindowManager:
             self._last_config_payload.pop(mode, None)
             logger.debug(f"Dropped detached window reference: {mode}")
 
-    def create_window(self, mode: str = "tc", x: int = 100, y: int = 100, width: int = 480, height: int = 200):
+    def _persist_window_size(self, mode: str) -> None:
+        window = self.windows.get(mode)
+        if window is None:
+            return
+        try:
+            width = int(getattr(window, "width"))
+            height = int(getattr(window, "height"))
+        except Exception:
+            return
+
+        if width >= 200 and height >= 80:
+            sj.save_key(f"ex_{mode}_geometry", f"{width}x{height}")
+
+    def _attach_window_events(self, mode: str, window) -> None:
+        try:
+            if hasattr(window, "events") and hasattr(window.events, "resized"):
+                window.events.resized += lambda *_: self._persist_window_size(mode)
+            if hasattr(window, "events") and hasattr(window.events, "closed"):
+                window.events.closed += lambda *_: (self._persist_window_size(mode), self._drop_window_ref(mode))
+            if hasattr(window, "events") and hasattr(window.events, "loaded"):
+                window.events.loaded += lambda *_: self._on_window_loaded(mode)
+        except Exception:
+            pass
+
+    def create_window(
+        self,
+        mode: str = "tc",
+        x: int = 100,
+        y: int = 100,
+        width: Optional[int] = None,
+        height: Optional[int] = None,
+    ):
         """Create a detached subtitle window."""
         if mode in self.windows:
             try:
@@ -161,6 +216,9 @@ class DetachedWindowManager:
             always_on_top = self._is_always_on_top_enabled(mode)
             self._window_loaded[mode] = False
 
+            if width is None or height is None:
+                width, height = _parse_window_size(sj.cache.get(f"ex_{mode}_geometry", "900x240"), 900, 240)
+
             window = webview.create_window(
                 f"Speech Translate - {'Transcribed' if mode == 'tc' else 'Translated'}",
                 f"{html_path}?mode={mode}",
@@ -173,17 +231,10 @@ class DetachedWindowManager:
             )
 
             self.windows[mode] = window
+            self._attach_window_events(mode, window)
 
             # If the user closes the window from the title bar, clear cached reference
             # so opening again creates a new instance.
-            try:
-                if hasattr(window, "events") and hasattr(window.events, "closed"):
-                    window.events.closed += lambda *_: self._drop_window_ref(mode)
-                if hasattr(window, "events") and hasattr(window.events, "loaded"):
-                    window.events.loaded += lambda *_: self._on_window_loaded(mode)
-            except Exception:
-                pass
-
             logger.info(f"Created detached window: {mode}")
 
             self._flush_pending(mode)
@@ -233,6 +284,7 @@ class DetachedWindowManager:
         """Close detached window."""
         if mode in self.windows:
             try:
+                self._persist_window_size(mode)
                 self.windows[mode].destroy()
                 self._drop_window_ref(mode)
                 logger.info(f"Closed detached window: {mode}")
@@ -402,6 +454,84 @@ class WebBridge(WebTaskBridge):
         }
         self._record_worker_thread: Optional[Thread] = None
 
+    @staticmethod
+    def _selenium_cache_snapshot() -> Dict[str, Any]:
+        return {
+            "selenium_compact_level": sj.cache.get("selenium_compact_level"),
+            "selenium_z_order_mode": sj.cache.get("selenium_z_order_mode"),
+            "selenium_auto_close_on_task_done": sj.cache.get("selenium_auto_close_on_task_done"),
+        }
+
+    @staticmethod
+    def _selenium_file_snapshot() -> Dict[str, Any]:
+        try:
+            with open(sj.setting_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return {
+                "selenium_compact_level": data.get("selenium_compact_level"),
+                "selenium_z_order_mode": data.get("selenium_z_order_mode"),
+                "selenium_auto_close_on_task_done": data.get("selenium_auto_close_on_task_done"),
+            }
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    def debug_selenium_settings_snapshot(self, tag: str = "", payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        cache_snapshot = self._selenium_cache_snapshot()
+        file_snapshot = self._selenium_file_snapshot()
+        logger.debug(
+            f"[SeleniumDebugSnapshot] tag={tag} payload={payload or {}} cache={cache_snapshot} file={file_snapshot}"
+        )
+        return {
+            "ok": True,
+            "tag": tag,
+            "payload": payload or {},
+            "cache": cache_snapshot,
+            "file": file_snapshot,
+        }
+
+    def set_selenium_settings(self, compact_level: Any, z_order_mode: Any, auto_close_on_task_done: Any) -> Dict[str, Any]:
+        """Atomically persist Selenium UI settings to avoid race conditions across separate set_setting calls."""
+        try:
+            compact = int(compact_level)
+        except Exception:
+            compact = 2
+        compact = max(0, min(3, compact))
+
+        z_order_raw = str(z_order_mode or "behind-main").strip().lower()
+        allowed_z = {"normal", "behind-main", "bottom"}
+        z_order = z_order_raw if z_order_raw in allowed_z else "behind-main"
+
+        auto_close = bool(auto_close_on_task_done)
+
+        payload = {
+            "compact_level": compact,
+            "z_order_mode": z_order,
+            "auto_close_on_task_done": auto_close,
+        }
+        before_cache = self._selenium_cache_snapshot()
+        before_file = self._selenium_file_snapshot()
+        logger.debug(
+            f"[WebBridge.set_selenium_settings][before] payload={payload} cache={before_cache} file={before_file}"
+        )
+
+        # Persist in one API call so frontend cannot interleave stale values from multiple async writes.
+        sj.save_key("selenium_compact_level", compact)
+        sj.save_key("selenium_z_order_mode", z_order)
+        sj.save_key("selenium_auto_close_on_task_done", auto_close)
+
+        after_cache = self._selenium_cache_snapshot()
+        after_file = self._selenium_file_snapshot()
+        logger.debug(
+            f"[WebBridge.set_selenium_settings][after] cache={after_cache} file={after_file}"
+        )
+
+        return {
+            "ok": True,
+            "payload": payload,
+            "cache": after_cache,
+            "file": after_file,
+        }
+
     def _wait_recording_idle(self, timeout_s: float = 12.0) -> bool:
         """Wait until realtime recording resources are fully released."""
         start_t = time()
@@ -541,6 +671,26 @@ class WebBridge(WebTaskBridge):
 
     def bind_window(self, window):
         super().bind_window(window)
+        try:
+            if hasattr(window, "events") and hasattr(window.events, "resized"):
+                window.events.resized += lambda *_: self._save_main_window_size()
+            if hasattr(window, "events") and hasattr(window.events, "closed"):
+                window.events.closed += lambda *_: self._save_main_window_size()
+        except Exception:
+            pass
+
+    def _save_main_window_size(self) -> None:
+        window = self.get_window()
+        if window is None:
+            return
+        try:
+            width = int(getattr(window, "width"))
+            height = int(getattr(window, "height"))
+        except Exception:
+            return
+
+        if width >= 600 and height >= 300:
+            sj.save_key("mw_size", f"{width}x{height}")
 
     def bind_tray(self, tray):
         super().bind_tray(tray)
@@ -574,15 +724,69 @@ class WebBridge(WebTaskBridge):
         downloaded: bool,
         error: str = "",
         downloading: bool = False,
+        progress: Optional[float] = None,
+        speed: str = "",
     ) -> None:
         cache_key = f"{engine}:{model_key}"
+        if progress is None:
+            progress = 100.0 if downloaded else 0.0
         self._model_status_cache[cache_key] = {
             "engine": engine,
             "model": model_key,
             "downloaded": downloaded,
             "error": error,
             "downloading": downloading,
+            "progress": float(max(0.0, min(100.0, progress))),
+            "speed": speed,
         }
+
+    @staticmethod
+    def _path_size(path: str) -> int:
+        if not path:
+            return 0
+        if os.path.isfile(path):
+            try:
+                return os.path.getsize(path)
+            except Exception:
+                return 0
+        if os.path.isdir(path):
+            total = 0
+            for root, _dirs, files in os.walk(path):
+                for name in files:
+                    try:
+                        total += os.path.getsize(os.path.join(root, name))
+                    except Exception:
+                        pass
+            return total
+        return 0
+
+    @staticmethod
+    def _fmt_bytes(value: float) -> str:
+        if value <= 0:
+            return "0 B"
+        units = ["B", "KB", "MB", "GB", "TB"]
+        size = float(value)
+        idx = 0
+        while size >= 1024.0 and idx < len(units) - 1:
+            size /= 1024.0
+            idx += 1
+        if idx == 0:
+            return f"{int(size)} {units[idx]}"
+        return f"{size:.1f} {units[idx]}"
+
+    def _estimate_total_whisper_bytes(self, model_key: str) -> int:
+        try:
+            from whisper import _MODELS  # pylint: disable=import-outside-toplevel
+
+            url = _MODELS.get(model_key)
+            if not url:
+                return 0
+            req = Request(url, method="HEAD")
+            with urlopen(req, timeout=6) as resp:  # nosec B310
+                content_length = resp.headers.get("Content-Length")
+            return int(content_length) if content_length else 0
+        except Exception:
+            return 0
 
     def _build_model_manager_state(self, engine_hint: Optional[str] = None, include_both: bool = False) -> Dict[str, Any]:
         model_dir = self._resolve_model_dir()
@@ -610,6 +814,8 @@ class WebBridge(WebTaskBridge):
                         "engine": row_engine,
                         "downloaded": cached.get("downloaded") if cached else None,
                         "downloading": cached.get("downloading") if cached else False,
+                        "progress": float(cached.get("progress", 0.0)) if cached else 0.0,
+                        "speed": str(cached.get("speed", "")) if cached else "",
                         "error": cached.get("error") if cached else "",
                     }
                 )
@@ -640,14 +846,44 @@ class WebBridge(WebTaskBridge):
             return value
         return value
 
+    def _is_model_available_for_backend(self, model_key: str, backend: str, model_dir: str) -> bool:
+        if backend == "faster-whisper":
+            try:
+                return verify_model_faster_whisper(model_key, model_dir)
+            except Exception:
+                return False
+        return os.path.exists(os.path.join(model_dir, f"{model_key}.pt"))
+
     def _build_import_ui(self) -> Dict[str, Any]:
         settings = dict(sj.cache)
         engine = self._normalize_engine_name(str(settings.get("tl_engine_f_import", "Selenium Chrome Translate")))
         model_name = self._normalize_model_key(str(settings.get("model_f_import", "")))
+        backend = "faster-whisper" if bool(settings.get("use_faster_whisper", True)) else "whisper"
+        model_dir = self._resolve_model_dir()
+        downloadable_model_keys = list(model_select_dict.keys())
+        available_model_display_names = []
+        for display_name in downloadable_model_keys:
+            key = self._normalize_model_key(display_name)
+            if self._is_model_available_for_backend(key, backend, model_dir):
+                available_model_display_names.append(display_name)
+
+        if available_model_display_names:
+            selected_model_display = str(settings.get("model_f_import", ""))
+            if selected_model_display not in available_model_display_names:
+                selected_model_display = available_model_display_names[0]
+                model_name = self._normalize_model_key(selected_model_display)
+            else:
+                model_name = self._normalize_model_key(selected_model_display)
+        else:
+            selected_model_display = ""
+            model_name = ""
+
         source_options = TL_ENGINE_SOURCE_DICT.get(engine, TL_ENGINE_SOURCE_DICT["Google Translate"])
         target_options = TL_ENGINE_TARGET_DICT.get(engine, TL_ENGINE_TARGET_DICT["Google Translate"])
         return {
-            "model_options": list(model_select_dict.keys()),
+            "backend_options": ["whisper", "faster-whisper"],
+            "selected_backend": backend,
+            "model_options": available_model_display_names,
             "engine_options": [
                 "Selenium Chrome Translate",
                 "Google Translate",
@@ -656,7 +892,7 @@ class WebBridge(WebTaskBridge):
             ] + [x for x in model_select_dict.keys()],
             "source_options": source_options,
             "target_options": target_options,
-            "selected_model": settings.get("model_f_import"),
+            "selected_model": selected_model_display,
             "selected_model_key": model_name,
             "selected_engine": engine,
             "selected_source": settings.get("source_lang_f_import"),
@@ -878,7 +1114,46 @@ class WebBridge(WebTaskBridge):
         return sj.cache.get(key)
 
     def set_setting(self, key: str, value: Any) -> Dict[str, Any]:
+        original_value = value
+        old_value = sj.cache.get(key)
+        logger.debug(f"[WebBridge.set_setting] request key={key} value={original_value!r} old={old_value!r}")
+
+        selenium_keys = {"selenium_compact_level", "selenium_z_order_mode", "selenium_auto_close_on_task_done"}
+        if key in selenium_keys:
+            cache_before = self._selenium_cache_snapshot()
+            file_before = self._selenium_file_snapshot()
+            stack_hint = " | ".join(
+                f"{frame.filename.split(os.sep)[-1]}:{frame.lineno}:{frame.name}"
+                for frame in traceback.extract_stack(limit=6)[:-1]
+            )
+            logger.debug(
+                f"[WebBridge.set_setting][selenium-before] key={key} cache={cache_before} file={file_before} stack={stack_hint}"
+            )
+
+        if key == "selenium_compact_level":
+            try:
+                value = int(value)
+            except Exception:
+                value = 2
+            value = max(0, min(3, int(value)))
+        elif key == "selenium_z_order_mode":
+            allowed = {"normal", "behind-main", "bottom"}
+            as_text = str(value).strip().lower()
+            value = as_text if as_text in allowed else "behind-main"
+        elif key == "selenium_auto_close_on_task_done":
+            value = bool(value)
+
+        logger.debug(f"[WebBridge.set_setting] normalized key={key} value={value!r}")
+
         sj.save_key(key, value)
+        new_value = sj.cache.get(key)
+        logger.debug(f"[WebBridge.set_setting] stored key={key} value={new_value!r}")
+        if key in selenium_keys:
+            cache_after = self._selenium_cache_snapshot()
+            file_after = self._selenium_file_snapshot()
+            logger.debug(
+                f"[WebBridge.set_setting][selenium-after] key={key} cache={cache_after} file={file_after}"
+            )
         if key == "log_level":
             from speech_translate._logging import change_log_level
 
@@ -992,27 +1267,125 @@ class WebBridge(WebTaskBridge):
                 model_dir = self._resolve_model_dir()
                 os.makedirs(model_dir, exist_ok=True)
 
-                self._cache_model_status(engine, model_key, downloaded=False, error="", downloading=True)
-
                 self.reset_task_state("Model Download")
                 self.update_task_message(f"Preparing download for {model_key} ({engine})")
                 self.update_task_progress(5)
 
+                # Track current download progress so card-level progress bars can update.
+                total_bytes = 0
+                observe_path = ""
                 if engine == "whisper":
-                    from whisper import _MODELS, _download  # pylint: disable=import-outside-toplevel
+                    from whisper import _MODELS  # pylint: disable=import-outside-toplevel
 
-                    url = _MODELS.get(model_key)
-                    if url is None:
+                    model_url = _MODELS.get(model_key)
+                    if model_url is None:
                         raise ValueError(f"Invalid Whisper model key: {model_key}")
-                    _download(url, model_dir, False)
+                    observe_path = os.path.join(model_dir, os.path.basename(model_url))
+                    total_bytes = self._estimate_total_whisper_bytes(model_key)
                 else:
-                    from faster_whisper.utils import download_model as fw_download_model  # pylint: disable=import-outside-toplevel
+                    from faster_whisper.utils import _MODELS as FW_MODELS  # pylint: disable=import-outside-toplevel
+                    from huggingface_hub.file_download import repo_folder_name  # pylint: disable=import-outside-toplevel
 
-                    fw_download_model(model_key, output_dir=model_dir, cache_dir=model_dir)
+                    repo_id = FW_MODELS.get(model_key)
+                    if repo_id is None:
+                        raise ValueError(f"Invalid Faster-Whisper model key: {model_key}")
+                    observe_path = os.path.join(model_dir, repo_folder_name(repo_id=repo_id, repo_type="model"))
+
+                self._cache_model_status(
+                    engine,
+                    model_key,
+                    downloaded=False,
+                    error="",
+                    downloading=True,
+                    progress=5,
+                    speed="-",
+                )
+
+                result_box: Dict[str, Any] = {"ok": False, "error": None}
+
+                def _do_download() -> None:
+                    try:
+                        if engine == "whisper":
+                            from whisper import _MODELS, _download  # pylint: disable=import-outside-toplevel
+
+                            url = _MODELS.get(model_key)
+                            if url is None:
+                                raise ValueError(f"Invalid Whisper model key: {model_key}")
+                            _download(url, model_dir, False)
+                        else:
+                            from faster_whisper.utils import download_model as fw_download_model  # pylint: disable=import-outside-toplevel
+
+                            fw_download_model(
+                                model_key,
+                                cache_dir=model_dir,
+                            )
+                        result_box["ok"] = True
+                    except Exception as exc:
+                        result_box["error"] = exc
+
+                dl_thread = Thread(target=_do_download, daemon=True)
+                dl_thread.start()
+
+                download_started_at = time()
+                last_bytes = 0
+                last_time = time()
+                while dl_thread.is_alive():
+                    sleep(0.6)
+                    now = time()
+                    current_bytes = self._path_size(observe_path)
+                    delta_bytes = max(0, current_bytes - last_bytes)
+                    delta_t = max(0.2, now - last_time)
+                    speed_bps = delta_bytes / delta_t
+                    speed_text = f"{self._fmt_bytes(speed_bps)}/s" if speed_bps > 0 else "-"
+
+                    if total_bytes > 0:
+                        progress = min(95.0, max(5.0, (current_bytes / total_bytes) * 95.0))
+                        size_text = f"{self._fmt_bytes(current_bytes)}/{self._fmt_bytes(total_bytes)}"
+                    else:
+                        progress = min(95.0, max(5.0, 5.0 + (now - download_started_at) * 0.9))
+                        size_text = self._fmt_bytes(current_bytes)
+
+                    self._cache_model_status(
+                        engine,
+                        model_key,
+                        downloaded=False,
+                        error="",
+                        downloading=True,
+                        progress=progress,
+                        speed=speed_text,
+                    )
+                    self.update_task_progress(progress)
+                    self.update_task_message(
+                        f"Downloading {model_key} ({engine}) | {size_text} | speed {speed_text}"
+                    )
+
+                    last_bytes = current_bytes
+                    last_time = now
+
+                dl_thread.join()
+                if result_box.get("error") is not None:
+                    raise cast(Exception, result_box["error"])
 
                 self.update_task_progress(90)
-                downloaded, error = self._verify_model_status(engine, model_key, model_dir)
-                self._cache_model_status(engine, model_key, downloaded, error, downloading=False)
+                downloaded = False
+                error = ""
+                # Hugging Face cache finalization can lag slightly after downloader returns.
+                # Retry a few times to avoid false negative verification.
+                for _ in range(8):
+                    downloaded, error = self._verify_model_status(engine, model_key, model_dir)
+                    if downloaded:
+                        break
+                    sleep(0.5)
+
+                self._cache_model_status(
+                    engine,
+                    model_key,
+                    downloaded,
+                    error,
+                    downloading=False,
+                    progress=100.0 if downloaded else 0.0,
+                    speed="-",
+                )
                 if not downloaded:
                     raise RuntimeError(error or "Download finished but verification failed")
 
@@ -1103,6 +1476,7 @@ class WebBridge(WebTaskBridge):
         window = self.get_window()
         if window is not None:
             try:
+                self._save_main_window_size()
                 window.destroy()
             except Exception:
                 pass
@@ -1206,6 +1580,9 @@ class WebBridge(WebTaskBridge):
                 bc.disable_file_process()
                 if needs_runtime_model:
                     self._model_load_running = False
+                auto_close_selenium = bool(self.get_settings_snapshot().get("selenium_auto_close_on_task_done", True))
+                if auto_close_selenium and is_tl and engine == "Selenium Chrome Translate":
+                    shutdown_selenium_translator()
 
         Thread(target=worker, daemon=True).start()
         return {
@@ -1245,7 +1622,8 @@ class WebBridge(WebTaskBridge):
         if mode not in {"tc", "tl"}:
             mode = "tl"
         
-        self.detached_window_manager.create_window(mode, x, y)
+        width, height = _parse_window_size(sj.cache.get(f"ex_{mode}_geometry", "900x240"), 900, 240)
+        self.detached_window_manager.create_window(mode, x, y, width, height)
 
         # Always apply current detached config when window is opened from any entry point.
         self.update_detached_config(mode)
@@ -1425,6 +1803,9 @@ class WebBridge(WebTaskBridge):
             finally:
                 bc.disable_rec()
                 self.set_recording_state({"status": "Stopped", "active": False})
+                auto_close_selenium = bool(self.get_settings_snapshot().get("selenium_auto_close_on_task_done", True))
+                if auto_close_selenium and is_tl and engine == "Selenium Chrome Translate":
+                    shutdown_selenium_translator()
                 self._record_worker_thread = None
 
         self._record_worker_thread = Thread(target=worker, daemon=True)
@@ -1452,6 +1833,10 @@ class WebBridge(WebTaskBridge):
         settled = self._wait_recording_idle(timeout_s=12.0)
         if settled:
             self.set_recording_state({"status": "Stopped", "active": False})
+            engine = self._normalize_engine_name(str(self.get_settings_snapshot().get("tl_engine_mw", "")))
+            auto_close_selenium = bool(self.get_settings_snapshot().get("selenium_auto_close_on_task_done", True))
+            if auto_close_selenium and engine == "Selenium Chrome Translate":
+                shutdown_selenium_translator()
             return {"ok": True, "message": "Recording stopped"}
 
         return {
@@ -1562,13 +1947,15 @@ def main(with_log_init: bool = True):
         tray = AppTray(bridge)
         bridge.bind_tray(tray)
 
+    main_width, main_height = _parse_window_size(sj.cache.get("mw_size", "1140x680"), 1140, 680)
+
     window = webview.create_window(
         APP_NAME,
         _build_html_path(),
         js_api=bridge,
-        width=1360,
-        height=860,
-        min_size=(1100, 720),
+        width=main_width,
+        height=main_height,
+        min_size=(880, 560),
     )
     bridge.bind_window(window)
 
