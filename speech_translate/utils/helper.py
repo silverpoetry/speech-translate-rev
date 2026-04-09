@@ -407,8 +407,8 @@ def filename_only(filename: str):
     -------
     str: The file name without the dot.
     """
-    filename = filename.split("/")[-1]  # Get the last part of the path
-    filename = filename.rsplit(".", 1)[0]  # Split the filename at the last dot
+    filename = os.path.basename(filename)
+    filename = os.path.splitext(filename)[0]
     return filename
 
 

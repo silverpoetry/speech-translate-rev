@@ -69,6 +69,9 @@ class BridgeClass:
         self.dl_thread: Optional[Thread] = None
         self.cancel_dl: bool = False
 
+        # web ui bridge
+        self.web_bridge = None
+
         # References to class
         self.tray: Optional[AppTray] = None
         """Tray app class"""
@@ -137,6 +140,12 @@ class BridgeClass:
         self.translating_file = False
 
     def insert_to_mw(self, text: str, mode: Literal["tc", "tl"], separator: str):
+        if self.web_bridge is not None:
+            target = "main_transcribed" if mode == "tc" else "main_translated"
+            self.web_bridge.append_live_text(target, text, separator)
+            detached_target = "detached_transcribed" if mode == "tc" else "detached_translated"
+            self.web_bridge.append_live_text(detached_target, text, separator)
+
         assert self.mw is not None
         if mode == "tc":
             self.mw.tb_transcribed.insert("end", text + separator)
@@ -217,6 +226,31 @@ class BridgeClass:
             else:
                 widget.set_html(insert)
                 widget.yview_moveto(pos)
+
+            if self.web_bridge is not None:
+                bridge_target = {
+                    "mw_tc": "main_transcribed_html",
+                    "mw_tl": "main_translated_html",
+                    "ex_tc": "detached_transcribed_html",
+                    "ex_tl": "detached_translated_html",
+                }.get(mode)
+                if bridge_target is not None:
+                    self.web_bridge.update_live_html(bridge_target, insert)
+
+        # Headless/webview mode: no Tk text widgets are present, so push HTML directly.
+        mw_has_widgets = self.mw is not None and hasattr(self.mw, "tb_transcribed") and hasattr(self.mw, "tb_translated")
+        ex_has_widgets = self.ex_tcw is not None and self.ex_tlw is not None
+        if self.web_bridge is not None:
+            if ("mw" in mode and not mw_has_widgets) or ("ex" in mode and not ex_has_widgets):
+                bridge_target = {
+                    "mw_tc": "main_transcribed_html",
+                    "mw_tl": "main_translated_html",
+                    "ex_tc": "detached_transcribed_html",
+                    "ex_tl": "detached_translated_html",
+                }.get(mode)
+                if bridge_target is not None:
+                    self.web_bridge.update_live_html(bridge_target, insert)
+                return
 
         if "mw" in mode:
             assert self.mw is not None
@@ -359,18 +393,26 @@ class BridgeClass:
         self.update_result_display(total_len, res_with_conf, "ex_tl")
 
     def clear_mw_tc(self):
+        if self.web_bridge is not None:
+            self.web_bridge.clear_live("main_transcribed")
         assert self.mw is not None
         self.mw.tb_transcribed.delete("1.0", "end")
 
     def clear_mw_tl(self):
+        if self.web_bridge is not None:
+            self.web_bridge.clear_live("main_translated")
         assert self.mw is not None
         self.mw.tb_translated.delete("1.0", "end")
 
     def clear_ex_tc(self):
+        if self.web_bridge is not None:
+            self.web_bridge.clear_live("detached_transcribed")
         assert self.ex_tcw is not None
         self.ex_tcw.lbl_text.set_html("")
 
     def clear_ex_tl(self):
+        if self.web_bridge is not None:
+            self.web_bridge.clear_live("detached_translated")
         assert self.ex_tlw is not None
         self.ex_tlw.lbl_text.set_html("")
 

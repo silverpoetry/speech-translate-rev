@@ -208,6 +208,7 @@ default_setting: SettingDict = {
     "ex_tc_click_through": 0,
     "ex_tc_no_title_bar": 1,
     "ex_tc_no_tooltip": 0,
+    "ex_tc_opacity": 1.0,
     "tb_ex_tc_auto_scroll": True,
     "tb_ex_tc_limit_max": False,
     "tb_ex_tc_limit_max_per_line": False,
@@ -225,6 +226,7 @@ default_setting: SettingDict = {
     "ex_tl_click_through": 0,
     "ex_tl_no_title_bar": 1,
     "ex_tl_no_tooltip": 0,
+    "ex_tl_opacity": 1.0,
     "tb_ex_tl_auto_scroll": True,
     "tb_ex_tl_limit_max": False,
     "tb_ex_tl_limit_max_per_line": False,
@@ -278,7 +280,6 @@ class SettingJson:
 
             logger.info("Setting loaded")
         else:
-            self.cache = default_setting
             logger.error("Error loading setting file: " + msg)
             self.__notify("Error: Loading setting file", "Reason: " + msg)
 

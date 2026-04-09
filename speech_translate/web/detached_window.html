@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>语音翻译 - 字幕窗口</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --text: #e5e7eb;
+      --accent: #6cf4ff;
+      --bg-primary: rgba(4, 10, 18, 0.98);
+      --bg-secondary: rgba(10, 20, 30, 0.96);
+      --border-color: rgba(108, 212, 255, 0.32);
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      user-select: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      font-size: 14px;
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    .window-wrapper {
+      width: 100%;
+      height: 100%;
+      border-radius: 4px;
+      border: 1px solid var(--border-color);
+      background: linear-gradient(145deg, var(--bg-primary), var(--bg-secondary));
+      box-shadow: 
+        0 0 32px rgba(108, 212, 255, 0.2),
+        inset 0 0 12px rgba(108, 212, 255, 0.08),
+        0 8px 32px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .content {
+      flex: 1;
+      padding: 14px;
+      overflow-y: auto;
+      line-height: 1.6;
+      word-wrap: break-word;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      -webkit-app-region: no-drag;
+    }
+
+    .lines {
+      width: 100%;
+    }
+
+    .line {
+      margin: 0;
+      padding: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--line-color, inherit);
+    }
+
+    .line.latest-line {
+      color: var(--latest-line-color, inherit);
+      font-weight: 600;
+    }
+
+    .content::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .content::-webkit-scrollbar-track {
+      background: rgba(108, 212, 255, 0.05);
+    }
+
+    .content::-webkit-scrollbar-thumb {
+      background: rgba(108, 212, 255, 0.2);
+      border-radius: 4px;
+    }
+
+    .content::-webkit-scrollbar-thumb:hover {
+      background: rgba(108, 212, 255, 0.3);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      html {
+        background-color: transparent;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="window-wrapper">
+    <div class="content" id="window-content">
+      内容将显示在这里...
+    </div>
+  </div>
+
+  <script>
+    // Window state
+    const state = {
+      windowMode: 'tl',
+    };
+
+    // Get parameters from URL
+    const params = new URLSearchParams(window.location.search);
+    state.windowMode = params.get('mode') || 'tc';
+
+    // Update window title
+    const currentTitle = '翻译字幕窗口';
+    document.title = `语音翻译 - ${currentTitle}`;
+    // Listen for content updates from parent window
+    window.addEventListener('message', (e) => {
+      if (e.data.type === 'update-content') {
+        const content = document.getElementById('window-content');
+        const html = e.data.html || '';
+        content.innerHTML = renderDisplayHtml(html);
+        
+        // Auto-scroll to bottom
+        content.scrollTop = content.scrollHeight;
+      } else if (e.data.type === 'update-config') {
+        const config = e.data.config || {};
+        applyConfig(config);
+      }
+    });
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function applyCommaWrapRule(lines) {
+      const wrapped = [];
+      for (const rawLine of lines) {
+        const line = String(rawLine || '').trim();
+        if (!line) {
+          continue;
+        }
+
+        const commaIndex = Math.min(
+          ...[line.indexOf('，'), line.indexOf(',')].filter((x) => x >= 0),
+        );
+
+        if (Number.isFinite(commaIndex) && commaIndex > 20) {
+          const left = line.slice(0, commaIndex + 1).trim();
+          const right = line.slice(commaIndex + 1).trim();
+          if (left) wrapped.push(left);
+          if (right) wrapped.push(right);
+        } else {
+          wrapped.push(line);
+        }
+      }
+      return wrapped;
+    }
+
+    function splitSentenceBoundaries(lines) {
+      const output = [];
+      for (const rawLine of lines) {
+        const line = String(rawLine || '').trim();
+        if (!line) {
+          continue;
+        }
+
+        const sentenceParts = line
+          .split(/(?<=[。！？!?\.])\s*/)
+          .map((part) => part.trim())
+          .filter(Boolean);
+
+        if (sentenceParts.length > 0) {
+          output.push(...sentenceParts);
+        } else {
+          output.push(line);
+        }
+      }
+      return output;
+    }
+
+    function toPlainLines(inputHtml) {
+      const temp = document.createElement('div');
+      temp.innerHTML = String(inputHtml || '');
+      const text = (temp.innerText || temp.textContent || '').replaceAll('\r', '');
+      const lines = text.split('\n').map((x) => x.trim()).filter(Boolean);
+      return applyCommaWrapRule(splitSentenceBoundaries(lines));
+    }
+
+    function renderDisplayHtml(inputHtml) {
+      const lines = toPlainLines(inputHtml);
+      if (!lines.length) {
+        return '<div class="lines"><div class="line latest-line">等待更新...</div></div>';
+      }
+
+      const body = lines.map((line, idx) => {
+        const latest = idx === lines.length - 1 ? ' latest-line' : '';
+        return `<div class="line${latest}">${escapeHtml(line)}</div>`;
+      }).join('');
+
+      return `<div class="lines">${body}</div>`;
+    }
+
+    function applyConfig(config) {
+      const wrapper = document.querySelector('.window-wrapper');
+      const content = document.getElementById('window-content');
+      const root = document.documentElement;
+
+      function lightenColor(color, ratio = 0.65) {
+        const value = String(color || '').trim();
+        if (!value) {
+          return '';
+        }
+
+        const rgbMatch = value.match(/^#?([0-9a-fA-F]{6})$/);
+        if (!rgbMatch) {
+          return value;
+        }
+
+        const hex = rgbMatch[1];
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        const mix = (channel) => Math.round(channel + (255 - channel) * ratio);
+        const toHex = (channel) => mix(channel).toString(16).padStart(2, '0');
+        return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+      }
+      
+      // Apply font
+      if (config.font) {
+        content.style.fontFamily = `"${config.font}", monospace`;
+      }
+      
+      // Apply font size
+      if (config.font_size) {
+        content.style.fontSize = config.font_size + 'px';
+      }
+      
+      // Apply font bold
+      if (config.font_bold !== undefined) {
+        content.style.fontWeight = config.font_bold ? 'bold' : 'normal';
+      }
+      
+      // Apply text color
+      if (config.font_color) {
+        content.style.color = config.font_color;
+        root.style.setProperty('--line-color', config.font_color);
+        root.style.setProperty('--latest-line-color', lightenColor(config.font_color, 0.65));
+      } else {
+        root.style.setProperty('--line-color', 'inherit');
+        root.style.setProperty('--latest-line-color', 'inherit');
+      }
+      
+      // Apply background color
+      if (config.bg_color) {
+        wrapper.style.background = config.bg_color;
+      }
+
+      // Apply opacity
+      if (config.opacity !== undefined) {
+        wrapper.style.opacity = config.opacity;
+      }
+    }
+
+    // Request initial content from parent
+    window.opener?.postMessage({ type: 'detached-window-ready', mode: state.windowMode }, '*');
+  </script>
+</body>
+</html>

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drag Test</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: linear-gradient(135deg, #0a1a2e, #16213e);
+      color: #eee;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin-bottom: 20px;
+      color: #6cf4ff;
+    }
+
+    .test-window {
+      position: fixed;
+      width: 320px;
+      height: 200px;
+      border: 2px solid #6cf4ff;
+      border-radius: 10px;
+      background: linear-gradient(145deg, rgba(4, 10, 18, 0.98), rgba(10, 20, 30, 0.96));
+      box-shadow: 0 0 30px rgba(108, 212, 255, 0.2);
+      display: flex;
+      flex-direction: column;
+      z-index: 1000;
+      user-select: none;
+      pointer-events: auto;
+    }
+
+    .test-window.win1 {
+      bottom: 20px;
+      left: 20px;
+    }
+
+    .test-window.win2 {
+      bottom: 20px;
+      right: 20px;
+    }
+
+    .titlebar {
+      padding: 12px;
+      background: linear-gradient(90deg, rgba(62, 168, 255, 0.2), rgba(108, 212, 255, 0.1));
+      border-bottom: 1px solid rgba(108, 212, 255, 0.3);
+      cursor: grab;
+      user-select: none;
+      pointer-events: auto;
+      touch-action: none;
+      border-radius: 8px 8px 0 0;
+    }
+
+    .titlebar:active {
+      cursor: grabbing;
+    }
+
+    .titlebar-text {
+      font-weight: 700;
+      color: #6cf4ff;
+    }
+
+    .content {
+      flex: 1;
+      padding: 12px;
+      overflow-y: auto;
+      font-size: 0.9rem;
+      color: #aaa;
+    }
+
+    .log {
+      position: fixed;
+      bottom: 20px;
+      right: 350px;
+      width: 320px;
+      height: 200px;
+      background: rgba(0, 0, 0, 0.8);
+      border: 1px solid rgba(108, 212, 255, 0.3);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 0.8rem;
+      font-family: 'Courier New', monospace;
+      overflow-y: auto;
+      color: #6cf4ff;
+      pointer-events: auto;
+    }
+
+    .log-entry {
+      margin: 4px 0;
+      border-bottom: 1px solid rgba(108, 212, 255, 0.1);
+      padding-bottom: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Drag Test - Open Console (F12) to see logs</h1>
+    <p style="margin-bottom: 40px; color: #aaa;">Try dragging the blue titled windows at the bottom of the screen</p>
+  </div>
+
+  <div class="test-window win1">
+    <div class="titlebar">
+      <span class="titlebar-text">WINDOW 1 - Drag Me</span>
+    </div>
+    <div class="content">
+      <p>Try dragging this window by the title bar.</p>
+      <p>Position will be displayed in the log.</p>
+    </div>
+  </div>
+
+  <div class="test-window win2">
+    <div class="titlebar">
+      <span class="titlebar-text">WINDOW 2 - Drag Me Too</span>
+    </div>
+    <div class="content">
+      <p>This is another test window.</p>
+      <p>Check console for event logs.</p>
+    </div>
+  </div>
+
+  <div class="log" id="log"></div>
+
+  <script>
+    const log = document.getElementById('log');
+
+    function addLog(msg) {
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      log.appendChild(entry);
+      log.scrollTop = log.scrollHeight;
+      console.log(msg);
+
+      // Keep only last 20 entries
+      while (log.children.length > 20) {
+        log.removeChild(log.firstChild);
+      }
+    }
+
+    // Setup drag for all test windows
+    const windows = document.querySelectorAll('.test-window');
+    
+    let dragState = {
+      isDragging: false,
+      currentWindow: null,
+      offsetX: 0,
+      offsetY: 0,
+    };
+
+    addLog('🟢 Initializing drag test...');
+
+    windows.forEach((win) => {
+      const titlebar = win.querySelector('.titlebar');
+      const winLabel = win.classList.contains('win1') ? 'WIN1' : 'WIN2';
+
+      titlebar.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        addLog(`🔴 ${winLabel}: MOUSEDOWN on titlebar`);
+        dragState.isDragging = true;
+        dragState.currentWindow = win;
+        
+        const rect = win.getBoundingClientRect();
+        dragState.offsetX = e.clientX - rect.left;
+        dragState.offsetY = e.clientY - rect.top;
+        
+        addLog(`   offset: ${dragState.offsetX}, ${dragState.offsetY}`);
+        addLog(`   rect: L=${rect.left}, T=${rect.top}, W=${rect.width}, H=${rect.height}`);
+        
+        win.style.cursor = 'grabbing';
+        document.body.style.userSelect = 'none';
+      });
+
+      titlebar.addEventListener('mouseup', () => {
+        addLog(`🔵 ${winLabel}: MOUSEUP on titlebar`);
+        win.style.cursor = 'grab';
+        document.body.style.userSelect = '';
+      });
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!dragState.isDragging || !dragState.currentWindow) return;
+
+      const newLeft = e.clientX - dragState.offsetX;
+      const newTop = e.clientY - dragState.offsetY;
+
+      dragState.currentWindow.style.left = newLeft + 'px';
+      dragState.currentWindow.style.top = newTop + 'px';
+      dragState.currentWindow.style.bottom = 'auto';
+      dragState.currentWindow.style.right = 'auto';
+
+      addLog(`↔️ Moving to ${newLeft}, ${newTop}`);
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (dragState.isDragging && dragState.currentWindow) {
+        const winLabel = dragState.currentWindow.classList.contains('win1') ? 'WIN1' : 'WIN2';
+        addLog(`✅ ${winLabel}: DRAG ENDED`);
+        dragState.currentWindow.style.cursor = 'grab';
+        document.body.style.userSelect = '';
+      }
+      dragState.isDragging = false;
+      dragState.currentWindow = null;
+    });
+
+    addLog('✅ Drag listeners attached');
+  </script>
+</body>
+</html>

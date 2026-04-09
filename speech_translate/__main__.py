@@ -1,8 +1,16 @@
 import sys
 from os import environ
+from pathlib import Path
 from warnings import simplefilter
 
-from ._constants import LOG_FORMAT
+# Support running as a module and as a direct script in debugger.
+if __package__ in (None, ""):
+    project_root = Path(__file__).resolve().parent.parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+    from speech_translate._constants import LOG_FORMAT
+else:
+    from ._constants import LOG_FORMAT
 
 # override loguru default format so we dont need to do logger.remove on the logger init
 environ["LOGURU_FORMAT"] = LOG_FORMAT
@@ -15,7 +23,10 @@ if getattr(sys, "frozen", False):
 # supress general user warning like in pytorch
 simplefilter("ignore", category=UserWarning)
 
-from .ui.window.main import main  # pylint: disable=wrong-import-position
+if __package__ in (None, ""):
+    from speech_translate.webview_app import main  # pylint: disable=wrong-import-position
+else:
+    from .webview_app import main  # pylint: disable=wrong-import-position
 
 if __name__ == "__main__":
     main()

@@ -233,12 +233,12 @@ def verify_language_in_key(search: str, engine: str) -> bool:
 
     """
     # pylint: disable=consider-iterating-dictionary
-    if engine == "Google Translate":
-        return search in GOOGLE_KEY_VAL.keys()
+    if engine in {"Google Translate", "Selenium Chrome Translate"}:
+        return search in GOOGLE_KEY_VAL
     elif engine == "LibreTranslate":
-        return search in LIBRE_KEY_VAL.keys()
+        return search in LIBRE_KEY_VAL
     elif engine == "MyMemoryTranslator":
-        return search in MYMEMORY_KEY_VAL.keys()
+        return search in MYMEMORY_KEY_VAL
     else:
         raise ValueError("Engine not found")
 
@@ -335,6 +335,7 @@ TL_ENGINE_TARGET_DICT = {
     # selecting whisper as the tl engine
     # selecting TL API as the tl engine
     "Google Translate": GOOGLE_TARGET,
+    "Selenium Chrome Translate": GOOGLE_TARGET,
     "LibreTranslate": LIBRE_TARGET,
     "MyMemoryTranslator": MY_MEMORY_TARGET,
 }
@@ -406,6 +407,7 @@ TL_ENGINE_SOURCE_DICT = {
     "🐌 Large V3 [10GB VRAM] (Most Accurate)": WHISPER_SOURCE_V3,  # only v3 has cantonese
     # selecting TL API as the tl engine
     "Google Translate": GOOGLE_SOURCE,
+    "Selenium Chrome Translate": GOOGLE_SOURCE,
     "LibreTranslate": LIBRE_SOURCE,
     "MyMemoryTranslator": MYMEMORY_SOURCE,
 }

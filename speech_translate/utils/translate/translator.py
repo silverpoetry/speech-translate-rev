@@ -70,6 +70,25 @@ class TranslationConnection:
 TlCon = TranslationConnection(GoogleTranslator, MyMemoryTranslator)
 
 
+_selenium_translator = None
+
+
+def _get_selenium_translator():
+    global _selenium_translator
+    if _selenium_translator is None:
+        from .selenium_web_translator import SeleniumTranslatorConfig, SeleniumWebTranslator
+
+        _selenium_translator = SeleniumWebTranslator(
+            SeleniumTranslatorConfig(
+                source_lang="auto",
+                target_lang="zh-CN",
+                headless=False,
+                engine_compact_mode=True,
+            )
+        )
+    return _selenium_translator
+
+
 def google_tl(text: List[str], from_lang: str, to_lang: str, proxies: Dict, debug_log: bool = False, **kwargs):
     """Translate Using Google Translate
 
@@ -123,9 +142,14 @@ def google_tl(text: List[str], from_lang: str, to_lang: str, proxies: Dict, debu
         tl_kwargs = {}
         if kwargs.pop("live_input", False):
             tl_kwargs["with_tqdm"] = False
+        prefer_full_text = kwargs.pop("prefer_full_text", False)
 
-        result = TlCon.GoogleTranslator(source=LCODE_FROM, target=LCODE_TO,
-                                        proxies=proxies).translate_batch(text, **tl_kwargs)
+        translator = TlCon.GoogleTranslator(source=LCODE_FROM, target=LCODE_TO, proxies=proxies)
+        if prefer_full_text and len(text) == 1:
+            # Full-text request usually gives better contextual quality than line-by-line translation.
+            result = [translator.translate(text[0])]
+        else:
+            result = translator.translate_batch(text, **tl_kwargs)
         is_success = True
     except Exception as e:
         logger.exception(e)
@@ -300,7 +324,50 @@ def libre_tl(
     return is_success, result
 
 
+def selenium_chrome_tl(text: List[str], from_lang: str, to_lang: str, proxies: Dict, debug_log: bool = False, **kwargs):
+    """Translate using Selenium + Google Translate web page."""
+    _ = proxies
+    is_success = False
+    result = ""
+
+    try:
+        assert isinstance(GOOGLE_KEY_VAL, Dict)
+        try:
+            source_code = GOOGLE_KEY_VAL[from_lang]
+            target_code = GOOGLE_KEY_VAL[to_lang]
+        except KeyError:
+            logger.warning("Language Code Undefined for Selenium engine. Trying similar keys")
+            try:
+                source_code = GOOGLE_KEY_VAL[get_similar_keys(GOOGLE_KEY_VAL, from_lang)[0]]
+            except Exception:
+                source_code = "auto"
+            target_code = GOOGLE_KEY_VAL[get_similar_keys(GOOGLE_KEY_VAL, to_lang)[0]]
+    except Exception as e:
+        logger.exception(e)
+        return is_success, "Error Language Code Undefined"
+
+    try:
+        translator = _get_selenium_translator()
+        result = translator.translate_lines_via_page_translate(
+            text,
+            source_lang=source_code,
+            target_lang=target_code,
+        )
+        is_success = True
+    except Exception as e:
+        logger.exception(e)
+        result = str(e)
+    finally:
+        if debug_log:
+            logger.info("-" * 50)
+            logger.debug("Query: " + str(text))
+            logger.debug("Translation Get: " + str(result))
+
+    return is_success, result
+
+
 tl_dict = {
+    "Selenium Chrome Translate": selenium_chrome_tl,
     "Google Translate": google_tl,
     "MyMemoryTranslator": memory_tl,
     "LibreTranslate": libre_tl,

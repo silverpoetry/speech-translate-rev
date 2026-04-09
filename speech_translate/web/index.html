@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>语音翻译</title>
+  <link rel="stylesheet" href="styles.css?v=20260408-ui-cn-1" />
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <main class="app-shell">
+    <div class="dashboard-layout">
+      <aside class="card sidebar-nav">
+        <div class="sidebar-brand">
+          <div class="brand-row">
+            <span class="brand-icon" aria-hidden="true"></span>
+            <h2>语音翻译</h2>
+          </div>
+        </div>
+        <nav class="menu-list" aria-label="主菜单">
+          <button type="button" class="menu-item is-active" data-nav-target="realtime"><span class="menu-icon menu-icon-realtime"></span><span>实时转写</span></button>
+          <button type="button" class="menu-item" data-nav-target="file"><span class="menu-icon menu-icon-file"></span><span>文件转写</span></button>
+          <button type="button" class="menu-item" data-nav-target="model"><span class="menu-icon menu-icon-model"></span><span>模型选择</span></button>
+          <button type="button" class="menu-item" data-nav-target="settings"><span class="menu-icon menu-icon-settings"></span><span>设置</span></button>
+        </nav>
+        <div class="sidebar-actions">
+          <button class="btn-with-icon" data-open-dir="model">模型目录</button>
+          <button class="btn-with-icon" data-open-dir="export">导出目录</button>
+        </div>
+      </aside>
+
+      <div class="dashboard-content">
+        <section class="card workspace-hub" id="workspace-hub">
+      <div class="workflow-panels">
+        <article class="workflow-card tab-panel is-active" id="tab-model" role="tabpanel">
+          <section class="panel-card core-card">
+            <div class="floating-action-row">
+              <button class="btn-icon" data-action="save-import-settings" data-tooltip="保存模型配置" title="保存模型配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+            </div>
+            <div class="section-head">
+              <div>
+                <h3>模型选择</h3>
+              </div>
+            </div>
+
+            <div class="inline-actions">
+              <button class="btn-with-icon btn-major" data-action="load-model">加载模型</button>
+            </div>
+
+            <div class="form-grid import-grid">
+              <label>
+                <span>模型</span>
+                <select id="model_f_import"></select>
+              </label>
+              <label>
+                <span>翻译引擎</span>
+                <select id="tl_engine_f_import"></select>
+              </label>
+            </div>
+            <div class="status-row import-status core-status-bottom">
+              <span class="pill pill-muted" id="import-model-pill">模型</span>
+              <span class="pill pill-muted" id="import-engine-pill">引擎</span>
+            </div>
+          </section>
+        </article>
+
+        <article class="workflow-card tab-panel" id="tab-file" role="tabpanel">
+          <section class="panel-card core-card">
+            <div class="floating-action-row">
+              <button class="btn-icon" data-action="save-import-settings" data-tooltip="保存文件配置" title="保存文件配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+            </div>
+            <div class="section-head">
+              <div>
+                <h3>文件转写</h3>
+              </div>
+            </div>
+
+            <div class="inline-actions">
+              <button class="btn-with-icon btn-major" data-action="import-files">导入并处理</button>
+            </div>
+
+            <div class="form-grid import-grid">
+              <label>
+                <span>源语言</span>
+                <select id="source_lang_f_import"></select>
+              </label>
+              <label>
+                <span>目标语言</span>
+                <select id="target_lang_f_import"></select>
+              </label>
+            </div>
+
+            <div class="inline-actions import-actions">
+              <label class="toggle-row"><input id="transcribe_f_import" type="checkbox" /> 转写</label>
+              <label class="toggle-row"><input id="translate_f_import" type="checkbox" /> 翻译</label>
+            </div>
+            <div class="status-row import-status core-status-bottom">
+              <span class="pill pill-muted" id="import-lang-pill">语言</span>
+            </div>
+          </section>
+        </article>
+
+        <article class="workflow-card tab-panel" id="tab-realtime" role="tabpanel">
+          <section class="panel-card core-card">
+            <div class="floating-action-row">
+              <button class="btn-icon" data-action="create-detached-tc" data-tooltip="打开转写独立窗口" title="打开转写独立窗口"><span class="btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
+              <button class="btn-icon btn-icon-blue" data-action="create-detached-tl" data-tooltip="打开翻译独立窗口" title="打开翻译独立窗口"><span class="btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
+            </div>
+            <div class="section-head">
+              <div>
+                <h3>实时转写</h3>
+              </div>
+            </div>
+
+            <div class="inline-actions realtime-top-bar">
+              <button class="primary btn-with-icon btn-recording" data-action="start-recording" id="btn-recording-toggle">开始录制</button>
+              <label class="toggle-row"><input id="transcribe_mw" type="checkbox" checked /> 转写</label>
+              <label class="toggle-row"><input id="translate_mw" type="checkbox" checked /> 翻译</label>
+            </div>
+
+            <div class="advanced-panel-body split-view transcript-shell">
+              <div class="stack">
+                <div id="main-transcribed-output" class="live-output">转写内容将显示在这里。</div>
+              </div>
+              <div class="stack">
+                <div id="main-translated-output" class="live-output">翻译内容将显示在这里。</div>
+              </div>
+            </div>
+
+            <div class="status-row import-status core-status-bottom">
+              <span class="pill pill-muted" id="main-input-pill">输入</span>
+              <span class="pill pill-muted" id="main-lang-pill">语言</span>
+              <span class="pill pill-muted" id="main-engine-pill">引擎</span>
+            </div>
+          </section>
+
+          <div class="dual-advanced-grid">
+            <details class="advanced-panel panel-card" open>
+              <summary>设备配置</summary>
+              <div class="floating-action-row">
+                <button class="btn-icon" data-action="save-settings" data-tooltip="保存实时配置" title="保存实时配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+              </div>
+              <div class="advanced-panel-body">
+                <div class="form-grid">
+                  <label>
+                    <span>输入</span>
+                    <select id="input_mode">
+                      <option value="mic">麦克风</option>
+                      <option value="speaker">扬声器</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>主机 API</span>
+                    <select id="hostAPI"></select>
+                  </label>
+                  <label>
+                    <span>麦克风</span>
+                    <select id="mic"></select>
+                  </label>
+                  <label>
+                    <span>扬声器</span>
+                    <select id="speaker"></select>
+                  </label>
+                </div>
+              </div>
+            </details>
+
+            <details class="advanced-panel panel-card" open>
+              <summary>语言配置</summary>
+              <div class="floating-action-row">
+                <button class="btn-icon" data-action="save-settings" data-tooltip="保存实时配置" title="保存实时配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+              </div>
+              <div class="advanced-panel-body">
+                <div class="form-grid">
+                  <label>
+                    <span>源语言</span>
+                    <select id="source_lang_mw"></select>
+                  </label>
+                  <label>
+                    <span>目标语言</span>
+                    <select id="target_lang_mw"></select>
+                  </label>
+                  <label>
+                    <span>翻译引擎</span>
+                    <select id="tl_engine_mw"></select>
+                  </label>
+                </div>
+              </div>
+            </details>
+          </div>
+
+          <details class="advanced-panel panel-card" open>
+            <summary>独立窗口设置</summary>
+            <div class="floating-action-row">
+              <button class="btn-icon" data-action="create-detached-tc" data-tooltip="打开转写独立窗口" title="打开转写独立窗口"><span class="btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
+              <button class="btn-icon btn-icon-blue" data-action="create-detached-tl" data-tooltip="打开翻译独立窗口" title="打开翻译独立窗口"><span class="btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
+              <button class="btn-icon" data-action="save-detached-settings" data-tooltip="保存独立窗口设置" title="保存独立窗口设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+            </div>
+            <div class="advanced-panel-body">
+              <div class="form-grid">
+                <label>
+                  <span>选择模式</span>
+                  <select id="detached_mode">
+                    <option value="tc">转写</option>
+                    <option value="tl">翻译</option>
+                  </select>
+                </label>
+                <label>
+                  <span>字体</span>
+                  <input id="detached_font" type="text" placeholder="Arial" />
+                </label>
+                <label>
+                  <span>字号 (px)</span>
+                  <input id="detached_font_size" type="number" min="8" max="48" step="1" />
+                </label>
+                <label>
+                  <span>字体颜色</span>
+                  <input id="detached_font_color" type="text" placeholder="#FFFFFF" />
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  <span>背景颜色</span>
+                  <input id="detached_bg_color" type="text" placeholder="#000000" />
+                </label>
+                <label>
+                  <span>透明度</span>
+                  <input id="detached_opacity" type="range" min="0.1" max="1" step="0.05" />
+                </label>
+              </div>
+              <div class="inline-actions import-actions compact-gap">
+                <label class="toggle-row"><input id="detached_always_on_top" type="checkbox" /> 窗口置顶</label>
+                <label class="toggle-row"><input id="detached_no_title_bar" type="checkbox" /> 隐藏标题栏</label>
+                <label class="toggle-row"><input id="detached_click_through" type="checkbox" /> 点击穿透</label>
+              </div>
+            </div>
+          </details>
+        </article>
+      </div>
+    </section>
+
+    <section class="card advanced-shell" id="settings-shell" style="display: none;">
+
+      <details class="advanced-panel">
+        <summary>核心设置</summary>
+        <div class="floating-action-row">
+          <button class="btn-icon" data-action="save-settings" data-tooltip="保存设置" title="保存设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+        </div>
+        <div class="advanced-panel-body">
+          <div class="form-grid">
+            <label>
+              <span>主题</span>
+              <input id="theme" type="text" placeholder="sun-valley-dark" />
+            </label>
+            <label>
+              <span>日志级别</span>
+              <select id="log_level">
+                <option value="DEBUG">DEBUG</option>
+                <option value="INFO">INFO</option>
+                <option value="WARNING">WARNING</option>
+                <option value="ERROR">ERROR</option>
+              </select>
+            </label>
+            <label>
+              <span>导出目录</span>
+              <input id="dir_export" type="text" placeholder="auto" />
+            </label>
+            <label>
+              <span>模型目录</span>
+              <input id="dir_model" type="text" placeholder="auto" />
+            </label>
+          </div>
+          <div class="inline-actions">
+            <label class="toggle-row"><input id="auto_scroll_log" type="checkbox" /> 自动滚动日志</label>
+            <label class="toggle-row"><input id="auto_refresh_log" type="checkbox" /> 自动刷新日志</label>
+          </div>
+          <div class="inline-actions">
+            <button class="btn-with-icon" data-action="notify">测试通知</button>
+            <button class="btn-with-icon" data-open-dir="log">打开日志目录</button>
+            <button class="btn-with-icon" data-open-dir="debug">打开调试目录</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="advanced-panel" open>
+        <summary>模型检查与下载</summary>
+        <div class="advanced-panel-body">
+          <div class="form-grid">
+            <label>
+              <span>引擎</span>
+              <select id="model_manager_engine">
+                <option value="whisper">whisper</option>
+                <option value="faster-whisper">faster-whisper</option>
+              </select>
+            </label>
+            <label>
+              <span>模型</span>
+              <select id="model_manager_model"></select>
+            </label>
+          </div>
+          <div class="inline-actions">
+            <button class="btn-with-icon" data-action="refresh-model-manager">刷新缓存状态（当前引擎）</button>
+            <button class="btn-with-icon" data-action="check-model">检查所选模型</button>
+            <button class="btn-with-icon" data-action="check-model-all">检查全部（当前引擎）</button>
+            <button class="btn-with-icon" data-action="check-model-all-both">检查全部（双引擎）</button>
+            <button class="btn-with-icon btn-major" data-action="download-model">下载所选模型</button>
+          </div>
+          <div class="section-head">
+            <p id="model-manager-hint">提示：刷新会读取缓存检查结果，点击检查才会执行真实检查。</p>
+          </div>
+          <div class="status-row import-status">
+            <span class="pill pill-muted" id="model-manager-dir-pill">模型目录</span>
+            <span class="pill pill-muted" id="model-manager-engine-pill">引擎</span>
+            <span class="pill pill-muted" id="model-manager-download-pill">下载</span>
+          </div>
+          <div id="model-status-card" class="state-card model-status-card"></div>
+        </div>
+      </details>
+
+      <details class="advanced-panel">
+        <summary>录制设置（麦克风 / 扬声器）</summary>
+        <div class="advanced-panel-body">
+          <div class="section-head">
+            <div>
+              <h3>录制参数</h3>
+              <p>用于麦克风和扬声器的采集、缓冲与 VAD 调整。</p>
+            </div>
+            <div class="inline-actions compact">
+              <button class="btn-icon" data-action="save-record-settings" data-tooltip="保存录制设置" title="保存录制设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <label>
+              <span>详细录制日志</span>
+              <select id="verbose_record">
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+            </label>
+            <label>
+              <span>转写间隔 (ms)</span>
+              <input id="transcribe_rate" type="number" min="1" max="1000" step="1" />
+            </label>
+            <label>
+              <span>分隔符</span>
+              <input id="separate_with" type="text" placeholder="\n" />
+            </label>
+          </div>
+
+          <div class="inline-actions import-actions compact-gap">
+            <label class="toggle-row"><input id="use_temp" type="radio" name="conversion_mode" value="numpy" /> Numpy 数组</label>
+            <label class="toggle-row"><input id="use_temp_alt" type="radio" name="conversion_mode" value="temp" /> 临时 wav 文件</label>
+            <label class="toggle-row"><input id="keep_temp" type="checkbox" /> 保留临时文件</label>
+            <label class="toggle-row"><input id="show_audio_visualizer_in_setting" type="checkbox" /> 显示音频可视化</label>
+          </div>
+
+          <div class="record-grid">
+            <div class="record-device-card">
+              <div class="section-head">
+                <h3>麦克风</h3>
+              </div>
+              <div class="form-grid record-subgrid">
+                <label><span>采样率</span><input id="sample_rate_mic" type="number" min="4000" max="384000" step="1" /></label>
+                <label><span>块大小</span><input id="chunk_size_mic" type="number" min="320" max="1280" step="1" /></label>
+                <label><span>声道</span><input id="channels_mic" type="text" placeholder="单声道" /></label>
+                <label><span>最小输入时长</span><input id="min_input_length_mic" type="number" min="0.1" max="10" step="0.1" /></label>
+                <label><span>最大缓冲</span><input id="max_buffer_mic" type="number" min="1" max="30" step="1" /></label>
+                <label><span>最大句子数</span><input id="max_sentences_mic" type="number" min="1" max="100" step="1" /></label>
+              </div>
+              <div class="inline-actions import-actions compact-gap">
+                <label class="toggle-row"><input id="auto_sample_rate_mic" type="checkbox" /> 自动采样率</label>
+                <label class="toggle-row"><input id="auto_channels_mic" type="checkbox" /> 自动声道</label>
+                <label class="toggle-row"><input id="mic_no_limit" type="checkbox" /> 不限长度</label>
+              </div>
+              <div class="inline-actions import-actions compact-gap">
+                <label class="toggle-row"><input id="threshold_enable_mic" type="checkbox" /> 阈值</label>
+                <label class="toggle-row"><input id="threshold_auto_mic" type="checkbox" /> 自动阈值</label>
+                <label class="toggle-row"><input id="threshold_auto_silero_mic" type="checkbox" /> 使用 Silero</label>
+                <label class="toggle-row"><input id="auto_break_buffer_mic" type="checkbox" /> 静音断句</label>
+              </div>
+              <div class="form-grid record-subgrid">
+                <label><span>自动级别</span><input id="threshold_auto_level_mic" type="number" min="1" max="3" step="1" /></label>
+                <label><span>Silero 最小值</span><input id="threshold_silero_mic_min" type="number" min="0.1" max="1" step="0.05" /></label>
+                <label><span>阈值 dB</span><input id="threshold_db_mic" type="range" min="-60" max="0" step="0.5" /></label>
+              </div>
+            </div>
+
+            <div class="record-device-card">
+              <div class="section-head">
+                <h3>扬声器</h3>
+              </div>
+              <div class="form-grid record-subgrid">
+                <label><span>采样率</span><input id="sample_rate_speaker" type="number" min="4000" max="384000" step="1" /></label>
+                <label><span>块大小</span><input id="chunk_size_speaker" type="number" min="320" max="1280" step="1" /></label>
+                <label><span>声道</span><input id="channels_speaker" type="text" placeholder="立体声" /></label>
+                <label><span>最小输入时长</span><input id="min_input_length_speaker" type="number" min="0.1" max="10" step="0.1" /></label>
+                <label><span>最大缓冲</span><input id="max_buffer_speaker" type="number" min="1" max="30" step="1" /></label>
+                <label><span>最大句子数</span><input id="max_sentences_speaker" type="number" min="1" max="100" step="1" /></label>
+              </div>
+              <div class="inline-actions import-actions compact-gap">
+                <label class="toggle-row"><input id="auto_sample_rate_speaker" type="checkbox" /> 自动采样率</label>
+                <label class="toggle-row"><input id="auto_channels_speaker" type="checkbox" /> 自动声道</label>
+                <label class="toggle-row"><input id="speaker_no_limit" type="checkbox" /> 不限长度</label>
+              </div>
+              <div class="inline-actions import-actions compact-gap">
+                <label class="toggle-row"><input id="threshold_enable_speaker" type="checkbox" /> 阈值</label>
+                <label class="toggle-row"><input id="threshold_auto_speaker" type="checkbox" /> 自动阈值</label>
+                <label class="toggle-row"><input id="threshold_auto_silero_speaker" type="checkbox" /> 使用 Silero</label>
+                <label class="toggle-row"><input id="auto_break_buffer_speaker" type="checkbox" /> 静音断句</label>
+              </div>
+              <div class="form-grid record-subgrid">
+                <label><span>自动级别</span><input id="threshold_auto_level_speaker" type="number" min="1" max="3" step="1" /></label>
+                <label><span>Silero 最小值</span><input id="threshold_silero_speaker_min" type="number" min="0.1" max="1" step="0.05" /></label>
+                <label><span>阈值 dB</span><input id="threshold_db_speaker" type="range" min="-60" max="0" step="0.5" /></label>
+              </div>
+            </div>
+          </div>
+
+          <div class="status-row import-status">
+            <span class="pill pill-muted" id="record-input-pill">输入</span>
+            <span class="pill pill-muted" id="record-mode-pill">模式</span>
+            <span class="pill pill-muted" id="record-visual-pill">可视化</span>
+          </div>
+        </div>
+      </details>
+
+      <details class="advanced-panel">
+        <summary>监控与诊断</summary>
+        <div class="advanced-panel-body split-view">
+          <div class="stack log-stack">
+            <div class="status-row">
+              <span class="pill" id="pill-version">加载中...</span>
+              <span class="pill pill-muted" id="pill-os">系统</span>
+              <span class="pill pill-muted" id="pill-logfile">日志</span>
+            </div>
+            <div class="task-banner" id="task-banner">
+              <div class="task-banner-head">
+                <span class="task-badge" id="task-badge">空闲</span>
+                <span class="task-progress-text" id="task-progress-text">0%</span>
+              </div>
+              <div class="task-banner-title" id="task-title">当前没有后台任务</div>
+              <div class="task-banner-message" id="task-message">等待操作。</div>
+              <div class="task-progress-track" aria-hidden="true">
+                <div class="task-progress-fill" id="task-progress-fill"></div>
+              </div>
+            </div>
+            <div class="section-head sticky-head">
+              <div>
+                <h2>实时日志</h2>
+                <p>显示来自 Python 的当前日志文件。</p>
+              </div>
+              <div class="inline-actions compact">
+                <button class="btn-with-icon" data-action="refresh-log">刷新日志</button>
+                <button class="btn-with-icon" data-action="auto-refresh-toggle" id="auto-refresh-toggle">自动刷新：开</button>
+                <button class="btn-with-icon" data-action="clear-log">清空日志</button>
+              </div>
+            </div>
+            <pre id="log-output" class="log-output">日志加载中...</pre>
+          </div>
+
+          <div class="stack state-stack">
+            <div class="section-head">
+              <h2>状态快照</h2>
+              <p>用于调试桥接状态和剩余连接项。</p>
+            </div>
+            <div id="state-card" class="state-card"></div>
+            <div class="section-head">
+              <div>
+                <h2>任务状态</h2>
+                <p>显示文件导入等后台任务的实时状态。</p>
+              </div>
+            </div>
+            <div id="task-card" class="state-card task-card"></div>
+            <div class="section-head">
+              <div>
+                <h2>关于</h2>
+                <p>应用元数据与运行路径。</p>
+              </div>
+            </div>
+            <div id="about-card" class="state-card about-card"></div>
+            <div class="inline-actions">
+              <button class="btn-with-icon" data-action="open-github">GitHub</button>
+              <button class="btn-with-icon" data-action="open-wiki">Wiki</button>
+              <button class="btn-with-icon" data-action="open-repo">打开仓库目录</button>
+              <button class="btn-with-icon" data-action="quit">退出应用</button>
+            </div>
+          </div>
+        </div>
+      </details>
+    </section>
+      </div>
+    </div>
+
+    <section class="global-statusbar" id="global-statusbar" role="status" aria-live="polite">
+      <div class="statusbar-left">
+        <span class="statusbar-label">模型状态</span>
+        <span class="statusbar-value" id="global-model-state">未加载</span>
+        <span class="statusbar-meta" id="global-model-meta">等待同步</span>
+      </div>
+      <div class="statusbar-right">
+        <span class="statusbar-label">任务状态</span>
+        <span class="statusbar-value" id="global-task-state">空闲</span>
+        <span class="statusbar-meta" id="global-task-message">等待任务</span>
+        <div class="statusbar-progress-wrap" id="global-task-progress-wrap" aria-label="任务进度">
+          <span class="statusbar-progress-text" id="global-task-progress-text">0%</span>
+          <div class="statusbar-progress-track" aria-hidden="true">
+            <div class="statusbar-progress-fill" id="global-task-progress-fill"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <div class="page-scroll-indicator" id="page-scroll-indicator" aria-hidden="true">
+      <div class="page-scroll-thumb" id="page-scroll-thumb"></div>
+    </div>
+  </main>
+
+  <script src="app.js?v=20260408-ui-cn-1"></script>
+</body>
+</html>

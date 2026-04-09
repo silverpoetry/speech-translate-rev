@@ -274,6 +274,7 @@ class SettingDict(TypedDict):
     ex_tc_click_through: Literal[0, 1]
     ex_tc_no_title_bar: Literal[0, 1]
     ex_tc_no_tooltip: Literal[0, 1]
+    ex_tc_opacity: float
     tb_ex_tc_auto_scroll: bool
     tb_ex_tc_limit_max: bool
     tb_ex_tc_limit_max_per_line: bool
@@ -291,6 +292,7 @@ class SettingDict(TypedDict):
     ex_tl_click_through: Literal[0, 1]
     ex_tl_no_title_bar: Literal[0, 1]
     ex_tl_no_tooltip: Literal[0, 1]
+    ex_tl_opacity: float
     tb_ex_tl_auto_scroll: bool
     tb_ex_tl_limit_max: bool
     tb_ex_tl_limit_max_per_line: bool
