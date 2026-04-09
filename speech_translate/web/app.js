@@ -12,7 +12,6 @@ const state = {
   modelPollTimer: null,
   modelCheckedOnce: false,
   seleniumSaveInFlight: false,
-  seleniumSaveSeq: 0,
 };
 
 const els = {};
@@ -155,6 +154,14 @@ function renderSettings(data) {
   els.logLevel.value = settings.log_level ?? data.log_level ?? 'DEBUG';
   els.dirExport.value = settings.dir_export ?? 'auto';
   els.dirModel.value = settings.dir_model ?? 'auto';
+  const exportTo = settings.export_to || ['txt', 'srt', 'vtt', 'json', 'ass'];
+  if (els.exportTxt) els.exportTxt.checked = exportTo.includes('txt');
+  if (els.exportSrt) els.exportSrt.checked = exportTo.includes('srt');
+  if (els.exportVtt) els.exportVtt.checked = exportTo.includes('vtt');
+  if (els.exportAss) els.exportAss.checked = exportTo.includes('ass');
+  if (els.exportJson) els.exportJson.checked = exportTo.includes('json');
+  if (els.exportCsv) els.exportCsv.checked = exportTo.includes('csv');
+  if (els.exportMp4) els.exportMp4.checked = exportTo.includes('mp4');
   if (els.seleniumCompactLevel) {
     els.seleniumCompactLevel.value = String(settings.selenium_compact_level ?? 2);
   }
@@ -353,6 +360,9 @@ function renderRecordSettings(data) {
   if (els.useTemp) els.useTemp.checked = !Boolean(recordUi.use_temp);
   if (els.useTempAlt) els.useTempAlt.checked = Boolean(recordUi.use_temp);
   if (els.keepTemp) els.keepTemp.checked = Boolean(recordUi.keep_temp);
+  if (els.fileUseOfficialWhisper) {
+    els.fileUseOfficialWhisper.checked = Boolean(recordUi.file_use_official_whisper);
+  }
   if (els.showAudioVisualizerInSetting) {
     els.showAudioVisualizerInSetting.checked = Boolean(recordUi.show_audio_visualizer_in_setting);
   }
@@ -796,11 +806,21 @@ async function saveSettings(shouldRefresh = true) {
   const valueOf = (node, fallback = '') => (node && typeof node.value !== 'undefined' ? node.value : fallback);
   const checkedOf = (node, fallback = false) => (node && typeof node.checked !== 'undefined' ? Boolean(node.checked) : fallback);
 
+  const exportTo = [];
+  if (els.exportTxt && checkedOf(els.exportTxt)) exportTo.push('txt');
+  if (els.exportSrt && checkedOf(els.exportSrt)) exportTo.push('srt');
+  if (els.exportVtt && checkedOf(els.exportVtt)) exportTo.push('vtt');
+  if (els.exportAss && checkedOf(els.exportAss)) exportTo.push('ass');
+  if (els.exportJson && checkedOf(els.exportJson)) exportTo.push('json');
+  if (els.exportCsv && checkedOf(els.exportCsv)) exportTo.push('csv');
+  if (els.exportMp4 && checkedOf(els.exportMp4)) exportTo.push('mp4');
+
   const updates = [
     ['theme', valueOf(els.theme, '')],
     ['log_level', valueOf(els.logLevel, 'DEBUG')],
     ['dir_export', valueOf(els.dirExport, 'auto')],
     ['dir_model', valueOf(els.dirModel, 'auto')],
+    ['export_to', exportTo],
     ['input', valueOf(els.inputMode, 'mic')],
     ['source_lang_mw', valueOf(els.sourceLangMain, 'English')],
     ['target_lang_mw', valueOf(els.targetLangMain, 'Indonesian')],
@@ -827,12 +847,10 @@ async function saveSettings(shouldRefresh = true) {
 
 async function saveSeleniumSettings(shouldRefresh = true) {
   if (state.seleniumSaveInFlight) {
-    console.warn('[SeleniumSettings] save ignored: previous request still in-flight');
     return;
   }
 
   state.seleniumSaveInFlight = true;
-  const requestId = ++state.seleniumSaveSeq;
   const saveButtons = Array.from(document.querySelectorAll('button[data-action="save-selenium-settings"]'));
   saveButtons.forEach((btn) => {
     btn.disabled = true;
@@ -848,34 +866,15 @@ async function saveSeleniumSettings(shouldRefresh = true) {
   const zOrderMode = ['normal', 'behind-main', 'bottom'].includes(zOrderRaw) ? zOrderRaw : 'behind-main';
   const autoClose = Boolean(autoCloseEl && autoCloseEl.checked);
 
-  console.info('[SeleniumSettings] save start', {
-    requestId,
-    compactRaw,
-    compactLevel,
-    zOrderRaw,
-    zOrderMode,
-    autoClose,
-  });
-
   try {
-    try {
-      await apiCall('debug_selenium_settings_snapshot', 'save-start', {
-        requestId,
-        compactRaw,
-        compactLevel,
-        zOrderRaw,
-        zOrderMode,
-        autoClose,
-      });
-    } catch (error) {
-      console.debug('[SeleniumSettings] debug snapshot save-start failed', error);
-    }
+    const res = await apiCall('set_setting', 'selenium_settings', {
+      compact_level: compactLevel,
+      z_order_mode: zOrderMode,
+      auto_close_on_task_done: autoClose,
+    });
 
-    const res = await apiCall('set_selenium_settings', compactLevel, zOrderMode, autoClose);
-    console.info('[SeleniumSettings] set_selenium_settings', { requestId, res });
-
-    const saved = res && res.cache
-      ? res.cache
+    const saved = res && res.value
+      ? res.value
       : {
           selenium_compact_level: compactLevel,
           selenium_z_order_mode: zOrderMode,
@@ -893,34 +892,11 @@ async function saveSeleniumSettings(shouldRefresh = true) {
     }
 
     if (shouldRefresh) {
-      try {
-        await apiCall(
-          'notify',
-          '语音翻译',
-          `Selenium 设置已保存：模式=${saved.selenium_compact_level}，层级=${saved.selenium_z_order_mode}，自动关闭=${saved.selenium_auto_close_on_task_done ? '开' : '关'}`
-        );
-      } catch (error) {
-        console.debug('Selenium settings save notify skipped', error);
-      }
+      console.log(
+        `Selenium 设置已保存：模式=${saved.selenium_compact_level}，层级=${saved.selenium_z_order_mode}，自动关闭=${saved.selenium_auto_close_on_task_done ? '开' : '关'}`
+      );
     }
-
-    try {
-      await apiCall('debug_selenium_settings_snapshot', 'save-end', {
-        requestId,
-        requested: {
-          compactLevel,
-          zOrderMode,
-          autoClose,
-        },
-        applied: saved,
-      });
-    } catch (error) {
-      console.debug('[SeleniumSettings] debug snapshot save-end failed', error);
-    }
-
-    console.info('[SeleniumSettings] save done', { requestId });
   } catch (error) {
-    console.error('[SeleniumSettings] save failed', { requestId, error });
     throw error;
   } finally {
     state.seleniumSaveInFlight = false;
@@ -980,6 +956,7 @@ async function saveRecordSettings() {
     ['separate_with', els.separateWith.value],
     ['use_temp', checked(els.useTempAlt)],
     ['keep_temp', checked(els.keepTemp)],
+    ['file_use_official_whisper', checked(els.fileUseOfficialWhisper)],
     ['show_audio_visualizer_in_setting', checked(els.showAudioVisualizerInSetting)],
     ['sample_rate_mic', numberOr(els.micSampleRate.value, 16000)],
     ['chunk_size_mic', numberOr(els.micChunkSize.value, 1024)],
@@ -1075,16 +1052,9 @@ async function createDetachedWindow(modeOverride = null) {
     const result = await apiCall('create_detached_window', mode, 100, 100);
     await apiCall('update_detached_config', mode);
     console.log(`Created ${modeLabel} detached window:`, result);
-    
-    // Show success message
-    if (typeof pywebview !== 'undefined' && pywebview.api) {
-      await apiCall('notify', '语音翻译', `已打开${modeLabel}独立窗口`);
-    }
+    console.log(`已打开${modeLabel}独立窗口`);
   } catch (error) {
     console.error('创建独立窗口失败:', error);
-    if (typeof pywebview !== 'undefined' && pywebview.api) {
-      await apiCall('notify', '语音翻译', '打开窗口失败，请查看控制台');
-    }
   }
 }
 
@@ -1099,7 +1069,7 @@ async function startRecording() {
     const isTl = els.translateMain ? els.translateMain.checked : true;
 
     if (!isTc && !isTl) {
-      await apiCall('notify', '语音翻译', '请先启用“转写”或“翻译”');
+      console.warn('请先启用“转写”或“翻译”');
       return;
     }
 
@@ -1112,20 +1082,11 @@ async function startRecording() {
       syncRecordingButton(await apiCall('get_recording_state'));
       
       console.log('录制已开始:', result);
-      if (typeof pywebview !== 'undefined' && pywebview.api) {
-        await apiCall('notify', '语音翻译', '录制已开始');
-      }
     } else {
       console.error('启动录制失败:', result.message);
-      if (typeof pywebview !== 'undefined' && pywebview.api) {
-        await apiCall('notify', '语音翻译', `录制失败：${result.message}`);
-      }
     }
   } catch (error) {
     console.error('启动录制出错:', error);
-    if (typeof pywebview !== 'undefined' && pywebview.api) {
-      await apiCall('notify', '语音翻译', `录制错误：${error.message || String(error)}`);
-    }
   }
 }
 
@@ -1137,20 +1098,11 @@ async function stopRecording() {
 
     if (result.ok) {
       console.log('录制已停止:', result);
-      if (typeof pywebview !== 'undefined' && pywebview.api) {
-        await apiCall('notify', '语音翻译', '录制已停止');
-      }
     } else {
       console.error('停止录制失败:', result.message);
-      if (typeof pywebview !== 'undefined' && pywebview.api) {
-        await apiCall('notify', '语音翻译', `停止失败：${result.message}`);
-      }
     }
   } catch (error) {
     console.error('停止录制出错:', error);
-    if (typeof pywebview !== 'undefined' && pywebview.api) {
-      await apiCall('notify', '语音翻译', `停止错误：${error.message || String(error)}`);
-    }
   }
 }
 
@@ -1165,7 +1117,7 @@ async function clearLog() {
 }
 
 async function sendTestNotification() {
-  await apiCall('notify', '语音翻译', 'pywebview 桥接已连接');
+  console.log('pywebview 桥接已连接');
 }
 
 function startAutoRefresh() {
@@ -1413,44 +1365,6 @@ function bindEvents() {
     });
   }
 
-  if (els.seleniumCompactLevel) {
-    els.seleniumCompactLevel.addEventListener('change', async () => {
-      try {
-        const raw = Number(els.seleniumCompactLevel.value);
-        const value = Number.isFinite(raw) ? Math.max(0, Math.min(3, Math.trunc(raw))) : 2;
-        console.info('[SeleniumSettings] compact level changed', { raw, value });
-        await apiCall('debug_selenium_settings_snapshot', 'change-compact', { raw, value });
-      } catch (error) {
-        console.error('[SeleniumSettings] compact level save failed', error);
-      }
-    });
-  }
-
-  if (els.seleniumZOrderMode) {
-    els.seleniumZOrderMode.addEventListener('change', async () => {
-      try {
-        const raw = String(els.seleniumZOrderMode.value || 'behind-main');
-        const value = ['normal', 'behind-main', 'bottom'].includes(raw) ? raw : 'behind-main';
-        console.info('[SeleniumSettings] z-order changed', { raw, value });
-        await apiCall('debug_selenium_settings_snapshot', 'change-z-order', { raw, value });
-      } catch (error) {
-        console.error('[SeleniumSettings] z-order save failed', error);
-      }
-    });
-  }
-
-  if (els.seleniumAutoCloseOnTaskDone) {
-    els.seleniumAutoCloseOnTaskDone.addEventListener('change', async () => {
-      try {
-        const value = Boolean(els.seleniumAutoCloseOnTaskDone.checked);
-        console.info('[SeleniumSettings] auto-close changed', { value });
-        await apiCall('debug_selenium_settings_snapshot', 'change-auto-close', { value });
-      } catch (error) {
-        console.error('[SeleniumSettings] auto-close save failed', error);
-      }
-    });
-  }
-
   state.eventsBound = true;
 }
 
@@ -1469,6 +1383,13 @@ async function init() {
   els.seleniumCompactLevel = $('selenium_compact_level');
   els.seleniumZOrderMode = $('selenium_z_order_mode');
   els.seleniumAutoCloseOnTaskDone = $('selenium_auto_close_on_task_done');
+  els.exportTxt = $('export_txt');
+  els.exportSrt = $('export_srt');
+  els.exportVtt = $('export_vtt');
+  els.exportAss = $('export_ass');
+  els.exportJson = $('export_json');
+  els.exportCsv = $('export_csv');
+  els.exportMp4 = $('export_mp4');
   els.inputMode = $('input_mode');
   els.sourceLangMain = $('source_lang_mw');
   els.targetLangMain = $('target_lang_mw');
@@ -1489,6 +1410,7 @@ async function init() {
   els.useTemp = $('use_temp');
   els.useTempAlt = $('use_temp_alt');
   els.keepTemp = $('keep_temp');
+  els.fileUseOfficialWhisper = $('file_use_official_whisper');
   els.showAudioVisualizerInSetting = $('show_audio_visualizer_in_setting');
   els.recordInputPill = $('record-input-pill');
   els.recordModePill = $('record-mode-pill');

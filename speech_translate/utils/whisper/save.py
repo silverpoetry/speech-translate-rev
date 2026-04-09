@@ -1,7 +1,10 @@
 import csv
 import json
 import os
-from typing import List, Union
+import shutil
+import subprocess
+import tempfile
+from typing import List, Optional, Union
 
 import stable_whisper
 from loguru import logger
@@ -74,8 +77,141 @@ def fname_dupe_check(filename: str, extension: str):
     return filename
 
 
+def _next_available_path(base_path: str, extension: str) -> str:
+    candidate = f"{base_path}.{extension}"
+    if not os.path.exists(candidate):
+        return candidate
+
+    idx = 2
+    while True:
+        candidate = f"{base_path} ({idx}).{extension}"
+        if not os.path.exists(candidate):
+            return candidate
+        idx += 1
+
+
+def _save_temp_srt(result: Union[stable_whisper.WhisperResult, StableTsResultDict], sj) -> str:
+    temp_dir = tempfile.mkdtemp(prefix="st_subtitle_")
+    temp_base = os.path.join(temp_dir, "subtitle")
+    save_method = getattr(result, "to_srt_vtt")
+    kwargs_to_pass = {
+        "save_path": temp_base,
+        "segment_level": sj.cache["segment_level"],
+        "word_level": sj.cache["word_level"],
+    }
+    args = parse_args_stable_ts(sj.cache["whisper_args"], "save", save_method, **kwargs_to_pass)
+    args.pop("success", None)
+    save_method(**args)
+    return temp_base + ".srt"
+
+
+def _source_has_video(media_path: str) -> bool:
+    video_ext = {
+        ".mp4", ".mkv", ".mov", ".avi", ".webm", ".flv", ".wmv", ".m4v", ".ts", ".m2ts", ".mpg", ".mpeg"
+    }
+    return os.path.splitext(media_path)[1].lower() in video_ext
+
+
+def _export_fast_mp4_with_subtitle(
+    result: Union[stable_whisper.WhisperResult, StableTsResultDict],
+    outname: str,
+    media_path: Optional[str],
+    sj,
+) -> None:
+    if not media_path or not os.path.exists(media_path):
+        logger.warning("Skip MP4 export: source media path is missing or does not exist")
+        return
+
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path is None:
+        logger.warning("Skip MP4 export: ffmpeg not found in PATH")
+        return
+
+    temp_dir = None
+    try:
+        srt_path = _save_temp_srt(result, sj)
+        temp_dir = os.path.dirname(srt_path)
+        output_mp4 = _next_available_path(outname, "mp4")
+
+        if _source_has_video(media_path):
+            # Fastest path for videos: copy A/V streams and only mux subtitle track.
+            cmd = [
+                ffmpeg_path,
+                "-y",
+                "-i",
+                media_path,
+                "-i",
+                srt_path,
+                "-map",
+                "0:v:0",
+                "-map",
+                "0:a?",
+                "-map",
+                "1:0",
+                "-c:v",
+                "copy",
+                "-c:a",
+                "copy",
+                "-c:s",
+                "mov_text",
+                output_mp4,
+            ]
+        else:
+            # Audio input: generate a lightweight black video and mux subtitles.
+            cmd = [
+                ffmpeg_path,
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=black:s=960x540:r=24",
+                "-i",
+                media_path,
+                "-i",
+                srt_path,
+                "-map",
+                "0:v:0",
+                "-map",
+                "1:a:0",
+                "-map",
+                "2:0",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-tune",
+                "stillimage",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "160k",
+                "-c:s",
+                "mov_text",
+                "-shortest",
+                output_mp4,
+            ]
+
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if proc.returncode != 0:
+            logger.error("Failed to export MP4 with subtitle")
+            if proc.stderr:
+                logger.error(proc.stderr.strip().splitlines()[-1])
+            return
+
+        logger.info(f"Saved MP4 subtitle video: {output_mp4}")
+    except Exception as e:
+        logger.exception(e)
+        logger.error("Failed to export MP4 with subtitle")
+    finally:
+        if temp_dir and os.path.isdir(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 def save_output_stable_ts(
-    result: Union[stable_whisper.WhisperResult, StableTsResultDict], outname, output_formats: List, sj
+    result: Union[stable_whisper.WhisperResult, StableTsResultDict], outname, output_formats: List, sj,
+    source_media_path: Optional[str] = None
 ):
     output_formats_methods = {
         "srt": "to_srt_vtt",
@@ -90,6 +226,11 @@ def save_output_stable_ts(
     os.makedirs(os.path.dirname(outname), exist_ok=True)
 
     for f_format in output_formats:
+        if f_format == "mp4":
+            logger.debug("Saving to mp4")
+            _export_fast_mp4_with_subtitle(result, outname, source_media_path, sj)
+            continue
+
         outname = fname_dupe_check(outname, f_format)
         logger.debug(f"Saving to {f_format}")
 

@@ -1,8 +1,6 @@
 import os
 import ctypes
 import re
-import json
-import traceback
 import subprocess
 import sys
 from importlib import import_module
@@ -454,84 +452,6 @@ class WebBridge(WebTaskBridge):
         }
         self._record_worker_thread: Optional[Thread] = None
 
-    @staticmethod
-    def _selenium_cache_snapshot() -> Dict[str, Any]:
-        return {
-            "selenium_compact_level": sj.cache.get("selenium_compact_level"),
-            "selenium_z_order_mode": sj.cache.get("selenium_z_order_mode"),
-            "selenium_auto_close_on_task_done": sj.cache.get("selenium_auto_close_on_task_done"),
-        }
-
-    @staticmethod
-    def _selenium_file_snapshot() -> Dict[str, Any]:
-        try:
-            with open(sj.setting_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return {
-                "selenium_compact_level": data.get("selenium_compact_level"),
-                "selenium_z_order_mode": data.get("selenium_z_order_mode"),
-                "selenium_auto_close_on_task_done": data.get("selenium_auto_close_on_task_done"),
-            }
-        except Exception as exc:
-            return {"error": str(exc)}
-
-    def debug_selenium_settings_snapshot(self, tag: str = "", payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        cache_snapshot = self._selenium_cache_snapshot()
-        file_snapshot = self._selenium_file_snapshot()
-        logger.debug(
-            f"[SeleniumDebugSnapshot] tag={tag} payload={payload or {}} cache={cache_snapshot} file={file_snapshot}"
-        )
-        return {
-            "ok": True,
-            "tag": tag,
-            "payload": payload or {},
-            "cache": cache_snapshot,
-            "file": file_snapshot,
-        }
-
-    def set_selenium_settings(self, compact_level: Any, z_order_mode: Any, auto_close_on_task_done: Any) -> Dict[str, Any]:
-        """Atomically persist Selenium UI settings to avoid race conditions across separate set_setting calls."""
-        try:
-            compact = int(compact_level)
-        except Exception:
-            compact = 2
-        compact = max(0, min(3, compact))
-
-        z_order_raw = str(z_order_mode or "behind-main").strip().lower()
-        allowed_z = {"normal", "behind-main", "bottom"}
-        z_order = z_order_raw if z_order_raw in allowed_z else "behind-main"
-
-        auto_close = bool(auto_close_on_task_done)
-
-        payload = {
-            "compact_level": compact,
-            "z_order_mode": z_order,
-            "auto_close_on_task_done": auto_close,
-        }
-        before_cache = self._selenium_cache_snapshot()
-        before_file = self._selenium_file_snapshot()
-        logger.debug(
-            f"[WebBridge.set_selenium_settings][before] payload={payload} cache={before_cache} file={before_file}"
-        )
-
-        # Persist in one API call so frontend cannot interleave stale values from multiple async writes.
-        sj.save_key("selenium_compact_level", compact)
-        sj.save_key("selenium_z_order_mode", z_order)
-        sj.save_key("selenium_auto_close_on_task_done", auto_close)
-
-        after_cache = self._selenium_cache_snapshot()
-        after_file = self._selenium_file_snapshot()
-        logger.debug(
-            f"[WebBridge.set_selenium_settings][after] cache={after_cache} file={after_file}"
-        )
-
-        return {
-            "ok": True,
-            "payload": payload,
-            "cache": after_cache,
-            "file": after_file,
-        }
-
     def _wait_recording_idle(self, timeout_s: float = 12.0) -> bool:
         """Wait until realtime recording resources are fully released."""
         start_t = time()
@@ -544,8 +464,8 @@ class WebBridge(WebTaskBridge):
             sleep(0.05)
         return False
 
-    def update_task_message(self, message: str):
-        super().update_task_message(message)
+    def update_task_message(self, message: str, source: str = "general"):
+        super().update_task_message(message, source=source)
 
         text = str(message or "").strip()
         if not text:
@@ -996,6 +916,7 @@ class WebBridge(WebTaskBridge):
             "separate_with": settings.get("separate_with"),
             "use_temp": settings.get("use_temp"),
             "keep_temp": settings.get("keep_temp"),
+            "file_use_official_whisper": settings.get("file_use_official_whisper", False),
             "show_audio_visualizer_in_setting": settings.get("show_audio_visualizer_in_setting"),
             "mic_device": self._build_record_device_ui("mic"),
             "speaker_device": self._build_record_device_ui("speaker"),
@@ -1037,6 +958,7 @@ class WebBridge(WebTaskBridge):
             "log_level": settings.get("log_level"),
             "dir_export": settings.get("dir_export"),
             "dir_model": settings.get("dir_model"),
+            "export_to": settings.get("export_to"),
             "source_lang_mw": settings.get("source_lang_mw"),
             "target_lang_mw": settings.get("target_lang_mw"),
             "input": settings.get("input"),
@@ -1117,21 +1039,34 @@ class WebBridge(WebTaskBridge):
         return sj.cache.get(key)
 
     def set_setting(self, key: str, value: Any) -> Dict[str, Any]:
-        original_value = value
-        old_value = sj.cache.get(key)
-        logger.debug(f"[WebBridge.set_setting] request key={key} value={original_value!r} old={old_value!r}")
+        if key == "selenium_settings":
+            payload = value if isinstance(value, dict) else {}
 
-        selenium_keys = {"selenium_compact_level", "selenium_z_order_mode", "selenium_auto_close_on_task_done"}
-        if key in selenium_keys:
-            cache_before = self._selenium_cache_snapshot()
-            file_before = self._selenium_file_snapshot()
-            stack_hint = " | ".join(
-                f"{frame.filename.split(os.sep)[-1]}:{frame.lineno}:{frame.name}"
-                for frame in traceback.extract_stack(limit=6)[:-1]
-            )
-            logger.debug(
-                f"[WebBridge.set_setting][selenium-before] key={key} cache={cache_before} file={file_before} stack={stack_hint}"
-            )
+            try:
+                compact = int(payload.get("compact_level", 2))
+            except Exception:
+                compact = 2
+            compact = max(0, min(3, compact))
+
+            z_order_raw = str(payload.get("z_order_mode", "behind-main")).strip().lower()
+            allowed_z = {"normal", "behind-main", "bottom"}
+            z_order = z_order_raw if z_order_raw in allowed_z else "behind-main"
+
+            auto_close = bool(payload.get("auto_close_on_task_done", True))
+
+            # Keep Selenium settings update atomic under a single API request.
+            sj.save_key("selenium_compact_level", compact)
+            sj.save_key("selenium_z_order_mode", z_order)
+            sj.save_key("selenium_auto_close_on_task_done", auto_close)
+
+            return {
+                "key": key,
+                "value": {
+                    "selenium_compact_level": sj.cache.get("selenium_compact_level", compact),
+                    "selenium_z_order_mode": sj.cache.get("selenium_z_order_mode", z_order),
+                    "selenium_auto_close_on_task_done": sj.cache.get("selenium_auto_close_on_task_done", auto_close),
+                },
+            }
 
         if key == "selenium_compact_level":
             try:
@@ -1146,17 +1081,7 @@ class WebBridge(WebTaskBridge):
         elif key == "selenium_auto_close_on_task_done":
             value = bool(value)
 
-        logger.debug(f"[WebBridge.set_setting] normalized key={key} value={value!r}")
-
         sj.save_key(key, value)
-        new_value = sj.cache.get(key)
-        logger.debug(f"[WebBridge.set_setting] stored key={key} value={new_value!r}")
-        if key in selenium_keys:
-            cache_after = self._selenium_cache_snapshot()
-            file_after = self._selenium_file_snapshot()
-            logger.debug(
-                f"[WebBridge.set_setting][selenium-after] key={key} cache={cache_after} file={file_after}"
-            )
         if key == "log_level":
             from speech_translate._logging import change_log_level
 
@@ -1421,7 +1346,7 @@ class WebBridge(WebTaskBridge):
         return {"url": url}
 
     def notify(self, title: str, message: str) -> Dict[str, str]:
-        native_notify(title, message)
+        logger.info(f"{title}: {message}")
         return {"title": title, "message": message}
 
     def reload_state(self) -> Dict[str, Any]:
@@ -1574,7 +1499,7 @@ class WebBridge(WebTaskBridge):
                     self._runtime_model_message = f"Model ready: {model_name_tc}"
             except Exception as exc:
                 logger.exception(exc)
-                native_notify("File import failed", str(exc))
+                logger.error(f"File import failed: {exc}")
                 self.update_task_error(str(exc))
                 if needs_runtime_model:
                     self._runtime_model_loaded = False
@@ -1801,7 +1726,7 @@ class WebBridge(WebTaskBridge):
                 self.finish_task("Recording finished")
             except Exception as exc:
                 logger.exception(exc)
-                native_notify("Recording failed", str(exc))
+                logger.error(f"Recording failed: {exc}")
                 self.update_task_error(str(exc))
             finally:
                 bc.disable_rec()

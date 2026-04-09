@@ -5,6 +5,8 @@ from time import strftime
 
 from loguru import logger
 
+from speech_translate.linker import bc
+
 from ._constants import LOG_FORMAT
 from ._path import dir_log
 
@@ -47,9 +49,20 @@ class StreamStderrToLogger(object):
             re.compile(r"\[\d{2}:\d{2}<\d{2}:\d{2}"),
             re.compile(r"\[\d{2}:\d{2},\s*\?B/s\]", re.IGNORECASE),
         ]
+        self.progress_value_pattern = re.compile(r"\b(?P<value>\d{1,3}(?:\.\d+)?)%\|")
 
     def _is_progress_line(self, line: str) -> bool:
         return any(p.search(line) for p in self.progress_patterns)
+
+    @staticmethod
+    def _extract_progress_value(line: str):
+        match = re.search(r"\b(?P<value>\d{1,3}(?:\.\d+)?)%\|", line)
+        if match is None:
+            return None
+        try:
+            return float(match.group("value"))
+        except Exception:
+            return None
 
     def write(self, buf):
         for line in buf.rstrip().splitlines():
@@ -66,6 +79,14 @@ class StreamStderrToLogger(object):
                 shorten = re.sub(r"(\d+%)(\s*)\|(.+?)\|", shorten_progress_bar, line)
                 logger.log("INFO", shorten)
                 recent_stderr.append(shorten)
+
+                progress_value = self._extract_progress_value(line)
+                if progress_value is not None and bc.web_bridge is not None:
+                    try:
+                        bc.web_bridge.update_task_progress(progress_value, source="progress-log")
+                        bc.web_bridge.update_task_message(shorten, source="progress-log")
+                    except Exception:
+                        pass
 
                 # limit to max 10
                 if len(recent_stderr) > 10:

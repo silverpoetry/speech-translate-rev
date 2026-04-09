@@ -142,6 +142,11 @@ class SettingExport:
         )
         self.cbtn_export_csv.pack(side="left", padx=5)
 
+        self.cbtn_export_mp4 = CustomCheckButton(
+            self.f_export_mode_2, "mp4" in sj.cache["export_to"], lambda x: self.callback_export_to("mp4", x), text="MP4"
+        )
+        self.cbtn_export_mp4.pack(side="left", padx=5)
+
         self.separator_fex_2 = ttk.Separator(self.f_export_mode_2, orient="vertical")
         self.separator_fex_2.pack(side="left", padx=5, fill="y")
 
@@ -498,8 +503,18 @@ class SettingExport:
             pass
 
     def callback_export_to(
-        self, value: Union[Literal["txt"], Literal["csv"], Literal["json"], Literal["srt"], Literal["ass"], Literal["vtt"],
-                           Literal["tsv"]], add: bool
+        self,
+        value: Union[
+            Literal["txt"],
+            Literal["csv"],
+            Literal["json"],
+            Literal["srt"],
+            Literal["ass"],
+            Literal["vtt"],
+            Literal["tsv"],
+            Literal["mp4"],
+        ],
+        add: bool,
     ):
         try:
             export_list = sj.cache["export_to"].copy()

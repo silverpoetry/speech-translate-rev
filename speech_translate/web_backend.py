@@ -44,7 +44,7 @@ class HeadlessLabel:
     def set_text(self, text: str):
         self.text = text
         if self.bridge is not None:
-            self.bridge.update_task_message(text)
+            self.bridge.update_task_message(text, source="headless-label")
 
     def configure(self, **kwargs):
         text = kwargs.get("text")
@@ -98,7 +98,7 @@ class HeadlessProgressBar:
         if key == "value":
             self.value = value
             if self.bridge is not None:
-                self.bridge.update_task_progress(value)
+                self.bridge.update_task_progress(value, source="headless-progress")
 
     def __getitem__(self, key):
         if key == "value":
@@ -225,6 +225,8 @@ class WebTaskBridge:
             "detached_translated_text": "",
         }
         self._lock = Lock()
+        self._task_message_source = ""
+        self._task_progress_source = ""
         self._window = None
         self._tray = None
         self._main_window = HeadlessMainWindow(self)
@@ -265,17 +267,35 @@ class WebTaskBridge:
     def reset_task_state(self, title: str = ""):
         with self._lock:
             self.task_state = TaskState(active=True, title=title)
+            self._task_message_source = ""
+            self._task_progress_source = ""
         self._emit_ui_update(["task"])
         return self.task_state
 
-    def update_task_message(self, message: str):
+    def update_task_message(self, message: str, source: str = "general"):
         with self._lock:
+            if self.task_state.title == "File Import":
+                if self._task_message_source == "progress-log" and source != "progress-log":
+                    return
+                if source == "progress-log":
+                    self._task_message_source = "progress-log"
             self.task_state.message = message
         self._emit_ui_update(["task"])
 
-    def update_task_progress(self, progress: float):
+    def update_task_progress(self, progress: float, source: str = "general"):
         with self._lock:
-            self.task_state.progress = float(progress)
+            incoming = float(progress)
+            if self.task_state.title == "File Import":
+                if self._task_progress_source == "progress-log" and source != "progress-log":
+                    return
+                if source == "progress-log":
+                    self._task_progress_source = "progress-log"
+
+                # File import receives progress from multiple sources (file-level + model-level),
+                # keep it monotonic to avoid regressions/flicker.
+                self.task_state.progress = max(float(self.task_state.progress), incoming)
+            else:
+                self.task_state.progress = incoming
         self._emit_ui_update(["task"])
 
     def update_task_rows(self, rows):

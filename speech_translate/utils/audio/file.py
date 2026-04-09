@@ -5,7 +5,7 @@ from os import makedirs, path
 from threading import Thread
 from time import gmtime, sleep, strftime, time
 from tkinter import filedialog
-from typing import Dict, List, Literal, Union
+from typing import Any, Dict, List, Literal, Union
 
 import stable_whisper
 from torch import cuda
@@ -342,7 +342,13 @@ def cancellable_tc(
 
             if len(result_text) > 0:
                 bc.file_tced_counter += 1
-                save_output_stable_ts(result_tc_save, path.join(export_to, f_name), sj.cache["export_to"], sj)
+                save_output_stable_ts(
+                    result_tc_save,
+                    path.join(export_to, f_name),
+                    sj.cache["export_to"],
+                    sj,
+                    source_media_path=audio_name,
+                )
             else:
                 logger.warning("Transcribed Text is empty")
                 update_q_process(processed_tc, tracker_index, "TC Fail! Got empty transcribed text")
@@ -375,8 +381,17 @@ def cancellable_tc(
             tl_thread = Thread(
                 target=cancellable_tl,
                 args=[
-                    res_to_tl, lang_source, lang_target, stable_tl, engine, auto, save_name, save_meta, tracker_index,
-                    hallucination_filters
+                    res_to_tl,
+                    lang_source,
+                    lang_target,
+                    stable_tl,
+                    engine,
+                    auto,
+                    save_name,
+                    save_meta,
+                    tracker_index,
+                    audio_name,
+                    hallucination_filters,
                 ],
                 kwargs=whisper_args,
                 daemon=True,
@@ -404,6 +419,7 @@ def cancellable_tl(
     save_name: str,
     save_meta: str,
     tracker_index: int,
+    media_path: str,
     hallucination_filters: Dict,
     **whisper_args,
 ):
@@ -519,7 +535,13 @@ def cancellable_tl(
 
             result_tl = split_res(result_tl, sj.cache)
             bc.file_tled_counter += 1
-            save_output_stable_ts(result_tl, path.join(export_to, f_name), sj.cache["export_to"], sj)
+            save_output_stable_ts(
+                result_tl,
+                path.join(export_to, f_name),
+                sj.cache["export_to"],
+                sj,
+                source_media_path=media_path,
+            )
         else:
             # when using TL API, query is the result of whisper process
             assert isinstance(query, stable_whisper.WhisperResult)
@@ -556,7 +578,13 @@ def cancellable_tl(
 
             bc.file_tled_counter += 1
             query = split_res(query, sj.cache)
-            save_output_stable_ts(query, path.join(export_to, f_name), sj.cache["export_to"], sj)
+            save_output_stable_ts(
+                query,
+                path.join(export_to, f_name),
+                sj.cache["export_to"],
+                sj,
+                source_media_path=media_path,
+            )
 
         update_q_process(processed_tl, tracker_index, "Translated")
         taken = time() - start
@@ -638,7 +666,67 @@ def process_file(
         _model_tc, _model_tl, stable_tc, stable_tl, to_args = get_model(
             is_tc, is_tl, tl_engine_whisper, model_name_tc, engine, sj.cache, **model_args
         )
-        whisper_args = get_tc_args(to_args, sj.cache)
+
+        # Optional compatibility path: use backend-native transcribe for file processing.
+        file_tc_func = stable_tc
+        file_to_args = to_args
+        if bool(sj.cache.get("file_use_official_whisper", False)):
+            if bool(sj.cache.get("use_faster_whisper", False)) and _model_tc is not None and hasattr(_model_tc, "transcribe"):
+                def _official_faster_transcribe(audio, task="transcribe", **kwargs):
+                    official_kwargs = dict(kwargs)
+                    if official_kwargs.get("suppress_tokens") is None:
+                        official_kwargs["suppress_tokens"] = [-1]
+                    if official_kwargs.get("length_penalty") is None:
+                        official_kwargs["length_penalty"] = 1.0
+                    if official_kwargs.get("suppress_blank") is None:
+                        official_kwargs["suppress_blank"] = True
+                    if "logprob_threshold" in official_kwargs and "log_prob_threshold" not in official_kwargs:
+                        official_kwargs["log_prob_threshold"] = official_kwargs.pop("logprob_threshold")
+
+                    segments, info = _model_tc.transcribe(audio, task=task, **official_kwargs)  # type: ignore[attr-defined]
+                    result_segments = []
+                    for segment in segments:
+                        asdict_fn = getattr(segment, "_asdict", None)
+                        raw_segment_obj: Any = asdict_fn() if callable(asdict_fn) else getattr(segment, "__dict__", None)
+                        if not isinstance(raw_segment_obj, dict):
+                            continue
+
+                        words_obj: Any = raw_segment_obj.get("words")
+                        if isinstance(words_obj, list):
+                            normalized_words = []
+                            for word in words_obj:
+                                word_asdict_fn = getattr(word, "_asdict", None)
+                                raw_word_obj: Any = word_asdict_fn() if callable(word_asdict_fn) else getattr(word, "__dict__", None)
+                                if isinstance(raw_word_obj, dict):
+                                    normalized_words.append(raw_word_obj)
+                            raw_segment_obj["words"] = normalized_words
+
+                        result_segments.append(raw_segment_obj)
+
+                    text = "".join(str(seg.get("text", "")) for seg in result_segments).strip()
+                    language = getattr(info, "language", None)
+                    return stable_whisper.WhisperResult(
+                        {
+                            "text": text,
+                            "segments": result_segments,
+                            "language": language,
+                        }
+                    )
+
+                file_tc_func = _official_faster_transcribe
+                file_to_args = _model_tc.transcribe  # type: ignore[attr-defined]
+                logger.info("File transcription is using faster-whisper native transcribe path")
+            elif _model_tc is not None and hasattr(_model_tc, "transcribe_original"):
+                file_tc_func = _model_tc.transcribe_original  # type: ignore[attr-defined]
+                file_to_args = file_tc_func
+                logger.info("File transcription is using original Whisper transcribe path")
+            else:
+                logger.warning(
+                    "file_use_official_whisper is enabled, but backend-native transcribe is unavailable; "
+                    "fallback to stable transcribe path"
+                )
+
+        whisper_args = get_tc_args(file_to_args, sj.cache)
         whisper_args["language"] = TO_LANGUAGE_CODE[get_whisper_lang_similar(lang_source)] if not auto else None
         if sj.cache["filter_file_import"]:
             hallucination_filters = get_hallucination_filter('file', sj.cache["path_filter_file_import"])
@@ -878,7 +966,7 @@ def process_file(
                 proc_thread = Thread(
                     target=cancellable_tc,
                     args=[
-                        file, lang_source, lang_target, model_name_tc, stable_tc, stable_tl, auto, is_tc, is_tl, engine,
+                        file, lang_source, lang_target, model_name_tc, file_tc_func, stable_tl, auto, is_tc, is_tl, engine,
                         save_name, save_meta, local_file_import_counter, hallucination_filters
                     ],
                     kwargs=whisper_args,

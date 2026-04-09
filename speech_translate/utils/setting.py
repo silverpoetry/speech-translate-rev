@@ -77,6 +77,7 @@ default_setting: SettingDict = {
     # temp
     "use_temp": False,
     "keep_temp": False,
+    "file_use_official_whisper": False,
     # mic - device option
     "sample_rate_mic": 16000,
     "channels_mic": "Mono",  # Mono, Stereo, custom -> "1", "2", ...
@@ -147,7 +148,7 @@ default_setting: SettingDict = {
     # {task} {task-lang} {task-with} {task-lang-with}
     # {task-short} {task-short-lang} {task-short-with} {task-short-lang-with}
     "export_format": "%Y-%m-%d %f {file}/{task-lang}",
-    # txt csv json srt ass vtt tsv
+    # txt csv json srt ass vtt tsv mp4
     "export_to": ["txt", "srt", "vtt", "json", "ass"],
     "segment_max_words": "",
     "segment_max_chars": "",
@@ -372,27 +373,18 @@ class SettingJson:
         """
         Save setting by key
         """
-        logger.debug(f"[SettingJson.save_key] request key={key} value={value!r}")
         if key not in self.cache:
             if key in default_setting:
                 # Backward compatibility: runtime may still hold an older cache loaded before new keys were added.
                 self.cache[key] = default_setting[key]  # type: ignore[index]
-                logger.debug(
-                    f"[SettingJson.save_key] key={key} missing in runtime cache, injected default={default_setting[key]!r}"
-                )
             else:
                 logger.error(f"Error saving setting: {key}. It's not a valid setting key")
                 return
         if self.cache[key] == value:  # if same value
-            logger.debug(f"[SettingJson.save_key] key={key} unchanged, skip save")
             return
 
-        previous = self.cache.get(key)
         self.cache[key] = value
         success, msg = self.save(self.cache)
-        logger.debug(
-            f"[SettingJson.save_key] persisted key={key} previous={previous!r} new={value!r} success={success} msg={msg!r}"
-        )
 
         if not success:
             self.__notify("Error: Saving setting file", "Reason: " + msg)

@@ -147,6 +147,7 @@ class SettingDict(TypedDict):
     # temp
     use_temp: bool
     keep_temp: bool
+    file_use_official_whisper: bool
     # mic - device option
     sample_rate_mic: int
     channels_mic: str  # Mono, Stereo, custom -> "1", "2", ...
@@ -213,9 +214,19 @@ class SettingDict(TypedDict):
     # export
     # {file} {task} {task-short} {lang-source} {lang-target} {model} {engine}
     export_format: str
-    # txt csv json srt ass vtt tsv
-    export_to: List[Union[Literal["txt"], Literal["csv"], Literal["json"], Literal["srt"], Literal["ass"], Literal["vtt"],
-                          Literal["tsv"]]]
+    # txt csv json srt ass vtt tsv mp4
+    export_to: List[
+        Union[
+            Literal["txt"],
+            Literal["csv"],
+            Literal["json"],
+            Literal["srt"],
+            Literal["ass"],
+            Literal["vtt"],
+            Literal["tsv"],
+            Literal["mp4"],
+        ]
+    ]
     segment_max_words: str
     segment_max_chars: str
     segment_split_or_newline: Union[Literal["Split"], Literal["Newline"]]
