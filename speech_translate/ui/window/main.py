@@ -11,13 +11,12 @@ from typing import Callable, Dict, Literal, Optional
 import pystray
 from loguru import logger
 from PIL import Image, ImageDraw, ImageTk
-from tkhtmlview import HTMLText
 
 from speech_translate._constants import APP_NAME
 from speech_translate._logging import init_logging
 from speech_translate._path import dir_debug, dir_export, dir_log, p_app_icon, p_splash_image
 from speech_translate._version import __version__
-from speech_translate.linker import bc, sj
+from speech_translate.linker import HTMLText, bc, sj
 from speech_translate.ui.custom.checkbutton import CustomCheckButton
 from speech_translate.ui.custom.combobox import CategorizedComboBox, ComboboxWithKeyNav
 from speech_translate.ui.custom.dialog import (

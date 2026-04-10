@@ -1,6 +1,6 @@
+import re
+import tkinter as tk
 from tkinter import ttk
-
-from tkhtmlview import HTMLLabel
 
 
 class LabelTitleText:
@@ -34,7 +34,7 @@ class LabelTitleText:
         self.lbl_text.configure(font=font)
 
 
-class DraggableHtmlLabel(HTMLLabel):
+class DraggableHtmlLabel(tk.Text):
     """
     A draggable HTML label
     """
@@ -46,6 +46,15 @@ class DraggableHtmlLabel(HTMLLabel):
         self.bind("<B1-Motion>", self.on_motion)
         self.x = 0
         self.y = 0
+
+    def set_html(self, html_content: str):
+        content = str(html_content or "")
+        content = content.replace("<br />", "\n").replace("<br/>", "\n").replace("<br>", "\n")
+        content = re.sub(r"<[^>]+>", "", content)
+        self.configure(state="normal")
+        self.delete("1.0", "end")
+        self.insert("1.0", content)
+        self.configure(state="disabled")
 
     def start_move(self, event):
         self.x = event.x_root - self.root.winfo_x()

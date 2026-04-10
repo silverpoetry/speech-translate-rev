@@ -137,17 +137,26 @@ def run_translate_api(
             if isinstance(result, str):
                 raise Exception(result)
 
-            # dont forget to also add space back because its removed automatically in the api call
-            segment.text = " " + str(result.pop(0))
+            # Do not assign segment.text directly: in newer stable-whisper it is a read-only property
+            # derived from words. Keep leading space to preserve previous behavior.
+            translated_text = " " + str(result.pop(0))
 
             # because each word is taken from the text, we can replace the word with the translated text
             # but we first need to check the  of splitted translated text
             # because sometimes its not the same length as the original
-            temp_words = segment.text.split()
+            temp_words = translated_text.split()
+            raw_segment_words = getattr(segment, "words", None)
+            segment_words: List[Any] = []
+            if isinstance(raw_segment_words, list):
+                segment_words = [word for word in raw_segment_words if hasattr(word, "word")]
             translated_word_length = len(temp_words)
-            if translated_word_length == len(segment.words):
-                for word in segment.words:
+            if translated_word_length == len(segment_words):
+                for word in segment_words:
                     word.word = " " + temp_words.pop(0)
+            elif len(segment_words) == 0:
+                # Segments without word timestamps cannot derive text from words.
+                # stable-whisper stores raw text in _default_text for this case.
+                setattr(segment, "_default_text", translated_text)
             else:
                 # This is somewhat brute force but it should work just fine. Keep in mind that the timing might be a bit off
                 # considering that we are replacing the words in the segment without knowing the previous value
@@ -156,7 +165,7 @@ def run_translate_api(
                     "the words in the segment. Attempting to replace words..."
                 )
                 logger.warning(
-                    f"Translated Words Length: {translated_word_length} | Original Words Length: {len(segment.words)}"
+                    f"Translated Words Length: {translated_word_length} | Original Words Length: {len(segment_words)}"
                 )
 
                 def nearest_array_index(array, value):
@@ -171,29 +180,29 @@ def run_translate_api(
 
                 # if tl word length > original word length, add until hit the limit.
                 # if hit limit, just add the rest of the words to the last word in the segment
-                if translated_word_length > len(segment.words):
+                if translated_word_length > len(segment_words):
                     logger.debug("TL word > Original word")
                     for w_index, word in enumerate(temp_words):
-                        nearest = nearest_array_index(segment.words, w_index)
+                        nearest = nearest_array_index(segment_words, w_index)
 
                         # adding until hit the limit
-                        if w_index < len(segment.words):
-                            segment.words[nearest].word = " " + word
+                        if w_index < len(segment_words):
+                            segment_words[nearest].word = " " + word
                         else:
                             # hit limit, just add the rest of the words
-                            segment.words[nearest].word += f" {word}"
+                            segment_words[nearest].word += f" {word}"
                 # if tl word length < original word length, add until hit the limit (tl word length)
                 # delete the rest of the words and then update the last word segment timing
                 else:
                     logger.debug("TL word < Original word")
                     # get last word segment
-                    last_word = segment.words[-1]
+                    last_word = segment_words[-1]
 
                     for w_index, word in enumerate(temp_words):
-                        segment.words[w_index].word = " " + word
+                        segment_words[w_index].word = " " + word
 
                     # delete the over boundary word that is probably not needed
-                    segment.words = delete_elements_after_index(segment.words, translated_word_length - 1)
+                    segment.words = delete_elements_after_index(segment_words, translated_word_length - 1)
 
                     # now update the new one with last word segment timing
                     segment.words[-1].end = last_word.end

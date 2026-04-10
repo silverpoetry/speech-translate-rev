@@ -1,13 +1,25 @@
 from ast import literal_eval
 from copy import deepcopy
 from platform import system
+import re
 from shlex import quote
 from threading import Lock, Thread
-from tkinter import ttk
+from tkinter import Text, ttk
 from typing import TYPE_CHECKING, List, Literal, Optional, Union
 
 from PIL import ImageTk
-from tkhtmlview import HTMLText
+try:
+    from tkhtmlview import HTMLText
+except Exception:
+    class HTMLText(Text):
+        """Fallback widget when tkhtmlview is unavailable."""
+
+        def set_html(self, html_content: str):
+            content = str(html_content or "")
+            content = content.replace("<br />", "\n").replace("<br/>", "\n").replace("<br>", "\n")
+            content = re.sub(r"<[^>]+>", "", content)
+            self.delete("1.0", "end")
+            self.insert("1.0", content)
 
 from speech_translate.utils.helper import generate_color, str_separator_to_html, wrap_result
 from speech_translate.utils.types import ToInsert

@@ -1,12 +1,10 @@
-# pylint: disable=deprecated-module
-from audioop import rms as calculate_rms
 from io import BytesIO
 from wave import Wave_read, Wave_write
 from wave import open as w_open
 
 import torch
 from numpy import abs as np_abs
-from numpy import float32, frombuffer, iinfo, int16, log10, reshape
+from numpy import float32, frombuffer, iinfo, int16, log10, reshape, sqrt
 from scipy.signal import butter, filtfilt, resample_poly
 from webrtcvad import Vad
 
@@ -124,7 +122,12 @@ def get_db(audio_data: bytes) -> float:
     float
         db value of the audio data
     """
-    rms: float = calculate_rms(audio_data, 2) / 32767
+    samples = frombuffer(audio_data, dtype=int16)
+    if len(samples) == 0:
+        return 0.0
+
+    normalized = samples.astype(float32) / 32767.0
+    rms: float = float(sqrt((normalized * normalized).mean()))
     if rms == 0.0:
         return 0.0
     else:

@@ -481,7 +481,13 @@ def record_session(
         max_int16 = np.iinfo(np.int16).max  # bit depth of 16 bit audio (32768)
         separator = str_separator_to_html(literal_eval(quote(sj.cache["separate_with"])))
         webrtc_vad = webrtcvad.Vad(sj.cache.get(f"threshold_auto_mode_{rec_type}", 3))
-        torchaudio.set_audio_backend("soundfile")
+        ta_mod = cast(Any, torchaudio)
+        set_backend = getattr(ta_mod, "set_audio_backend", None)  # type: ignore[attr-defined]
+        if callable(set_backend):
+            try:
+                set_backend("soundfile")
+            except Exception as exc:
+                logger.debug(f"torchaudio backend setup skipped: {exc}")
         silero_model = torch.hub.load(repo_or_dir=dir_silero_vad, source="local", model="silero_vad", onnx=True)
         silero_vad = cast(Any, silero_model[0] if isinstance(silero_model, tuple) else silero_model)
         silero_vad.reset_states()
@@ -501,6 +507,8 @@ def record_session(
         whisper_args["verbose"] = None  # set to none so no printing of the progress to stdout
         whisper_lang = get_whisper_lang_similar(lang_source) if not auto else None
         whisper_args["language"] = TO_LANGUAGE_CODE[whisper_lang] if whisper_lang else None
+        demucs_enabled = bool(whisper_args.get("demucs", False))
+        vad_enabled = bool(whisper_args.get("vad", False))
 
         if sj.cache["use_faster_whisper"] and not use_temp:
             whisper_args["input_sr"] = WHISPER_SR  # when using numpy array as input, will need to set input_sr
@@ -622,7 +630,7 @@ def record_session(
         Thread(target=run_translation_worker, daemon=True).start()
 
         # ! if both demucs and vad is enabled, use file instead of numpy array to avoid error
-        if whisper_args["demucs"] and whisper_args["vad"]:
+        if demucs_enabled and vad_enabled:
             logger.info("Both demucs and vad is enabled. Force using file instead of numpy array")
             use_temp = True
 
@@ -1072,7 +1080,7 @@ def record_session(
                 audio_as_np_float32 = audio_as_np_int16.astype(np.float32)
                 if num_of_channels == 1:
                     audio_np = audio_as_np_float32 / max_int16  # normalized as Numpy array
-                    if whisper_args["demucs"]:
+                    if demucs_enabled:
                         audio_target = torch.from_numpy(audio_np).to(cuda_device)  # convert to torch tensor
                     else:
                         audio_target = audio_np
@@ -1083,7 +1091,7 @@ def record_session(
                     chunk_length = len(audio_as_np_float32) / num_of_channels
                     audio_reshaped = np.reshape(audio_as_np_float32, (int(chunk_length), num_of_channels))
                     audio_np = audio_reshaped[:, 0] / max_int16  # take left channel only
-                    if whisper_args["demucs"]:
+                    if demucs_enabled:
                         audio_target = torch.from_numpy(audio_np).to(cuda_device)  # convert to torch tensor
                     else:
                         audio_target = audio_np

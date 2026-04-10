@@ -1,10 +1,8 @@
 from tkinter import Frame, LabelFrame, Toplevel, font, ttk
 from typing import Callable, List, Union
 
-from tkhtmlview import HTMLText
-
 from speech_translate._constants import APP_NAME, PREVIEW_WORDS
-from speech_translate.linker import bc, sj
+from speech_translate.linker import HTMLText, bc, sj
 from speech_translate.ui.custom.checkbutton import CustomCheckButton
 from speech_translate.ui.custom.combobox import ComboboxWithKeyNav
 from speech_translate.ui.custom.spinbox import SpinboxNumOnly

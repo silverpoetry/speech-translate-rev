@@ -1,0 +1,29 @@
+# Python 3.14 compatibility requirements (CPU-first)
+# Keep original requirements.txt untouched for legacy environments.
+
+torch>=2.9.0
+torchaudio>=2.9.0
+
+deep-translator==1.11.1
+notify-py==0.3.42
+loguru
+static-ffmpeg==2.5
+pillow>=11.0.0
+pystray==0.19.5
+pywebview>=5.0
+pythonnet==3.1.0rc0
+selenium>=4.30.0
+tksheet==6.2.9
+requests==2.31.0
+scipy>=1.15.0
+sounddevice==0.4.6
+soundfile==0.12.1
+webrtcvad @ git+https://github.com/wiseman/py-webrtcvad.git@e283ca41df3a84b0e87fb1f5cb9b21580a286b09
+darkdetect==0.8.0
+matplotlib>=3.10.0
+onnxruntime>=1.22.0
+demucs==4.0.1
+stable-ts>=2.19.0
+faster-whisper>=1.2.0
+PyAudioWPatch==0.2.12.8; platform_system == "Windows"
+PyAudio==0.2.13; platform_system != "Windows"
