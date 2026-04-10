@@ -1126,7 +1126,7 @@ async function createDetachedWindow(modeOverride = null) {
   try {
     await setDetachedMode(mode, false);
     const modeLabel = mode === 'tc' ? '转写' : '翻译';
-    const result = await apiCall('toggle_detached_window', mode, 100, 100);
+    const result = await apiCall('toggle_detached_window', mode);
     if (result && result.status === 'closed') {
       console.log(`已关闭${modeLabel}独立窗口`);
       return;

@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from platform import processor, release, system, version
 from signal import SIGINT, signal
-from threading import Thread
+from threading import Lock, Thread
 from typing import Any, Dict, Optional, cast
 from time import sleep, strftime, time
 from urllib.request import Request, urlopen
@@ -100,6 +100,17 @@ def _get_virtual_screen_bounds() -> tuple[int, int, int, int]:
 
 
 def _center_window_pos(width: int, height: int) -> tuple[int, int]:
+    if system() == "Windows":
+        try:
+            user32 = ctypes.windll.user32
+            screen_width = int(user32.GetSystemMetrics(0))
+            screen_height = int(user32.GetSystemMetrics(1))
+            centered_x = max(0, (screen_width - max(1, width)) // 2)
+            centered_y = max(0, (screen_height - max(1, height)) // 2)
+            return centered_x, centered_y
+        except Exception:
+            pass
+
     left, top, v_width, v_height = _get_virtual_screen_bounds()
     centered_x = left + max(0, (v_width - max(1, width)) // 2)
     centered_y = top + max(0, (v_height - max(1, height)) // 2)
@@ -412,8 +423,8 @@ class DetachedWindowManager:
             if width is None or height is None:
                 width, height = _parse_window_size(sj.cache.get(f"ex_{mode}_geometry", "900x240"), 900, 240)
 
-            if x is None or y is None:
-                x, y = _center_window_pos(width, height)
+            # Always center detached window when creating a new instance.
+            x, y = _center_window_pos(width, height)
 
             x, y = _ensure_visible_or_center(int(x), int(y), int(width), int(height))
 
@@ -695,6 +706,8 @@ class WebBridge(WebTaskBridge):
         self._startup_t0: Optional[float] = None
         self._first_state_logged = False
         self._main_window_show_allowed = False
+        self._main_geometry_lock = Lock()
+        self._main_geometry_last_saved = ""
         self.detached_window_manager = DetachedWindowManager(self)
         self._model_status_cache: Dict[str, Dict[str, Any]] = {}
         self._model_download_running = False
@@ -895,12 +908,8 @@ class WebBridge(WebTaskBridge):
                 window.events.shown += lambda *_: self._on_main_window_shown(window)
             if hasattr(window, "events") and hasattr(window.events, "loaded"):
                 window.events.loaded += lambda *_: self._log_startup_marker("main_window_loaded")
-            if hasattr(window, "events") and hasattr(window.events, "resized"):
-                window.events.resized += lambda *_: self._save_main_window_geometry()
-            if hasattr(window, "events") and hasattr(window.events, "moved"):
-                window.events.moved += lambda *_: self._save_main_window_geometry()
             if hasattr(window, "events") and hasattr(window.events, "closed"):
-                window.events.closed += lambda *_: self._save_main_window_geometry()
+                window.events.closed += lambda *_: self._save_main_window_geometry(force=True)
         except Exception:
             pass
 
@@ -930,7 +939,7 @@ class WebBridge(WebTaskBridge):
 
         self._log_startup_marker("main_window_shown_after_init")
 
-    def _save_main_window_geometry(self) -> None:
+    def _save_main_window_geometry(self, force: bool = False) -> None:
         window = self.get_window()
         if window is None:
             return
@@ -941,6 +950,8 @@ class WebBridge(WebTaskBridge):
 
         width = None
         height = None
+        raw_width = None
+        raw_height = None
         scale_factor = 1.0
 
         try:
@@ -969,7 +980,18 @@ class WebBridge(WebTaskBridge):
                 return
 
         if width >= 600 and height >= 300:
-            sj.save_key("mw_size", f"{width}x{height}")
+            geometry = f"{width}x{height}"
+            with self._main_geometry_lock:
+                if not force and geometry == self._main_geometry_last_saved:
+                    return
+
+                self._main_geometry_last_saved = geometry
+                sj.save_key("mw_size", geometry)
+
+            logger.info(
+                f"[MainGeometry][save] logical={geometry} "
+                f"raw_client={raw_width}x{raw_height} scale_factor={scale_factor:.3f} force={force}"
+            )
 
     def bind_tray(self, tray):
         super().bind_tray(tray)
