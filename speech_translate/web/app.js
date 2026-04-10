@@ -11,6 +11,7 @@ const state = {
   modelCheckedOnce: false,
   seleniumSaveInFlight: false,
   detachedModeSelected: 'tc',
+  detachedOpen: { tc: false, tl: false },
   initInFlight: null,
   autoSaveBound: false,
   autoSaveTimers: {},
@@ -289,15 +290,23 @@ function renderLiveOutputs(data) {
     const tcHtml = live.detached_transcribed_html || live.detached_transcribed_text || '';
     const tlHtml = live.detached_translated_html || live.detached_translated_text || '';
     
-    if (tcHtml) {
-      pywebview.api.update_detached_content('tc', tcHtml).catch(() => {
-        // Window might not be created yet
+    if (state.detachedOpen.tc && tcHtml) {
+      pywebview.api.update_detached_content('tc', tcHtml).then((result) => {
+        if (result && result.status === 'missing') {
+          state.detachedOpen.tc = false;
+        }
+      }).catch(() => {
+        state.detachedOpen.tc = false;
       });
     }
     
-    if (tlHtml) {
-      pywebview.api.update_detached_content('tl', tlHtml).catch(() => {
-        // Window might not be created yet
+    if (state.detachedOpen.tl && tlHtml) {
+      pywebview.api.update_detached_content('tl', tlHtml).then((result) => {
+        if (result && result.status === 'missing') {
+          state.detachedOpen.tl = false;
+        }
+      }).catch(() => {
+        state.detachedOpen.tl = false;
       });
     }
   }
@@ -1163,10 +1172,12 @@ async function createDetachedWindow(modeOverride = null) {
     const modeLabel = mode === 'tc' ? '转写' : '翻译';
     const result = await apiCall('toggle_detached_window', mode);
     if (result && result.status === 'closed') {
+      state.detachedOpen[mode] = false;
       console.log(`已关闭${modeLabel}独立窗口`);
       return;
     }
 
+    state.detachedOpen[mode] = true;
     await apiCall('update_detached_config', mode);
     console.log(`Created ${modeLabel} detached window:`, result);
     console.log(`已打开${modeLabel}独立窗口`);

@@ -195,9 +195,12 @@ class DetachedWindowManager:
         self.pending_updates = {}  # {mode: content_html}
         self.pending_configs = {}  # {mode: config_dict}
         self._window_loaded = {}  # {mode: bool}
+        self._window_content_ready = {}  # {mode: bool}
         self._last_content_payload = {}  # {mode: html_content}
         self._last_config_payload = {}  # {mode: config_json}
         self._window_style_cache = {}  # {mode: (style, ex_style)}
+        self._content_sender_busy = {}  # {mode: bool}
+        self._content_sender_lock = Lock()
         self.recording_window = None
         self.pending_recording_payload = None
 
@@ -297,12 +300,12 @@ class DetachedWindowManager:
         except Exception as exc:
             logger.error(f"Failed to apply detached window settings for {mode}: {exc}")
 
-    def _flush_pending(self, mode: str) -> None:
+    def _flush_pending(self, mode: str, include_content: bool = True) -> None:
         if not self._window_loaded.get(mode):
             return
         if mode in self.pending_configs:
             self.update_window_config(mode, self.pending_configs[mode])
-        if mode in self.pending_updates:
+        if include_content and self._window_content_ready.get(mode) and mode in self.pending_updates:
             self.update_window_content(mode, self.pending_updates[mode])
 
     def _is_always_on_top_enabled(self, mode: str) -> bool:
@@ -315,7 +318,9 @@ class DetachedWindowManager:
         return bool((config or {}).get("always_on_top", 0))
 
     def _apply_topmost(self, mode: str, focus_nudge: bool = False) -> None:
+        logger.debug(f"[DetachedOpen] _apply_topmost enter mode={mode} focus_nudge={focus_nudge}")
         if mode not in self.windows:
+            logger.debug(f"[DetachedOpen] _apply_topmost skip missing window mode={mode}")
             return
 
         window = self.windows[mode]
@@ -342,14 +347,69 @@ class DetachedWindowManager:
                 window.bring_to_front()
             except Exception:
                 pass
+        logger.debug(f"[DetachedOpen] _apply_topmost done mode={mode} enabled={enabled}")
 
     def _drop_window_ref(self, mode: str):
         if mode in self.windows:
             self.windows.pop(mode, None)
             self._window_loaded.pop(mode, None)
+            self._window_content_ready.pop(mode, None)
+            self._content_sender_busy.pop(mode, None)
             self._last_content_payload.pop(mode, None)
             self._last_config_payload.pop(mode, None)
             logger.debug(f"Dropped detached window reference: {mode}")
+
+    def _start_content_sender(self, mode: str) -> None:
+        with self._content_sender_lock:
+            if self._content_sender_busy.get(mode):
+                logger.debug(f"[DetachedSend] skip start: sender already busy mode={mode}")
+                return
+            self._content_sender_busy[mode] = True
+            logger.debug(f"[DetachedSend] sender start mode={mode}")
+        try:
+            while True:
+                if mode not in self.windows:
+                    break
+                if not self._window_loaded.get(mode) or not self._window_content_ready.get(mode):
+                    break
+
+                html_content = self.pending_updates.get(mode)
+                if html_content is None:
+                    logger.debug(f"[DetachedSend] no pending content mode={mode}")
+                    break
+                if self._last_content_payload.get(mode) == html_content:
+                    break
+
+                try:
+                    t0 = time()
+                    payload_len = len(str(html_content))
+                    logger.debug(f"[DetachedSend] evaluate_js begin mode={mode} payload_len={payload_len}")
+                    self.windows[mode].evaluate_js(
+                        f"window.postMessage({{type: 'update-content', html: {repr(html_content)}}}, '*')"
+                    )
+                    self._last_content_payload[mode] = html_content
+                    elapsed_ms = int((time() - t0) * 1000)
+                    logger.debug(f"[DetachedSend] evaluate_js done mode={mode} elapsed_ms={elapsed_ms}")
+                    logger.debug(f"Updated content for window: {mode}")
+                except Exception as e:
+                    logger.error(f"Failed to update window content: {e}")
+                    self._drop_window_ref(mode)
+                    break
+
+                if self.pending_updates.get(mode) == html_content:
+                    break
+        finally:
+            with self._content_sender_lock:
+                self._content_sender_busy[mode] = False
+                logger.debug(f"[DetachedSend] sender stop mode={mode}")
+
+            if (
+                mode in self.windows
+                and self._window_loaded.get(mode)
+                and self._window_content_ready.get(mode)
+                and self.pending_updates.get(mode) != self._last_content_payload.get(mode)
+            ):
+                self._start_content_sender(mode)
 
     def _persist_window_geometry(self, mode: str) -> None:
         window = self.windows.get(mode)
@@ -461,25 +521,30 @@ class DetachedWindowManager:
             )
 
             self.windows[mode] = window
+            self._window_content_ready[mode] = False
             self._attach_window_events(mode, window)
 
             # If the user closes the window from the title bar, clear cached reference
             # so opening again creates a new instance.
             logger.info(f"Created detached window: {mode}")
 
-            self._flush_pending(mode)
+            logger.debug(f"[DetachedOpen] before _flush_pending mode={mode}")
+            self._flush_pending(mode, include_content=False)
+            logger.debug(f"[DetachedOpen] after _flush_pending mode={mode}")
 
-            # Enforce topmost immediately in case runtime backend ignores create args.
-            self._apply_topmost(mode, focus_nudge=False)
-            self._apply_native_window_settings(mode)
+            # Do not force topmost during create; this call can intermittently block
+            # while the native detached window is still initializing.
+            logger.debug(f"[DetachedOpen] skip _apply_topmost during create mode={mode}")
 
         except Exception as e:
             logger.error(f"Failed to create detached window: {e}")
 
+        logger.debug(f"[DetachedOpen] create_window return mode={mode} exists={mode in self.windows}")
         return self.windows.get(mode)
 
     def _on_window_loaded(self, mode: str) -> None:
         self._window_loaded[mode] = True
+        self._window_content_ready[mode] = False
 
         window = self.windows.get(mode)
         if window is not None:
@@ -512,14 +577,26 @@ class DetachedWindowManager:
                 f"outer={outer_w}x{outer_h} client={client_w}x{client_h} scale_factor={scale_factor}"
             )
 
-        def _flush_async():
-            try:
-                sleep(0.05)
-                self._flush_pending(mode)
-            except Exception:
-                pass
+        # Apply config once the page is loaded; content stays blocked until
+        # detached page sends explicit ready callback.
+        self._flush_pending(mode, include_content=False)
 
-        Thread(target=_flush_async, daemon=True).start()
+    def mark_window_content_ready(self, mode: str) -> None:
+        mode = str(mode).lower()
+        if mode not in {"tc", "tl"}:
+            return
+        if mode not in self.windows:
+            logger.debug(f"[DetachedReady] ignored: window missing mode={mode}")
+            return
+        if not self._window_loaded.get(mode):
+            logger.debug(f"[DetachedReady] ignored: not loaded mode={mode}")
+            return
+        self._window_content_ready[mode] = True
+        logger.info(f"[DetachedReady] content ready mode={mode}")
+        if mode in self.pending_configs:
+            self.update_window_config(mode, self.pending_configs[mode])
+        if mode in self.pending_updates:
+            self.update_window_content(mode, self.pending_updates[mode])
 
     def show_window(self, mode: str = "tc"):
         """Show or bring detached window to front."""
@@ -555,25 +632,27 @@ class DetachedWindowManager:
 
     def update_window_content(self, mode: str, html_content: str):
         """Send HTML content to detached window."""
+        prev_pending = self.pending_updates.get(mode)
         self.pending_updates[mode] = html_content
-        if mode in self.windows and self._window_loaded.get(mode):
-            if self._last_content_payload.get(mode) == html_content:
+        if mode in self.windows and self._window_loaded.get(mode) and self._window_content_ready.get(mode):
+            if (
+                self._last_content_payload.get(mode) == html_content
+                and prev_pending == html_content
+                and not self._content_sender_busy.get(mode)
+            ):
                 return
-            try:
-                self.windows[mode].evaluate_js(
-                    f"window.postMessage({{type: 'update-content', html: {repr(html_content)}}}, '*')"
-                )
-                self._last_content_payload[mode] = html_content
-                logger.debug(f"Updated content for window: {mode}")
-            except Exception as e:
-                logger.error(f"Failed to update window content: {e}")
-                self._drop_window_ref(mode)
+            self._start_content_sender(mode)
+        else:
+            logger.debug(
+                f"[DetachedSend] deferred mode={mode} has_window={mode in self.windows} "
+                f"loaded={self._window_loaded.get(mode)} ready={self._window_content_ready.get(mode)}"
+            )
 
     def update_window_config(self, mode: str, config: Dict[str, Any]):
         """Send configuration to detached window."""
         self.pending_configs[mode] = config
-        self._apply_native_window_settings(mode, config)
-        if mode in self.windows and self._window_loaded.get(mode):
+        if mode in self.windows and self._window_loaded.get(mode) and self._window_content_ready.get(mode):
+            self._apply_native_window_settings(mode, config)
             try:
                 import json
                 config_json = json.dumps(config, ensure_ascii=False, sort_keys=True)
@@ -584,9 +663,13 @@ class DetachedWindowManager:
                 )
                 self._last_config_payload[mode] = config_json
                 logger.debug(f"Updated config for window {mode}: {config}")
-                self._apply_topmost(mode, focus_nudge=False)
             except Exception as e:
                 logger.error(f"Failed to update window config: {e}")
+        else:
+            logger.debug(
+                f"[DetachedConfig] deferred mode={mode} has_window={mode in self.windows} "
+                f"loaded={self._window_loaded.get(mode)} ready={self._window_content_ready.get(mode)}"
+            )
 
 
     def close_all(self):
@@ -676,6 +759,13 @@ class DetachedWindowApi:
         except Exception as exc:
             logger.error(f"Failed to move detached window {mode}: {exc}")
             return {"status": "error", "mode": mode, "error": str(exc)}
+
+    def detached_window_ready(self, mode: str) -> Dict[str, Any]:
+        mode = str(mode).lower()
+        if mode not in {"tc", "tl"}:
+            mode = "tl"
+        self._manager.mark_window_content_ready(mode)
+        return {"status": "ready", "mode": mode}
 
 
 class RecordingWindowApi:
@@ -2061,9 +2151,11 @@ class WebBridge(WebTaskBridge):
         x, y = _ensure_visible_or_center(int(x), int(y), int(width), int(height))
 
         self.detached_window_manager.create_window(mode, x, y, width, height)
+        logger.debug(f"[DetachedOpen] bridge create_window returned mode={mode}")
 
         # Always apply current detached config when window is opened from any entry point.
         self.update_detached_config(mode)
+        logger.debug(f"[DetachedOpen] bridge update_detached_config called mode={mode}")
 
         # Push current detached text immediately so opening from top buttons is consistent.
         live_state = self.snapshot_live_state()
@@ -2073,6 +2165,7 @@ class WebBridge(WebTaskBridge):
             html_content = live_state.get("detached_translated_html") or live_state.get("detached_translated_text") or ""
         if html_content:
             self.update_detached_content(mode, str(html_content))
+            logger.debug(f"[DetachedOpen] bridge update_detached_content called mode={mode}")
 
         return {"status": "created", "mode": mode}
 
@@ -2120,6 +2213,9 @@ class WebBridge(WebTaskBridge):
         mode = str(mode).lower()
         if mode not in {"tc", "tl"}:
             mode = "tl"
+
+        if mode not in self.detached_window_manager.windows:
+            return {"status": "missing", "mode": mode}
         
         self.detached_window_manager.update_window_content(mode, html_content)
         return {"status": "updated", "mode": mode}

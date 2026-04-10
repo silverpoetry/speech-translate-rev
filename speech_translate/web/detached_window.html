@@ -144,7 +144,11 @@
       if (e.data.type === 'update-content') {
         const content = document.getElementById('window-content');
         const html = e.data.html || '';
-        content.innerHTML = renderDisplayHtml(html);
+        if (state.windowMode === 'tc') {
+          content.innerHTML = html || '<div class="lines"><div class="line latest-line">等待更新...</div></div>';
+        } else {
+          content.innerHTML = renderDisplayHtml(html);
+        }
         
         // Auto-scroll to bottom
         content.scrollTop = content.scrollHeight;
@@ -381,7 +385,7 @@
       }
       
       // Apply text color
-      if (config.font_color) {
+      if (state.windowMode !== 'tc' && config.font_color) {
         content.style.color = config.font_color;
         root.style.setProperty('--line-color', config.font_color);
         root.style.setProperty('--latest-line-color', lightenColor(config.font_color, 0.65));
@@ -413,7 +417,30 @@
       }
     }
 
-    // Request initial content from parent
+    async function notifyBackendReady() {
+      for (let i = 0; i < 100; i += 1) {
+        const api = window.pywebview && window.pywebview.api;
+        if (api && typeof api.detached_window_ready === 'function') {
+          try {
+            await api.detached_window_ready(state.windowMode);
+          } catch (_error) {
+            // Ignore backend notification errors; window still renders locally.
+          }
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    }
+
+    window.addEventListener('load', () => {
+      // Give the detached window extra time to finish native initialization
+      // (transparent/no-title styles, compositor attach) before enabling content push.
+      setTimeout(() => {
+        void notifyBackendReady();
+      }, 80);
+    });
+
+    // Kept for compatibility with browser-open workflows.
     window.opener?.postMessage({ type: 'detached-window-ready', mode: state.windowMode }, '*');
   </script>
 </body>
