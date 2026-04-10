@@ -1759,10 +1759,17 @@ select:focus {
   margin-top: 2px;
 }
 
+.model-manager-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .model-manager-tools {
   display: flex;
   justify-content: flex-end;
-  margin-top: 6px;
+  margin-top: 0;
 }
 
 .model-manager-summary-row {

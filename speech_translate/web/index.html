@@ -68,12 +68,14 @@
           <details class="advanced-panel" open>
             <summary>模型检查与下载</summary>
             <div class="advanced-panel-body">
-              <div class="model-engine-titlebar" id="model-manager-engine-bar" role="tablist" aria-label="模型引擎">
-                <button type="button" class="model-engine-tab is-active" data-engine-option="whisper" role="tab" aria-selected="true">whisper</button>
-                <button type="button" class="model-engine-tab" data-engine-option="faster-whisper" role="tab" aria-selected="false">faster-whisper</button>
-              </div>
-              <div class="model-manager-tools">
-                <button class="btn-icon btn-icon-blue" data-action="pick-model-dir" data-tooltip="设置模型目录" title="设置模型目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+              <div class="model-manager-head">
+                <div class="model-engine-titlebar" id="model-manager-engine-bar" role="tablist" aria-label="模型引擎">
+                  <button type="button" class="model-engine-tab is-active" data-engine-option="whisper" role="tab" aria-selected="true">whisper</button>
+                  <button type="button" class="model-engine-tab" data-engine-option="faster-whisper" role="tab" aria-selected="false">faster-whisper</button>
+                </div>
+                <div class="model-manager-tools">
+                  <button class="btn-icon btn-icon-blue" data-action="pick-model-dir" data-tooltip="设置模型目录" title="设置模型目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                </div>
               </div>
               <div id="model-status-card" class="state-card model-status-card"></div>
               <div class="section-head model-manager-hint-wrap">
@@ -361,14 +363,14 @@
 
       <details class="advanced-panel">
         <summary>录制设置（麦克风 / 扬声器）</summary>
+        <div class="floating-action-row">
+          <button class="btn-icon" data-action="save-record-settings" data-tooltip="保存录制设置" title="保存录制设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+        </div>
         <div class="advanced-panel-body">
           <div class="section-head">
             <div>
               <h3>录制参数</h3>
               <p>用于麦克风和扬声器的采集、缓冲与 VAD 调整。</p>
-            </div>
-            <div class="inline-actions compact">
-              <button class="btn-icon" data-action="save-record-settings" data-tooltip="保存录制设置" title="保存录制设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
             </div>
           </div>
 
