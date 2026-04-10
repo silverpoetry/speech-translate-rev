@@ -13,9 +13,7 @@ from typing import Any, Dict, Optional, cast
 from time import sleep, strftime, time
 from urllib.request import Request, urlopen
 
-import pystray
 from loguru import logger
-from PIL import Image, ImageDraw
 
 from speech_translate._constants import APP_NAME
 from speech_translate._logging import init_logging
@@ -37,11 +35,22 @@ from speech_translate.utils.whisper.download import (
     verify_model_faster_whisper,
     verify_model_whisper,
 )
-from speech_translate.utils.whisper.load import get_model, get_model_args, is_model_bundle_cached
 from speech_translate.utils.whisper.helper import model_select_dict, model_values
 from speech_translate.utils.types import SettingDict
 from speech_translate.utils.translate.language import TL_ENGINE_SOURCE_DICT, TL_ENGINE_TARGET_DICT, WHISPER_LANG_LIST
 from speech_translate.utils.translate.translator import shutdown_selenium_translator
+
+
+_whisper_load_api = None
+
+
+def _get_whisper_load_api():
+    global _whisper_load_api
+    if _whisper_load_api is None:
+        from speech_translate.utils.whisper import load as whisper_load
+
+        _whisper_load_api = whisper_load
+    return _whisper_load_api
 
 
 class NoConsolePopen(subprocess.Popen):
@@ -73,6 +82,46 @@ def _parse_window_size(raw_value: Any, default_width: int, default_height: int) 
                 pass
         return width, height
     return default_width, default_height
+
+
+def _get_virtual_screen_bounds() -> tuple[int, int, int, int]:
+    if system() == "Windows":
+        try:
+            user32 = ctypes.windll.user32
+            left = int(user32.GetSystemMetrics(76))
+            top = int(user32.GetSystemMetrics(77))
+            width = int(user32.GetSystemMetrics(78))
+            height = int(user32.GetSystemMetrics(79))
+            if width > 0 and height > 0:
+                return left, top, width, height
+        except Exception:
+            pass
+    return 0, 0, 1920, 1080
+
+
+def _center_window_pos(width: int, height: int) -> tuple[int, int]:
+    left, top, v_width, v_height = _get_virtual_screen_bounds()
+    centered_x = left + max(0, (v_width - max(1, width)) // 2)
+    centered_y = top + max(0, (v_height - max(1, height)) // 2)
+    return centered_x, centered_y
+
+
+def _ensure_visible_or_center(x: int, y: int, width: int, height: int) -> tuple[int, int]:
+    left, top, v_width, v_height = _get_virtual_screen_bounds()
+    right = left + max(1, v_width)
+    bottom = top + max(1, v_height)
+
+    visible_left = max(left, x)
+    visible_top = max(top, y)
+    visible_right = min(right, x + max(1, width))
+    visible_bottom = min(bottom, y + max(1, height))
+    visible_width = max(0, visible_right - visible_left)
+    visible_height = max(0, visible_bottom - visible_top)
+
+    if visible_width >= 120 and visible_height >= 80:
+        return x, y
+
+    return _center_window_pos(width, height)
 
 
 def add_ffmpeg_to_path(weak: bool = False) -> bool:
@@ -278,7 +327,7 @@ class DetachedWindowManager:
             self._last_config_payload.pop(mode, None)
             logger.debug(f"Dropped detached window reference: {mode}")
 
-    def _persist_window_size(self, mode: str) -> None:
+    def _persist_window_geometry(self, mode: str) -> None:
         window = self.windows.get(mode)
         if window is None:
             return
@@ -314,6 +363,7 @@ class DetachedWindowManager:
 
         if width >= 200 and height >= 80:
             sj.save_key(f"ex_{mode}_geometry", f"{width}x{height}")
+
             logger.info(
                 f"[DetachedGeometry][save] mode={mode} "
                 f"saved_logical={width}x{height} raw_client={raw_width}x{raw_height} "
@@ -321,7 +371,7 @@ class DetachedWindowManager:
             )
 
     def _on_window_closed(self, mode: str) -> None:
-        self._persist_window_size(mode)
+        self._persist_window_geometry(mode)
         self._drop_window_ref(mode)
 
     def _attach_window_events(self, mode: str, window) -> None:
@@ -336,8 +386,8 @@ class DetachedWindowManager:
     def create_window(
         self,
         mode: str = "tc",
-        x: int = 100,
-        y: int = 100,
+        x: Optional[int] = None,
+        y: Optional[int] = None,
         width: Optional[int] = None,
         height: Optional[int] = None,
     ):
@@ -362,9 +412,15 @@ class DetachedWindowManager:
             if width is None or height is None:
                 width, height = _parse_window_size(sj.cache.get(f"ex_{mode}_geometry", "900x240"), 900, 240)
 
+            if x is None or y is None:
+                x, y = _center_window_pos(width, height)
+
+            x, y = _ensure_visible_or_center(int(x), int(y), int(width), int(height))
+
             logger.info(
                 f"[DetachedGeometry][open-created] mode={mode} "
-                f"requested={width}x{height} cache={sj.cache.get(f'ex_{mode}_geometry', '900x240')}"
+                f"requested={width}x{height} position={x},{y} "
+                f"cache={sj.cache.get(f'ex_{mode}_geometry', '900x240')}"
             )
 
             window = webview.create_window(
@@ -636,6 +692,9 @@ class WebBridge(WebTaskBridge):
 
     def __init__(self):
         super().__init__()
+        self._startup_t0: Optional[float] = None
+        self._first_state_logged = False
+        self._main_window_show_allowed = False
         self.detached_window_manager = DetachedWindowManager(self)
         self._model_status_cache: Dict[str, Dict[str, Any]] = {}
         self._model_download_running = False
@@ -652,7 +711,9 @@ class WebBridge(WebTaskBridge):
             "mic_options_all": [],
             "speaker_options_all": [],
         }
-        self._prime_audio_source_cache()
+        self._audio_source_cache_ready = False
+        self._audio_source_cache_loading = True
+        Thread(target=self._prime_audio_source_cache, daemon=True).start()
         self.recording_state: Dict[str, Any] = {
             "status": "Idle",
             "active": False,
@@ -666,6 +727,21 @@ class WebBridge(WebTaskBridge):
             "sentences": "0",
         }
         self._record_worker_thread: Optional[Thread] = None
+
+    def set_startup_t0(self, started_at: float) -> None:
+        self._startup_t0 = started_at
+
+    def _log_startup_marker(self, marker: str) -> None:
+        if self._startup_t0 is None:
+            logger.debug(f"[Startup] {marker}")
+            return
+        elapsed_ms = int((time() - self._startup_t0) * 1000)
+        logger.debug(f"[Startup] +{elapsed_ms}ms {marker}")
+
+    def mark_startup(self, marker: str) -> Dict[str, Any]:
+        label = str(marker or "").strip() or "unknown"
+        self._log_startup_marker(f"js_{label}")
+        return {"ok": True, "marker": label}
 
     def _wait_recording_idle(self, timeout_s: float = 12.0) -> bool:
         """Wait until realtime recording resources are fully released."""
@@ -803,18 +879,58 @@ class WebBridge(WebTaskBridge):
                 "default_mic": "",
                 "default_speaker": "",
             }
+        finally:
+            self._audio_source_cache_loading = False
+            self._audio_source_cache_ready = True
+            try:
+                self._emit_ui_update(["state"])
+            except Exception:
+                pass
 
     def bind_window(self, window):
         super().bind_window(window)
+        self._log_startup_marker("bind_window")
         try:
+            if hasattr(window, "events") and hasattr(window.events, "shown"):
+                window.events.shown += lambda *_: self._on_main_window_shown(window)
+            if hasattr(window, "events") and hasattr(window.events, "loaded"):
+                window.events.loaded += lambda *_: self._log_startup_marker("main_window_loaded")
             if hasattr(window, "events") and hasattr(window.events, "resized"):
-                window.events.resized += lambda *_: self._save_main_window_size()
+                window.events.resized += lambda *_: self._save_main_window_geometry()
+            if hasattr(window, "events") and hasattr(window.events, "moved"):
+                window.events.moved += lambda *_: self._save_main_window_geometry()
             if hasattr(window, "events") and hasattr(window.events, "closed"):
-                window.events.closed += lambda *_: self._save_main_window_size()
+                window.events.closed += lambda *_: self._save_main_window_geometry()
         except Exception:
             pass
 
-    def _save_main_window_size(self) -> None:
+    def _on_main_window_shown(self, window) -> None:
+        if not self._main_window_show_allowed:
+            try:
+                window.hide()
+            except Exception:
+                pass
+        self._log_startup_marker("main_window_shown")
+
+    def show_main_window(self) -> None:
+        self._main_window_show_allowed = True
+        window = self.get_window()
+        if window is None:
+            return
+
+        try:
+            window.show()
+        except Exception:
+            return
+
+        try:
+            window.bring_to_front()
+        except Exception:
+            pass
+
+        self._log_startup_marker("main_window_shown_after_init")
+
+    def _save_main_window_geometry(self) -> None:
         window = self.get_window()
         if window is None:
             return
@@ -1017,29 +1133,33 @@ class WebBridge(WebTaskBridge):
                 return False
         return os.path.exists(os.path.join(model_dir, f"{model_key}.pt"))
 
-    def _build_import_ui(self) -> Dict[str, Any]:
+    def _build_import_ui(self, verify_available: bool = True) -> Dict[str, Any]:
         settings = dict(sj.cache)
         engine = self._normalize_engine_name(str(settings.get("tl_engine_f_import", "Selenium Chrome Translate")))
-        model_name = self._normalize_model_key(str(settings.get("model_f_import", "")))
+        selected_model_display = str(settings.get("model_f_import", "")).strip()
+        model_name = self._normalize_model_key(selected_model_display)
         backend = "faster-whisper" if bool(settings.get("use_faster_whisper", True)) else "whisper"
         model_dir = self._resolve_model_dir()
         downloadable_model_keys = list(model_select_dict.keys())
-        available_model_display_names = []
-        for display_name in downloadable_model_keys:
-            key = self._normalize_model_key(display_name)
-            if self._is_model_available_for_backend(key, backend, model_dir):
-                available_model_display_names.append(display_name)
+        if verify_available:
+            available_model_display_names = []
+            for display_name in downloadable_model_keys:
+                key = self._normalize_model_key(display_name)
+                if self._is_model_available_for_backend(key, backend, model_dir):
+                    available_model_display_names.append(display_name)
 
-        if available_model_display_names:
-            selected_model_display = str(settings.get("model_f_import", ""))
-            if selected_model_display not in available_model_display_names:
-                selected_model_display = available_model_display_names[0]
-                model_name = self._normalize_model_key(selected_model_display)
+            if available_model_display_names:
+                if selected_model_display not in available_model_display_names:
+                    selected_model_display = available_model_display_names[0]
+                    model_name = self._normalize_model_key(selected_model_display)
+                else:
+                    model_name = self._normalize_model_key(selected_model_display)
             else:
-                model_name = self._normalize_model_key(selected_model_display)
+                selected_model_display = ""
+                model_name = ""
         else:
-            selected_model_display = ""
-            model_name = ""
+            # Fast-start path: defer expensive model availability checks.
+            available_model_display_names = [selected_model_display] if selected_model_display else []
 
         source_options = TL_ENGINE_SOURCE_DICT.get(engine, TL_ENGINE_SOURCE_DICT["Google Translate"])
         target_options = TL_ENGINE_TARGET_DICT.get(engine, TL_ENGINE_TARGET_DICT["Google Translate"])
@@ -1063,6 +1183,9 @@ class WebBridge(WebTaskBridge):
             "transcribe": settings.get("transcribe_f_import"),
             "translate": settings.get("translate_f_import"),
         }
+
+    def get_import_ui_details(self) -> Dict[str, Any]:
+        return self._build_import_ui(verify_available=True)
 
     def _build_main_ui(self) -> Dict[str, Any]:
         settings = dict(sj.cache)
@@ -1108,6 +1231,9 @@ class WebBridge(WebTaskBridge):
 
         host_api_options = self._audio_source_cache.get("host_api_options", [])
         default_host_api = str(self._audio_source_cache.get("default_host_api", ""))
+        if not host_api_options:
+            fallback_host_api = str(settings.get("hostAPI", "") or host_api or "")
+            host_api_options = [fallback_host_api] if fallback_host_api else []
         if host_api and host_api not in host_api_options:
             host_api = ""
         if not host_api and default_host_api in host_api_options:
@@ -1121,6 +1247,12 @@ class WebBridge(WebTaskBridge):
         else:
             mic_options = self._audio_source_cache.get("mic_options_all", [])
             speaker_options = self._audio_source_cache.get("speaker_options_all", [])
+        if not mic_options:
+            fallback_mic = str(settings.get("mic", "") or "")
+            mic_options = [fallback_mic] if fallback_mic else []
+        if not speaker_options:
+            fallback_speaker = str(settings.get("speaker", "") or "")
+            speaker_options = [fallback_speaker] if fallback_speaker else []
 
         selected_mic = settings.get("mic")
         selected_speaker = settings.get("speaker")
@@ -1195,7 +1327,9 @@ class WebBridge(WebTaskBridge):
         return configured if configured != "auto" else dir_log
 
     def get_state(self) -> Dict[str, Any]:
+        state_t0 = time()
         settings = dict(sj.cache)
+        t_settings = time()
         compact_settings = {
             "theme": settings.get("theme"),
             "log_level": settings.get("log_level"),
@@ -1221,6 +1355,22 @@ class WebBridge(WebTaskBridge):
             "selenium_auto_close_on_task_done": settings.get("selenium_auto_close_on_task_done", True),
         }
 
+        import_ui = self._build_import_ui(verify_available=False)
+        t_import = time()
+        main_ui = self._build_main_ui()
+        t_main = time()
+        record_ui = self._build_record_ui()
+        t_record = time()
+        runtime_model = self._build_runtime_model_state()
+        t_runtime = time()
+        live_ui = self.snapshot_live_state()
+        t_live = time()
+        about = self._build_about()
+        t_about = time()
+        current_log = self.get_log_file_name()
+        log_content = self.get_log_content()
+        t_log = time()
+
         result = asdict(
             AppState(
                 app_name=APP_NAME,
@@ -1230,21 +1380,37 @@ class WebBridge(WebTaskBridge):
                 os_version=version(),
                 cpu=processor(),
                 settings=compact_settings,
-                import_ui=self._build_import_ui(),
-                main_ui=self._build_main_ui(),
-                record_ui=self._build_record_ui(),
-                runtime_model=self._build_runtime_model_state(),
-                live_ui=self.snapshot_live_state(),
-                about=self._build_about(),
+                import_ui=import_ui,
+                main_ui=main_ui,
+                record_ui=record_ui,
+                runtime_model=runtime_model,
+                live_ui=live_ui,
+                about=about,
                 log_level=sj.cache.get("log_level", "DEBUG"),
-                current_log=self.get_log_file_name(),
-                log_content=self.get_log_content(),
+                current_log=current_log,
+                log_content=log_content,
             )
         )
         result["detached_config"] = {
             "tc": self.get_detached_config("tc"),
             "tl": self.get_detached_config("tl"),
         }
+
+        if not self._first_state_logged:
+            self._first_state_logged = True
+            self._log_startup_marker("first_get_state")
+            logger.debug(
+                "[StartupState] get_state breakdown ms: "
+                f"settings={int((t_settings - state_t0) * 1000)} "
+                f"import_ui={int((t_import - t_settings) * 1000)} "
+                f"main_ui={int((t_main - t_import) * 1000)} "
+                f"record_ui={int((t_record - t_main) * 1000)} "
+                f"runtime_model={int((t_runtime - t_record) * 1000)} "
+                f"live_ui={int((t_live - t_runtime) * 1000)} "
+                f"about={int((t_about - t_live) * 1000)} "
+                f"log={int((t_log - t_about) * 1000)} "
+                f"total={int((t_log - state_t0) * 1000)}"
+            )
         return result
 
     def get_log_file_name(self) -> str:
@@ -1355,6 +1521,7 @@ class WebBridge(WebTaskBridge):
 
         def worker():
             try:
+                whisper_load_api = _get_whisper_load_api()
                 settings = cast(SettingDict, self.get_settings_snapshot())
                 settings["model_mw"] = model_key
                 settings["model_f_import"] = model_key
@@ -1363,11 +1530,11 @@ class WebBridge(WebTaskBridge):
                 is_tc = bool(settings.get("transcribe_mw", True))
                 is_tl = bool(settings.get("translate_mw", True))
 
-                model_args = get_model_args(settings)
+                model_args = whisper_load_api.get_model_args(settings)
                 self.reset_task_state("Model Load")
                 self.update_task_message(f"Loading model cache for {model_key}")
                 self.update_task_progress(5)
-                get_model(is_tc, is_tl, tl_engine_whisper, model_key, engine, settings, **model_args)
+                whisper_load_api.get_model(is_tc, is_tl, tl_engine_whisper, model_key, engine, settings, **model_args)
                 self.update_task_progress(100)
                 self.finish_task(f"Model ready: {model_key}")
                 self._runtime_model_loaded = True
@@ -1683,7 +1850,7 @@ class WebBridge(WebTaskBridge):
         window = self.get_window()
         if window is not None:
             try:
-                self._save_main_window_size()
+                self._save_main_window_geometry()
                 window.destroy()
             except Exception:
                 pass
@@ -1823,7 +1990,7 @@ class WebBridge(WebTaskBridge):
         sj.save_key(setting_key, value)
         return {"key": setting_key, "value": sj.cache.get(setting_key)}
 
-    def create_detached_window(self, mode: str = "tc", x: int = 100, y: int = 100) -> Dict[str, Any]:
+    def create_detached_window(self, mode: str = "tc", x: Optional[int] = None, y: Optional[int] = None) -> Dict[str, Any]:
         """Create a detached subtitle window."""
         mode = str(mode).lower()
         if mode not in {"tc", "tl"}:
@@ -1835,6 +2002,11 @@ class WebBridge(WebTaskBridge):
             f"[DetachedGeometry][open-request] mode={mode} "
             f"cache={raw_geometry} parsed={width}x{height}"
         )
+        if x is None or y is None:
+            x, y = _center_window_pos(width, height)
+
+        x, y = _ensure_visible_or_center(int(x), int(y), int(width), int(height))
+
         self.detached_window_manager.create_window(mode, x, y, width, height)
 
         # Always apply current detached config when window is opened from any entry point.
@@ -1851,7 +2023,7 @@ class WebBridge(WebTaskBridge):
 
         return {"status": "created", "mode": mode}
 
-    def toggle_detached_window(self, mode: str = "tc", x: int = 100, y: int = 100) -> Dict[str, Any]:
+    def toggle_detached_window(self, mode: str = "tc", x: Optional[int] = None, y: Optional[int] = None) -> Dict[str, Any]:
         """Open a detached window, or close it if it is already open."""
         mode = str(mode).lower()
         if mode not in {"tc", "tl"}:
@@ -1963,8 +2135,9 @@ class WebBridge(WebTaskBridge):
 
         cached_bundle = False
         try:
-            model_args = get_model_args(cast(SettingDict, settings))
-            cached_bundle = is_model_bundle_cached(
+            whisper_load_api = _get_whisper_load_api()
+            model_args = whisper_load_api.get_model_args(cast(SettingDict, settings))
+            cached_bundle = whisper_load_api.is_model_bundle_cached(
                 is_tc,
                 is_tl,
                 engine in model_values,
@@ -2085,6 +2258,8 @@ class AppTray:
         self._create_tray()
 
     def _fallback_image(self, width: int, height: int, color1: str, color2: str):
+        from PIL import Image, ImageDraw
+
         image = Image.new("RGB", (width, height), color1)  # type: ignore[arg-type]
         drawer = ImageDraw.Draw(image)
         drawer.rectangle((width // 2, 0, width, height // 2), fill=color2)
@@ -2092,6 +2267,9 @@ class AppTray:
         return image
 
     def _create_tray(self):
+        import pystray
+        from PIL import Image
+
         try:
             ico = Image.open(p_app_icon)
         except Exception:
@@ -2152,6 +2330,7 @@ def _build_html_path() -> str:
 
 
 def main(with_log_init: bool = True):
+    startup_t0 = time()
     if with_log_init:
         init_logging(sj.cache["log_level"])
 
@@ -2161,15 +2340,20 @@ def main(with_log_init: bool = True):
     logger.debug("Loading Web UI...")
 
     _install_signal_handler()
+    logger.debug("[Startup] before_add_ffmpeg")
     add_ffmpeg_to_path(weak=True)
+    logger.debug("[Startup] after_add_ffmpeg")
+    logger.debug("[Startup] before_import_webview")
     webview = import_module("webview")
+    logger.debug("[Startup] after_import_webview")
 
+    logger.debug("[Startup] before_bridge_init")
     bridge = WebBridge()
+    logger.debug("[Startup] after_bridge_init")
+    bridge.set_startup_t0(startup_t0)
     setattr(bc, "web_bridge", bridge)
 
-    if "--no-tray" not in sys.argv:
-        tray = AppTray(bridge)
-        bridge.bind_tray(tray)
+    tray_enabled = "--no-tray" not in sys.argv
 
     raw_main_size = str(sj.cache.get("mw_size", "980x620") or "980x620").strip()
     if raw_main_size == "1140x680":
@@ -2178,16 +2362,36 @@ def main(with_log_init: bool = True):
         raw_main_size = "980x620"
 
     main_width, main_height = _parse_window_size(raw_main_size, 980, 620)
+    main_x, main_y = _center_window_pos(main_width, main_height)
+    main_x, main_y = _ensure_visible_or_center(main_x, main_y, main_width, main_height)
 
+    bridge._log_startup_marker("before_create_main_window")
     window = webview.create_window(
         APP_NAME,
         _build_html_path(),
         js_api=bridge,
         width=main_width,
         height=main_height,
+        x=main_x,
+        y=main_y,
         min_size=(880, 560),
+        hidden=True,
     )
+    bridge._log_startup_marker("after_create_main_window")
     bridge.bind_window(window)
 
     debug_enabled = "--debug-webview" in sys.argv or "--debug" in sys.argv
-    webview.start(debug=debug_enabled)
+    bridge._log_startup_marker("before_webview_start")
+
+    def _on_webview_ready():
+        bridge._log_startup_marker("webview_ready_callback")
+        if tray_enabled and bridge.get_tray() is None:
+            try:
+                bridge._log_startup_marker("before_tray_init")
+                tray = AppTray(bridge)
+                bridge.bind_tray(tray)
+                bridge._log_startup_marker("after_tray_init")
+            except Exception as exc:
+                logger.exception(exc)
+
+    webview.start(_on_webview_ready, debug=debug_enabled)

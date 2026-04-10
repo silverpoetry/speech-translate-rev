@@ -47,6 +47,7 @@ default_setting: SettingDict = {
     "supress_record_warning": False,
     "bypass_no_internet": False,
     "mw_size": "980x620",
+    "mw_position": "120,80",
     "sw_size": "1100x630",
     "dir_log": "auto",
     "dir_model": "auto",
@@ -209,6 +210,7 @@ default_setting: SettingDict = {
     "tb_mw_tl_use_conf_color": True,
     # Tc sub
     "ex_tc_geometry": "900x240",
+    "ex_tc_position": "100,100",
     "ex_tc_always_on_top": 1,
     "ex_tc_click_through": 0,
     "ex_tc_no_title_bar": 1,
@@ -227,6 +229,7 @@ default_setting: SettingDict = {
     "tb_ex_tc_use_conf_color": True,
     # Tl sub
     "ex_tl_geometry": "900x240",
+    "ex_tl_position": "100,100",
     "ex_tl_always_on_top": 1,
     "ex_tl_click_through": 0,
     "ex_tl_no_title_bar": 1,

@@ -13,6 +13,7 @@ const state = {
   modelCheckedOnce: false,
   seleniumSaveInFlight: false,
   detachedModeSelected: 'tc',
+  initInFlight: null,
 };
 
 const els = {};
@@ -35,6 +36,14 @@ async function apiCall(name, ...args) {
     throw new Error('pywebview API 尚未就绪');
   }
   return window.pywebview.api[name](...args);
+}
+
+async function startupMark(marker) {
+  try {
+    await apiCall('mark_startup', marker);
+  } catch (_error) {
+    // Startup marker is best-effort and should never block init flow.
+  }
 }
 
 function sleep(ms) {
@@ -697,6 +706,13 @@ async function checkAllModelManagerState(engine) {
   return payload;
 }
 
+async function refreshImportUiDetails() {
+  const payload = await apiCall('get_import_ui_details');
+  state.data = state.data || {};
+  state.data.import_ui = payload;
+  renderImportSettings({ import_ui: payload });
+}
+
 function stopModelProgressPolling() {
   if (state.modelPollTimer !== null) {
     window.clearInterval(state.modelPollTimer);
@@ -737,7 +753,8 @@ function renderLog(content) {
   }
 }
 
-async function refreshState() {
+async function refreshState(options = {}) {
+  const deferHeavy = options.deferHeavy !== false;
   if (!state.bridgeReady) {
     const ready = await waitForBridge();
     if (!ready) {
@@ -756,20 +773,27 @@ async function refreshState() {
   renderState(data);
   renderAbout(data);
   renderLog(data.log_content);
-  const task = await apiCall('get_task_state');
-  const recordingState = await apiCall('get_recording_state');
-  state.data.recording_state = recordingState;
-  renderTaskState(task);
-  renderGlobalStatusBar(task, data, recordingState);
-  syncRecordingButton(recordingState);
   updatePageScrollIndicator();
-  if (!state.modelCheckedOnce) {
-    await checkAllModelManagerState(getSelectedModelManagerEngine());
-    state.modelCheckedOnce = true;
+
+  const runHeavyRefresh = async () => {
+    await refreshTaskState();
+    await refreshImportUiDetails();
+    if (!state.modelCheckedOnce) {
+      await checkAllModelManagerState(getSelectedModelManagerEngine());
+      state.modelCheckedOnce = true;
+    } else {
+      await refreshModelManagerState(getSelectedModelManagerEngine());
+    }
+    await loadDetachedConfig(getSelectedDetachedMode());
+  };
+
+  if (deferHeavy) {
+    window.setTimeout(() => {
+      runHeavyRefresh().catch((error) => console.debug('Deferred refresh skipped', error));
+    }, 0);
   } else {
-    await refreshModelManagerState(getSelectedModelManagerEngine());
+    await runHeavyRefresh();
   }
-  await loadDetachedConfig(getSelectedDetachedMode());
 }
 
 async function refreshTaskState() {
@@ -1454,153 +1478,181 @@ function bindEvents() {
 
 async function init() {
   if (state.initialized) {
-    return;
+    return state.initInFlight || Promise.resolve();
+  }
+  if (state.initInFlight) {
+    return state.initInFlight;
   }
 
-  els.version = $('pill-version');
-  els.os = $('pill-os');
-  els.logfile = $('pill-logfile');
-  els.theme = $('theme');
-  els.logLevel = $('log_level');
-  els.dirExport = $('dir_export');
-  els.dirModel = $('dir_model');
-  els.seleniumCompactLevel = $('selenium_compact_level');
-  els.seleniumZOrderMode = $('selenium_z_order_mode');
-  els.seleniumAutoCloseOnTaskDone = $('selenium_auto_close_on_task_done');
-  els.exportTxt = $('export_txt');
-  els.exportSrt = $('export_srt');
-  els.exportVtt = $('export_vtt');
-  els.exportAss = $('export_ass');
-  els.exportJson = $('export_json');
-  els.exportCsv = $('export_csv');
-  els.exportMp4 = $('export_mp4');
-  els.inputMode = $('input_mode');
-  els.sourceLangMain = $('source_lang_mw');
-  els.targetLangMain = $('target_lang_mw');
-  els.translateEngineMain = $('tl_engine_mw');
-  els.autoScrollLog = $('auto_scroll_log');
-  els.autoRefreshLog = $('auto_refresh_log');
-  els.transcribeMain = $('transcribe_mw');
-  els.translateMain = $('translate_mw');
-  els.mainInputPill = $('main-input-pill');
-  els.mainLangPill = $('main-lang-pill');
-  els.mainEnginePill = $('main-engine-pill');
-  els.hostAPI = $('hostAPI');
-  els.mic = $('mic');
-  els.speaker = $('speaker');
-  els.verboseRecord = $('verbose_record');
-  els.transcribeRate = $('transcribe_rate');
-  els.separateWith = $('separate_with');
-  els.useTemp = $('use_temp');
-  els.useTempAlt = $('use_temp_alt');
-  els.keepTemp = $('keep_temp');
-  els.fileUseOfficialWhisper = $('file_use_official_whisper');
-  els.showAudioVisualizerInSetting = $('show_audio_visualizer_in_setting');
-  els.recordInputPill = $('record-input-pill');
-  els.recordModePill = $('record-mode-pill');
-  els.recordVisualPill = $('record-visual-pill');
-  els.micSampleRate = $('sample_rate_mic');
-  els.micChunkSize = $('chunk_size_mic');
-  els.micChannels = $('channels_mic');
-  els.micAutoSampleRate = $('auto_sample_rate_mic');
-  els.micAutoChannels = $('auto_channels_mic');
-  els.micMinInputLength = $('min_input_length_mic');
-  els.micMaxBuffer = $('max_buffer_mic');
-  els.micMaxSentences = $('max_sentences_mic');
-  els.micNoLimit = $('mic_no_limit');
-  els.micThresholdEnable = $('threshold_enable_mic');
-  els.micThresholdAuto = $('threshold_auto_mic');
-  els.micAutoBreakBuffer = $('auto_break_buffer_mic');
-  els.micThresholdAutoLevel = $('threshold_auto_level_mic');
-  els.micThresholdAutoSilero = $('threshold_auto_silero_mic');
-  els.micThresholdSileroMin = $('threshold_silero_mic_min');
-  els.micThresholdDb = $('threshold_db_mic');
-  els.speakerSampleRate = $('sample_rate_speaker');
-  els.speakerChunkSize = $('chunk_size_speaker');
-  els.speakerChannels = $('channels_speaker');
-  els.speakerAutoSampleRate = $('auto_sample_rate_speaker');
-  els.speakerAutoChannels = $('auto_channels_speaker');
-  els.speakerMinInputLength = $('min_input_length_speaker');
-  els.speakerMaxBuffer = $('max_buffer_speaker');
-  els.speakerMaxSentences = $('max_sentences_speaker');
-  els.speakerNoLimit = $('speaker_no_limit');
-  els.speakerThresholdEnable = $('threshold_enable_speaker');
-  els.speakerThresholdAuto = $('threshold_auto_speaker');
-  els.speakerAutoBreakBuffer = $('auto_break_buffer_speaker');
-  els.speakerThresholdAutoLevel = $('threshold_auto_level_speaker');
-  els.speakerThresholdAutoSilero = $('threshold_auto_silero_speaker');
-  els.speakerThresholdSileroMin = $('threshold_silero_speaker_min');
-  els.speakerThresholdDb = $('threshold_db_speaker');
-  els.modelImport = $('model_f_import');
-  els.modelImportEngineBar = $('model-import-engine-bar');
-  els.btnLoadModel = $('btn-load-model');
-  els.engineImport = $('tl_engine_f_import');
-  els.sourceImport = $('source_lang_f_import');
-  els.targetImport = $('target_lang_f_import');
-  els.transcribeImport = $('transcribe_f_import');
-  els.translateImport = $('translate_f_import');
-  els.importModelPill = $('import-model-pill');
-  els.importEnginePill = $('import-engine-pill');
-  els.importLangPill = $('import-lang-pill');
-  els.modelManagerEngineBar = $('model-manager-engine-bar');
-  els.modelManagerDirPill = $('model-manager-dir-pill');
-  els.modelManagerEnginePill = $('model-manager-engine-pill');
-  els.modelManagerDownloadPill = $('model-manager-download-pill');
-  els.fileExportDirPill = $('file-export-dir-pill');
-  els.modelManagerHint = $('model-manager-hint');
-  els.modelStatusCard = $('model-status-card');
-  els.taskBadge = $('task-badge');
-  els.taskTitle = $('task-title');
-  els.taskMessage = $('task-message');
-  els.taskProgressText = $('task-progress-text');
-  els.taskProgressFill = $('task-progress-fill');
-  els.globalModelState = $('global-model-state');
-  els.globalModelMeta = $('global-model-meta');
-  els.globalTaskState = $('global-task-state');
-  els.globalTaskMessage = $('global-task-message');
-  els.globalTaskProgressText = $('global-task-progress-text');
-  els.globalTaskProgressFill = $('global-task-progress-fill');
-  els.globalTaskProgressWrap = $('global-task-progress-wrap');
-  els.logOutput = $('log-output');
-  els.stateCard = $('state-card');
-  els.aboutCard = $('about-card');
-  els.mainTranscribedOutput = $('main-transcribed-output');
-  els.mainTranslatedOutput = $('main-translated-output');
-  els.detachedModeTitlebar = $('detached_mode_titlebar');
-  els.detachedModeTcBtn = $('detached_mode_tc_btn');
-  els.detachedModeTlBtn = $('detached_mode_tl_btn');
-  els.detachedFont = $('detached_font');
-  els.detachedFontSize = $('detached_font_size');
-  els.detachedFontColor = $('detached_font_color');
-  els.detachedBgColor = $('detached_bg_color');
-  els.detachedOpacity = $('detached_opacity');
-  els.detachedAlwaysOnTop = $('detached_always_on_top');
-  els.detachedNoTitleBar = $('detached_no_title_bar');
-  els.detachedClickThrough = $('detached_click_through');
-  els.btnRecordingToggle = $('btn-recording-toggle');
-  els.workspaceHub = $('workspace-hub');
-  els.settingsShell = $('settings-shell');
-  els.taskCard = $('task-card');
-  els.autoRefresh = $('auto-refresh-toggle');
-  els.globalStatusbar = $('global-statusbar');
-  els.pageScrollIndicator = $('page-scroll-indicator');
-  els.pageScrollThumb = $('page-scroll-thumb');
-  els.dashboardContent = document.querySelector('.dashboard-content');
+  state.initInFlight = (async () => {
+    els.version = $('pill-version');
+    els.os = $('pill-os');
+    els.logfile = $('pill-logfile');
+    els.theme = $('theme');
+    els.logLevel = $('log_level');
+    els.dirExport = $('dir_export');
+    els.dirModel = $('dir_model');
+    els.seleniumCompactLevel = $('selenium_compact_level');
+    els.seleniumZOrderMode = $('selenium_z_order_mode');
+    els.seleniumAutoCloseOnTaskDone = $('selenium_auto_close_on_task_done');
+    els.exportTxt = $('export_txt');
+    els.exportSrt = $('export_srt');
+    els.exportVtt = $('export_vtt');
+    els.exportAss = $('export_ass');
+    els.exportJson = $('export_json');
+    els.exportCsv = $('export_csv');
+    els.exportMp4 = $('export_mp4');
+    els.inputMode = $('input_mode');
+    els.sourceLangMain = $('source_lang_mw');
+    els.targetLangMain = $('target_lang_mw');
+    els.translateEngineMain = $('tl_engine_mw');
+    els.autoScrollLog = $('auto_scroll_log');
+    els.autoRefreshLog = $('auto_refresh_log');
+    els.transcribeMain = $('transcribe_mw');
+    els.translateMain = $('translate_mw');
+    els.mainInputPill = $('main-input-pill');
+    els.mainLangPill = $('main-lang-pill');
+    els.mainEnginePill = $('main-engine-pill');
+    els.hostAPI = $('hostAPI');
+    els.mic = $('mic');
+    els.speaker = $('speaker');
+    els.verboseRecord = $('verbose_record');
+    els.transcribeRate = $('transcribe_rate');
+    els.separateWith = $('separate_with');
+    els.useTemp = $('use_temp');
+    els.useTempAlt = $('use_temp_alt');
+    els.keepTemp = $('keep_temp');
+    els.fileUseOfficialWhisper = $('file_use_official_whisper');
+    els.showAudioVisualizerInSetting = $('show_audio_visualizer_in_setting');
+    els.recordInputPill = $('record-input-pill');
+    els.recordModePill = $('record-mode-pill');
+    els.recordVisualPill = $('record-visual-pill');
+    els.micSampleRate = $('sample_rate_mic');
+    els.micChunkSize = $('chunk_size_mic');
+    els.micChannels = $('channels_mic');
+    els.micAutoSampleRate = $('auto_sample_rate_mic');
+    els.micAutoChannels = $('auto_channels_mic');
+    els.micMinInputLength = $('min_input_length_mic');
+    els.micMaxBuffer = $('max_buffer_mic');
+    els.micMaxSentences = $('max_sentences_mic');
+    els.micNoLimit = $('mic_no_limit');
+    els.micThresholdEnable = $('threshold_enable_mic');
+    els.micThresholdAuto = $('threshold_auto_mic');
+    els.micAutoBreakBuffer = $('auto_break_buffer_mic');
+    els.micThresholdAutoLevel = $('threshold_auto_level_mic');
+    els.micThresholdAutoSilero = $('threshold_auto_silero_mic');
+    els.micThresholdSileroMin = $('threshold_silero_mic_min');
+    els.micThresholdDb = $('threshold_db_mic');
+    els.speakerSampleRate = $('sample_rate_speaker');
+    els.speakerChunkSize = $('chunk_size_speaker');
+    els.speakerChannels = $('channels_speaker');
+    els.speakerAutoSampleRate = $('auto_sample_rate_speaker');
+    els.speakerAutoChannels = $('auto_channels_speaker');
+    els.speakerMinInputLength = $('min_input_length_speaker');
+    els.speakerMaxBuffer = $('max_buffer_speaker');
+    els.speakerMaxSentences = $('max_sentences_speaker');
+    els.speakerNoLimit = $('speaker_no_limit');
+    els.speakerThresholdEnable = $('threshold_enable_speaker');
+    els.speakerThresholdAuto = $('threshold_auto_speaker');
+    els.speakerAutoBreakBuffer = $('auto_break_buffer_speaker');
+    els.speakerThresholdAutoLevel = $('threshold_auto_level_speaker');
+    els.speakerThresholdAutoSilero = $('threshold_auto_silero_speaker');
+    els.speakerThresholdSileroMin = $('threshold_silero_speaker_min');
+    els.speakerThresholdDb = $('threshold_db_speaker');
+    els.modelImport = $('model_f_import');
+    els.modelImportEngineBar = $('model-import-engine-bar');
+    els.btnLoadModel = $('btn-load-model');
+    els.engineImport = $('tl_engine_f_import');
+    els.sourceImport = $('source_lang_f_import');
+    els.targetImport = $('target_lang_f_import');
+    els.transcribeImport = $('transcribe_f_import');
+    els.translateImport = $('translate_f_import');
+    els.importModelPill = $('import-model-pill');
+    els.importEnginePill = $('import-engine-pill');
+    els.importLangPill = $('import-lang-pill');
+    els.modelManagerEngineBar = $('model-manager-engine-bar');
+    els.modelManagerDirPill = $('model-manager-dir-pill');
+    els.modelManagerEnginePill = $('model-manager-engine-pill');
+    els.modelManagerDownloadPill = $('model-manager-download-pill');
+    els.fileExportDirPill = $('file-export-dir-pill');
+    els.modelManagerHint = $('model-manager-hint');
+    els.modelStatusCard = $('model-status-card');
+    els.taskBadge = $('task-badge');
+    els.taskTitle = $('task-title');
+    els.taskMessage = $('task-message');
+    els.taskProgressText = $('task-progress-text');
+    els.taskProgressFill = $('task-progress-fill');
+    els.globalModelState = $('global-model-state');
+    els.globalModelMeta = $('global-model-meta');
+    els.globalTaskState = $('global-task-state');
+    els.globalTaskMessage = $('global-task-message');
+    els.globalTaskProgressText = $('global-task-progress-text');
+    els.globalTaskProgressFill = $('global-task-progress-fill');
+    els.globalTaskProgressWrap = $('global-task-progress-wrap');
+    els.logOutput = $('log-output');
+    els.stateCard = $('state-card');
+    els.aboutCard = $('about-card');
+    els.mainTranscribedOutput = $('main-transcribed-output');
+    els.mainTranslatedOutput = $('main-translated-output');
+    els.detachedModeTitlebar = $('detached_mode_titlebar');
+    els.detachedModeTcBtn = $('detached_mode_tc_btn');
+    els.detachedModeTlBtn = $('detached_mode_tl_btn');
+    els.detachedFont = $('detached_font');
+    els.detachedFontSize = $('detached_font_size');
+    els.detachedFontColor = $('detached_font_color');
+    els.detachedBgColor = $('detached_bg_color');
+    els.detachedOpacity = $('detached_opacity');
+    els.detachedAlwaysOnTop = $('detached_always_on_top');
+    els.detachedNoTitleBar = $('detached_no_title_bar');
+    els.detachedClickThrough = $('detached_click_through');
+    els.btnRecordingToggle = $('btn-recording-toggle');
+    els.workspaceHub = $('workspace-hub');
+    els.settingsShell = $('settings-shell');
+    els.taskCard = $('task-card');
+    els.autoRefresh = $('auto-refresh-toggle');
+    els.globalStatusbar = $('global-statusbar');
+    els.pageScrollIndicator = $('page-scroll-indicator');
+    els.pageScrollThumb = $('page-scroll-thumb');
+    els.dashboardContent = document.querySelector('.dashboard-content');
 
-  bindEvents();
-  bindUiEvents();
-  bindPageScrollIndicator();
-  switchSidebarMenu('realtime');
-  const bridgeReady = await waitForBridge();
-  if (!bridgeReady) {
-    throw new Error('连接 Python 桥接失败（pywebview API 未就绪）');
+    bindEvents();
+    bindUiEvents();
+    bindPageScrollIndicator();
+    switchSidebarMenu('realtime');
+
+    const bridgeReady = await waitForBridge();
+    if (!bridgeReady) {
+      throw new Error('连接 Python 桥接失败（pywebview API 未就绪）');
+    }
+    await startupMark('bridge_ready');
+
+    await startupMark('before_refresh_state');
+    await refreshState();
+    await startupMark('after_refresh_state');
+
+    await startupMark('before_show_main_window');
+    try {
+      await apiCall('show_main_window');
+    } catch (error) {
+      console.debug('Show main window skipped', error);
+    }
+    await startupMark('after_show_main_window');
+
+    await startupMark('before_set_detached_mode');
+    await setDetachedMode(state.detachedModeSelected, false);
+    await startupMark('after_set_detached_mode');
+
+    updatePageScrollIndicator();
+    startAutoRefresh();
+    await startupMark('init_complete');
+    state.initialized = true;
+  })();
+
+  try {
+    await state.initInFlight;
+  } finally {
+    state.initInFlight = null;
   }
-
-  await refreshState();
-  await setDetachedMode(state.detachedModeSelected, false);
-  updatePageScrollIndicator();
-  startAutoRefresh();
-  state.initialized = true;
 }
 
 function initWithErrorRender() {
