@@ -46,7 +46,7 @@ default_setting: SettingDict = {
     "supress_device_warning": False,
     "supress_record_warning": False,
     "bypass_no_internet": False,
-    "mw_size": "1140x680",
+    "mw_size": "980x620",
     "sw_size": "1100x630",
     "dir_log": "auto",
     "dir_model": "auto",

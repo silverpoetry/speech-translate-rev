@@ -50,6 +50,11 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      cursor: grab;
+    }
+
+    .window-wrapper:active {
+      cursor: grabbing;
     }
 
     .content {
@@ -118,6 +123,15 @@
       windowMode: 'tl',
     };
 
+    const dragState = {
+      active: false,
+      pointerId: null,
+      startPointerX: 0,
+      startPointerY: 0,
+      startWindowX: 0,
+      startWindowY: 0,
+    };
+
     // Get parameters from URL
     const params = new URLSearchParams(window.location.search);
     state.windowMode = params.get('mode') || 'tc';
@@ -139,6 +153,96 @@
         applyConfig(config);
       }
     });
+
+    function getWindowPosition() {
+      return {
+        x: Number(window.screenX ?? window.screenLeft ?? 0),
+        y: Number(window.screenY ?? window.screenTop ?? 0),
+      };
+    }
+
+    function isInteractiveTarget(target) {
+      if (!(target instanceof Element)) {
+        return false;
+      }
+
+      return Boolean(target.closest('button, input, textarea, select, a, [data-no-drag="true"]'));
+    }
+
+    async function moveNativeWindow(x, y) {
+      const api = window.pywebview && window.pywebview.api;
+      if (!api || typeof api.move_detached_window !== 'function') {
+        return;
+      }
+
+      try {
+        await api.move_detached_window(state.windowMode, x, y);
+      } catch (_error) {
+        // Ignore drag transport errors so the window remains usable.
+      }
+    }
+
+    function startWindowDrag(event) {
+      if (event.button !== 0 || isInteractiveTarget(event.target)) {
+        return;
+      }
+
+      event.preventDefault();
+      dragState.active = true;
+      dragState.pointerId = event.pointerId;
+      dragState.startPointerX = event.screenX;
+      dragState.startPointerY = event.screenY;
+
+      const windowPos = getWindowPosition();
+      dragState.startWindowX = windowPos.x;
+      dragState.startWindowY = windowPos.y;
+
+      if (event.currentTarget && typeof event.currentTarget.setPointerCapture === 'function') {
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+        } catch (_error) {
+          // Pointer capture is optional.
+        }
+      }
+
+      document.body.classList.add('dragging-window');
+    }
+
+    function updateWindowDrag(event) {
+      if (!dragState.active || event.pointerId !== dragState.pointerId) {
+        return;
+      }
+
+      event.preventDefault();
+      const deltaX = event.screenX - dragState.startPointerX;
+      const deltaY = event.screenY - dragState.startPointerY;
+      void moveNativeWindow(Math.round(dragState.startWindowX + deltaX), Math.round(dragState.startWindowY + deltaY));
+    }
+
+    function stopWindowDrag(event) {
+      if (!dragState.active || event.pointerId !== dragState.pointerId) {
+        return;
+      }
+
+      dragState.active = false;
+      dragState.pointerId = null;
+      document.body.classList.remove('dragging-window');
+    }
+
+    function bindDragHandlers() {
+      const wrapper = document.querySelector('.window-wrapper');
+      if (!wrapper) {
+        return;
+      }
+
+      wrapper.addEventListener('pointerdown', startWindowDrag);
+      wrapper.addEventListener('pointermove', updateWindowDrag);
+      wrapper.addEventListener('pointerup', stopWindowDrag);
+      wrapper.addEventListener('pointercancel', stopWindowDrag);
+      wrapper.addEventListener('lostpointercapture', stopWindowDrag);
+    }
+
+    bindDragHandlers();
 
     function escapeHtml(value) {
       return String(value)
@@ -222,6 +326,11 @@
       const content = document.getElementById('window-content');
       const root = document.documentElement;
 
+      const defaultBackground = 'linear-gradient(145deg, var(--bg-primary), var(--bg-secondary))';
+      const defaultBorderColor = 'var(--border-color)';
+      const defaultShadow =
+        '0 0 32px rgba(108, 212, 255, 0.2), inset 0 0 12px rgba(108, 212, 255, 0.08), 0 8px 32px rgba(0, 0, 0, 0.4)';
+
       function lightenColor(color, ratio = 0.65) {
         const value = String(color || '').trim();
         if (!value) {
@@ -240,6 +349,20 @@
         const mix = (channel) => Math.round(channel + (255 - channel) * ratio);
         const toHex = (channel) => mix(channel).toString(16).padStart(2, '0');
         return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+      }
+
+      function isTransparentColor(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (!normalized) {
+          return false;
+        }
+        if (normalized === 'transparent') {
+          return true;
+        }
+        if (normalized === '#0000' || normalized === '#00000000') {
+          return true;
+        }
+        return /^rgba\([^)]*,\s*0(?:\.0+)?\s*\)$/.test(normalized);
       }
       
       // Apply font
@@ -269,7 +392,19 @@
       
       // Apply background color
       if (config.bg_color) {
-        wrapper.style.background = config.bg_color;
+        if (isTransparentColor(config.bg_color)) {
+          wrapper.style.background = 'transparent';
+          wrapper.style.borderColor = 'transparent';
+          wrapper.style.boxShadow = 'none';
+        } else {
+          wrapper.style.background = config.bg_color;
+          wrapper.style.borderColor = defaultBorderColor;
+          wrapper.style.boxShadow = defaultShadow;
+        }
+      } else {
+        wrapper.style.background = defaultBackground;
+        wrapper.style.borderColor = defaultBorderColor;
+        wrapper.style.boxShadow = defaultShadow;
       }
 
       // Apply opacity

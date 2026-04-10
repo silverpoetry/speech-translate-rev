@@ -984,6 +984,30 @@ button.btn-icon:hover[data-tooltip]::before {
   gap: 16px;
 }
 
+.file-export-block {
+  display: grid;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.file-export-grid {
+  grid-template-columns: minmax(260px, 1fr);
+}
+
+.file-export-formats {
+  gap: 10px 12px;
+  flex-wrap: wrap;
+}
+
+.file-export-formats > span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
 .record-card {
   padding: 18px;
   display: grid;
@@ -1392,6 +1416,20 @@ button.btn-icon:hover[data-tooltip]::before {
 .model-engine-tab.is-active {
   background: #dbeafe;
   color: #1e40af;
+}
+
+.detached-mode-group {
+  align-content: start;
+}
+
+.detached-mode-titlebar {
+  width: 100%;
+  max-width: 220px;
+}
+
+.detached-mode-titlebar .model-engine-tab {
+  flex: 1 1 0;
+  text-align: center;
 }
 
 label {

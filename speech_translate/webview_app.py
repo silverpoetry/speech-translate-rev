@@ -99,6 +99,23 @@ def add_ffmpeg_to_path(weak: bool = False) -> bool:
 class DetachedWindowManager:
     """Manages detached subtitle windows using pywebview."""
 
+    _GWL_STYLE = -16
+    _GWL_EXSTYLE = -20
+    _WS_CAPTION = 0x00C00000
+    _WS_THICKFRAME = 0x00040000
+    _WS_MINIMIZEBOX = 0x00020000
+    _WS_MAXIMIZEBOX = 0x00010000
+    _WS_SYSMENU = 0x00080000
+    _WS_BORDER = 0x00800000
+    _WS_DLGFRAME = 0x00400000
+    _WS_EX_LAYERED = 0x00080000
+    _SWP_NOSIZE = 0x0001
+    _SWP_NOMOVE = 0x0002
+    _SWP_NOZORDER = 0x0004
+    _SWP_FRAMECHANGED = 0x0020
+    _SWP_SHOWWINDOW = 0x0040
+    _LWA_ALPHA = 0x00000002
+
     def __init__(self, bridge=None):
         self.bridge = bridge
         self.windows = {}  # {mode: window_object}
@@ -107,8 +124,106 @@ class DetachedWindowManager:
         self._window_loaded = {}  # {mode: bool}
         self._last_content_payload = {}  # {mode: html_content}
         self._last_config_payload = {}  # {mode: config_json}
+        self._window_style_cache = {}  # {mode: (style, ex_style)}
         self.recording_window = None
         self.pending_recording_payload = None
+
+    def _get_window_hwnd(self, mode: str) -> Optional[int]:
+        window = self.windows.get(mode)
+        if window is None:
+            return None
+
+        native_window = getattr(window, "native", None)
+        if native_window is None:
+            return None
+
+        try:
+            handle = getattr(native_window, "Handle", None)
+            if handle is not None:
+                return int(handle.ToInt32())
+        except Exception:
+            pass
+
+        try:
+            return int(getattr(native_window, "handle"))
+        except Exception:
+            return None
+
+    def _cache_window_style(self, mode: str, hwnd: int) -> None:
+        if mode in self._window_style_cache:
+            return
+
+        try:
+            style = int(ctypes.windll.user32.GetWindowLongW(hwnd, self._GWL_STYLE))
+            ex_style = int(ctypes.windll.user32.GetWindowLongW(hwnd, self._GWL_EXSTYLE))
+            self._window_style_cache[mode] = (style, ex_style)
+        except Exception:
+            pass
+
+    def _apply_native_window_settings(self, mode: str, config: Optional[Dict[str, Any]] = None) -> None:
+        if system() != "Windows":
+            return
+
+        hwnd = self._get_window_hwnd(mode)
+        if hwnd is None:
+            return
+
+        self._cache_window_style(mode, hwnd)
+        original = self._window_style_cache.get(mode)
+        if original is None:
+            return
+
+        window = self.windows.get(mode)
+        if window is None:
+            return
+
+        cfg = config or self.pending_configs.get(mode) or {}
+        no_title_bar = bool(cfg.get("no_title_bar", 0))
+        opacity_raw = cfg.get("opacity", 1.0)
+        try:
+            opacity = max(0.1, min(1.0, float(opacity_raw)))
+        except Exception:
+            opacity = 1.0
+
+        try:
+            style, ex_style = original
+            style = int(style)
+            ex_style = int(ex_style)
+
+            if no_title_bar:
+                style &= ~(
+                    self._WS_CAPTION
+                    | self._WS_THICKFRAME
+                    | self._WS_MINIMIZEBOX
+                    | self._WS_MAXIMIZEBOX
+                    | self._WS_SYSMENU
+                    | self._WS_BORDER
+                    | self._WS_DLGFRAME
+                )
+            if opacity < 0.999:
+                ex_style |= self._WS_EX_LAYERED
+            else:
+                ex_style &= ~self._WS_EX_LAYERED
+
+            ctypes.windll.user32.SetWindowLongW(hwnd, self._GWL_STYLE, style)
+            ctypes.windll.user32.SetWindowLongW(hwnd, self._GWL_EXSTYLE, ex_style)
+
+            if opacity < 0.999:
+                ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, 0, int(round(opacity * 255)), self._LWA_ALPHA)
+            else:
+                ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, 0, 255, self._LWA_ALPHA)
+
+            ctypes.windll.user32.SetWindowPos(
+                hwnd,
+                None,
+                0,
+                0,
+                0,
+                0,
+                self._SWP_NOMOVE | self._SWP_NOSIZE | self._SWP_NOZORDER | self._SWP_FRAMECHANGED | self._SWP_SHOWWINDOW,
+            )
+        except Exception as exc:
+            logger.error(f"Failed to apply detached window settings for {mode}: {exc}")
 
     def _flush_pending(self, mode: str) -> None:
         if not self._window_loaded.get(mode):
@@ -168,21 +283,52 @@ class DetachedWindowManager:
         window = self.windows.get(mode)
         if window is None:
             return
+
+        native_window = getattr(window, "native", None)
+        if native_window is None:
+            return
+
         try:
-            width = int(getattr(window, "width"))
-            height = int(getattr(window, "height"))
+            client_size = getattr(native_window, "ClientSize", None)
+            if client_size is None:
+                return
+
+            raw_width = int(getattr(client_size, "Width"))
+            raw_height = int(getattr(client_size, "Height"))
+
+            scale_factor = float(getattr(native_window, "scale_factor", 1.0) or 1.0)
+            if scale_factor <= 0:
+                scale_factor = 1.0
+
+            width = int(round(raw_width / scale_factor))
+            height = int(round(raw_height / scale_factor))
         except Exception:
             return
 
+        current_outer_w = None
+        current_outer_h = None
+        try:
+            current_outer_w = int(getattr(window, "width"))
+            current_outer_h = int(getattr(window, "height"))
+        except Exception:
+            pass
+
         if width >= 200 and height >= 80:
             sj.save_key(f"ex_{mode}_geometry", f"{width}x{height}")
+            logger.info(
+                f"[DetachedGeometry][save] mode={mode} "
+                f"saved_logical={width}x{height} raw_client={raw_width}x{raw_height} "
+                f"scale_factor={scale_factor:.3f} current_outer={current_outer_w}x{current_outer_h}"
+            )
+
+    def _on_window_closed(self, mode: str) -> None:
+        self._persist_window_size(mode)
+        self._drop_window_ref(mode)
 
     def _attach_window_events(self, mode: str, window) -> None:
         try:
-            if hasattr(window, "events") and hasattr(window.events, "resized"):
-                window.events.resized += lambda *_: self._persist_window_size(mode)
             if hasattr(window, "events") and hasattr(window.events, "closed"):
-                window.events.closed += lambda *_: (self._persist_window_size(mode), self._drop_window_ref(mode))
+                window.events.closed += lambda *_: self._on_window_closed(mode)
             if hasattr(window, "events") and hasattr(window.events, "loaded"):
                 window.events.loaded += lambda *_: self._on_window_loaded(mode)
         except Exception:
@@ -217,14 +363,21 @@ class DetachedWindowManager:
             if width is None or height is None:
                 width, height = _parse_window_size(sj.cache.get(f"ex_{mode}_geometry", "900x240"), 900, 240)
 
+            logger.info(
+                f"[DetachedGeometry][open-created] mode={mode} "
+                f"requested={width}x{height} cache={sj.cache.get(f'ex_{mode}_geometry', '900x240')}"
+            )
+
             window = webview.create_window(
                 f"Speech Translate - {'Transcribed' if mode == 'tc' else 'Translated'}",
                 f"{html_path}?mode={mode}",
+                js_api=DetachedWindowApi(self),
                 width=width,
                 height=height,
                 x=x,
                 y=y,
                 background_color="#060b14",
+                transparent=True,
                 on_top=always_on_top,
             )
 
@@ -239,6 +392,7 @@ class DetachedWindowManager:
 
             # Enforce topmost immediately in case runtime backend ignores create args.
             self._apply_topmost(mode, focus_nudge=False)
+            self._apply_native_window_settings(mode)
 
         except Exception as e:
             logger.error(f"Failed to create detached window: {e}")
@@ -247,6 +401,38 @@ class DetachedWindowManager:
 
     def _on_window_loaded(self, mode: str) -> None:
         self._window_loaded[mode] = True
+
+        window = self.windows.get(mode)
+        if window is not None:
+            native_window = getattr(window, "native", None)
+            outer_w = None
+            outer_h = None
+            client_w = None
+            client_h = None
+            try:
+                outer_w = int(getattr(window, "width"))
+                outer_h = int(getattr(window, "height"))
+            except Exception:
+                pass
+            try:
+                client_size = getattr(native_window, "ClientSize", None)
+                if client_size is not None:
+                    client_w = int(getattr(client_size, "Width"))
+                    client_h = int(getattr(client_size, "Height"))
+            except Exception:
+                pass
+
+            scale_factor = None
+            try:
+                scale_factor = float(getattr(native_window, "scale_factor", 1.0) or 1.0)
+            except Exception:
+                pass
+
+            logger.info(
+                f"[DetachedGeometry][open-loaded] mode={mode} "
+                f"outer={outer_w}x{outer_h} client={client_w}x{client_h} scale_factor={scale_factor}"
+            )
+
         def _flush_async():
             try:
                 sleep(0.05)
@@ -282,9 +468,7 @@ class DetachedWindowManager:
         """Close detached window."""
         if mode in self.windows:
             try:
-                self._persist_window_size(mode)
                 self.windows[mode].destroy()
-                self._drop_window_ref(mode)
                 logger.info(f"Closed detached window: {mode}")
             except Exception as e:
                 logger.error(f"Failed to close window: {e}")
@@ -309,6 +493,7 @@ class DetachedWindowManager:
     def update_window_config(self, mode: str, config: Dict[str, Any]):
         """Send configuration to detached window."""
         self.pending_configs[mode] = config
+        self._apply_native_window_settings(mode, config)
         if mode in self.windows and self._window_loaded.get(mode):
             try:
                 import json
@@ -381,6 +566,37 @@ class DetachedWindowManager:
     def update_recording_status(self, payload: Dict[str, Any]):
         """Push recording status payload to recording popup window."""
         self.pending_recording_payload = payload
+
+
+class DetachedWindowApi:
+    """Minimal JS API for detached subtitle windows."""
+
+    __slots__ = ("_manager",)
+
+    def __init__(self, manager: DetachedWindowManager):
+        self._manager = manager
+
+    def move_detached_window(self, mode: str, x: Any, y: Any) -> Dict[str, Any]:
+        mode = str(mode).lower()
+        if mode not in {"tc", "tl"}:
+            mode = "tl"
+
+        window = self._manager.windows.get(mode)
+        if window is None or not hasattr(window, "move"):
+            return {"status": "missing", "mode": mode}
+
+        try:
+            target_x = int(round(float(x)))
+            target_y = int(round(float(y)))
+        except Exception:
+            return {"status": "invalid", "mode": mode}
+
+        try:
+            window.move(target_x, target_y)
+            return {"status": "moved", "mode": mode, "x": target_x, "y": target_y}
+        except Exception as exc:
+            logger.error(f"Failed to move detached window {mode}: {exc}")
+            return {"status": "error", "mode": mode, "error": str(exc)}
 
 
 class RecordingWindowApi:
@@ -603,11 +819,39 @@ class WebBridge(WebTaskBridge):
         window = self.get_window()
         if window is None:
             return
-        try:
-            width = int(getattr(window, "width"))
-            height = int(getattr(window, "height"))
-        except Exception:
+
+        native_window = getattr(window, "native", None)
+        if native_window is None:
             return
+
+        width = None
+        height = None
+        scale_factor = 1.0
+
+        try:
+            scale_factor = float(getattr(native_window, "scale_factor", 1.0) or 1.0)
+            if scale_factor <= 0:
+                scale_factor = 1.0
+        except Exception:
+            scale_factor = 1.0
+
+        try:
+            client_size = getattr(native_window, "ClientSize", None)
+            if client_size is not None:
+                raw_width = int(getattr(client_size, "Width"))
+                raw_height = int(getattr(client_size, "Height"))
+                width = int(round(raw_width / scale_factor))
+                height = int(round(raw_height / scale_factor))
+        except Exception:
+            width = None
+            height = None
+
+        if width is None or height is None:
+            try:
+                width = int(getattr(window, "width"))
+                height = int(getattr(window, "height"))
+            except Exception:
+                return
 
         if width >= 600 and height >= 300:
             sj.save_key("mw_size", f"{width}x{height}")
@@ -1550,7 +1794,12 @@ class WebBridge(WebTaskBridge):
         if mode not in {"tc", "tl"}:
             mode = "tl"
         
-        width, height = _parse_window_size(sj.cache.get(f"ex_{mode}_geometry", "900x240"), 900, 240)
+        raw_geometry = sj.cache.get(f"ex_{mode}_geometry", "900x240")
+        width, height = _parse_window_size(raw_geometry, 900, 240)
+        logger.info(
+            f"[DetachedGeometry][open-request] mode={mode} "
+            f"cache={raw_geometry} parsed={width}x{height}"
+        )
         self.detached_window_manager.create_window(mode, x, y, width, height)
 
         # Always apply current detached config when window is opened from any entry point.
@@ -1566,6 +1815,18 @@ class WebBridge(WebTaskBridge):
             self.update_detached_content(mode, str(html_content))
 
         return {"status": "created", "mode": mode}
+
+    def toggle_detached_window(self, mode: str = "tc", x: int = 100, y: int = 100) -> Dict[str, Any]:
+        """Open a detached window, or close it if it is already open."""
+        mode = str(mode).lower()
+        if mode not in {"tc", "tl"}:
+            mode = "tl"
+
+        if mode in self.detached_window_manager.windows:
+            self.detached_window_manager.close_window(mode)
+            return {"status": "closed", "mode": mode}
+
+        return self.create_detached_window(mode, x, y)
 
     def show_detached_window(self, mode: str = "tc") -> Dict[str, Any]:
         """Show a detached window."""
@@ -1875,7 +2136,13 @@ def main(with_log_init: bool = True):
         tray = AppTray(bridge)
         bridge.bind_tray(tray)
 
-    main_width, main_height = _parse_window_size(sj.cache.get("mw_size", "1140x680"), 1140, 680)
+    raw_main_size = str(sj.cache.get("mw_size", "980x620") or "980x620").strip()
+    if raw_main_size == "1140x680":
+        # One-time migration from legacy default to the new smaller default.
+        sj.save_key("mw_size", "980x620")
+        raw_main_size = "980x620"
+
+    main_width, main_height = _parse_window_size(raw_main_size, 980, 620)
 
     window = webview.create_window(
         APP_NAME,

@@ -12,6 +12,7 @@ const state = {
   modelPollTimer: null,
   modelCheckedOnce: false,
   seleniumSaveInFlight: false,
+  detachedModeSelected: 'tc',
 };
 
 const els = {};
@@ -761,7 +762,7 @@ async function refreshState() {
   } else {
     await refreshModelManagerState(getSelectedModelManagerEngine());
   }
-  await loadDetachedConfig('tc');
+  await loadDetachedConfig(getSelectedDetachedMode());
 }
 
 async function refreshTaskState() {
@@ -910,6 +911,18 @@ async function saveImportSettings() {
   const backend = getSelectedImportModelEngine();
   await apiCall('set_setting', 'use_faster_whisper', backend === 'faster-whisper');
 
+  const exportTo = [];
+  if (els.exportTxt && els.exportTxt.checked) exportTo.push('txt');
+  if (els.exportSrt && els.exportSrt.checked) exportTo.push('srt');
+  if (els.exportVtt && els.exportVtt.checked) exportTo.push('vtt');
+  if (els.exportAss && els.exportAss.checked) exportTo.push('ass');
+  if (els.exportJson && els.exportJson.checked) exportTo.push('json');
+  if (els.exportCsv && els.exportCsv.checked) exportTo.push('csv');
+  if (els.exportMp4 && els.exportMp4.checked) exportTo.push('mp4');
+
+  await apiCall('set_setting', 'dir_export', els.dirExport ? els.dirExport.value : 'auto');
+  await apiCall('set_setting', 'export_to', exportTo);
+
   const updates = [
     ['model_f_import', els.modelImport.value],
     ['tl_engine_f_import', els.engineImport.value],
@@ -999,6 +1012,30 @@ async function saveRecordSettings() {
   await refreshState();
 }
 
+function normalizeDetachedMode(mode) {
+  return mode === 'tl' ? 'tl' : 'tc';
+}
+
+function getSelectedDetachedMode() {
+  return normalizeDetachedMode(state.detachedModeSelected);
+}
+
+async function setDetachedMode(mode, shouldLoad = true) {
+  const normalizedMode = normalizeDetachedMode(mode);
+  state.detachedModeSelected = normalizedMode;
+
+  if (els.detachedModeTcBtn) {
+    els.detachedModeTcBtn.classList.toggle('is-active', normalizedMode === 'tc');
+  }
+  if (els.detachedModeTlBtn) {
+    els.detachedModeTlBtn.classList.toggle('is-active', normalizedMode === 'tl');
+  }
+
+  if (shouldLoad) {
+    await loadDetachedConfig(normalizedMode);
+  }
+}
+
 async function loadDetachedConfig(mode) {
   const normalizedMode = mode === 'tc' ? 'tc' : 'tl';
   const config = await apiCall('get_detached_config', normalizedMode);
@@ -1015,7 +1052,7 @@ async function loadDetachedConfig(mode) {
 }
 
 async function saveDetachedSettings() {
-  const mode = (els.detachedMode && els.detachedMode.value === 'tc') ? 'tc' : 'tl';
+  const mode = getSelectedDetachedMode();
   const updates = [
     ['font', els.detachedFont ? els.detachedFont.value : 'Arial'],
     ['font_size', Number(els.detachedFontSize ? els.detachedFontSize.value : 13)],
@@ -1046,10 +1083,16 @@ async function saveDetachedSettings() {
 }
 
 async function createDetachedWindow(modeOverride = null) {
-  const mode = modeOverride || (els.detachedMode && els.detachedMode.value === 'tc' ? 'tc' : 'tl');
+  const mode = normalizeDetachedMode(modeOverride || getSelectedDetachedMode());
   try {
+    await setDetachedMode(mode, false);
     const modeLabel = mode === 'tc' ? '转写' : '翻译';
-    const result = await apiCall('create_detached_window', mode, 100, 100);
+    const result = await apiCall('toggle_detached_window', mode, 100, 100);
+    if (result && result.status === 'closed') {
+      console.log(`已关闭${modeLabel}独立窗口`);
+      return;
+    }
+
     await apiCall('update_detached_config', mode);
     console.log(`Created ${modeLabel} detached window:`, result);
     console.log(`已打开${modeLabel}独立窗口`);
@@ -1302,9 +1345,15 @@ function bindEvents() {
     }
   });
 
-  if (els.detachedMode) {
-    els.detachedMode.addEventListener('change', async () => {
-      await loadDetachedConfig(els.detachedMode.value || 'tl');
+  if (els.detachedModeTcBtn) {
+    els.detachedModeTcBtn.addEventListener('click', async () => {
+      await setDetachedMode('tc', true);
+    });
+  }
+
+  if (els.detachedModeTlBtn) {
+    els.detachedModeTlBtn.addEventListener('click', async () => {
+      await setDetachedMode('tl', true);
     });
   }
 
@@ -1481,7 +1530,9 @@ async function init() {
   els.aboutCard = $('about-card');
   els.mainTranscribedOutput = $('main-transcribed-output');
   els.mainTranslatedOutput = $('main-translated-output');
-  els.detachedMode = $('detached_mode');
+  els.detachedModeTitlebar = $('detached_mode_titlebar');
+  els.detachedModeTcBtn = $('detached_mode_tc_btn');
+  els.detachedModeTlBtn = $('detached_mode_tl_btn');
   els.detachedFont = $('detached_font');
   els.detachedFontSize = $('detached_font_size');
   els.detachedFontColor = $('detached_font_color');
@@ -1510,6 +1561,7 @@ async function init() {
   }
 
   await refreshState();
+  await setDetachedMode(state.detachedModeSelected, false);
   updatePageScrollIndicator();
   startAutoRefresh();
   state.initialized = true;
