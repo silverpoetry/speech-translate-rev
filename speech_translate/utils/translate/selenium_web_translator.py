@@ -542,20 +542,22 @@ class SeleniumWebTranslator:
     def _set_payload_text(self, lines: Iterable[str]) -> str:
         driver = self._ensure_driver()
         payload_lines = [str(x) for x in lines]
-        payload_html = "<br/>".join(
-            f'<span data-st-line="{idx}">{escape(line)}</span>' for idx, line in enumerate(payload_lines)
+        payload_html = "".join(
+            f'<p data-st-line="{idx}" style="margin:0;">{escape(line)}</p>'
+            for idx, line in enumerate(payload_lines)
         )
-        payload_text = "\n".join(payload_lines)
-        has_payload = driver.execute_script(
+        payload_text = driver.execute_script(
             """
             const payload = document.getElementById('payload');
-            if (!payload) return false;
+            if (!payload) return null;
             payload.innerHTML = arguments[0];
-            return true;
+            return String(payload.innerText || payload.textContent || '')
+                .replaceAll(String.fromCharCode(13), '')
+                .trim();
             """,
             payload_html,
         )
-        if not has_payload:
+        if payload_text is None:
             try:
                 current_url = str(driver.current_url)
             except Exception:
@@ -564,7 +566,7 @@ class SeleniumWebTranslator:
                 "Template payload root not found before text injection; "
                 f"current_url={current_url or 'unknown'}"
             )
-        return payload_text
+        return self._normalize_page_text(str(payload_text))
 
     def _detect_source_lang_hint(self, lines: Iterable[str]) -> str:
         sample = "\n".join(str(x) for x in lines)
@@ -591,7 +593,7 @@ class SeleniumWebTranslator:
             """
             const payload = document.getElementById('payload');
             if (!payload) return [];
-            const nodes = Array.from(payload.querySelectorAll('span[data-st-line]'));
+            const nodes = Array.from(payload.querySelectorAll('p[data-st-line]'));
             return nodes.map((node) => String(node.innerText || node.textContent || '').replaceAll(String.fromCharCode(13), '').trim());
             """
         )

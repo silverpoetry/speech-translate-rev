@@ -5,21 +5,25 @@ import re
 from shlex import quote
 from threading import Lock, Thread
 from tkinter import Text, ttk
-from typing import TYPE_CHECKING, List, Literal, Optional, Union
+from typing import Any, TYPE_CHECKING, List, Literal, Optional, Union, cast
 
 from PIL import ImageTk
-try:
-    from tkhtmlview import HTMLText
-except Exception:
-    class HTMLText(Text):
-        """Fallback widget when tkhtmlview is unavailable."""
 
-        def set_html(self, html_content: str):
-            content = str(html_content or "")
-            content = content.replace("<br />", "\n").replace("<br/>", "\n").replace("<br>", "\n")
-            content = re.sub(r"<[^>]+>", "", content)
-            self.delete("1.0", "end")
-            self.insert("1.0", content)
+try:
+    from tkhtmlview import HTMLText as _HTMLTextBase
+except Exception:
+    _HTMLTextBase = Text
+
+
+class HTMLText(_HTMLTextBase):  # type: ignore[misc]
+    """HTML text widget with a Text fallback when tkhtmlview is unavailable."""
+
+    def set_html(self, html_content: str):
+        content = str(html_content or "")
+        content = content.replace("<br />", "\n").replace("<br/>", "\n").replace("<br>", "\n")
+        content = re.sub(r"<[^>]+>", "", content)
+        self.delete("1.0", "end")
+        self.insert("1.0", content)
 
 from speech_translate.utils.helper import generate_color, str_separator_to_html, wrap_result
 from speech_translate.utils.types import ToInsert
@@ -213,7 +217,7 @@ class BridgeClass:
         # if last, there will be a separator already so no need to add line break
         to_insert = ""
         for res in copied_res:
-            temp = res["text"] + "<br />" if res["is_last"] is False else res["text"]
+            temp = res["text"]
 
             if sj.cache.get(f"tb_{mode}_use_conf_color", False):
                 color = res["color"]
@@ -231,7 +235,7 @@ class BridgeClass:
                         {to_insert}
                     </div>"""
 
-        def update_it(widget: HTMLText, insert, pos):
+        def update_it(widget: Any, insert, pos):
             if sj.cache.get(f"tb_{mode}_auto_scroll"):
                 widget.set_html(insert)
                 widget.see("end")
@@ -270,14 +274,14 @@ class BridgeClass:
             sb = self.mw.sb_transcribed if "tc" in mode else self.mw.sb_translated
             insert.replace("replace-background-color:;", f'background-color: {self.mw.root.cget("bg")};')
             prev_pos = sb.get()[0]
-            self.mw.root.after(0, update_it, tb, insert, prev_pos)
+            self.mw.root.after(0, update_it, cast(Any, tb), insert, prev_pos)
         else:
             assert self.ex_tcw and self.ex_tlw is not None
             lbl = self.ex_tcw.lbl_text if "tc" in mode else self.ex_tlw.lbl_text
             sb = self.ex_tcw.hidden_sb_y if "tc" in mode else self.ex_tlw.hidden_sb_y
             insert.replace("replace-background-color:;", f'background-color: {sj.cache.get(f"tb_{mode}_bg_color")};')
             prev_pos = sb.get()[0]
-            lbl.after(0, update_it, lbl, insert, prev_pos)
+            lbl.after(0, update_it, cast(Any, lbl), insert, prev_pos)
 
     def map_result_lists(self, source_list, store_list: List[ToInsert], separator: str):
         """
@@ -300,6 +304,7 @@ class BridgeClass:
         total_len = 0
         low_color = sj.cache["gradient_low_conf"]
         high_color = sj.cache["gradient_high_conf"]
+
         for sentence in source_list:
             # if it's a string, confidence is None
             if isinstance(sentence, str):
@@ -346,10 +351,6 @@ class BridgeClass:
                             }
                         )
                         total_len += len(temp)
-
-                # add separator on the last group of words from the segment in the sentence
-                last_item = store_list[-1]
-                last_item["text"] += separator
 
             # no colorization based on confidence. just append the sentence (the full sentence)
             else:

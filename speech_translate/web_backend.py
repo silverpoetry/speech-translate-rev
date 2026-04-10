@@ -333,7 +333,9 @@ class WebTaskBridge:
 
     def _html_to_text(self, html: str) -> str:
         text = html.replace("<br />", "\n").replace("<br/>", "\n").replace("<br>", "\n")
+        text = text.replace("</span>", "\n")
         text = re.sub(r"<[^>]+>", "", text)
+        text = re.sub(r"\n{2,}", "\n", text)
         return text.strip()
 
     def update_live_html(self, target: str, html: str):
@@ -352,13 +354,20 @@ class WebTaskBridge:
             old = str(self.live_state.get(key_text, ""))
             combined = f"{old}{text}{separator}"
             self.live_state[key_text] = combined
-            escaped = (
-                combined.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\n", "<br />")
-            )
-            self.live_state[key_html] = f"<div>{escaped}</div>"
+            lines = [line for line in combined.splitlines() if line != ""]
+            if not lines:
+                lines = [""]
+
+            escaped_lines = []
+            for line in lines:
+                escaped_line = (
+                    line.replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                )
+                escaped_lines.append(f"<span class='live-line'>{escaped_line}</span>")
+
+            self.live_state[key_html] = "<div class='live-lines'>" + "<br />".join(escaped_lines) + "</div>"
         self._emit_ui_update(["live"])
 
     def clear_live(self, prefix: str = ""):
