@@ -433,11 +433,7 @@
     }
 
     window.addEventListener('load', () => {
-      // Give the detached window extra time to finish native initialization
-      // (transparent/no-title styles, compositor attach) before enabling content push.
-      setTimeout(() => {
-        void notifyBackendReady();
-      }, 80);
+      void notifyBackendReady();
     });
 
     // Kept for compatibility with browser-open workflows.

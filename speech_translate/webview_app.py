@@ -651,7 +651,7 @@ class DetachedWindowManager:
     def update_window_config(self, mode: str, config: Dict[str, Any]):
         """Send configuration to detached window."""
         self.pending_configs[mode] = config
-        if mode in self.windows and self._window_loaded.get(mode) and self._window_content_ready.get(mode):
+        if mode in self.windows and self._window_loaded.get(mode):
             self._apply_native_window_settings(mode, config)
             try:
                 import json
