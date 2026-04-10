@@ -1,7 +1,5 @@
 const state = {
   data: null,
-  autoRefresh: true,
-  logTimer: null,
   taskTimer: null,
   uiRefreshTimer: null,
   initialized: false,
@@ -137,12 +135,6 @@ function bindUiEvents() {
   state.uiEventsBound = true;
 }
 
-function renderPills(data) {
-  els.version.textContent = `${data.app_name} ${data.version}`;
-  els.os.textContent = `${data.os_name} ${data.os_release}`;
-  els.logfile.textContent = data.current_log;
-}
-
 function populateSelect(selectEl, options, selectedValue, keepMissingSelection = true) {
   const normalizedOptions = Array.isArray(options) ? options : [];
   const currentValue = selectedValue ?? '';
@@ -162,13 +154,8 @@ function populateSelect(selectEl, options, selectedValue, keepMissingSelection =
 
 function renderSettings(data) {
   const settings = data.settings || {};
-  els.theme.value = settings.theme ?? '';
-  els.logLevel.value = settings.log_level ?? data.log_level ?? 'DEBUG';
   if (els.dirExport) {
     els.dirExport.value = settings.dir_export ?? 'auto';
-  }
-  if (els.dirModel) {
-    els.dirModel.value = settings.dir_model ?? 'auto';
   }
   if (els.fileExportDirPill) {
     els.fileExportDirPill.textContent = `输出目录：${settings.dir_export ?? 'auto'}`;
@@ -190,8 +177,6 @@ function renderSettings(data) {
   if (els.seleniumAutoCloseOnTaskDone) {
     els.seleniumAutoCloseOnTaskDone.checked = Boolean(settings.selenium_auto_close_on_task_done ?? true);
   }
-  els.autoRefresh.textContent = `自动刷新：${settings.auto_refresh_log ? '开' : '关'}`;
-  state.autoRefresh = Boolean(settings.auto_refresh_log);
 }
 
 function renderMainControls(data) {
@@ -205,8 +190,6 @@ function renderMainControls(data) {
   populateSelect(els.targetLangMain, mainUi.target_options || [], mainUi.selected_target || '');
   populateSelect(els.translateEngineMain, mainUi.engine_options || [], mainUi.selected_engine || '');
 
-  els.autoScrollLog.checked = Boolean(mainUi.auto_scroll_log);
-  els.autoRefreshLog.checked = Boolean(mainUi.auto_refresh_log);
   if (els.transcribeMain) els.transcribeMain.checked = Boolean(mainUi.transcribe ?? true);
   if (els.translateMain) els.translateMain.checked = Boolean(mainUi.translate ?? true);
   els.mainInputPill.textContent = `输入：${mainUi.selected_input || '未知'}`;
@@ -278,57 +261,6 @@ function previewValue(value) {
     return escapeHtml(JSON.stringify(value, null, 2));
   }
   return escapeHtml(String(value));
-}
-
-function renderState(data) {
-  const settings = data.settings || {};
-  const keys = [
-    ['系统', `${data.os_name} ${data.os_release} (${data.os_version})`],
-    ['CPU', data.cpu],
-    ['主题', settings.theme],
-    ['日志级别', settings.log_level],
-    ['导出目录', settings.dir_export],
-    ['模型目录', settings.dir_model],
-    ['源语言', settings.source_lang_mw],
-    ['目标语言', settings.target_lang_mw],
-    ['输入', settings.input],
-    ['翻译引擎', settings.tl_engine_mw],
-    ['自动滚动日志', settings.auto_scroll_log],
-    ['自动刷新日志', settings.auto_refresh_log],
-  ];
-
-  els.stateCard.innerHTML = keys
-    .map(([label, value]) => `
-      <div class="state-row">
-        <div class="state-key">${escapeHtml(label)}</div>
-        <div class="state-value">${previewValue(value)}</div>
-      </div>
-    `)
-    .join('');
-}
-
-function renderAbout(data) {
-  const about = data.about || {};
-  const lines = [
-    ['应用', about.name],
-    ['版本', about.version],
-    ['系统', about.os],
-    ['CPU', about.cpu],
-    ['日志文件', about.log_file],
-    ['模型目录', about.model_dir],
-    ['导出目录', about.export_dir],
-  ];
-
-  if (els.aboutCard) {
-    els.aboutCard.innerHTML = lines
-      .map(([label, value]) => `
-        <div class="state-row">
-          <div class="state-key">${escapeHtml(label)}</div>
-          <div class="state-value">${previewValue(value)}</div>
-        </div>
-      `)
-      .join('');
-  }
 }
 
 function renderLiveOutputs(data) {
@@ -432,6 +364,10 @@ function renderRecordSettings(data) {
 }
 
 function renderTaskState(task) {
+  if (!els.taskCard) {
+    return;
+  }
+
   const progress = Math.max(0, Math.min(100, Number(task?.progress) || 0));
   const active = Boolean(task?.active);
   const title = task?.title || (active ? '执行中' : '空闲');
@@ -747,14 +683,6 @@ function startModelProgressPolling(engine) {
   }, 800);
 }
 
-function renderLog(content) {
-  els.logOutput.textContent = content || '';
-  const settings = state.data?.settings || {};
-  if (settings.auto_scroll_log !== false) {
-    els.logOutput.scrollTop = els.logOutput.scrollHeight;
-  }
-}
-
 async function refreshState(options = {}) {
   const deferHeavy = options.deferHeavy !== false;
   if (!state.bridgeReady) {
@@ -766,15 +694,11 @@ async function refreshState(options = {}) {
 
   const data = await apiCall('get_state');
   state.data = data;
-  renderPills(data);
   renderSettings(data);
   renderMainControls(data);
   renderRecordSettings(data);
   renderImportSettings(data);
   renderLiveOutputs(data);
-  renderState(data);
-  renderAbout(data);
-  renderLog(data.log_content);
   updatePageScrollIndicator();
 
   const runHeavyRefresh = async () => {
@@ -827,15 +751,6 @@ async function refreshTaskState() {
   updatePageScrollIndicator();
 }
 
-async function refreshLog() {
-  const data = await apiCall('refresh_log');
-  els.logOutput.textContent = data.content || '';
-  const settings = state.data?.settings || {};
-  if (settings.auto_scroll_log !== false) {
-    els.logOutput.scrollTop = els.logOutput.scrollHeight;
-  }
-}
-
 async function saveSettings(shouldRefresh = true) {
   const valueOf = (node, fallback = '') => (node && typeof node.value !== 'undefined' ? node.value : fallback);
   const checkedOf = (node, fallback = false) => (node && typeof node.checked !== 'undefined' ? Boolean(node.checked) : fallback);
@@ -855,10 +770,7 @@ async function saveSettings(shouldRefresh = true) {
   if (els.exportMp4 && checkedOf(els.exportMp4)) exportTo.push('mp4');
 
   const updates = [
-    ['theme', valueOf(els.theme, '')],
-    ['log_level', valueOf(els.logLevel, 'DEBUG')],
     ['dir_export', els.dirExport ? valueOf(els.dirExport, 'auto') : currentSetting('dir_export', 'auto')],
-    ['dir_model', els.dirModel ? valueOf(els.dirModel, 'auto') : currentSetting('dir_model', 'auto')],
     ['export_to', exportTo],
     ['input', valueOf(els.inputMode, 'mic')],
     ['source_lang_mw', valueOf(els.sourceLangMain, 'English')],
@@ -866,8 +778,6 @@ async function saveSettings(shouldRefresh = true) {
     ['tl_engine_mw', valueOf(els.translateEngineMain, 'Google Translate')],
     ['transcribe_mw', checkedOf(els.transcribeMain, true)],
     ['translate_mw', checkedOf(els.translateMain, true)],
-    ['auto_scroll_log', checkedOf(els.autoScrollLog, true)],
-    ['auto_refresh_log', checkedOf(els.autoRefreshLog, true)],
   ];
 
   for (const [key, value] of updates) {
@@ -880,7 +790,6 @@ async function saveSettings(shouldRefresh = true) {
 
   if (shouldRefresh) {
     await refreshState();
-    startAutoRefresh();
   }
 }
 
@@ -1131,8 +1040,8 @@ async function saveDetachedSettings(shouldRefresh = true) {
 
 const AUTO_SAVE_BUCKETS = {
   settings: new Set([
-    'theme', 'log_level', 'input_mode', 'source_lang_mw', 'target_lang_mw', 'tl_engine_mw',
-    'transcribe_mw', 'translate_mw', 'auto_scroll_log', 'auto_refresh_log'
+    'input_mode', 'source_lang_mw', 'target_lang_mw', 'tl_engine_mw',
+    'transcribe_mw', 'translate_mw'
   ]),
   import: new Set([
     'model_f_import', 'tl_engine_f_import', 'source_lang_f_import', 'target_lang_f_import',
@@ -1316,34 +1225,8 @@ async function pickDirectory(kind) {
   }
 }
 
-async function clearLog() {
-  const data = await apiCall('clear_log');
-  els.logOutput.textContent = data.content || '';
-}
-
-async function sendTestNotification() {
-  console.log('pywebview 桥接已连接');
-}
-
-function startAutoRefresh() {
-  stopAutoRefresh();
-  if (!state.autoRefresh) {
-    return;
-  }
-  state.logTimer = window.setInterval(() => {
-    refreshLog().catch((error) => console.error(error));
-  }, 2000);
-}
-
 function startTaskRefresh() {
   stopTaskRefresh();
-}
-
-function stopAutoRefresh() {
-  if (state.logTimer !== null) {
-    window.clearInterval(state.logTimer);
-    state.logTimer = null;
-  }
 }
 
 function stopTaskRefresh() {
@@ -1438,8 +1321,6 @@ function bindEvents() {
           throw new Error((importResult && importResult.message) || '文件导入未启动');
         }
         await refreshState();
-      } else if (action === 'clear-log') {
-        await clearLog();
       } else if (action === 'open-repo') {
         await apiCall('open_link', 'https://github.com/Dadangdut33/Speech-Translate');
       } else if (action === 'save-selenium-settings') {
@@ -1479,23 +1360,6 @@ function bindEvents() {
       } else if (action === 'stop-recording') {
         await stopRecording();
         await refreshState();
-      } else if (action === 'notify') {
-        await sendTestNotification();
-      } else if (action === 'refresh-log') {
-        await refreshLog();
-      } else if (action === 'auto-refresh-toggle') {
-        state.autoRefresh = !state.autoRefresh;
-        els.autoRefresh.textContent = `自动刷新：${state.autoRefresh ? '开' : '关'}`;
-        if (state.data?.settings) {
-          state.data.settings.auto_refresh_log = state.autoRefresh;
-        }
-        startAutoRefresh();
-      } else if (action === 'open-github') {
-        await apiCall('open_link', 'https://github.com/Dadangdut33/Speech-Translate');
-      } else if (action === 'open-wiki') {
-        await apiCall('open_link', 'https://github.com/Dadangdut33/Speech-Translate/wiki');
-      } else if (action === 'quit') {
-        await apiCall('quit_app');
       }
     } catch (error) {
       console.error(error);
@@ -1504,7 +1368,7 @@ function bindEvents() {
       } catch (_syncError) {
         // ignore follow-up sync errors
       }
-      const node = $('task-card');
+      const node = $('model-status-card');
       if (node) {
         node.innerHTML = `<div class="state-row"><div class="state-key error">操作失败</div><div class="state-value">${escapeHtml(error.message || String(error))}</div></div>`;
       }
@@ -1592,13 +1456,7 @@ async function init() {
   }
 
   state.initInFlight = (async () => {
-    els.version = $('pill-version');
-    els.os = $('pill-os');
-    els.logfile = $('pill-logfile');
-    els.theme = $('theme');
-    els.logLevel = $('log_level');
     els.dirExport = $('dir_export');
-    els.dirModel = $('dir_model');
     els.seleniumCompactLevel = $('selenium_compact_level');
     els.seleniumZOrderMode = $('selenium_z_order_mode');
     els.seleniumAutoCloseOnTaskDone = $('selenium_auto_close_on_task_done');
@@ -1613,8 +1471,6 @@ async function init() {
     els.sourceLangMain = $('source_lang_mw');
     els.targetLangMain = $('target_lang_mw');
     els.translateEngineMain = $('tl_engine_mw');
-    els.autoScrollLog = $('auto_scroll_log');
-    els.autoRefreshLog = $('auto_refresh_log');
     els.transcribeMain = $('transcribe_mw');
     els.translateMain = $('translate_mw');
     els.mainInputPill = $('main-input-pill');
@@ -1684,11 +1540,6 @@ async function init() {
     els.fileExportDirPill = $('file-export-dir-pill');
     els.modelManagerHint = $('model-manager-hint');
     els.modelStatusCard = $('model-status-card');
-    els.taskBadge = $('task-badge');
-    els.taskTitle = $('task-title');
-    els.taskMessage = $('task-message');
-    els.taskProgressText = $('task-progress-text');
-    els.taskProgressFill = $('task-progress-fill');
     els.globalModelState = $('global-model-state');
     els.globalModelMeta = $('global-model-meta');
     els.globalTaskState = $('global-task-state');
@@ -1696,9 +1547,6 @@ async function init() {
     els.globalTaskProgressText = $('global-task-progress-text');
     els.globalTaskProgressFill = $('global-task-progress-fill');
     els.globalTaskProgressWrap = $('global-task-progress-wrap');
-    els.logOutput = $('log-output');
-    els.stateCard = $('state-card');
-    els.aboutCard = $('about-card');
     els.mainTranscribedOutput = $('main-transcribed-output');
     els.mainTranslatedOutput = $('main-translated-output');
     els.detachedModeTitlebar = $('detached_mode_titlebar');
@@ -1716,7 +1564,6 @@ async function init() {
     els.workspaceHub = $('workspace-hub');
     els.settingsShell = $('settings-shell');
     els.taskCard = $('task-card');
-    els.autoRefresh = $('auto-refresh-toggle');
     els.globalStatusbar = $('global-statusbar');
     els.pageScrollIndicator = $('page-scroll-indicator');
     els.pageScrollThumb = $('page-scroll-thumb');
@@ -1751,7 +1598,6 @@ async function init() {
     await startupMark('after_set_detached_mode');
 
     updatePageScrollIndicator();
-    startAutoRefresh();
     await startupMark('init_complete');
     state.initialized = true;
   })();
@@ -1766,7 +1612,7 @@ async function init() {
 function initWithErrorRender() {
   init().catch((error) => {
     console.error(error);
-    const node = $('state-card');
+    const node = $('model-status-card');
     if (node) {
       node.innerHTML = `<div class="state-row"><div class="state-key error">启动失败</div><div class="state-value">${escapeHtml(error.message || String(error))}</div></div>`;
     }

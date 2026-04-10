@@ -290,42 +290,6 @@
 
     <section class="card advanced-shell" id="settings-shell" style="display: none;">
 
-      <details class="advanced-panel" hidden>
-        <summary>核心设置</summary>
-        <div class="floating-action-row">
-          <button class="btn-icon" data-action="save-settings" data-tooltip="保存设置" title="保存设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
-        </div>
-        <div class="advanced-panel-body">
-          <div class="form-grid">
-            <label>
-              <span>主题</span>
-              <input id="theme" type="text" placeholder="sun-valley-dark" />
-            </label>
-            <label>
-              <span>日志级别</span>
-              <select id="log_level">
-                <option value="DEBUG">DEBUG</option>
-                <option value="INFO">INFO</option>
-                <option value="WARNING">WARNING</option>
-                <option value="ERROR">ERROR</option>
-              </select>
-            </label>
-            <label>
-              <span>模型目录</span>
-              <input id="dir_model" type="text" placeholder="auto" />
-            </label>
-          </div>
-          <div class="inline-actions">
-            <label class="toggle-row"><input id="auto_scroll_log" type="checkbox" /> 自动滚动日志</label>
-            <label class="toggle-row"><input id="auto_refresh_log" type="checkbox" /> 自动刷新日志</label>
-          </div>
-          <div class="inline-actions">
-            <button class="btn-with-icon" data-action="notify">测试通知</button>
-            <button class="btn-with-icon" data-open-dir="log">打开日志目录</button>
-            <button class="btn-with-icon" data-open-dir="debug">打开调试目录</button>
-          </div>
-        </div>
-      </details>
 
       <details class="advanced-panel">
         <summary>Selenium 翻译窗口</summary>
@@ -470,69 +434,6 @@
         </div>
       </details>
 
-      <details class="advanced-panel" hidden>
-        <summary>监控与诊断</summary>
-        <div class="advanced-panel-body split-view">
-          <div class="stack log-stack">
-            <div class="status-row">
-              <span class="pill" id="pill-version">加载中...</span>
-              <span class="pill pill-muted" id="pill-os">系统</span>
-              <span class="pill pill-muted" id="pill-logfile">日志</span>
-            </div>
-            <div class="task-banner" id="task-banner">
-              <div class="task-banner-head">
-                <span class="task-badge" id="task-badge">空闲</span>
-                <span class="task-progress-text" id="task-progress-text">0%</span>
-              </div>
-              <div class="task-banner-title" id="task-title">当前没有后台任务</div>
-              <div class="task-banner-message" id="task-message">等待操作。</div>
-              <div class="task-progress-track" aria-hidden="true">
-                <div class="task-progress-fill" id="task-progress-fill"></div>
-              </div>
-            </div>
-            <div class="section-head sticky-head">
-              <div>
-                <h2>实时日志</h2>
-                <p>显示来自 Python 的当前日志文件。</p>
-              </div>
-              <div class="inline-actions compact">
-                <button class="btn-with-icon" data-action="refresh-log">刷新日志</button>
-                <button class="btn-with-icon" data-action="auto-refresh-toggle" id="auto-refresh-toggle">自动刷新：开</button>
-                <button class="btn-with-icon" data-action="clear-log">清空日志</button>
-              </div>
-            </div>
-            <pre id="log-output" class="log-output">日志加载中...</pre>
-          </div>
-
-          <div class="stack state-stack">
-            <div class="section-head">
-              <h2>状态快照</h2>
-              <p>用于调试桥接状态和剩余连接项。</p>
-            </div>
-            <div id="state-card" class="state-card"></div>
-            <div class="section-head">
-              <div>
-                <h2>任务状态</h2>
-                <p>显示文件导入等后台任务的实时状态。</p>
-              </div>
-            </div>
-            <div id="task-card" class="state-card task-card"></div>
-            <div class="section-head">
-              <div>
-                <h2>关于</h2>
-                <p>应用元数据与运行路径。</p>
-              </div>
-            </div>
-            <div id="about-card" class="state-card about-card"></div>
-            <div class="inline-actions">
-              <button class="btn-with-icon" data-action="open-github">GitHub</button>
-              <button class="btn-with-icon" data-action="open-wiki">Wiki</button>
-              <button class="btn-with-icon" data-action="open-repo">打开仓库目录</button>
-              <button class="btn-with-icon" data-action="quit">退出应用</button>
-            </div>
-          </div>
-        </div>
-      </details>
     </section>
       </div>
     </div>
