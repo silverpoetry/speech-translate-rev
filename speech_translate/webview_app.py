@@ -193,7 +193,6 @@ class DetachedWindowManager:
             if no_title_bar:
                 style &= ~(
                     self._WS_CAPTION
-                    | self._WS_THICKFRAME
                     | self._WS_MINIMIZEBOX
                     | self._WS_MAXIMIZEBOX
                     | self._WS_SYSMENU
