@@ -355,6 +355,15 @@
               </select>
             </label>
             <label>
+              <span>模型设备</span>
+              <select id="model_device_preference">
+                <option value="auto">Auto（自动）</option>
+                <option value="cpu">CPU</option>
+                <option value="cuda">CUDA (GPU)</option>
+              </select>
+              <small class="field-note">选择 CUDA 需要当前环境安装 GPU 版 torch/torchaudio。</small>
+            </label>
+            <label>
               <span>转写间隔 (ms)</span>
               <input id="transcribe_rate" type="number" min="1" max="1000" step="1" />
             </label>

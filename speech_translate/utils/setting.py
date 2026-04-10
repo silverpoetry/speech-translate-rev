@@ -161,6 +161,7 @@ default_setting: SettingDict = {
     "use_faster_whisper": True,
     "use_en_model": True,
     "transcribe_rate": 300,
+    "model_device_preference": "auto",  # auto, cpu, cuda
     # Selenium Chrome translator compact-window controls
     "selenium_compact_level": 2,
     "selenium_z_order_mode": "behind-main",

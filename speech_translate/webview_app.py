@@ -1323,6 +1323,8 @@ class WebBridge(WebTaskBridge):
             "speaker_options": audio_sources.get("speaker_options", []),
             "verbose_record": settings.get("verbose_record"),
             "transcribe_rate": settings.get("transcribe_rate"),
+            "model_device_preference": settings.get("model_device_preference", "auto"),
+            "model_device_options": ["auto", "cpu", "cuda"],
             "separate_with": settings.get("separate_with"),
             "use_temp": settings.get("use_temp"),
             "keep_temp": settings.get("keep_temp"),
@@ -1551,6 +1553,9 @@ class WebBridge(WebTaskBridge):
         return {"key": key, "value": sj.cache.get(key)}
 
     def set_record_setting(self, key: str, value: Any) -> Dict[str, Any]:
+        if key == "model_device_preference":
+            normalized = str(value or "auto").strip().lower()
+            value = normalized if normalized in {"auto", "cpu", "cuda"} else "auto"
         sj.save_key(key, value)
         return {"key": key, "value": sj.cache.get(key)}
 

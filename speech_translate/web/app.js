@@ -309,6 +309,13 @@ function renderRecordSettings(data) {
   const speaker = recordUi.speaker_device || {};
 
   if (els.verboseRecord) els.verboseRecord.value = String(Boolean(recordUi.verbose_record));
+  if (els.modelDevicePreference) {
+    populateSelect(
+      els.modelDevicePreference,
+      recordUi.model_device_options || ['auto', 'cpu', 'cuda'],
+      recordUi.model_device_preference || 'auto'
+    );
+  }
   if (els.transcribeRate) els.transcribeRate.value = recordUi.transcribe_rate ?? 300;
   if (els.separateWith) els.separateWith.value = recordUi.separate_with ?? '\n';
   if (els.useTemp) els.useTemp.checked = !Boolean(recordUi.use_temp);
@@ -928,6 +935,7 @@ async function saveRecordSettings(shouldRefresh = true) {
     ['mic', els.mic.value],
     ['speaker', els.speaker.value],
     ['verbose_record', els.verboseRecord.value === 'true'],
+    ['model_device_preference', String(els.modelDevicePreference ? els.modelDevicePreference.value : 'auto').toLowerCase()],
     ['transcribe_rate', numberOr(els.transcribeRate.value, 300)],
     ['separate_with', els.separateWith.value],
     ['use_temp', checked(els.useTempAlt)],
@@ -1494,6 +1502,7 @@ async function init() {
     els.mic = $('mic');
     els.speaker = $('speaker');
     els.verboseRecord = $('verbose_record');
+    els.modelDevicePreference = $('model_device_preference');
     els.transcribeRate = $('transcribe_rate');
     els.separateWith = $('separate_with');
     els.useTemp = $('use_temp');

@@ -688,4 +688,20 @@ def get_model_args(setting_cache: SettingDict):
     else:
         model_args["download_root"] = get_default_download_root()
 
+    device_pref = str(setting_cache.get("model_device_preference", "auto") or "auto").strip().lower()
+    if device_pref not in {"auto", "cpu", "cuda"}:
+        device_pref = "auto"
+
+    cuda_available = torch.cuda.is_available()
+    if device_pref == "cpu":
+        model_args["device"] = "cpu"
+    elif device_pref == "cuda":
+        if cuda_available:
+            model_args["device"] = "cuda"
+        else:
+            logger.warning("model_device_preference=cuda but CUDA is unavailable; falling back to CPU")
+            model_args["device"] = "cpu"
+    else:
+        model_args["device"] = "cuda" if cuda_available else "cpu"
+
     return model_args

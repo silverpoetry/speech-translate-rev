@@ -4,7 +4,7 @@ import re
 from ast import literal_eval
 from datetime import datetime, timedelta
 from io import BytesIO
-from platform import system
+from platform import python_version, system
 from shlex import quote
 from threading import Lock, Thread
 from time import gmtime, sleep, strftime, time
@@ -509,6 +509,30 @@ def record_session(
         whisper_args["language"] = TO_LANGUAGE_CODE[whisper_lang] if whisper_lang else None
         demucs_enabled = bool(whisper_args.get("demucs", False))
         vad_enabled = bool(whisper_args.get("vad", False))
+        path_diag_flags = {
+            "rate_skip": False,
+            "min_len_skip": False,
+            "numpy_audio_path": False,
+            "temp_file_audio_path": False,
+            "transcribe_path": False,
+            "whisper_tl_path": False,
+            "api_tl_path": False,
+        }
+
+        logger.info(
+            "[PathDiag] env"
+            f" python={python_version()} torch={getattr(torch, '__version__', 'unknown')}"
+            f" torchaudio={getattr(torchaudio, '__version__', 'unknown')}"
+            f" use_faster_whisper={sj.cache.get('use_faster_whisper')}"
+            f" device={model_args.get('device')}"
+        )
+        logger.info(
+            "[PathDiag] runtime"
+            f" rec_type={rec_type} is_tc={is_tc} is_tl={is_tl} tl_engine_whisper={tl_engine_whisper}"
+            f" use_temp_initial={use_temp} demucs={demucs_enabled} vad={vad_enabled}"
+            f" transcribe_rate_ms={sj.cache.get('transcribe_rate')}"
+            f" min_input_length={sj.cache.get(f'min_input_length_{rec_type}', 0.4)}"
+        )
 
         if sj.cache["use_faster_whisper"] and not use_temp:
             whisper_args["input_sr"] = WHISPER_SR  # when using numpy array as input, will need to set input_sr
@@ -633,6 +657,7 @@ def record_session(
         if demucs_enabled and vad_enabled:
             logger.info("Both demucs and vad is enabled. Force using file instead of numpy array")
             use_temp = True
+            logger.info("[PathDiag] force_use_temp reason=demucs_and_vad")
 
         cuda_device = model_args["device"]
 
@@ -1047,6 +1072,10 @@ def record_session(
             # Run transcription based on transcribe rate that is set by user.
             # The more delay it have the more it will reduces stress on the GPU / CPU (if using cpu).
             if next_transcribe_time > now:
+                if not path_diag_flags["rate_skip"]:
+                    path_diag_flags["rate_skip"] = True
+                    wait_ms = int((next_transcribe_time - now).total_seconds() * 1000)
+                    logger.info(f"[PathDiag] skip reason=transcribe_rate wait_ms={wait_ms}")
                 if sj.cache["debug_realtime_record"]:
                     logger.debug("Record loop skipped transcription because rate limit has not elapsed")
                 continue
@@ -1069,6 +1098,11 @@ def record_session(
 
             duration_seconds = len(last_sample) / (samp_width * sr_divider)
             if not use_temp:
+                if not path_diag_flags["numpy_audio_path"]:
+                    path_diag_flags["numpy_audio_path"] = True
+                    logger.info(
+                        f"[PathDiag] audio_input_path=numpy demucs={demucs_enabled} channels={num_of_channels}"
+                    )
                 # Read the audio data
                 wav_reader: Wave_read = w_open(wf)
                 samples = wav_reader.getnframes()
@@ -1099,6 +1133,9 @@ def record_session(
                 if sj.cache["debug_recorded_audio"]:
                     wav.write(generate_temp_filename(dir_debug), WHISPER_SR, audio_np)
             else:
+                if not path_diag_flags["temp_file_audio_path"]:
+                    path_diag_flags["temp_file_audio_path"] = True
+                    logger.info(f"[PathDiag] audio_input_path=temp_file sr={sr_ori} channels={num_of_channels}")
                 # add to the temp list to delete later
                 audio_target = generate_temp_filename(dir_temp)
                 temp_list.append(audio_target)
@@ -1113,12 +1150,21 @@ def record_session(
 
             # if duration is < 0.4 seconds, skip. Wait until more context is available
             if duration_seconds < sj.cache.get(f"min_input_length_{rec_type}", 0.4):
+                if not path_diag_flags["min_len_skip"]:
+                    path_diag_flags["min_len_skip"] = True
+                    logger.info(
+                        "[PathDiag] skip reason=min_input_length"
+                        f" duration={duration_seconds:.3f} threshold={sj.cache.get(f'min_input_length_{rec_type}', 0.4)}"
+                    )
                 if sj.cache["debug_realtime_record"]:
                     logger.debug(f"Duration is {duration_seconds} seconds. Skipping")
                 continue
 
             # If only translating and its using whisper engine
             if is_tl and tl_engine_whisper and not is_tc:
+                if not path_diag_flags["whisper_tl_path"]:
+                    path_diag_flags["whisper_tl_path"] = True
+                    logger.info("[PathDiag] branch=translate_only_whisper")
                 if sj.cache["debug_realtime_record"]:
                     logger.info("Translating")
                 bc.current_rec_status = "▶️ Recording ⟳ Translating Audio"
@@ -1133,6 +1179,9 @@ def record_session(
                     }
                 )
             else:
+                if not path_diag_flags["transcribe_path"]:
+                    path_diag_flags["transcribe_path"] = True
+                    logger.info("[PathDiag] branch=transcribe_then_translate_or_transcribe_only")
                 # will automatically check translate on or not depend on input
                 # translate is called from here because other engine need to get transcribed text first if translating
                 if sj.cache["debug_realtime_record"]:
@@ -1205,6 +1254,9 @@ def record_session(
                                 }
                             )
                         else:
+                            if not path_diag_flags["api_tl_path"]:
+                                path_diag_flags["api_tl_path"] = True
+                                logger.info("[PathDiag] branch=api_translation_coalesced_queue")
                             if sj.cache["debug_realtime_record"]:
                                 logger.debug(f"Queueing API translation | text_len={len(text)} engine={engine}")
                             full_tc_text = build_full_transcribed_text(result)
