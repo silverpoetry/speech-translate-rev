@@ -1353,6 +1353,26 @@ button.btn-icon:hover[data-tooltip]::before {
   gap: 12px;
 }
 
+.field-span-2 {
+  grid-column: 1 / -1;
+}
+
+.input-action-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.field-note {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .import-grid {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }

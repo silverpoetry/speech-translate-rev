@@ -165,6 +165,7 @@ default_setting: SettingDict = {
     "selenium_compact_level": 2,
     "selenium_z_order_mode": "behind-main",
     "selenium_auto_close_on_task_done": True,
+    "selenium_chrome_user_data_dir": "",
     # option for some DecodingOptions that is not available in the command line parameter is moved to the gui
     "decoding_preset": "beam search",  # greedy, beam search, custom
     "temperature": "0.0, 0.2, 0.4, 0.6, 0.8, 1.0",  # 0.0 - 1.0

@@ -315,6 +315,14 @@
                 <option value="normal">常规层级</option>
               </select>
             </label>
+            <label class="field-span-2">
+              <span>Chrome 用户目录</span>
+              <div class="input-action-row">
+                <input id="selenium_chrome_user_data_dir" type="text" placeholder="可手动输入目录，留空使用默认目录" />
+                <button type="button" class="btn-icon" data-action="pick-selenium-chrome-dir" data-tooltip="选择 Chrome 用户目录" title="选择 Chrome 用户目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+              </div>
+              <small class="field-note">留空默认：speech_translate/_user/selenium_chrome_profile</small>
+            </label>
           </div>
           <div class="inline-actions import-actions compact-gap">
             <label class="toggle-row"><input id="selenium_auto_close_on_task_done" type="checkbox" /> 转写任务结束后自动关闭 Selenium Chrome</label>

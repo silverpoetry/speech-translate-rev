@@ -240,6 +240,7 @@ class SettingDict(TypedDict):
     selenium_compact_level: int
     selenium_z_order_mode: str
     selenium_auto_close_on_task_done: bool
+    selenium_chrome_user_data_dir: str
     decoding_preset: str  # greedy beam search custom
     temperature: str  # 0.0 - 1.0
     best_of: Optional[int]

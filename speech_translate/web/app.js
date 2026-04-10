@@ -177,6 +177,9 @@ function renderSettings(data) {
   if (els.seleniumAutoCloseOnTaskDone) {
     els.seleniumAutoCloseOnTaskDone.checked = Boolean(settings.selenium_auto_close_on_task_done ?? true);
   }
+  if (els.seleniumChromeUserDataDir) {
+    els.seleniumChromeUserDataDir.value = String(settings.selenium_chrome_user_data_dir ?? '');
+  }
 }
 
 function renderMainControls(data) {
@@ -807,23 +810,27 @@ async function saveSeleniumSettings(shouldRefresh = true) {
   const compactEl = $('selenium_compact_level');
   const zOrderEl = $('selenium_z_order_mode');
   const autoCloseEl = $('selenium_auto_close_on_task_done');
+  const chromeUserDataDirEl = $('selenium_chrome_user_data_dir');
 
   const compactRaw = Number(compactEl ? compactEl.value : 2);
   const compactLevel = Number.isFinite(compactRaw) ? Math.max(0, Math.min(3, Math.trunc(compactRaw))) : 2;
   const zOrderRaw = String(zOrderEl ? zOrderEl.value : 'behind-main');
   const zOrderMode = ['normal', 'behind-main', 'bottom'].includes(zOrderRaw) ? zOrderRaw : 'behind-main';
   const autoClose = Boolean(autoCloseEl && autoCloseEl.checked);
+  const chromeUserDataDir = String(chromeUserDataDirEl ? chromeUserDataDirEl.value : '').trim();
 
   try {
     const res = await apiCall('set_setting', 'selenium_settings', {
       compact_level: compactLevel,
       z_order_mode: zOrderMode,
       auto_close_on_task_done: autoClose,
+      chrome_user_data_dir: chromeUserDataDir,
     });
 
     const saved = res && res.value
       ? res.value
       : {
+          selenium_chrome_user_data_dir: chromeUserDataDir,
           selenium_compact_level: compactLevel,
           selenium_z_order_mode: zOrderMode,
           selenium_auto_close_on_task_done: autoClose,
@@ -832,11 +839,15 @@ async function saveSeleniumSettings(shouldRefresh = true) {
     if (compactEl) compactEl.value = String(saved.selenium_compact_level ?? compactLevel);
     if (zOrderEl) zOrderEl.value = String(saved.selenium_z_order_mode ?? zOrderMode);
     if (autoCloseEl) autoCloseEl.checked = Boolean(saved.selenium_auto_close_on_task_done ?? autoClose);
+    if (chromeUserDataDirEl) {
+      chromeUserDataDirEl.value = String(saved.selenium_chrome_user_data_dir ?? chromeUserDataDir);
+    }
 
     if (state.data && state.data.settings) {
       state.data.settings.selenium_compact_level = Number(saved.selenium_compact_level ?? compactLevel);
       state.data.settings.selenium_z_order_mode = String(saved.selenium_z_order_mode ?? zOrderMode);
       state.data.settings.selenium_auto_close_on_task_done = Boolean(saved.selenium_auto_close_on_task_done ?? autoClose);
+      state.data.settings.selenium_chrome_user_data_dir = String(saved.selenium_chrome_user_data_dir ?? chromeUserDataDir);
     }
 
     if (shouldRefresh) {
@@ -1060,7 +1071,7 @@ const AUTO_SAVE_BUCKETS = {
     'detached_opacity', 'detached_always_on_top', 'detached_no_title_bar', 'detached_click_through'
   ]),
   selenium: new Set([
-    'selenium_compact_level', 'selenium_z_order_mode', 'selenium_auto_close_on_task_done'
+    'selenium_compact_level', 'selenium_z_order_mode', 'selenium_auto_close_on_task_done', 'selenium_chrome_user_data_dir'
   ])
 };
 
@@ -1314,6 +1325,8 @@ function bindEvents() {
         await pickDirectory('export');
       } else if (action === 'pick-model-dir') {
         await pickDirectory('model');
+      } else if (action === 'pick-selenium-chrome-dir') {
+        await pickDirectory('selenium_chrome');
       } else if (action === 'import-files') {
         await saveImportSettings();
         const importResult = await apiCall('import_files');
@@ -1460,6 +1473,7 @@ async function init() {
     els.seleniumCompactLevel = $('selenium_compact_level');
     els.seleniumZOrderMode = $('selenium_z_order_mode');
     els.seleniumAutoCloseOnTaskDone = $('selenium_auto_close_on_task_done');
+    els.seleniumChromeUserDataDir = $('selenium_chrome_user_data_dir');
     els.exportTxt = $('export_txt');
     els.exportSrt = $('export_srt');
     els.exportVtt = $('export_vtt');

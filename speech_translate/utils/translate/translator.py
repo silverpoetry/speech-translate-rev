@@ -126,6 +126,7 @@ def _get_selenium_translator():
             }[level]
 
             z_order_mode = str(sj.cache.get("selenium_z_order_mode", "behind-main"))
+            chrome_user_data_dir = str(sj.cache.get("selenium_chrome_user_data_dir", "") or "").strip()
 
             _selenium_translator = SeleniumWebTranslator(
                 SeleniumTranslatorConfig(
@@ -145,6 +146,7 @@ def _get_selenium_translator():
                     win_alpha=int(profile["win_alpha"]),
                     win_borderless=False,
                     win_z_order_mode=z_order_mode,
+                    chrome_user_data_dir=(chrome_user_data_dir or None),
                 )
             )
     return _selenium_translator

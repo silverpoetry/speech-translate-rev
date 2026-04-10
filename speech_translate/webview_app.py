@@ -17,7 +17,7 @@ from loguru import logger
 
 from speech_translate._constants import APP_NAME
 from speech_translate._logging import init_logging
-from speech_translate._path import dir_debug, dir_export, dir_log, p_app_icon
+from speech_translate._path import dir_debug, dir_export, dir_log, dir_user, p_app_icon
 from speech_translate._version import __version__
 from speech_translate.linker import bc, sj
 from speech_translate.web_backend import HeadlessFileProcessDialog, WebTaskBridge, headless_mbox
@@ -1361,6 +1361,12 @@ class WebBridge(WebTaskBridge):
         configured = sj.cache.get("dir_log", "auto")
         return configured if configured != "auto" else dir_log
 
+    def _resolve_selenium_chrome_user_data_dir(self) -> str:
+        configured = str(sj.cache.get("selenium_chrome_user_data_dir", "") or "").strip()
+        if configured:
+            return configured
+        return str(Path(dir_user) / "selenium_chrome_profile")
+
     def get_state(self) -> Dict[str, Any]:
         state_t0 = time()
         settings = dict(sj.cache)
@@ -1388,6 +1394,7 @@ class WebBridge(WebTaskBridge):
             "selenium_compact_level": settings.get("selenium_compact_level", 2),
             "selenium_z_order_mode": settings.get("selenium_z_order_mode", "behind-main"),
             "selenium_auto_close_on_task_done": settings.get("selenium_auto_close_on_task_done", True),
+            "selenium_chrome_user_data_dir": settings.get("selenium_chrome_user_data_dir", ""),
         }
 
         import_ui = self._build_import_ui(verify_available=False)
@@ -1497,11 +1504,13 @@ class WebBridge(WebTaskBridge):
             z_order = z_order_raw if z_order_raw in allowed_z else "behind-main"
 
             auto_close = bool(payload.get("auto_close_on_task_done", True))
+            chrome_user_data_dir = str(payload.get("chrome_user_data_dir", "") or "").strip()
 
             # Keep Selenium settings update atomic under a single API request.
             sj.save_key("selenium_compact_level", compact)
             sj.save_key("selenium_z_order_mode", z_order)
             sj.save_key("selenium_auto_close_on_task_done", auto_close)
+            sj.save_key("selenium_chrome_user_data_dir", chrome_user_data_dir)
 
             return {
                 "key": key,
@@ -1509,6 +1518,7 @@ class WebBridge(WebTaskBridge):
                     "selenium_compact_level": sj.cache.get("selenium_compact_level", compact),
                     "selenium_z_order_mode": sj.cache.get("selenium_z_order_mode", z_order),
                     "selenium_auto_close_on_task_done": sj.cache.get("selenium_auto_close_on_task_done", auto_close),
+                    "selenium_chrome_user_data_dir": sj.cache.get("selenium_chrome_user_data_dir", chrome_user_data_dir),
                 },
             }
 
@@ -1524,6 +1534,8 @@ class WebBridge(WebTaskBridge):
             value = as_text if as_text in allowed else "behind-main"
         elif key == "selenium_auto_close_on_task_done":
             value = bool(value)
+        elif key == "selenium_chrome_user_data_dir":
+            value = str(value or "").strip()
 
         sj.save_key(key, value)
         if key == "log_level":
@@ -1790,6 +1802,7 @@ class WebBridge(WebTaskBridge):
         target_map = {
             "export": ("dir_export", self._resolve_export_dir()),
             "model": ("dir_model", self._resolve_model_dir()),
+            "selenium_chrome": ("selenium_chrome_user_data_dir", self._resolve_selenium_chrome_user_data_dir()),
         }
         setting_info = target_map.get(str(name or "").strip().lower())
         if setting_info is None:
