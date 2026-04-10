@@ -14,6 +14,8 @@ const state = {
   seleniumSaveInFlight: false,
   detachedModeSelected: 'tc',
   initInFlight: null,
+  autoSaveBound: false,
+  autoSaveTimers: {},
 };
 
 const els = {};
@@ -943,7 +945,7 @@ async function saveSeleniumSettings(shouldRefresh = true) {
   }
 }
 
-async function saveImportSettings() {
+async function saveImportSettings(shouldRefresh = true) {
   const backend = getSelectedImportModelEngine();
   await apiCall('set_setting', 'use_faster_whisper', backend === 'faster-whisper');
 
@@ -975,7 +977,9 @@ async function saveImportSettings() {
     await apiCall('set_import_setting', key, value);
   }
 
-  await refreshState();
+  if (shouldRefresh) {
+    await refreshState();
+  }
 }
 
 async function loadRuntimeModel() {
@@ -992,7 +996,7 @@ async function loadRuntimeModel() {
   await refreshTaskState();
 }
 
-async function saveRecordSettings() {
+async function saveRecordSettings(shouldRefresh = true) {
   const numberOr = (value, fallback) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
@@ -1048,7 +1052,9 @@ async function saveRecordSettings() {
     await apiCall('set_record_setting', key, value);
   }
 
-  await refreshState();
+  if (shouldRefresh) {
+    await refreshState();
+  }
 }
 
 function normalizeDetachedMode(mode) {
@@ -1090,7 +1096,7 @@ async function loadDetachedConfig(mode) {
   }
 }
 
-async function saveDetachedSettings() {
+async function saveDetachedSettings(shouldRefresh = true) {
   const mode = getSelectedDetachedMode();
   const updates = [
     ['font', els.detachedFont ? els.detachedFont.value : 'Arial'],
@@ -1108,7 +1114,9 @@ async function saveDetachedSettings() {
   }
 
   // Refresh state to get updated config
-  await refreshState();
+  if (shouldRefresh) {
+    await refreshState();
+  }
   
   // Apply updated config to the detached window if it's open
   if (typeof pywebview !== 'undefined' && pywebview.api) {
@@ -1119,6 +1127,105 @@ async function saveDetachedSettings() {
       console.log(`Detached window ${mode} not open yet or config application failed:`, error);
     }
   }
+}
+
+const AUTO_SAVE_BUCKETS = {
+  settings: new Set([
+    'theme', 'log_level', 'input_mode', 'source_lang_mw', 'target_lang_mw', 'tl_engine_mw',
+    'transcribe_mw', 'translate_mw', 'auto_scroll_log', 'auto_refresh_log'
+  ]),
+  import: new Set([
+    'model_f_import', 'tl_engine_f_import', 'source_lang_f_import', 'target_lang_f_import',
+    'transcribe_f_import', 'translate_f_import',
+    'export_txt', 'export_srt', 'export_vtt', 'export_ass', 'export_json', 'export_csv', 'export_mp4'
+  ]),
+  record: new Set([
+    'verbose_record', 'use_temp', 'use_temp_alt', 'keep_temp', 'file_use_official_whisper',
+    'show_audio_visualizer_in_setting',
+    'auto_sample_rate_mic', 'auto_channels_mic', 'mic_no_limit', 'threshold_enable_mic', 'threshold_auto_mic',
+    'threshold_auto_silero_mic', 'auto_break_buffer_mic', 'threshold_db_mic',
+    'auto_sample_rate_speaker', 'auto_channels_speaker', 'speaker_no_limit', 'threshold_enable_speaker',
+    'threshold_auto_speaker', 'threshold_auto_silero_speaker', 'auto_break_buffer_speaker', 'threshold_db_speaker'
+  ]),
+  detached: new Set([
+    'detached_opacity', 'detached_always_on_top', 'detached_no_title_bar', 'detached_click_through'
+  ]),
+  selenium: new Set([
+    'selenium_compact_level', 'selenium_z_order_mode', 'selenium_auto_close_on_task_done'
+  ])
+};
+
+function scheduleAutoSave(bucket, saveFn) {
+  if (!bucket || typeof saveFn !== 'function') {
+    return;
+  }
+
+  const timer = state.autoSaveTimers[bucket];
+  if (timer) {
+    window.clearTimeout(timer);
+  }
+
+  state.autoSaveTimers[bucket] = window.setTimeout(async () => {
+    state.autoSaveTimers[bucket] = null;
+    try {
+      await saveFn();
+    } catch (error) {
+      console.debug(`Auto-save failed for ${bucket}`, error);
+    }
+  }, 180);
+}
+
+function resolveAutoSaveBucket(id) {
+  if (!id) {
+    return null;
+  }
+
+  for (const [bucket, ids] of Object.entries(AUTO_SAVE_BUCKETS)) {
+    if (ids.has(id)) {
+      return bucket;
+    }
+  }
+
+  return null;
+}
+
+function bindAutoSaveEvents() {
+  if (state.autoSaveBound) {
+    return;
+  }
+
+  document.body.addEventListener('change', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const tag = target.tagName.toLowerCase();
+    const type = String(target.getAttribute('type') || '').toLowerCase();
+    const isAutoSaveControl = tag === 'select' || (tag === 'input' && ['checkbox', 'radio', 'range'].includes(type));
+    if (!isAutoSaveControl) {
+      return;
+    }
+
+    const bucket = resolveAutoSaveBucket(target.id || '');
+    if (!bucket) {
+      return;
+    }
+
+    if (bucket === 'settings') {
+      scheduleAutoSave(bucket, () => saveSettings(false));
+    } else if (bucket === 'import') {
+      scheduleAutoSave(bucket, () => saveImportSettings(false));
+    } else if (bucket === 'record') {
+      scheduleAutoSave(bucket, () => saveRecordSettings(false));
+    } else if (bucket === 'detached') {
+      scheduleAutoSave(bucket, () => saveDetachedSettings(false));
+    } else if (bucket === 'selenium') {
+      scheduleAutoSave(bucket, () => saveSeleniumSettings(false));
+    }
+  });
+
+  state.autoSaveBound = true;
 }
 
 async function createDetachedWindow(modeOverride = null) {
@@ -1616,6 +1723,7 @@ async function init() {
     els.dashboardContent = document.querySelector('.dashboard-content');
 
     bindEvents();
+    bindAutoSaveEvents();
     bindUiEvents();
     bindPageScrollIndicator();
     switchSidebarMenu('realtime');

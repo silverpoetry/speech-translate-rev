@@ -105,8 +105,21 @@ def _center_window_pos(width: int, height: int) -> tuple[int, int]:
             user32 = ctypes.windll.user32
             screen_width = int(user32.GetSystemMetrics(0))
             screen_height = int(user32.GetSystemMetrics(1))
-            centered_x = max(0, (screen_width - max(1, width)) // 2)
-            centered_y = max(0, (screen_height - max(1, height)) // 2)
+
+            scale_factor = 1.0
+            try:
+                scale_factor = float(ctypes.windll.shcore.GetScaleFactorForDevice(0)) / 100.0
+                if scale_factor <= 0:
+                    scale_factor = 1.0
+            except Exception:
+                scale_factor = 1.0
+
+            # WinForms applies scale factor to x/y (location) but not to width/height.
+            # Center in physical pixels first, then convert location to logical units.
+            centered_x_px = max(0, (screen_width - max(1, width)) // 2)
+            centered_y_px = max(0, (screen_height - max(1, height)) // 2)
+            centered_x = int(round(centered_x_px / scale_factor))
+            centered_y = int(round(centered_y_px / scale_factor))
             return centered_x, centered_y
         except Exception:
             pass
