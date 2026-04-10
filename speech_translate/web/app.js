@@ -153,8 +153,15 @@ function renderSettings(data) {
   const settings = data.settings || {};
   els.theme.value = settings.theme ?? '';
   els.logLevel.value = settings.log_level ?? data.log_level ?? 'DEBUG';
-  els.dirExport.value = settings.dir_export ?? 'auto';
-  els.dirModel.value = settings.dir_model ?? 'auto';
+  if (els.dirExport) {
+    els.dirExport.value = settings.dir_export ?? 'auto';
+  }
+  if (els.dirModel) {
+    els.dirModel.value = settings.dir_model ?? 'auto';
+  }
+  if (els.fileExportDirPill) {
+    els.fileExportDirPill.textContent = `输出目录：${settings.dir_export ?? 'auto'}`;
+  }
   const exportTo = settings.export_to || ['txt', 'srt', 'vtt', 'json', 'ass'];
   if (els.exportTxt) els.exportTxt.checked = exportTo.includes('txt');
   if (els.exportSrt) els.exportSrt.checked = exportTo.includes('srt');
@@ -806,6 +813,11 @@ async function refreshLog() {
 async function saveSettings(shouldRefresh = true) {
   const valueOf = (node, fallback = '') => (node && typeof node.value !== 'undefined' ? node.value : fallback);
   const checkedOf = (node, fallback = false) => (node && typeof node.checked !== 'undefined' ? Boolean(node.checked) : fallback);
+  const currentSetting = (key, fallback = '') => {
+    const settings = state.data && state.data.settings ? state.data.settings : null;
+    const value = settings ? settings[key] : undefined;
+    return value === undefined ? fallback : value;
+  };
 
   const exportTo = [];
   if (els.exportTxt && checkedOf(els.exportTxt)) exportTo.push('txt');
@@ -819,8 +831,8 @@ async function saveSettings(shouldRefresh = true) {
   const updates = [
     ['theme', valueOf(els.theme, '')],
     ['log_level', valueOf(els.logLevel, 'DEBUG')],
-    ['dir_export', valueOf(els.dirExport, 'auto')],
-    ['dir_model', valueOf(els.dirModel, 'auto')],
+    ['dir_export', els.dirExport ? valueOf(els.dirExport, 'auto') : currentSetting('dir_export', 'auto')],
+    ['dir_model', els.dirModel ? valueOf(els.dirModel, 'auto') : currentSetting('dir_model', 'auto')],
     ['export_to', exportTo],
     ['input', valueOf(els.inputMode, 'mic')],
     ['source_lang_mw', valueOf(els.sourceLangMain, 'English')],
@@ -920,7 +932,10 @@ async function saveImportSettings() {
   if (els.exportCsv && els.exportCsv.checked) exportTo.push('csv');
   if (els.exportMp4 && els.exportMp4.checked) exportTo.push('mp4');
 
-  await apiCall('set_setting', 'dir_export', els.dirExport ? els.dirExport.value : 'auto');
+  const exportDir = els.dirExport
+    ? els.dirExport.value
+    : ((state.data && state.data.settings && state.data.settings.dir_export) || 'auto');
+  await apiCall('set_setting', 'dir_export', exportDir);
   await apiCall('set_setting', 'export_to', exportTo);
 
   const updates = [
@@ -1154,6 +1169,22 @@ async function openDirectory(kind) {
   await apiCall('open_directory', kind);
 }
 
+async function pickDirectory(kind) {
+  const result = await apiCall('select_directory', kind);
+  if (!result || result.ok === false) {
+    const message = result && result.message ? String(result.message) : '目录选择失败';
+    if (message === 'No folder selected') {
+      return;
+    }
+    throw new Error(message);
+  }
+
+  await refreshState();
+  if (kind === 'model') {
+    await refreshModelManagerState(getSelectedModelManagerEngine());
+  }
+}
+
 async function clearLog() {
   const data = await apiCall('clear_log');
   els.logOutput.textContent = data.content || '';
@@ -1265,6 +1296,10 @@ function bindEvents() {
         await openDirectory(openDir);
       } else if (action === 'refresh') {
         await refreshState();
+      } else if (action === 'pick-export-dir') {
+        await pickDirectory('export');
+      } else if (action === 'pick-model-dir') {
+        await pickDirectory('model');
       } else if (action === 'import-files') {
         await saveImportSettings();
         const importResult = await apiCall('import_files');
@@ -1511,6 +1546,7 @@ async function init() {
   els.modelManagerDirPill = $('model-manager-dir-pill');
   els.modelManagerEnginePill = $('model-manager-engine-pill');
   els.modelManagerDownloadPill = $('model-manager-download-pill');
+  els.fileExportDirPill = $('file-export-dir-pill');
   els.modelManagerHint = $('model-manager-hint');
   els.modelStatusCard = $('model-status-card');
   els.taskBadge = $('task-badge');

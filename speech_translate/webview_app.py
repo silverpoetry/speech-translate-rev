@@ -1585,6 +1585,42 @@ class WebBridge(WebTaskBridge):
             open_folder(target)
         return {"target": target or ""}
 
+    def select_directory(self, name: str) -> Dict[str, Any]:
+        target_map = {
+            "export": ("dir_export", self._resolve_export_dir()),
+            "model": ("dir_model", self._resolve_model_dir()),
+        }
+        setting_info = target_map.get(str(name or "").strip().lower())
+        if setting_info is None:
+            return {"ok": False, "message": "Unsupported directory target", "path": ""}
+
+        setting_key, default_dir = setting_info
+        window = self.get_window()
+        if window is None:
+            return {"ok": False, "message": "Window not ready", "path": ""}
+
+        try:
+            webview = import_module("webview")
+            file_dialog = getattr(getattr(webview, "FileDialog", object), "FOLDER", webview.FOLDER_DIALOG)
+            selected = window.create_file_dialog(file_dialog, directory=default_dir)
+        except Exception as exc:
+            logger.exception(exc)
+            return {"ok": False, "message": str(exc), "path": ""}
+
+        if not selected:
+            return {"ok": False, "message": "No folder selected", "path": default_dir}
+
+        selected_path = selected[0] if isinstance(selected, (list, tuple)) else selected
+        selected_path = str(selected_path or "").strip()
+        if not selected_path:
+            return {"ok": False, "message": "No folder selected", "path": default_dir}
+
+        sj.save_key(setting_key, selected_path)
+        if setting_key == "dir_model":
+            self._model_status_cache.clear()
+
+        return {"ok": True, "message": "Directory selected", "path": selected_path, "setting": setting_key}
+
     def open_link(self, url: str) -> Dict[str, str]:
         open_url(url)
         return {"url": url}

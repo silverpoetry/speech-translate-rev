@@ -72,6 +72,9 @@
                 <button type="button" class="model-engine-tab is-active" data-engine-option="whisper" role="tab" aria-selected="true">whisper</button>
                 <button type="button" class="model-engine-tab" data-engine-option="faster-whisper" role="tab" aria-selected="false">faster-whisper</button>
               </div>
+              <div class="model-manager-tools">
+                <button class="btn-icon btn-icon-blue" data-action="pick-model-dir" data-tooltip="设置模型目录" title="设置模型目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+              </div>
               <div id="model-status-card" class="state-card model-status-card"></div>
               <div class="section-head model-manager-hint-wrap">
                 <p id="model-manager-hint">说明：页面会自动检查当前引擎的全部模型。缺失模型可直接点击下载按钮，卡片内显示下载进度。</p>
@@ -121,11 +124,9 @@
             </div>
 
             <div class="file-export-block">
-              <div class="form-grid file-export-grid">
-                <label>
-                  <span>输出目录</span>
-                  <input id="dir_export" type="text" placeholder="auto" />
-                </label>
+              <div class="file-export-head">
+                <span class="pill pill-muted" id="file-export-dir-pill">输出目录：auto</span>
+                <button class="btn-icon btn-icon-blue" data-action="pick-export-dir" data-tooltip="设置导出目录" title="设置导出目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
               </div>
               <div class="inline-actions import-actions compact-gap file-export-formats">
                 <span>输出格式</span>

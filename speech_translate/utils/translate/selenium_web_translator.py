@@ -3,10 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from html import escape
 from importlib import import_module
+from loguru import logger
 from pathlib import Path
 import re
+from shutil import rmtree
 import sys
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, mkdtemp
+from time import sleep
 from typing import Iterable, List, Optional
 from urllib.parse import quote
 
@@ -51,6 +54,82 @@ class SeleniumWebTranslator:
         self._page_template_loaded = False
         self._template_lang_hint = ""
         self._window_marker = "ST_ENGINE_WINDOW"
+        self._active_user_data_dir: Optional[Path] = None
+        self._temp_user_data_dir: Optional[Path] = None
+
+    @staticmethod
+    def _is_connection_lost_error(exc: Exception) -> bool:
+        message = str(exc or "").lower()
+        signals = (
+            "maxretryerror",
+            "newconnectionerror",
+            "failed to establish a new connection",
+            "connection refused",
+            "actively refused",
+            "winerror 10061",
+            "invalid session id",
+            "session deleted because of page crash",
+            "disconnected: not connected to devtools",
+            "chrome not reachable",
+        )
+        return any(token in message for token in signals)
+
+    def _reset_driver(self) -> None:
+        if self._driver is not None:
+            try:
+                self._driver.quit()
+            except Exception:
+                pass
+            finally:
+                self._driver = None
+        self._page_template_loaded = False
+        self._template_lang_hint = ""
+
+        # When fallback temp profile is used, remove it after browser closes to avoid stale lock/state.
+        if self._temp_user_data_dir is not None:
+            try:
+                rmtree(self._temp_user_data_dir, ignore_errors=True)
+            except Exception:
+                pass
+            self._temp_user_data_dir = None
+        self._active_user_data_dir = None
+
+    @staticmethod
+    def _is_devtools_port_error(exc: Exception) -> bool:
+        message = str(exc or "").lower()
+        return (
+            "devtoolsactiveport" in message
+            or "session not created" in message and "chrome failed to start" in message
+        )
+
+    def _build_options(self, options_cls, user_data_dir: Path):
+        options = options_cls()
+        if self.config.headless:
+            options.add_argument("--headless=new")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--window-size=1280,900")
+        options.add_argument("--remote-debugging-port=0")
+
+        if self.config.engine_compact_mode:
+            # Keep normal Chrome frame/taskbar presence while still using compact size/position.
+            options.add_argument("--disable-infobars")
+            options.add_argument("--disable-features=TranslateUI")
+
+        if self.config.force_chinese_ui:
+            options.add_argument("--lang=zh-CN")
+            options.add_experimental_option(
+                "prefs",
+                {
+                    "intl.accept_languages": "zh-CN,zh,en-US,en",
+                },
+            )
+        else:
+            options.add_argument("--lang=en-US")
+
+        user_data_dir.mkdir(parents=True, exist_ok=True)
+        options.add_argument(f"--user-data-dir={user_data_dir}")
+        options.add_argument("--profile-directory=Default")
+        return options
 
     @staticmethod
     def _iter_windows_hwnd_by_title_keyword(keyword: str) -> list[int]:
@@ -204,7 +283,11 @@ class SeleniumWebTranslator:
 
     def _ensure_driver(self):
         if self._driver is not None:
-            return self._driver
+            try:
+                _ = self._driver.current_url
+                return self._driver
+            except Exception:
+                self._reset_driver()
 
         try:
             webdriver = import_module("selenium.webdriver")
@@ -213,35 +296,32 @@ class SeleniumWebTranslator:
         except Exception as exc:
             raise RuntimeError("Selenium is not installed. Please install `selenium` first.") from exc
 
-        options = Options()
-        if self.config.headless:
-            options.add_argument("--headless=new")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--window-size=1280,900")
+        primary_user_data_dir = (
+            Path(self.config.chrome_user_data_dir)
+            if self.config.chrome_user_data_dir
+            else self._default_chrome_user_data_dir()
+        )
 
-        if self.config.engine_compact_mode:
-            # Keep normal Chrome frame/taskbar presence while still using compact size/position.
-            options.add_argument("--disable-infobars")
-            options.add_argument("--disable-features=TranslateUI")
+        try:
+            options = self._build_options(Options, primary_user_data_dir)
+            # Selenium Manager (Selenium 4.6+) can resolve chromedriver automatically.
+            self._driver = webdriver.Chrome(options=options)
+            self._active_user_data_dir = primary_user_data_dir
+        except Exception as exc:
+            if not self._is_devtools_port_error(exc):
+                raise
 
-        if self.config.force_chinese_ui:
-            options.add_argument("--lang=zh-CN")
-            options.add_experimental_option(
-                "prefs",
-                {
-                    "intl.accept_languages": "zh-CN,zh,en-US,en",
-                },
+            # Chrome may still be tearing down previous process/profile lock right after auto-close.
+            sleep(0.6)
+            fallback_user_data_dir = Path(mkdtemp(prefix="st_chrome_profile_"))
+            self._temp_user_data_dir = fallback_user_data_dir
+            logger.warning(
+                f"Chrome failed to start with persistent profile; retrying with temp profile: {fallback_user_data_dir}"
             )
-        else:
-            options.add_argument("--lang=en-US")
+            options = self._build_options(Options, fallback_user_data_dir)
+            self._driver = webdriver.Chrome(options=options)
+            self._active_user_data_dir = fallback_user_data_dir
 
-        user_data_dir = Path(self.config.chrome_user_data_dir) if self.config.chrome_user_data_dir else self._default_chrome_user_data_dir()
-        user_data_dir.mkdir(parents=True, exist_ok=True)
-        options.add_argument(f"--user-data-dir={user_data_dir}")
-        options.add_argument("--profile-directory=Default")
-
-        # Selenium Manager (Selenium 4.6+) can resolve chromedriver automatically.
-        self._driver = webdriver.Chrome(options=options)
         self._driver.set_page_load_timeout(self.config.page_timeout_sec)
         return self._driver
 
@@ -303,12 +383,7 @@ class SeleniumWebTranslator:
             except Exception:
                 pass
             self._injected_html_path = None
-        if self._driver is not None:
-            try:
-                self._driver.quit()
-            finally:
-                self._driver = None
-        self._page_template_loaded = False
+        self._reset_driver()
 
     def _open_translate_page(self, source_lang: str, target_lang: str) -> None:
         driver = self._ensure_driver()
@@ -420,9 +495,33 @@ class SeleniumWebTranslator:
 
         driver.get(self._injected_html_path.as_uri())
 
+    def _page_has_payload_root(self) -> bool:
+        driver = self._ensure_driver()
+        try:
+            return bool(
+                driver.execute_script(
+                    """
+                    const payload = document.getElementById('payload');
+                    return Boolean(payload);
+                    """
+                )
+            )
+        except Exception:
+            return False
+
     def _ensure_page_template_loaded(self, source_lang: Optional[str] = None) -> None:
         lang_hint = self._normalize_template_lang(source_lang)
         should_reload = (not self._page_template_loaded) or (self._template_lang_hint != lang_hint)
+        if not should_reload and not self._page_has_payload_root():
+            should_reload = True
+            try:
+                current_url = str(self._ensure_driver().current_url)
+            except Exception:
+                current_url = ""
+            logger.warning(
+                f"Selenium page template marker was stale; payload root missing. Reloading template. "
+                f"url={current_url or 'unknown'} lang_hint={lang_hint or 'auto'}"
+            )
         if not should_reload:
             return
 
@@ -447,13 +546,24 @@ class SeleniumWebTranslator:
             f'<span data-st-line="{idx}">{escape(line)}</span>' for idx, line in enumerate(payload_lines)
         )
         payload_text = "\n".join(payload_lines)
-        driver.execute_script(
+        has_payload = driver.execute_script(
             """
             const payload = document.getElementById('payload');
+            if (!payload) return false;
             payload.innerHTML = arguments[0];
+            return true;
             """,
             payload_html,
         )
+        if not has_payload:
+            try:
+                current_url = str(driver.current_url)
+            except Exception:
+                current_url = ""
+            raise RuntimeError(
+                "Template payload root not found before text injection; "
+                f"current_url={current_url or 'unknown'}"
+            )
         return payload_text
 
     def _detect_source_lang_hint(self, lines: Iterable[str]) -> str:
@@ -576,16 +686,31 @@ class SeleniumWebTranslator:
         lang_hint = (source_lang or "").strip().lower()
         if lang_hint in {"", "auto", "auto detect"}:
             lang_hint = self._detect_source_lang_hint(raw_lines)
-        self._ensure_page_template_loaded(lang_hint)
-        baseline = self._normalize_page_text(self._set_payload_text(raw_lines))
-        _ = self._wait_translation_event(baseline, wait_timeout_sec)
-        translated_lines = self._read_payload_lines()
-        if not any(line.strip() for line in translated_lines):
-            # Fallback if page translation changed DOM unexpectedly.
-            translated_text = self._read_payload_text()
-            translated_lines = [line.strip() for line in translated_text.splitlines()]
-        if translated_lines:
-            return translated_lines
+        last_error: Optional[Exception] = None
+        for attempt in range(2):
+            try:
+                self._ensure_page_template_loaded(lang_hint)
+                baseline = self._normalize_page_text(self._set_payload_text(raw_lines))
+                _ = self._wait_translation_event(baseline, wait_timeout_sec)
+                translated_lines = self._read_payload_lines()
+                if not any(line.strip() for line in translated_lines):
+                    # Fallback if page translation changed DOM unexpectedly.
+                    translated_text = self._read_payload_text()
+                    translated_lines = [line.strip() for line in translated_text.splitlines()]
+                if translated_lines:
+                    return translated_lines
+            except Exception as exc:
+                last_error = exc
+                if attempt == 0 and self._is_connection_lost_error(exc):
+                    self._reset_driver()
+                    continue
+                raise
+
+        if last_error is not None and self._is_connection_lost_error(last_error):
+            raise RuntimeError(
+                "Selenium browser connection lost during translation. "
+                "The browser was restarted once but did not recover. Please try again."
+            ) from last_error
 
         raise RuntimeError(
             "Page-translate mode timeout: browser translation did not complete. "
