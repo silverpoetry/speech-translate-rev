@@ -981,6 +981,7 @@ def record_session(
             """
             nonlocal last_sample, duration_seconds
             global prev_tc_res, prev_tl_res
+            logger.info(f"break_buffer_store_update called | last_sample_bytes={len(last_sample)} duration_seconds={duration_seconds:.2f}")
             last_sample = bytes()
             duration_seconds = 0
 
@@ -1385,17 +1386,37 @@ def record_cb(in_data, _frame_count, _time_info, _status):
         if not vad_checked:
             vad_checked = True
             logger.debug("Checking if webrtcvad is possible to use. You can ignore the error log if it fails!")
-            get_speech_webrtc(resampled, WHISPER_SR, frame_duration_ms, webrtc_vad)
+            # Quick probe to ensure WebRTC and Silero can run on this device/config
+            try:
+                webrtc_probe = get_speech_webrtc(resampled, WHISPER_SR, frame_duration_ms, webrtc_vad)
+                if sj.cache.get("debug_realtime_record"):
+                    logger.debug(f"WebRTC probe sample -> is_speech_candidate={webrtc_probe} frame_ms={frame_duration_ms}")
+            except Exception as _err:
+                if sj.cache.get("debug_realtime_record"):
+                    logger.exception(_err)
+
             logger.debug("Checking if silero is possible to use. You can ignore the error log if it fails!")
-            silero_probe = to_silero(resampled, num_of_channels, samp_width)
-            # Silero requires a minimum chunk length; early callbacks can be too short.
-            if silero_probe.numel() >= 512:
-                silero_vad(silero_probe, WHISPER_SR)
-            else:
-                logger.debug("Silero probe skipped: input audio chunk is too short")
+            try:
+                silero_probe = to_silero(resampled, num_of_channels, samp_width)
+                # Silero requires a minimum chunk length; early callbacks can be too short.
+                if silero_probe.numel() >= 512:
+                    try:
+                        _conf = silero_vad(silero_probe, WHISPER_SR)
+                        if sj.cache.get("debug_realtime_record"):
+                            logger.debug(f"Silero probe run -> conf_sample={float(_conf.item()):.3f}")
+                    except Exception as _e2:
+                        if sj.cache.get("debug_realtime_record"):
+                            logger.exception(_e2)
+                else:
+                    logger.debug("Silero probe skipped: input audio chunk is too short")
+            except Exception as _e:
+                if sj.cache.get("debug_realtime_record"):
+                    logger.exception(_e)
 
         if not threshold_enable:
             bc.data_queue.put(in_data)  # record regardless of db
+            if sj.cache.get("debug_realtime_record"):
+                logger.debug(f"record_cb: threshold disabled -> queued chunk bytes={len(in_data)} queue_after={bc.data_queue.qsize()}")
             if time() - LAST_RECORD_CB_DIAG_AT >= 1.0:
                 LAST_RECORD_CB_DIAG_AT = time()
                 logger.info(f"record_cb gate | threshold_enable=False queue={bc.data_queue.qsize()} bytes={len(in_data)}")
@@ -1413,18 +1434,43 @@ def record_cb(in_data, _frame_count, _time_info, _status):
 
             # using vad
             if threshold_auto:
-                is_speech = get_speech_webrtc(resampled, WHISPER_SR, frame_duration_ms, webrtc_vad)
+                try:
+                    webrtc_res = get_speech_webrtc(resampled, WHISPER_SR, frame_duration_ms, webrtc_vad)
+                except Exception as _e:
+                    webrtc_res = False
+                    if sj.cache.get("debug_realtime_record"):
+                        logger.exception(_e)
+
+                if sj.cache.get("debug_realtime_record"):
+                    logger.debug(f"WebRTC VAD -> candidate={webrtc_res} db={db:.2f} frame_ms={frame_duration_ms}")
+
+                is_speech = bool(webrtc_res)
                 if use_silero and is_speech and not silero_disabled:  # double check with silero if enabled
-                    conf: torch.Tensor = silero_vad(to_silero(resampled, num_of_channels, samp_width), WHISPER_SR)
-                    is_speech = conf.item() >= silero_min_conf
+                    conf_val = None
+                    try:
+                        conf: torch.Tensor = silero_vad(to_silero(resampled, num_of_channels, samp_width), WHISPER_SR)
+                        conf_val = float(conf.item())
+                        is_speech = conf_val >= silero_min_conf
+                    except Exception as _e:
+                        # if silero fails, fall back to webrtc result
+                        is_speech = bool(webrtc_res)
+                        if sj.cache.get("debug_realtime_record"):
+                            logger.exception(_e)
+
+                    if sj.cache.get("debug_realtime_record"):
+                        logger.debug(f"Silero double-check -> conf={conf_val if conf_val is not None else 'err'} min_conf={silero_min_conf} final_is_speech={is_speech}")
 
                 audiometer.set_recording(is_speech)
             else:
                 is_speech = db > threshold_db
+                if sj.cache.get("debug_realtime_record"):
+                    logger.debug(f"DB threshold check -> db={db:.2f} threshold_db={threshold_db} is_speech={is_speech}")
 
             if is_speech:
                 bc.data_queue.put(in_data)
                 was_recording = True
+                if sj.cache.get("debug_realtime_record"):
+                    logger.debug(f"Queued chunk -> db={db:.2f} is_speech=True queue_after={bc.data_queue.qsize()} bytes={len(in_data)}")
             else:
                 bc.current_rec_status = "▶️ Recording (Waiting for speech)"
                 if was_recording:
@@ -1432,6 +1478,7 @@ def record_cb(in_data, _frame_count, _time_info, _status):
                     if not is_silence:  # mark as silence if not already marked
                         is_silence = True
                         t_silence = time()
+                        logger.info("Silence started -> will trigger auto break after silence timeout if configured")
 
             if time() - LAST_RECORD_CB_DIAG_AT >= 1.0:
                 LAST_RECORD_CB_DIAG_AT = time()
