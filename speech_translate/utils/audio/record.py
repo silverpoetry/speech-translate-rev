@@ -1546,6 +1546,12 @@ def tl_api(text: str, lang_source: str, lang_target: str, engine: str, separator
                 aligned_units.append(cleaned_item)
 
         if aligned_units:
+            if engine == "Selenium Chrome Translate":
+                bc.tl_sentences = aligned_units
+                prev_tl_res = ""
+                bc.update_tl(None, separator)
+                return
+
             # Merge adjacent lines when both boundary chars are not punctuation.
             merged_units = []
             for unit in aligned_units:

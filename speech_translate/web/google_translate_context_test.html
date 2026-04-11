@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google翻译上下文注入测试</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f5f5f5;
+      padding: 20px;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+
+    .panel {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+    }
+
+    h2 {
+      margin-bottom: 15px;
+      color: #333;
+      border-bottom: 2px solid #1a73e8;
+      padding-bottom: 10px;
+    }
+
+    h3 {
+      margin-top: 15px;
+      margin-bottom: 8px;
+      color: #555;
+      font-size: 14px;
+    }
+
+    textarea {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      resize: none;
+      min-height: 300px;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+      border: 1px solid #e3e7ee;
+      border-radius: 6px;
+      padding: 10px;
+      background: #fbfcff;
+    }
+
+    .check-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #333;
+      line-height: 1.4;
+    }
+
+    .check-row input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      accent-color: #1a73e8;
+      cursor: pointer;
+    }
+
+    .inline-input {
+      width: 100%;
+      margin-top: 6px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 12px;
+      font-family: 'Courier New', monospace;
+    }
+
+    .primary-btn {
+      background: #1a73e8;
+      margin-top: 10px;
+    }
+
+    .primary-btn:hover {
+      background: #1557b0;
+    }
+
+    .quick-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    button {
+      padding: 12px;
+      border: none;
+      border-radius: 4px;
+      background: #1a73e8;
+      color: white;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #1557b0;
+    }
+
+    button:active {
+      background: #0d47a1;
+    }
+
+    button.secondary {
+      background: #5f6368;
+    }
+
+    button.secondary:hover {
+      background: #4f5459;
+    }
+
+    .output-box {
+      flex: 1;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 12px;
+      background: #fafafa;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      color: #333;
+    }
+
+    .preview-box {
+      flex: 1;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 12px;
+      background: white;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #333;
+    }
+
+    .preview-box > *:not(:last-child) {
+      margin-bottom: 8px;
+    }
+
+    .copy-btn {
+      background: #34a853;
+      padding: 8px 12px;
+      margin-top: 8px;
+      font-size: 11px;
+    }
+
+    .copy-btn:hover {
+      background: #2d8e47;
+    }
+
+    .clear-btn {
+      background: #ea4335;
+      padding: 8px 12px;
+      margin-top: 8px;
+      font-size: 11px;
+    }
+
+    .clear-btn:hover {
+      background: #c5221f;
+    }
+
+    .method-tag {
+      display: block;
+      background: #e8f0fe;
+      color: #1a73e8;
+      padding: 6px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+      margin-top: 4px;
+      white-space: pre-wrap;
+    }
+
+    .info-text {
+      font-size: 11px;
+      color: #666;
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- 左列：文本编辑和注入选项 -->
+    <div class="panel">
+      <h2>📝 文本内容</h2>
+      <textarea id="sourceText" placeholder="编辑要注入的文本内容..."></textarea>
+      
+      <h3>快速操作</h3>
+      <div class="quick-row">
+        <button class="secondary" onclick="loadSampleText()">加载示例文本</button>
+        <button class="secondary" onclick="clearOutput()">清空所有输出</button>
+      </div>
+      
+      <h3>注入容器（可多选）</h3>
+      <div class="control-group">
+        <label class="check-row"><input type="checkbox" id="wrap-span" checked>SPAN 行容器</label>
+        <label class="check-row"><input type="checkbox" id="wrap-p">P 行容器</label>
+        <label class="check-row"><input type="checkbox" id="wrap-div">DIV 行容器</label>
+      </div>
+
+      <h3>分隔与上下文策略（可排列组合）</h3>
+      <div class="control-group">
+        <label class="check-row"><input type="checkbox" id="opt-br" checked>行间加 &lt;br&gt;</label>
+        <label class="check-row"><input type="checkbox" id="opt-punctuation">每行尾部补句号“。”</label>
+        <label class="check-row"><input type="checkbox" id="opt-custom-sep">行间插入自定义分隔符</label>
+        <input id="customSep" class="inline-input" type="text" value="|||" placeholder="输入自定义分隔符，例如 ||| 或 [SEP]">
+        <label class="check-row"><input type="checkbox" id="opt-sep-with-br" checked>分隔符前后加 &lt;br&gt;</label>
+        <label class="check-row"><input type="checkbox" id="opt-double-br">行间使用双换行（&lt;br&gt;&lt;br&gt;）</label>
+      </div>
+
+      <button class="primary-btn" onclick="generateInjectionHtml()">生成组合注入 HTML</button>
+
+      <div class="info-text">
+        💡 勾选后点击“生成组合注入 HTML”：会按“容器类型 × 分隔策略”生成一组或多组结果，方便你用 Selenium 对比上下文翻译效果。
+      </div>
+    </div>
+
+    <!-- 中列：HTML 输出 -->
+    <div class="panel">
+      <h2>📋 HTML 输出</h2>
+      <div class="output-box" id="htmlOutput">
+        （勾选选项后点击“生成组合注入 HTML”）
+      </div>
+      <button class="copy-btn" onclick="copyHtmlOutput()">复制 HTML</button>
+      <button class="clear-btn" onclick="clearHtmlOutput()">清空输出</button>
+      
+      <h3>当前组合标签</h3>
+      <div id="methodTag" class="method-tag">（未选择）</div>
+    </div>
+
+    <!-- 右列：实时预览 -->
+    <div class="panel">
+      <h2>👁️ 实时预览</h2>
+      <div class="preview-box" id="previewBox">
+        （勾选选项后点击生成查看渲染效果）
+      </div>
+      <button class="clear-btn" onclick="clearPreview()">清空预览</button>
+      
+      <div class="info-text">
+        📌 此预览展示注入内容的实际渲染效果，帮助理解浏览器如何解析不同分隔方式。
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const sampleText = `人工智能正在改变世界。
+机器学习是现代技术的核心。
+深度学习模型已广泛应用于各行各业。
+自然语言处理技术使机器能够理解人类语言。
+计算机视觉帮助机器识别和分析图像。
+这些技术的结合创造了强大的系统。`;
+
+    let lastHtmlOutput = '';
+
+    function loadSampleText() {
+      document.getElementById('sourceText').value = sampleText;
+    }
+
+    function getSourceLines() {
+      const text = document.getElementById('sourceText').value.trim();
+      return text.split('\n').filter(line => line.trim() !== '');
+    }
+
+    function getSelectedWrappers() {
+      const wrappers = [];
+      if (document.getElementById('wrap-span').checked) wrappers.push('span');
+      if (document.getElementById('wrap-p').checked) wrappers.push('p');
+      if (document.getElementById('wrap-div').checked) wrappers.push('div');
+      return wrappers;
+    }
+
+    function buildLineContent(rawLine) {
+      const withPunctuation = document.getElementById('opt-punctuation').checked;
+      const line = htmlEscape(rawLine);
+      if (!withPunctuation) return line;
+      return /[。！？!?]$/.test(rawLine) ? line : `${line}。`;
+    }
+
+    function buildJoiner() {
+      const useBr = document.getElementById('opt-br').checked;
+      const useDoubleBr = document.getElementById('opt-double-br').checked;
+      const useCustomSep = document.getElementById('opt-custom-sep').checked;
+      const sepWithBr = document.getElementById('opt-sep-with-br').checked;
+      const customSepRaw = document.getElementById('customSep').value;
+      const customSep = htmlEscape(customSepRaw || '|||');
+
+      const chunks = [];
+      if (useDoubleBr) {
+        chunks.push('<br><br>');
+      } else if (useBr) {
+        chunks.push('<br>');
+      }
+
+      if (useCustomSep) {
+        if (sepWithBr) {
+          chunks.push(`<br>${customSep}<br>`);
+        } else {
+          chunks.push(customSep);
+        }
+      }
+
+      return chunks.join('') || '';
+    }
+
+    function wrapLine(wrapper, lineContent) {
+      if (wrapper === 'p') return `<p>${lineContent}</p>`;
+      if (wrapper === 'div') return `<div>${lineContent}</div>`;
+      return `<span>${lineContent}</span>`;
+    }
+
+    function buildHtmlForWrapper(wrapper, lines) {
+      const joiner = buildJoiner();
+      const wrapped = lines.map(line => wrapLine(wrapper, buildLineContent(line)));
+      return wrapped.join(joiner);
+    }
+
+    function generateInjectionHtml() {
+      const lines = getSourceLines();
+
+      if (lines.length === 0) {
+        alert('请先输入文本内容');
+        return;
+      }
+
+      const wrappers = getSelectedWrappers();
+      if (wrappers.length === 0) {
+        alert('请至少勾选一个注入容器');
+        return;
+      }
+
+      const outputs = wrappers.map((wrapper) => {
+        const html = buildHtmlForWrapper(wrapper, lines);
+        return { wrapper, html };
+      });
+
+      lastHtmlOutput = outputs.map((o) => o.html).join('\n');
+      displayHtmlOutput(outputs);
+      displayPreview(outputs);
+      updateMethodTag(wrappers);
+    }
+
+    function updateMethodTag(wrappers) {
+      const options = [];
+      if (document.getElementById('opt-br').checked) options.push('BR');
+      if (document.getElementById('opt-double-br').checked) options.push('双BR');
+      if (document.getElementById('opt-punctuation').checked) options.push('句号');
+      if (document.getElementById('opt-custom-sep').checked) {
+        const sep = document.getElementById('customSep').value || '|||';
+        const sepStyle = document.getElementById('opt-sep-with-br').checked ? '带BR' : '直连';
+        options.push(`自定义分隔符(${sep}, ${sepStyle})`);
+      }
+
+      const wrapperLabel = wrappers.map((w) => w.toUpperCase()).join(' + ');
+      const optionLabel = options.length ? options.join(' + ') : '无额外分隔策略';
+      document.getElementById('methodTag').textContent = `容器: ${wrapperLabel}\n策略: ${optionLabel}`;
+    }
+
+    function htmlEscape(text) {
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return text.replace(/[&<>"']/g, c => map[c]);
+    }
+
+    function displayHtmlOutput(outputs) {
+      const output = document.getElementById('htmlOutput');
+      const lines = outputs.map((item, idx) => {
+        const title = `<!-- CASE ${idx + 1}: ${item.wrapper.toUpperCase()} -->`;
+        return `${title}\n${item.html}`;
+      });
+      output.textContent = lines.join('\n\n');
+      output.style.whiteSpace = 'pre-wrap';
+    }
+
+    function displayPreview(outputs) {
+      const preview = document.getElementById('previewBox');
+      const blocks = outputs.map((item, idx) => {
+        const title = `<div style="font-weight:600;color:#1a73e8;margin:8px 0 6px;">CASE ${idx + 1}: ${item.wrapper.toUpperCase()}</div>`;
+        return `${title}<div>${item.html}</div><hr style="border:none;border-top:1px solid #e5e7eb;margin:10px 0;">`;
+      });
+      preview.innerHTML = blocks.join('');
+    }
+
+    function copyHtmlOutput() {
+      if (!lastHtmlOutput) {
+        alert('没有 HTML 输出可复制');
+        return;
+      }
+      navigator.clipboard.writeText(lastHtmlOutput).then(() => {
+        alert('已复制到剪贴板');
+      }).catch(() => {
+        alert('复制失败，请手动复制');
+      });
+    }
+
+    function clearHtmlOutput() {
+      document.getElementById('htmlOutput').textContent = '（已清空）';
+      document.getElementById('methodTag').textContent = '（未选择）';
+      lastHtmlOutput = '';
+    }
+
+    function clearPreview() {
+      document.getElementById('previewBox').innerHTML = '（已清空）';
+    }
+
+    function clearOutput() {
+      clearHtmlOutput();
+      clearPreview();
+      document.getElementById('sourceText').value = '';
+    }
+
+    // 初始化：加载示例文本
+    window.addEventListener('load', () => {
+      loadSampleText();
+    });
+  </script>
+</body>
+</html>

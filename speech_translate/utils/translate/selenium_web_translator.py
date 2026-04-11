@@ -56,6 +56,7 @@ class SeleniumWebTranslator:
         self._window_marker = "ST_ENGINE_WINDOW"
         self._active_user_data_dir: Optional[Path] = None
         self._temp_user_data_dir: Optional[Path] = None
+        self._line_sep_token = "。"
 
     @staticmethod
     def _is_connection_lost_error(exc: Exception) -> bool:
@@ -542,10 +543,17 @@ class SeleniumWebTranslator:
     def _set_payload_text(self, lines: Iterable[str]) -> str:
         driver = self._ensure_driver()
         payload_lines = [str(x) for x in lines]
-        payload_html = "".join(
-            f'<p data-st-line="{idx}" style="margin:0;">{escape(line)}</p>'
-            for idx, line in enumerate(payload_lines)
-        )
+        segments: List[str] = []
+        n = len(payload_lines)
+        for idx, line in enumerate(payload_lines):
+            suffix = self._line_sep_token if idx < n - 1 else ""
+            if idx == n - 1:
+                # 最后一行用<p>
+                segments.append(f'<p data-st-line="{idx}">{escape(line + suffix)}</p>')
+            else:
+                segments.append(f'<span data-st-line="{idx}">{escape(line + suffix)}</span>')
+                segments.append('<br data-st-br="1" />')
+        payload_html = "".join(segments)
         payload_text = driver.execute_script(
             """
             const payload = document.getElementById('payload');
@@ -590,19 +598,30 @@ class SeleniumWebTranslator:
     def _read_payload_lines(self) -> List[str]:
         driver = self._ensure_driver()
         lines = driver.execute_script(
-            """
+            r"""
             const payload = document.getElementById('payload');
             if (!payload) return [];
-            const nodes = Array.from(payload.querySelectorAll('p[data-st-line]'));
-            return nodes.map((node) => String(node.innerText || node.textContent || '').replaceAll(String.fromCharCode(13), '').trim());
-            """
-        )
 
+            const readText = (node) => String(node?.innerText || node?.textContent || '')
+                .replaceAll(String.fromCharCode(13), '')
+                .replaceAll(String.fromCharCode(10), ' ')
+                .trim();
+            // 先取所有 span[data-st-line] 和 p[data-st-line]，保证顺序
+            const tagged = Array.from(payload.querySelectorAll('span[data-st-line],p[data-st-line]'));
+            if (tagged.length > 0) {
+                return tagged.map(readText).filter(Boolean);
+            }
+
+            // Fallback: treat each non-separator span as one line.
+            const fallback = Array.from(payload.querySelectorAll('span:not([data-st-sep])'));
+            return fallback
+                .map(readText)
+                .filter(Boolean);
+            """,
+        )
         if not isinstance(lines, list):
             return []
-
-        cleaned = [str(line).strip() for line in lines]
-        return cleaned
+        return [str(line).strip() for line in lines if str(line).strip()]
 
     def _read_payload_text(self) -> str:
         driver = self._ensure_driver()
@@ -698,7 +717,9 @@ class SeleniumWebTranslator:
                 if not any(line.strip() for line in translated_lines):
                     # Fallback if page translation changed DOM unexpectedly.
                     translated_text = self._read_payload_text()
-                    translated_lines = [line.strip() for line in translated_text.splitlines()]
+                    translated_lines = [
+                        part.strip() for part in translated_text.split(self._line_sep_token) if part.strip()
+                    ]
                 if translated_lines:
                     return translated_lines
             except Exception as exc:

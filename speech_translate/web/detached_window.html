@@ -304,11 +304,82 @@
     }
 
     function toPlainLines(inputHtml) {
+      const html = String(inputHtml || '');
       const temp = document.createElement('div');
-      temp.innerHTML = String(inputHtml || '');
-      const text = (temp.innerText || temp.textContent || '').replaceAll('\r', '');
+      temp.innerHTML = html;
+
+      const readText = (node) => String(node?.innerText || node?.textContent || '')
+        .replaceAll('\r', '')
+        .replaceAll('\n', ' ')
+        .trim();
+
+      // 1) Prefer explicit per-line markers.
+      const taggedLines = Array.from(temp.querySelectorAll('span[data-st-line]'))
+        .map(readText)
+        .filter(Boolean);
+      if (taggedLines.length > 0) {
+        return taggedLines;
+      }
+
+      // 2) If separator markers exist, split by marker nodes structurally.
+      const hasSep = temp.querySelector('span[data-st-sep]') !== null;
+      if (hasSep) {
+        const out = [];
+        let current = [];
+        const flush = () => {
+          const line = current.join(' ').split(' ').filter(Boolean).join(' ').trim();
+          if (line) out.push(line);
+          current = [];
+        };
+
+        for (const node of Array.from(temp.childNodes || [])) {
+          if (node && node.nodeType === 1) {
+            const el = node;
+            if (el.matches && el.matches('span[data-st-sep]')) {
+              flush();
+              continue;
+            }
+            if (el.matches && el.matches('br')) {
+              continue;
+            }
+          }
+          const txt = readText(node);
+          if (txt) current.push(txt);
+        }
+        flush();
+        if (out.length > 0) {
+          return out;
+        }
+      }
+
+      // 3) Reuse existing .line wrappers if present.
+      const wrappedLines = Array.from(temp.querySelectorAll('.line'))
+        .map(readText)
+        .filter(Boolean);
+      if (wrappedLines.length > 0) {
+        return wrappedLines;
+      }
+
+      // 4) Fallback: split by rendered newlines, including <br>.
+      const withBreaks = html.replace(/<br\s*\/?>/gi, '\n');
+      const plain = document.createElement('div');
+      plain.innerHTML = withBreaks;
+      const text = (plain.innerText || plain.textContent || '').replaceAll('\r', '');
       const lines = text.split('\n').map((x) => x.trim()).filter(Boolean);
-      return applyCommaWrapRule(splitSentenceBoundaries(lines));
+
+      if (lines.length >= 2) {
+        const last = String(lines[lines.length - 1] || '').trim();
+        const compactLast = last.replaceAll(' ', '');
+        const hasPunctuation = /[，。！？；：、,.!?;:]/.test(last);
+        if (compactLast.length > 0 && compactLast.length < 5 && !hasPunctuation) {
+          const prev = String(lines[lines.length - 2] || '').trim();
+          const needSpace = /[A-Za-z0-9]$/.test(prev) && /^[A-Za-z0-9]/.test(last);
+          lines[lines.length - 2] = `${prev}${needSpace ? ' ' : ''}${last}`;
+          lines.pop();
+        }
+      }
+
+      return lines;
     }
 
     function renderDisplayHtml(inputHtml) {
