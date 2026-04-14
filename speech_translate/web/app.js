@@ -343,6 +343,14 @@ function renderRecordSettings(data) {
       if (node) {
         node.value = value ?? '';
       }
+      // If this is a threshold dB slider, also update the adjacent value display node.
+      if (suffix === 'ThresholdDb') {
+        const valueNode = els[`${prefix}ThresholdDbValue`];
+        if (valueNode) {
+          const n = Number(value);
+          valueNode.textContent = `${Number.isFinite(n) ? n.toFixed(1) : ''} dB`;
+        }
+      }
     };
     const setChecked = (suffix, value) => {
       const node = els[`${prefix}${suffix}`];
@@ -1540,6 +1548,7 @@ async function init() {
     els.micThresholdAutoSilero = $('threshold_auto_silero_mic');
     els.micThresholdSileroMin = $('threshold_silero_mic_min');
     els.micThresholdDb = $('threshold_db_mic');
+    els.micThresholdDbValue = $('threshold_db_mic_value');
     els.speakerSampleRate = $('sample_rate_speaker');
     els.speakerChunkSize = $('chunk_size_speaker');
     els.speakerChannels = $('channels_speaker');
@@ -1556,6 +1565,7 @@ async function init() {
     els.speakerThresholdAutoSilero = $('threshold_auto_silero_speaker');
     els.speakerThresholdSileroMin = $('threshold_silero_speaker_min');
     els.speakerThresholdDb = $('threshold_db_speaker');
+    els.speakerThresholdDbValue = $('threshold_db_speaker_value');
     els.modelImport = $('model_f_import');
     els.modelImportEngineBar = $('model-import-engine-bar');
     els.btnLoadModel = $('btn-load-model');
@@ -1598,6 +1608,18 @@ async function init() {
     els.workspaceHub = $('workspace-hub');
     els.settingsShell = $('settings-shell');
     els.taskCard = $('task-card');
+
+    // Live value displays for range sliders
+    if (els.micThresholdDb) {
+      els.micThresholdDb.addEventListener('input', (e) => {
+        if (els.micThresholdDbValue) els.micThresholdDbValue.textContent = `${Number(e.target.value).toFixed(1)} dB`;
+      });
+    }
+    if (els.speakerThresholdDb) {
+      els.speakerThresholdDb.addEventListener('input', (e) => {
+        if (els.speakerThresholdDbValue) els.speakerThresholdDbValue.textContent = `${Number(e.target.value).toFixed(1)} dB`;
+      });
+    }
     els.globalStatusbar = $('global-statusbar');
     els.pageScrollIndicator = $('page-scroll-indicator');
     els.pageScrollThumb = $('page-scroll-thumb');
