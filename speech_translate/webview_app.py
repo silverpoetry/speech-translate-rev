@@ -1643,10 +1643,12 @@ class WebBridge(WebTaskBridge):
         return {"key": key, "value": sj.cache.get(key)}
 
     def set_record_setting(self, key: str, value: Any) -> Dict[str, Any]:
+        logger.debug(f"[webview_app.set_record_setting] request key={key} value={value}")
         if key == "model_device_preference":
             normalized = str(value or "auto").strip().lower()
-            value = normalized if normalized in {"auto", "cpu", "cuda"} else "auto"
+            value = normalized if value in {"auto", "cpu", "cuda"} else "auto"
         sj.save_key(key, value)
+        logger.debug(f"[webview_app.set_record_setting] saved key={key} value={sj.cache.get(key)}")
         return {"key": key, "value": sj.cache.get(key)}
 
     def load_runtime_model(self, model_key: str) -> Dict[str, Any]:
@@ -2272,6 +2274,10 @@ class WebBridge(WebTaskBridge):
 
         # Get settings and normalize values
         settings = self.get_settings_snapshot()
+        logger.debug(
+            f"[webview_app.start_recording] called | device={device} snapshot_threshold_enable_speaker={settings.get('threshold_enable_speaker')} "
+            f"snapshot_threshold_auto_speaker={settings.get('threshold_auto_speaker')}"
+        )
         lang_source = str(settings.get("source_lang_mw", lang_source))
         lang_target = str(settings.get("target_lang_mw", lang_target))
         device = str(settings.get("input", device))
@@ -2339,6 +2345,7 @@ class WebBridge(WebTaskBridge):
 
         def worker():
             try:
+                logger.debug(f"[webview_app.start_recording.worker] worker starting record_session | device={device} settings_snapshot={self.get_settings_snapshot()}")
                 speaker = device.lower() == "speaker"
                 record_session(lang_source, lang_target, engine, model_name_tc, device, is_tc, is_tl, speaker)
                 self.finish_task("Recording finished")

@@ -2,6 +2,8 @@ __all__ = ["default_setting", "SettingJson"]
 import json
 import os
 from typing import List
+import inspect
+import threading
 
 from darkdetect import isDark
 from loguru import logger
@@ -378,6 +380,17 @@ class SettingJson:
         """
         Save setting by key
         """
+        # Diagnostics: capture caller information to help identify who is changing settings
+        try:
+            stack = inspect.stack()
+            # immediate caller
+            caller = stack[1]
+            caller_info = f"{caller.filename}:{caller.lineno} {caller.function}"
+        except Exception:
+            caller_info = "unknown"
+
+        logger.debug(f"[SettingJson.save_key] request key={key} value={value} caller={caller_info} thread={threading.current_thread().name}")
+
         if key not in self.cache:
             if key in default_setting:
                 # Backward compatibility: runtime may still hold an older cache loaded before new keys were added.
@@ -385,13 +398,18 @@ class SettingJson:
             else:
                 logger.error(f"Error saving setting: {key}. It's not a valid setting key")
                 return
+
         if self.cache[key] == value:  # if same value
+            logger.debug(f"[SettingJson.save_key] key={key} unchanged ({value}), skip save (caller={caller_info})")
             return
 
+        logger.info(f"[SettingJson.save_key] saving key={key} value={value} caller={caller_info}")
         self.cache[key] = value
         success, msg = self.save(self.cache)
 
-        if not success:
+        if success:
+            logger.debug(f"[SettingJson.save_key] saved key={key} new_value={self.cache.get(key)}")
+        else:
             self.__notify("Error: Saving setting file", "Reason: " + msg)
 
     def load_setting(self):

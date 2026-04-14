@@ -288,6 +288,11 @@ def record_session(
         silero_min_conf = sj.cache.get(f"threshold_silero_{rec_type}_min", 0.75)
         auto_break_buffer = sj.cache.get(f"auto_break_buffer_{rec_type}", True)
 
+        logger.debug(
+            f"[record] init rec_type={rec_type} threshold_enable={threshold_enable} "
+            f"threshold_auto={threshold_auto} use_silero={use_silero} auto_break_buffer={auto_break_buffer}"
+        )
+
         auto = lang_source.lower() == "auto detect"
         use_temp = sj.cache["use_temp"]
         language = f"{lang_source} → {lang_target}" if is_tl else lang_source
@@ -380,6 +385,24 @@ def record_session(
                 state="disabled"
             )
             cbtn_enable_threshold.pack(side="left", fill="x", padx=5, pady=5)
+            try:
+                _gv = getattr(cbtn_enable_threshold, "get_value", None)
+                if callable(_gv):
+                    _cbtn_var = _gv()
+                else:
+                    _inst = getattr(cbtn_enable_threshold, "instate", None)
+                    _cbtn_var = _inst(["selected"]) if callable(_inst) else None
+            except Exception:
+                _cbtn_var = None
+            try:
+                _inst_fn = getattr(cbtn_enable_threshold, "instate", None)
+                _inst_state = _inst_fn(["selected"]) if callable(_inst_fn) else None
+            except Exception:
+                _inst_state = None
+            logger.debug(
+                f"[record.UI] cbtn_enable_threshold created | var={_cbtn_var} "
+                f"instate={_inst_state} sj_cache={sj.cache.get(f'threshold_enable_{rec_type}', None)}"
+            )
 
             cbtn_auto_threshold = CustomCheckButton(
                 frame_lbl_6,
@@ -740,9 +763,31 @@ def record_session(
                 if root is not None:
                     root.title(f"Recording {rec_type}")
 
-        def toggle_enable_threshold():
+        def toggle_enable_threshold(persist: bool = True):
+            try:
+                _gv3 = getattr(cbtn_enable_threshold, "get_value", None)
+                if callable(_gv3):
+                    _cbtn_var3 = _gv3()
+                else:
+                    _inst3 = getattr(cbtn_enable_threshold, "instate", None)
+                    _cbtn_var3 = _inst3(["selected"]) if callable(_inst3) else None
+            except Exception:
+                _cbtn_var3 = None
+            try:
+                _inst_fn3 = getattr(cbtn_enable_threshold, "instate", None)
+                _inst_state3 = _inst_fn3(["selected"]) if callable(_inst_fn3) else None
+            except Exception:
+                _inst_state3 = None
+            logger.debug(
+                f"[record.toggle_enable_threshold] entry | rec_type={rec_type} cbtn_var={_cbtn_var3} "
+                f"instate={_inst_state3} threshold_enable_var={threshold_enable}"
+            )
             val = cbtn_enable_threshold.instate(["selected"])
-            sj.save_key(f"threshold_enable_{rec_type}", val)
+            if persist:
+                logger.debug(f"[record.toggle_enable_threshold] saving threshold_enable_{rec_type} -> {val}")
+                sj.save_key(f"threshold_enable_{rec_type}", val)
+            else:
+                logger.debug(f"[record.toggle_enable_threshold] skip saving threshold_enable_{rec_type} -> {val} (persist=False)")
             if val:
                 cbtn_auto_threshold.configure(state="normal")
                 cbtn_break_buffer_on_silence.configure(state="normal")
@@ -757,11 +802,14 @@ def record_session(
                 frame_lbl_8.pack_forget()
 
                 audiometer.stop()
-            toggle_auto_threshold()
+            toggle_auto_threshold(persist=persist)
 
-        def toggle_auto_threshold():
+        def toggle_auto_threshold(persist: bool = True):
             val = cbtn_auto_threshold.instate(["selected"])
-            sj.save_key(f"threshold_auto_{rec_type}", val)
+            if persist:
+                sj.save_key(f"threshold_auto_{rec_type}", val)
+            else:
+                logger.debug(f"[record.toggle_auto_threshold] skip saving threshold_auto_{rec_type} -> {val} (persist=False)")
             if val:
                 audiometer.set_auto(True)
                 audiometer.configure(height=10)
@@ -931,7 +979,7 @@ def record_session(
         btn_pause.configure(state="normal", command=toggle_pause)
         btn_stop.configure(state="normal", command=stop_recording)
         scale_threshold.configure(command=slider_move, state="normal")
-        temp_map = {1: radio_vad_1, 2: radio_vad_2, 3: radio_vad_3}
+        temp_map = {1: radio_vad_1, 2: radio_vad_2, 3: radio_vad_3} 
         radio_vad_1.configure(command=lambda: set_webrtc_level(1), state="normal")
         radio_vad_2.configure(command=lambda: set_webrtc_level(2), state="normal")
         radio_vad_3.configure(command=lambda: set_webrtc_level(3), state="normal")
@@ -939,7 +987,26 @@ def record_session(
             cbtn_invoker(threshold_auto, cast(Any, temp_map[sj.cache.get(f"threshold_auto_level_{rec_type}", 3)]))
         if not use_silero:
             spn_silero_min_conf.pack_forget()
-        toggle_enable_threshold()
+        try:
+            _gv2 = getattr(cbtn_enable_threshold, "get_value", None)
+            if callable(_gv2):
+                _cbtn_var2 = _gv2()
+            else:
+                _inst2 = getattr(cbtn_enable_threshold, "instate", None)
+                _cbtn_var2 = _inst2(["selected"]) if callable(_inst2) else None
+        except Exception:
+            _cbtn_var2 = None
+        try:
+            _inst_fn2 = getattr(cbtn_enable_threshold, "instate", None)
+            _inst_state2 = _inst_fn2(["selected"]) if callable(_inst_fn2) else None
+        except Exception:
+            _inst_state2 = None
+        logger.debug(
+            f"[record.UI] before toggle_enable_threshold | cbtn_var={_cbtn_var2} "
+            f"instate={_inst_state2} threshold_enable_var={threshold_enable} "
+            f"sj_cache={sj.cache.get(f'threshold_enable_{rec_type}', None)}"
+        )
+        toggle_enable_threshold(persist=False)
         update_ui_thread = Thread(target=update_modal_ui, daemon=True)
         update_ui_thread.start()
 
