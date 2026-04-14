@@ -50,6 +50,7 @@ else:
 ERROR_CON_NOTIFIED = False
 ERROR_CON_NOFIFIED_AMOUNT = 0
 LAST_RECORD_CB_DIAG_AT = 0.0
+LAST_DB_PRINT_AT = 0.0
 prev_tc_res: Any = ""
 prev_tl_res: Any = ""
 
@@ -399,10 +400,7 @@ def record_session(
                 _inst_state = _inst_fn(["selected"]) if callable(_inst_fn) else None
             except Exception:
                 _inst_state = None
-            logger.debug(
-                f"[record.UI] cbtn_enable_threshold created | var={_cbtn_var} "
-                f"instate={_inst_state} sj_cache={sj.cache.get(f'threshold_enable_{rec_type}', None)}"
-            )
+            
 
             cbtn_auto_threshold = CustomCheckButton(
                 frame_lbl_6,
@@ -778,16 +776,9 @@ def record_session(
                 _inst_state3 = _inst_fn3(["selected"]) if callable(_inst_fn3) else None
             except Exception:
                 _inst_state3 = None
-            logger.debug(
-                f"[record.toggle_enable_threshold] entry | rec_type={rec_type} cbtn_var={_cbtn_var3} "
-                f"instate={_inst_state3} threshold_enable_var={threshold_enable}"
-            )
             val = cbtn_enable_threshold.instate(["selected"])
             if persist:
-                logger.debug(f"[record.toggle_enable_threshold] saving threshold_enable_{rec_type} -> {val}")
                 sj.save_key(f"threshold_enable_{rec_type}", val)
-            else:
-                logger.debug(f"[record.toggle_enable_threshold] skip saving threshold_enable_{rec_type} -> {val} (persist=False)")
             if val:
                 cbtn_auto_threshold.configure(state="normal")
                 cbtn_break_buffer_on_silence.configure(state="normal")
@@ -808,8 +799,6 @@ def record_session(
             val = cbtn_auto_threshold.instate(["selected"])
             if persist:
                 sj.save_key(f"threshold_auto_{rec_type}", val)
-            else:
-                logger.debug(f"[record.toggle_auto_threshold] skip saving threshold_auto_{rec_type} -> {val} (persist=False)")
             if val:
                 audiometer.set_auto(True)
                 audiometer.configure(height=10)
@@ -1001,11 +990,6 @@ def record_session(
             _inst_state2 = _inst_fn2(["selected"]) if callable(_inst_fn2) else None
         except Exception:
             _inst_state2 = None
-        logger.debug(
-            f"[record.UI] before toggle_enable_threshold | cbtn_var={_cbtn_var2} "
-            f"instate={_inst_state2} threshold_enable_var={threshold_enable} "
-            f"sj_cache={sj.cache.get(f'threshold_enable_{rec_type}', None)}"
-        )
         toggle_enable_threshold(persist=False)
         update_ui_thread = Thread(target=update_modal_ui, daemon=True)
         update_ui_thread.start()
@@ -1530,8 +1514,14 @@ def record_cb(in_data, _frame_count, _time_info, _status):
                 audiometer.set_recording(is_speech)
             else:
                 is_speech = db > threshold_db
-                if sj.cache.get("debug_realtime_record"):
-                    logger.debug(f"DB threshold check -> db={db:.2f} threshold_db={threshold_db} is_speech={is_speech}")
+                # Rate-limited real-time DB output for observing typical DB values
+                try:
+                    global LAST_DB_PRINT_AT
+                    if time() - LAST_DB_PRINT_AT >= 0.5:
+                        LAST_DB_PRINT_AT = time()
+                        logger.info(f"DB sample | db={db:.2f} dB threshold_db={threshold_db} is_speech={is_speech}")
+                except Exception:
+                    pass
 
             if is_speech:
                 bc.data_queue.put(in_data)
