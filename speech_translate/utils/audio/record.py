@@ -2,6 +2,7 @@
 import os
 import re
 from ast import literal_eval
+from copy import deepcopy
 from datetime import datetime, timedelta
 from io import BytesIO
 from platform import python_version, system
@@ -53,6 +54,9 @@ LAST_RECORD_CB_DIAG_AT = 0.0
 LAST_DB_PRINT_AT = 0.0
 prev_tc_res: Any = ""
 prev_tl_res: Any = ""
+prev_tc_buffer_seconds: float = 0.0
+last_db: Any = None
+ 
 
 
 class _NoopAudioMeter:
@@ -197,10 +201,10 @@ def record_session(
     # ----------------- Get device -----------------
     try:
         global sr_ori, frame_duration_ms, threshold_enable, threshold_db, threshold_auto, use_silero, \
-            silero_min_conf, vad_checked, num_of_channels, prev_tc_res, prev_tl_res, max_db, min_db, \
+            silero_min_conf, vad_checked, num_of_channels, prev_tc_res, prev_tl_res, prev_tc_buffer_seconds, max_db, min_db, \
             is_silence, was_recording, t_silence, samp_width, webrtc_vad, silero_vad, use_temp, \
             disable_silerovad, disable_auto_threshold, silero_disabled, ERROR_CON_NOTIFIED, \
-            ERROR_CON_NOFIFIED_AMOUNT, LAST_RECORD_CB_DIAG_AT
+            ERROR_CON_NOFIFIED_AMOUNT, LAST_RECORD_CB_DIAG_AT, last_db
         
         ERROR_CON_NOTIFIED = False
         ERROR_CON_NOFIFIED_AMOUNT = 0
@@ -528,6 +532,28 @@ def record_session(
         whisper_args["verbose"] = None  # set to none so no printing of the progress to stdout
         whisper_lang = get_whisper_lang_similar(lang_source) if not auto else None
         whisper_args["language"] = TO_LANGUAGE_CODE[whisper_lang] if whisper_lang else None
+
+        # Decide initial prompt behavior.
+        # If `enable_initial_prompt` is True, prefer per-language entries from
+        # `initial_prompts_map` and fall back to built-in defaults. In this mode
+        # we do NOT use the global `initial_prompt` setting.
+        try:
+            enabled = bool(sj.cache.get("enable_initial_prompt", False))
+            if enabled:
+                from ..whisper.prompts import pick_initial_prompt
+
+                user_map = sj.cache.get("initial_prompts_map", {}) or {}
+                prompt = pick_initial_prompt(whisper_args.get("language"), True, user_map, None)
+                if prompt:
+                    whisper_args["initial_prompt"] = prompt
+                else:
+                    whisper_args.pop("initial_prompt", None)
+            else:
+                # When disabled: ensure no initial prompt is used at all
+                whisper_args.pop("initial_prompt", None)
+        except Exception:
+            # best-effort only; fall back to whatever settings provide
+            pass
         demucs_enabled = bool(whisper_args.get("demucs", False))
         vad_enabled = bool(whisper_args.get("vad", False))
         path_diag_flags = {
@@ -1024,43 +1050,231 @@ def record_session(
             stream_callback=record_cb,
         )
         logger.debug("Recording session started")
-
-        def break_buffer_store_update():
+        def break_buffer_store_update(reason: str = ""):
             """
-            Break the buffer (last_sample). Resetting the buffer means that the buffer will be cleared and
-            it will be stored in the currently transcribed or translated text.
+            处理缓冲区满 (Buffer Full) 或 静音打断 (Silence) 时的逻辑。
+            核心目标：找出最近的停顿处（Gap）进行无损切割，将前半段定稿，后半段退回继续识别。
             """
-            nonlocal last_sample, duration_seconds
+            nonlocal last_sample, duration_seconds, next_transcribe_time
             global prev_tc_res, prev_tl_res
-            logger.info(f"break_buffer_store_update called | last_sample_bytes={len(last_sample)} duration_seconds={duration_seconds:.2f}")
-            last_sample = bytes()
-            duration_seconds = 0
 
-            # append if there is any text
-            # remove text that is exactly the same because some dupe might accidentally happened
-            # update only if there is any text
-            if is_tc:
-                if prev_tc_res:
+            logger.info(f"触发缓冲区打断 | 原因={reason} 字节数={len(last_sample)} 时长={duration_seconds:.2f}秒")
+
+            preserved_prev_tc = False
+            preserved_prev_tl = False
+            had_set_last_sample = False
+
+            # =========================================================================
+            # 步骤 1：尝试智能断句 (Smart-Split)
+            # =========================================================================
+            if reason == "buffer_full" and is_tc and prev_tc_res and hasattr(prev_tc_res, 'segments'):
+                WhisperResultClass = type(prev_tc_res)
+                segments = prev_tc_res.segments
+                
+                # 1.1 提取词级时间戳 (扁平化所有有效词汇)
+                word_infos = []
+                for sidx, seg in enumerate(segments):
+                    for widx, w in enumerate(seg.to_dict().get('words', [])):
+                        text = str(w.get('word', w.get('text', ''))).strip()
+                        if not text: 
+                            continue
+                        
+                        try:
+                            start = float(w.get('start', w.get('end', 0.0)))
+                            end = float(w.get('end', start))
+                        except Exception:
+                            continue
+                            
+                        avg = (start + end) / 2.0
+                        word_infos.append((sidx, widx, text, avg, start, end))
+
+                # 1.2 划定安全切割区 (为了保证上下文，只在当前缓冲区后半段寻找停顿点)
+                half_point = (prev_tc_buffer_seconds / 2.0) if prev_tc_buffer_seconds > 0 else 0.0
+                filtered_words = [wi for wi in word_infos if wi[3] >= half_point]
+
+                # 1.3 寻找最长停顿间隔 (Max Gap)
+                max_gap, max_idx = -1.0, None
+                for i in range(len(filtered_words) - 1):
+                    cur_end = filtered_words[i][5]        # 当前词的结束时间
+                    next_start = filtered_words[i + 1][4] # 下一个词的开始时间
+                    gap = next_start - cur_end
+                    if gap > max_gap:
+                        max_gap = gap
+                        max_idx = i
+
+                # 1.4 如果找到了合适的停顿点，执行文本与音频的【双重切割】
+                if max_idx is not None and max_gap > 0:
+                    left_word, right_word = filtered_words[max_idx], filtered_words[max_idx + 1]
+                    seg_l, seg_r = left_word[0], right_word[0]
+                    split_time = (left_word[5] + right_word[4]) / 2.0
+
+                    # --- [逻辑切割]：拆分 Segments 对象 ---
+                    pre_segs, post_segs = [], []
+                    
+                    if seg_l != seg_r:
+                        # 【场景 A】：停顿恰好发生在两个完整的句子（Segment）之间
+                        # 最完美的切割，无需干预内部时间戳，直接切开列表即可！
+                        pre_segs = [s.to_dict() for s in segments[:seg_l + 1]]
+                        post_segs = [s.to_dict() for s in segments[seg_l + 1:]]
+                    else:
+                        # 【场景 B】：停顿发生在某个句子（Segment）内部，需要将其拆成两半
+                        for i, seg in enumerate(segments):
+                            seg_d = seg.to_dict()
+                            if i < seg_l:
+                                pre_segs.append(seg_d)
+                            elif i > seg_l:
+                                post_segs.append(seg_d)
+                            else:
+                                # i == seg_l，精确切分单词
+                                words = seg_d.get('words', [])
+                                pre_w = [w for w in words if (float(w.get('start', 0.0)) + float(w.get('end', 0.0))) / 2.0 < split_time]
+                                post_w = [w for w in words if (float(w.get('start', 0.0)) + float(w.get('end', 0.0))) / 2.0 >= split_time]
+                                
+                                # 前半截如果有词，才组装
+                                if pre_w:
+                                    pre_d = deepcopy(seg_d)
+                                    pre_d['words'] = pre_w
+                                    pre_d['text'] = " ".join([w.get('word', w.get('text', '')).strip() for w in pre_w]).strip()
+                                    pre_d['start'] = seg_d.get('start', pre_w[0].get('start', 0.0))
+                                    pre_d['end'] = pre_w[-1].get('end', split_time)
+                                    if pre_d['start'] > pre_d['end']: pre_d['start'] = pre_d['end']
+                                    pre_segs.append(pre_d)
+                                    
+                                # 后半截如果有词，才组装
+                                if post_w:
+                                    post_d = deepcopy(seg_d)
+                                    post_d['words'] = post_w
+                                    post_d['text'] = " ".join([w.get('word', w.get('text', '')).strip() for w in post_w]).strip()
+                                    post_d['start'] = post_w[0].get('start', split_time)
+                                    post_d['end'] = seg_d.get('end', post_w[-1].get('end', split_time))
+                                    if post_d['start'] > post_d['end']: post_d['start'] = post_d['end']
+                                    post_segs.append(post_d)
+
+                    # 尝试安全组装结果，并在成功后执行物理切割与联动
+                    try:
+                        pre_res = WhisperResultClass(pre_segs) if pre_segs else prev_tc_res
+                        post_res = WhisperResultClass(post_segs) if post_segs else prev_tc_res
+
+                        # --- [物理切割]：拆分 Audio Bytes 字节流 ---
+                        bytes_before = int(round(split_time * sr_divider)) * samp_width * num_of_channels
+                        bytes_before = max(0, min(bytes_before, len(last_sample)))  # 边界保护
+                        pre_audio_bytes = last_sample[:bytes_before]
+                        post_audio_bytes = last_sample[bytes_before:]
+
+                        # 将前半段写入临时文件 (供下游可能需要的 Whisper 翻译)
+                        wf_pre = BytesIO()
+                        with w_open(wf_pre, 'wb') as wav_writer_pre:
+                            wav_writer_pre.setframerate(sr_divider)
+                            wav_writer_pre.setsampwidth(samp_width)
+                            wav_writer_pre.setnchannels(num_of_channels)
+                            wav_writer_pre.writeframes(pre_audio_bytes)
+                        
+                        pre_audio_path = generate_temp_filename(dir_temp)
+                        with open(pre_audio_path, 'wb') as f:
+                            f.write(wf_pre.getvalue())
+
+
+                        # =========================================================================
+                        # 步骤 2：联动与更新
+                        # =========================================================================
+                        
+                        # 2.1 前半段正式定稿入库
+                        bc.tc_sentences.append(pre_res)
+                        
+                        # 2.2 截断音频缓冲区，留下后半截
+                        last_sample = post_audio_bytes
+                        duration_seconds = len(last_sample) / (samp_width * num_of_channels * sr_divider)
+                        had_set_last_sample = True
+                        next_transcribe_time = datetime.utcnow()
+
+                        # 2.3 设置后半句为当前草稿，标记已保留
+                        prev_tc_res = post_res
+                        preserved_prev_tc = True
+                        
+                        logger.info(f"Smart-Split 成功 | 切割点={split_time:.3f}s 停顿={max_gap:.3f}s")
+
+                        # 去重与长度限制
+                        bc.tc_sentences = unique_rec_list(bc.tc_sentences)
+                        if not sentence_limitless and len(bc.tc_sentences) > max_sentences:
+                            bc.tc_sentences = bc.tc_sentences[-max_sentences:]
+
+                        # 2.4 UI 联动 (把切完的后半截草稿推给 UI)
+                        bc.update_tc(prev_tc_res, separator)
+
+                        # 2.5 翻译联动
+                        if is_tl:
+                            if tl_engine_whisper:
+                                translation_queue.put({
+                                    'kind': 'whisper',
+                                    'audio': pre_audio_path,
+                                    'separator': separator,
+                                    'cleanup_audio': use_temp and not sj.cache.get('keep_temp', False),
+                                })
+                            else:
+                                full_tc_text = build_full_transcribed_text(prev_tc_res)
+                                queue_api_translation({
+                                    'kind': 'api',
+                                    'text': full_tc_text,
+                                    'lang_source': lang_source,
+                                    'lang_target': lang_target,
+                                    'engine': engine,
+                                    'separator': separator,
+                                })
+                    except Exception as e:
+                        # 兜底：一旦组装出问题，放弃本次切割，跳出执行步骤 3
+                        logger.warning(f"WhisperResultClass 组装失败或物理切割异常, 退回兜底逻辑: {e}")
+                        had_set_last_sample = False
+
+            # =========================================================================
+            # 步骤 3：常规打断兜底逻辑 (未触发智能切割，或执行过程遭遇异常)
+            # =========================================================================
+            if not preserved_prev_tc:
+                # 把现有的识别结果全部定稿
+                if is_tc and prev_tc_res:
                     bc.tc_sentences.append(prev_tc_res)
+                
+                # 去重和限制处理
                 bc.tc_sentences = unique_rec_list(bc.tc_sentences)
                 if not sentence_limitless and len(bc.tc_sentences) > max_sentences:
-                    bc.tc_sentences.pop(0)
+                    bc.tc_sentences = bc.tc_sentences[-max_sentences:]
+
                 if len(bc.tc_sentences) > 0:
                     bc.update_tc(None, separator)
-            if is_tl:
+                    
+                if is_tl and not tl_engine_whisper:
+                    full_tc_text = build_full_transcribed_text(None)
+                    queue_api_translation({
+                        'kind': 'api',
+                        'text': full_tc_text,
+                        'lang_source': lang_source,
+                        'lang_target': lang_target,
+                        'engine': engine,
+                        'separator': separator,
+                    })
+
+            # --- 步骤 4：翻译部分 (Whisper 引擎专用兜底处理) ---
+            if is_tl and not preserved_prev_tl:
                 if prev_tl_res and tl_engine_whisper:
                     bc.tl_sentences.append(prev_tl_res)
-                if tl_engine_whisper:
-                    bc.tl_sentences = unique_rec_list(bc.tl_sentences)
+            
+            if tl_engine_whisper:
+                bc.tl_sentences = unique_rec_list(bc.tl_sentences)
                 if not sentence_limitless and len(bc.tl_sentences) > max_sentences:
-                    bc.tl_sentences.pop(0)
+                    bc.tl_sentences = bc.tl_sentences[-max_sentences:]
                 if len(bc.tl_sentences) > 0:
                     bc.update_tl(None, separator)
 
-            prev_tc_res = ""
-            prev_tl_res = ""
-
-        # transcribing loop
+            # --- 步骤 5：环境与状态清理 ---
+            if not had_set_last_sample:
+                # 如果没有切割保留音频，说明全清空了，重置缓冲区
+                last_sample = bytes()
+                duration_seconds = 0
+                
+            if not preserved_prev_tc:
+                prev_tc_res = ""
+            if not preserved_prev_tl:
+                prev_tl_res = ""
+      # transcribing loop
         while bc.recording:
             if sj.cache["debug_realtime_record"]:
                 logger.debug(
@@ -1081,6 +1295,14 @@ def record_session(
                 if auto_break_buffer:
                     # if silence has been detected for more than 1 second, break the buffer (last_sample)
                     if is_silence and time() - t_silence > 1:
+                        # Diagnostic log for silence timeout
+                        try:
+                            logger.info(
+                                "Silence timeout -> breaking buffer | "
+                                f"duration={time() - t_silence:.3f}s threshold_db={threshold_db} last_db={last_db if last_db is not None else 'N/A'}"
+                            )
+                        except Exception:
+                            logger.info("Silence timeout -> breaking buffer")
                         is_silence = False
                         break_buffer_store_update()
                         bc.current_rec_status = "▶️ Recording (Waiting for speech)"
@@ -1148,7 +1370,7 @@ def record_session(
             wav_writer.close()
             wf.seek(0)
 
-            duration_seconds = len(last_sample) / (samp_width * sr_divider)
+            duration_seconds = len(last_sample) / (samp_width * num_of_channels * sr_divider)
             if not use_temp:
                 if not path_diag_flags["numpy_audio_path"]:
                     path_diag_flags["numpy_audio_path"] = True
@@ -1244,6 +1466,8 @@ def record_session(
                     logger.debug(
                         f"Calling stable_tc | audio={audio_target} use_temp={use_temp} whisper_lang={whisper_args.get('language')}"
                     )
+                # record the buffer length at the moment we submit the transcribe request
+                prev_tc_buffer_seconds = duration_seconds
                 if bc.tc_lock is not None:
                     with bc.tc_lock:
                         result: Any = cast(Any, stable_tc(  # type: ignore
@@ -1290,6 +1514,7 @@ def record_session(
                             logger.debug(f"{text}")
 
                     prev_tc_res = result
+                    # Use the standard update path: pass the new result as `new_res` so the UI updates the same line.
                     bc.update_tc(result, separator)
 
                     if is_tl:
@@ -1345,7 +1570,7 @@ def record_session(
             if duration_seconds > max_buffer_s:
                 if sj.cache["debug_realtime_record"]:
                     logger.debug(f"Record loop reached max buffer seconds: {duration_seconds:.2f}")
-                break_buffer_store_update()
+                break_buffer_store_update("buffer_full")
 
             if bc.current_rec_status == "▶️ Recording ⟳ Transcribing Audio":
                 bc.current_rec_status = "▶️ Recording"  # reset status when no text/translation followed
@@ -1425,7 +1650,7 @@ def record_cb(in_data, _frame_count, _time_info, _status):
     Record Audio From stream buffer and save it to queue in global class
     Will also check for sample rate and threshold setting 
     """
-    global frame_duration_ms, max_db, min_db, is_silence, t_silence, was_recording, vad_checked, LAST_RECORD_CB_DIAG_AT
+    global frame_duration_ms, max_db, min_db, is_silence, t_silence, was_recording, vad_checked, LAST_RECORD_CB_DIAG_AT, last_db
 
     try:
         # Run resample and use resampled audio if not using temp file
@@ -1475,6 +1700,8 @@ def record_cb(in_data, _frame_count, _time_info, _status):
             # only record if db is above threshold
             db = get_db(in_data)
             audiometer.set_db(db)
+            # record last db sample for diagnostics
+            last_db = db
 
             if db > max_db:
                 max_db = db
@@ -1519,13 +1746,26 @@ def record_cb(in_data, _frame_count, _time_info, _status):
                     global LAST_DB_PRINT_AT
                     if time() - LAST_DB_PRINT_AT >= 0.5:
                         LAST_DB_PRINT_AT = time()
-                        logger.info(f"DB sample | db={db:.2f} dB threshold_db={threshold_db} is_speech={is_speech}")
+                        silence_dur = (time() - t_silence) if is_silence and t_silence else 0.0
+                        logger.info(
+                            f"DB sample | db={db:.2f} dB threshold_db={threshold_db} is_speech={is_speech} "
+                            f"silence_duration={silence_dur:.3f}s last_db={last_db if last_db is not None else 'N/A'}"
+                        )
                 except Exception:
                     pass
 
             if is_speech:
                 bc.data_queue.put(in_data)
                 was_recording = True
+                # If we were previously marked as in-silence, clear it now that speech is detected
+                if is_silence:
+                    is_silence = False
+                    try:
+                        t_silence = 0.0
+                    except Exception:
+                        pass
+                    if sj.cache.get("debug_realtime_record"):
+                        logger.debug("Speech detected -> clearing is_silence flag and t_silence")
                 if sj.cache.get("debug_realtime_record"):
                     logger.debug(f"Queued chunk -> db={db:.2f} is_speech=True queue_after={bc.data_queue.qsize()} bytes={len(in_data)}")
             else:
@@ -1535,7 +1775,14 @@ def record_cb(in_data, _frame_count, _time_info, _status):
                     if not is_silence:  # mark as silence if not already marked
                         is_silence = True
                         t_silence = time()
-                        logger.info("Silence started -> will trigger auto break after silence timeout if configured")
+                        # Detailed diagnostic for silence start
+                        try:
+                            logger.info(
+                                "Silence started -> will trigger auto break after silence timeout if configured | "
+                                f"threshold_db={threshold_db} dB db={last_db:.2f} silence_started_at={t_silence:.3f}"
+                            )
+                        except Exception:
+                            logger.info("Silence started -> will trigger auto break after silence timeout if configured")
 
             if time() - LAST_RECORD_CB_DIAG_AT >= 1.0:
                 LAST_RECORD_CB_DIAG_AT = time()

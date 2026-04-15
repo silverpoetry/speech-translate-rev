@@ -737,6 +737,27 @@ def process_file(
 
         whisper_args = get_tc_args(file_to_args, sj.cache)
         whisper_args["language"] = TO_LANGUAGE_CODE[get_whisper_lang_similar(lang_source)] if not auto else None
+
+        # Decide initial prompt behavior.
+        # If `enable_initial_prompt` is True, prefer per-language entries from
+        # `initial_prompts_map` and fall back to built-in defaults. In this mode
+        # we do NOT use the global `initial_prompt` setting.
+        try:
+            enabled = bool(sj.cache.get("enable_initial_prompt", False))
+            if enabled:
+                from ..whisper.prompts import pick_initial_prompt
+
+                user_map = sj.cache.get("initial_prompts_map", {}) or {}
+                prompt = pick_initial_prompt(whisper_args.get("language"), True, user_map, None)
+                if prompt:
+                    whisper_args["initial_prompt"] = prompt
+                else:
+                    whisper_args.pop("initial_prompt", None)
+            else:
+                # When disabled: ensure no initial prompt is used at all
+                whisper_args.pop("initial_prompt", None)
+        except Exception:
+            pass
         if sj.cache["filter_file_import"]:
             hallucination_filters = get_hallucination_filter('file', sj.cache["path_filter_file_import"])
         else:

@@ -32,6 +32,79 @@ function escapeHtml(value) {
     .replaceAll("'", '&#39;');
 }
 
+// Default languages to show as individual prompt fields (keeps UI concise)
+const DEFAULT_PROMPT_LANGS = ['en','zh','ja','ko','es','fr','de','pt','id'];
+const PROMPT_LANG_NAMES = {
+  en: 'English',
+  zh: '中文',
+  ja: '日本語',
+  ko: '한국어',
+  es: 'Español',
+  fr: 'Français',
+  de: 'Deutsch',
+  pt: 'Português',
+  id: 'Bahasa',
+};
+
+function buildInitialPromptsUi(container, map) {
+  try {
+    container.innerHTML = '';
+    const next = map || {};
+    for (const code of DEFAULT_PROMPT_LANGS) {
+      const label = document.createElement('label');
+      label.className = 'field-span-2';
+
+      const span = document.createElement('span');
+      span.textContent = `${PROMPT_LANG_NAMES[code] || code} (${code})`;
+
+      const ta = document.createElement('textarea');
+      ta.setAttribute('data-lang', code);
+      ta.className = 'input card-input';
+      ta.placeholder = '留空表示使用内置默认引导词';
+      ta.value = String(next[code] || '');
+      // 自动保存：内容变更即保存
+      ta.addEventListener('change', async () => {
+        try {
+          await saveInitialPromptsSettings(false);
+        } catch (err) {
+          console.error('保存引导词内容失败', err);
+        }
+      });
+
+      label.appendChild(span);
+      label.appendChild(ta);
+      container.appendChild(label);
+    }
+
+    // Also include any custom language keys present in user map
+    for (const k of Object.keys(next)) {
+      if (!DEFAULT_PROMPT_LANGS.includes(k)) {
+        const label = document.createElement('label');
+        label.className = 'field-span-2';
+        const span = document.createElement('span');
+        span.textContent = `${k}`;
+        const ta = document.createElement('textarea');
+        ta.setAttribute('data-lang', k);
+        ta.className = 'input card-input';
+        ta.placeholder = '自定义语言代码';
+        ta.value = String(next[k] || '');
+        ta.addEventListener('change', async () => {
+          try {
+            await saveInitialPromptsSettings(false);
+          } catch (err) {
+            console.error('保存引导词内容失败', err);
+          }
+        });
+        label.appendChild(span);
+        label.appendChild(ta);
+        container.appendChild(label);
+      }
+    }
+  } catch (e) {
+    console.debug('Failed to build initial prompts UI', e);
+  }
+}
+
 async function apiCall(name, ...args) {
   if (!window.pywebview || !window.pywebview.api) {
     throw new Error('pywebview API 尚未就绪');
@@ -180,6 +253,40 @@ function renderSettings(data) {
   }
   if (els.seleniumChromeUserDataDir) {
     els.seleniumChromeUserDataDir.value = String(settings.selenium_chrome_user_data_dir ?? '');
+  }
+  // Per-language initial prompts
+    if (els.enableInitialPrompts) {
+      els.enableInitialPrompts.checked = Boolean(settings.enable_initial_prompt ?? false);
+      // 自动保存：开关变化即保存
+      els.enableInitialPrompts.onchange = async (e) => {
+        try {
+          await saveInitialPromptsSettings(false);
+        } catch (err) {
+          console.error('保存引导词开关失败', err);
+        }
+      };
+    }
+    // Condition on previous text (web UI)
+    if (els.conditionOnPreviousText) {
+      els.conditionOnPreviousText.checked = Boolean(settings.condition_on_previous_text ?? true);
+      els.conditionOnPreviousText.onchange = async (e) => {
+        try {
+          const val = Boolean(e.target.checked);
+          await apiCall('set_setting', 'condition_on_previous_text', val);
+          if (state.data && state.data.settings) state.data.settings.condition_on_previous_text = val;
+        } catch (err) {
+          console.error('保存 condition_on_previous_text 失败', err);
+        }
+      };
+    }
+  if (els.initialPromptsContainer) {
+    try {
+      const map = settings.initial_prompts_map || {};
+      buildInitialPromptsUi(els.initialPromptsContainer, map);
+    } catch (e) {
+      // fallback: clear container
+      try { els.initialPromptsContainer.innerHTML = ''; } catch (_e) {}
+    }
   }
 }
 
@@ -883,6 +990,58 @@ async function saveSeleniumSettings(shouldRefresh = true) {
     throw error;
   } finally {
     state.seleniumSaveInFlight = false;
+    saveButtons.forEach((btn) => {
+      btn.disabled = false;
+    });
+  }
+}
+
+async function saveInitialPromptsSettings(shouldRefresh = true) {
+  if (state.initialPromptsSaveInFlight) {
+    return;
+  }
+
+  state.initialPromptsSaveInFlight = true;
+  const saveButtons = Array.from(document.querySelectorAll('button[data-action="save-initial-prompts"]'));
+  saveButtons.forEach((btn) => {
+    btn.disabled = true;
+  });
+
+  try {
+    const enabled = Boolean(els.enableInitialPrompts && els.enableInitialPrompts.checked);
+    await apiCall('set_setting', 'enable_initial_prompt', enabled);
+
+    let mapVal = {};
+    if (els.initialPromptsContainer) {
+      const inputs = Array.from(els.initialPromptsContainer.querySelectorAll('[data-lang]'));
+      for (const el of inputs) {
+        const code = el.getAttribute('data-lang');
+        el.onchange = async () => {
+          try {
+            await saveInitialPromptsSettings(false);
+          } catch (err) {
+            console.error('保存引导词内容失败', err);
+          }
+        };
+        const val = (el.value || '').trim();
+        if (val) {
+          mapVal[code] = val;
+        }
+      }
+    }
+    await apiCall('set_setting', 'initial_prompts_map', mapVal);
+
+    if (state.data && state.data.settings) {
+      state.data.settings.enable_initial_prompt = enabled;
+      state.data.settings.initial_prompts_map = mapVal;
+    }
+
+    if (shouldRefresh) await refreshState();
+    if (shouldRefresh) console.log('按语言引导词已保存');
+  } catch (error) {
+    throw error;
+  } finally {
+    state.initialPromptsSaveInFlight = false;
     saveButtons.forEach((btn) => {
       btn.disabled = false;
     });
@@ -1608,6 +1767,11 @@ async function init() {
     els.workspaceHub = $('workspace-hub');
     els.settingsShell = $('settings-shell');
     els.taskCard = $('task-card');
+    // Per-language initial prompts UI
+    els.enableInitialPrompts = $('enable_initial_prompt');
+    els.conditionOnPreviousText = $('condition_on_previous_text');
+    els.initialPromptsContainer = $('initial_prompts_container');
+    els.btnSaveInitialPrompts = document.querySelector('button[data-action="save-initial-prompts"]');
 
     // Live value displays for range sliders
     if (els.micThresholdDb) {
@@ -1624,6 +1788,57 @@ async function init() {
     els.pageScrollIndicator = $('page-scroll-indicator');
     els.pageScrollThumb = $('page-scroll-thumb');
     els.dashboardContent = document.querySelector('.dashboard-content');
+
+    // bind per-language prompts buttons
+    try {
+      const saveBtns = Array.from(document.querySelectorAll('button[data-action="save-initial-prompts"]'));
+      saveBtns.forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          try {
+            await saveInitialPromptsSettings(true);
+          } catch (e) {
+            console.error(e);
+            window.alert('保存按语言引导词失败：' + (e && e.message ? e.message : e));
+          }
+        });
+      });
+
+      const resetBtn = document.getElementById('reset_initial_prompts');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', async () => {
+          if (!els.initialPromptsContainer) return;
+          const inputs = Array.from(els.initialPromptsContainer.querySelectorAll('[data-lang]'));
+          inputs.forEach((el) => {
+            el.value = '';
+          });
+          try {
+            await saveInitialPromptsSettings(true);
+          } catch (e) {
+            console.error(e);
+            window.alert('重置失败：' + (e && e.message ? e.message : e));
+          }
+        });
+      }
+
+      const clearBtn = document.getElementById('clear_initial_prompts');
+      if (clearBtn) {
+        clearBtn.addEventListener('click', async () => {
+          if (!els.initialPromptsContainer) return;
+          const inputs = Array.from(els.initialPromptsContainer.querySelectorAll('[data-lang]'));
+          inputs.forEach((el) => {
+            el.value = '';
+          });
+          try {
+            await saveInitialPromptsSettings(true);
+          } catch (e) {
+            console.error(e);
+            window.alert('清空失败：' + (e && e.message ? e.message : e));
+          }
+        });
+      }
+    } catch (e) {
+      console.debug('Initial prompts bindings skipped', e);
+    }
 
     bindEvents();
     bindAutoSaveEvents();

@@ -147,26 +147,37 @@ def unique_rec_list(list_of_data: List):
     if len(list_of_data) == 0:
         return list_of_data
 
-    if isinstance(list_of_data[0], str):
-        # Convert the list to a set to get unique values then convert them back to a list
-        unique_lists = list(OrderedDict.fromkeys(list_of_data))
-    else:
-        seen = set()
-        unique_lists = []
-        for obj in list_of_data:
-            meta = ""
-            try:
-                # get some metadata in first segment to make it more unique
-                meta = f"{obj.segments[0].avg_logprob:.4f} " \
-                    f"{obj.segments[0].compression_ratio:.4f} " \
-                    f"{obj.segments[0].no_speech_prob:.4f}"
-            except Exception:
-                pass
+    # Create a dedupe key for each item. Support mixed lists containing both
+    # strings and WhisperResult-like objects. Preserve original item types
+    # while deduping based on text+metadata when available.
+    seen = set()
+    unique_lists = []
+    for obj in list_of_data:
+        try:
+            if isinstance(obj, str):
+                text = obj.strip()
+                meta = ""
+            else:
+                text = getattr(obj, "text", str(obj)).strip()
+                meta = ""
+                try:
+                    seg0 = obj.segments[0]
+                    meta = f"{seg0.avg_logprob:.4f} {seg0.compression_ratio:.4f} {seg0.no_speech_prob:.4f}"
+                except Exception:
+                    # segments or metadata missing, ignore
+                    meta = ""
 
-            check = f"{obj.text} {meta}"
-            if check not in seen:
-                unique_lists.append(obj)
-                seen.add(check)
+            check = f"{text} {meta}"
+        except Exception:
+            # Fallback for unexpected item types
+            try:
+                check = str(obj)
+            except Exception:
+                check = repr(obj)
+
+        if check not in seen:
+            unique_lists.append(obj)
+            seen.add(check)
 
     return unique_lists
 

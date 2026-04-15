@@ -1487,6 +1487,9 @@ class WebBridge(WebTaskBridge):
             "selenium_z_order_mode": settings.get("selenium_z_order_mode", "behind-main"),
             "selenium_auto_close_on_task_done": settings.get("selenium_auto_close_on_task_done", True),
             "selenium_chrome_user_data_dir": settings.get("selenium_chrome_user_data_dir", ""),
+            "enable_initial_prompt": settings.get("enable_initial_prompt", False),
+            "initial_prompts_map": settings.get("initial_prompts_map", {}),
+            "condition_on_previous_text": settings.get("condition_on_previous_text", True),
         }
 
         import_ui = self._build_import_ui(verify_available=False)

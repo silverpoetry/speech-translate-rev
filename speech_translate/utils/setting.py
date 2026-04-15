@@ -245,11 +245,10 @@ default_setting: SettingDict = {
     "tb_ex_tl_max": 120,
     "tb_ex_tl_max_per_line": 30,
     "tb_ex_tl_font": "Arial",
-    "tb_ex_tl_font_bold": True,
-    "tb_ex_tl_font_size": 13,
-    "tb_ex_tl_font_color": "#FFFFFF",
-    "tb_ex_tl_bg_color": "#000000",
-    "tb_ex_tl_use_conf_color": True
+
+    # Whisper initial prompts (per-language guidance)
+    "enable_initial_prompt": False,
+    "initial_prompts_map": {},
 }
 
 
