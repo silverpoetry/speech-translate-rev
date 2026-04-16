@@ -10,7 +10,6 @@ from shlex import quote
 from threading import Lock, Thread
 from time import gmtime, sleep, strftime, time
 from queue import Empty, Queue
-from tkinter import IntVar, Toplevel, ttk
 from wave import Wave_read, Wave_write
 from wave import open as w_open
 
@@ -20,1924 +19,630 @@ import scipy.io.wavfile as wav
 import torch
 import torchaudio
 import webrtcvad
-from typing import Any, cast
+from typing import Any, cast, Tuple, List, Dict
 from whisper.tokenizer import TO_LANGUAGE_CODE
 
 from speech_translate._constants import MAX_THRESHOLD, MIN_THRESHOLD, WHISPER_SR
 from speech_translate._logging import logger
-from speech_translate._path import dir_debug, dir_silero_vad, dir_temp, p_app_icon
+from speech_translate._path import dir_debug, dir_silero_vad, dir_temp
 from speech_translate.linker import bc, sj
-from speech_translate.ui.custom.audio import AudioMeter
-from speech_translate.ui.custom.checkbutton import CustomCheckButton
-from speech_translate.ui.custom.label import LabelTitleText
-from speech_translate.ui.custom.message import mbox
-from speech_translate.ui.custom.spinbox import SpinboxNumOnly
-from speech_translate.ui.custom.tooltip import tk_tooltip
 from speech_translate.utils.audio.audio import get_db, get_frame_duration, get_speech_webrtc, resample_sr, to_silero
 from speech_translate.utils.audio.device import get_device_details
 from speech_translate.utils.translate.language import get_whisper_lang_name, get_whisper_lang_similar, verify_language_in_key
 
-from ..helper import cbtn_invoker, generate_temp_filename, get_proxies, native_notify, str_separator_to_html, unique_rec_list
+from ..helper import generate_temp_filename, get_proxies, native_notify, str_separator_to_html, unique_rec_list
 from ..translate.translator import translate
 from ..whisper.helper import get_hallucination_filter, model_values, stablets_verbose_log
 from ..whisper.load import get_model, get_model_args, get_tc_args
 from ..whisper.result import remove_segments_by_str
 
 if system() == "Windows":
-    import pyaudiowpatch as pyaudio  # type: ignore # pylint: disable=import-error
+    import pyaudiowpatch as pyaudio
 else:
-    import pyaudio  # type: ignore # pylint: disable=import-error
+    import pyaudio
 
+# Globals for state management across callbacks
 ERROR_CON_NOTIFIED = False
-ERROR_CON_NOFIFIED_AMOUNT = 0
 LAST_RECORD_CB_DIAG_AT = 0.0
 LAST_DB_PRINT_AT = 0.0
 prev_tc_res: Any = ""
 prev_tl_res: Any = ""
 prev_tc_buffer_seconds: float = 0.0
 last_db: Any = None
- 
 
+# =========================================================================
+# HELPER FUNCTIONS
+# =========================================================================
 
-class _NoopAudioMeter:
-    def set_db(self, *_args, **_kwargs):
-        return None
+def _enforce_sentence_limits(sentences: list, is_limitless: bool, max_sentences: int) -> list:
+    """去重并限制历史句子列表的长度"""
+    sentences = unique_rec_list(sentences)
+    if not is_limitless and len(sentences) > max_sentences:
+        return sentences[-max_sentences:]
+    return sentences
 
-    def set_max(self, *_args, **_kwargs):
-        return None
-
-    def set_min(self, *_args, **_kwargs):
-        return None
-
-    def set_recording(self, *_args, **_kwargs):
-        return None
-
-
-audiometer: Any = _NoopAudioMeter()
-
-
-# -------------------------------------------------------------------------------------------------------------------------
-def record_session(
-    lang_source: str,
-    lang_target: str,
-    engine: str,
-    model_name_tc: str,
-    device: str,
-    is_tc: bool,
-    is_tl: bool,
-    speaker: bool = False,
-) -> None:
-    """
-    Function to record audio and translate it in real time / live. Speaker as input can only be used on Windows.
-    Other OS need to use mic, speaker can be used only by using Loopback software such as PulseAudio, blackhole, etc.
-
-    Parameters
-    ----
-    lang_source: str
-        Source language
-    lang_target: str
-        Target language
-    engine: str
-        Translation engine
-    modelKey: str
-        The key of the model in modelSelectDict as the selected model to use
-    device: str
-        Device to use
-    is_tc: bool
-        Whether to transcribe the audio
-    is_tl: bool
-        Whether to translate the audio
-    speaker: bool, optional
-        Device is speaker or not
-
-    Returns
-    ----
-    None
-    """
-    global audiometer
-
-    rec_type = "speaker" if speaker else "mic"
-    assert bc.mw is not None
-    master = bc.mw.root
-    root = None
+def _save_to_temp(audio_bytes: bytes, channels: int, samp_width: int, sr: int) -> str:
+    """将音频字节流保存为临时 WAV 文件并返回路径"""
+    wf = BytesIO()
+    with w_open(wf, 'wb') as wav_writer:
+        wav_writer.setframerate(sr)
+        wav_writer.setsampwidth(samp_width)
+        wav_writer.setnchannels(channels)
+        wav_writer.writeframes(audio_bytes)
     
-    # Check if running in headless mode
-    is_headless = type(master).__name__ == 'HeadlessRoot'
-    if is_headless:
-        logger.info("Recording in headless mode - no Tkinter UI")
-        # Create a dummy root object that ignores all operations
-        class DummyRoot:
-            def geometry(self, *args, **kwargs): pass
-            def maxsize(self, *args, **kwargs): pass
-            def minsize(self, *args, **kwargs): pass
-            def protocol(self, *args, **kwargs): pass
-            def iconbitmap(self, *args, **kwargs): pass
-            def title(self, *args, **kwargs): pass
-            def winfo_exists(self): return True
-            def winfo_rootx(self): return 0
-            def winfo_rooty(self): return 0
-            def state(self, *args, **kwargs): pass
-            def destroy(self): pass
-            def after(self, *args, **kwargs): pass
-            def update(self): pass
-            def update_idletasks(self): pass
+    path = generate_temp_filename(dir_temp)
+    with open(path, 'wb') as f:
+        f.write(wf.getvalue())
+    return path
 
-        class DummyWidget:
-            def configure(self, *args, **kwargs): pass
-            def pack(self, *args, **kwargs): pass
-            def pack_forget(self, *args, **kwargs): pass
-            def set_text(self, *args, **kwargs): pass
-            def set(self, *args, **kwargs): pass
-            def invoke(self, *args, **kwargs): pass
-            def instate(self, *args, **kwargs): return False
-            def start(self, *args, **kwargs): pass
-            def stop(self, *args, **kwargs): pass
-            def set_auto(self, *args, **kwargs): pass
-            def set_disabled(self, *args, **kwargs): pass
-            def set_threshold(self, *args, **kwargs): pass
-            def set_db(self, *args, **kwargs): pass
-            def set_max(self, *args, **kwargs): pass
-            def set_min(self, *args, **kwargs): pass
-            def set_recording(self, *args, **kwargs): pass
-            def __setitem__(self, key, value):
-                _ = (key, value)
-
-        root = DummyRoot()
-
-        # Provide no-op widgets so later UI code paths remain safe in headless mode.
-        dummy = DummyWidget()
-        frame_lbl_7 = dummy
-        frame_lbl_8 = dummy
-        lbl_threshold = dummy
-        scale_threshold = dummy
-        lbl_threshold_db = dummy
-        lbl_sensitivity = dummy
-        radio_vad_1 = dummy
-        radio_vad_2 = dummy
-        radio_vad_3 = dummy
-        vert_sep = dummy
-        cbtn_enable_silero = dummy
-        cbtn_enable_threshold = dummy
-        cbtn_auto_threshold = dummy
-        cbtn_break_buffer_on_silence = dummy
-        spn_silero_min_conf = dummy
-        btn_pause = dummy
-        btn_stop = dummy
-        lbl_status = dummy
-        lbl_timer = dummy
-        lbl_buffer = dummy
-        lbl_sentences = dummy
-        progress_buffer = dummy
-        class DummyTooltip:
-            def __init__(self):
-                self.text = ""
-
-        tooltip_cbtn_silero = DummyTooltip()
-        audiometer = dummy
+def _bytes_to_numpy(audio_bytes: bytes, channels: int, use_demucs: bool, device: str) -> Any:
+    """将 PCM 字节流转换为 Whisper/Demucs 需要的 Numpy 数组或 Tensor"""
+    audio_as_np_int16 = np.frombuffer(audio_bytes, dtype=np.int16).flatten()
+    audio_as_np_float32 = audio_as_np_int16.astype(np.float32)
+    max_int16 = 32768.0
+    
+    if channels == 1:
+        audio_np = audio_as_np_float32 / max_int16
     else:
-        # In Tkinter mode, root will be created later
-        pass
+        chunk_length = len(audio_as_np_float32) // channels
+        audio_reshaped = np.reshape(audio_as_np_float32, (chunk_length, channels))
+        audio_np = audio_reshaped[:, 0] / max_int16  # 取左声道
+        
+    if use_demucs:
+        return torch.from_numpy(audio_np).to(device)
+    return audio_np
 
-    # ----------------- Get device -----------------
+def _calculate_smart_split(segments: list, half_point_time: float) -> Tuple[Optional[float], List[Dict], List[Dict]]:
+    """核心算法：在 Whisper 结果的后半段寻找最大的无声间隙，返回切割点时间及切割后的前后段字典"""
+    word_infos = []
+    for sidx, seg in enumerate(segments):
+        for widx, w in enumerate(seg.to_dict().get('words', [])):
+            text_w = str(w.get('word', w.get('text', ''))).strip()
+            if not text_w: 
+                continue
+            try:
+                start = float(w.get('start', w.get('end', 0.0)))
+                end = float(w.get('end', start))
+            except Exception:
+                continue
+            word_infos.append((sidx, widx, text_w, (start + end) / 2.0, start, end))
+
+    filtered_words = [wi for wi in word_infos if wi[3] >= half_point_time]
+    
+    max_gap, max_idx = -1.0, None
+    for i in range(len(filtered_words) - 1):
+        gap = filtered_words[i + 1][4] - filtered_words[i][5]
+        if gap > max_gap:
+            max_gap = gap
+            max_idx = i
+
+    if max_idx is None or max_gap <= 0:
+        return None, [], []
+
+    left_word, right_word = filtered_words[max_idx], filtered_words[max_idx + 1]
+    seg_l, seg_r = left_word[0], right_word[0]
+    split_time = (left_word[5] + right_word[4]) / 2.0
+
+    pre_segs, post_segs = [], []
+    if seg_l != seg_r:
+        pre_segs = [s.to_dict() for s in segments[:seg_l + 1]]
+        post_segs = [s.to_dict() for s in segments[seg_l + 1:]]
+    else:
+        for i, seg in enumerate(segments):
+            seg_d = seg.to_dict()
+            if i < seg_l:
+                pre_segs.append(seg_d)
+            elif i > seg_l:
+                post_segs.append(seg_d)
+            else:
+                words = seg_d.get('words', [])
+                pre_w = [w for w in words if (float(w.get('start', 0.0)) + float(w.get('end', 0.0))) / 2.0 < split_time]
+                post_w = [w for w in words if (float(w.get('start', 0.0)) + float(w.get('end', 0.0))) / 2.0 >= split_time]
+                
+                if pre_w:
+                    d = deepcopy(seg_d)
+                    d['words'], d['text'] = pre_w, " ".join([w.get('word', w.get('text', '')).strip() for w in pre_w]).strip()
+                    d['start'], d['end'] = seg_d.get('start', pre_w[0].get('start', 0.0)), pre_w[-1].get('end', split_time)
+                    if d['start'] > d['end']: d['start'] = d['end']
+                    pre_segs.append(d)
+                if post_w:
+                    d = deepcopy(seg_d)
+                    d['words'], d['text'] = post_w, " ".join([w.get('word', w.get('text', '')).strip() for w in post_w]).strip()
+                    d['start'], d['end'] = post_w[0].get('start', split_time), seg_d.get('end', post_w[-1].get('end', split_time))
+                    if d['start'] > d['end']: d['start'] = d['end']
+                    post_segs.append(d)
+
+    return split_time, pre_segs, post_segs
+
+# =========================================================================
+# MAIN SESSION
+# =========================================================================
+
+def record_session(
+    lang_source: str, lang_target: str, engine: str, model_name_tc: str, device: str, is_tc: bool, is_tl: bool, speaker: bool = False
+) -> None:
+    """实时录音、语音识别与翻译核心总管"""
+    rec_type = "speaker" if speaker else "mic"
+
     try:
         global sr_ori, frame_duration_ms, threshold_enable, threshold_db, threshold_auto, use_silero, \
             silero_min_conf, vad_checked, num_of_channels, prev_tc_res, prev_tl_res, prev_tc_buffer_seconds, max_db, min_db, \
             is_silence, was_recording, t_silence, samp_width, webrtc_vad, silero_vad, use_temp, \
-            disable_silerovad, disable_auto_threshold, silero_disabled, ERROR_CON_NOTIFIED, \
-            ERROR_CON_NOFIFIED_AMOUNT, LAST_RECORD_CB_DIAG_AT, last_db
+            silero_disabled, ERROR_CON_NOTIFIED, LAST_RECORD_CB_DIAG_AT, last_db
         
         ERROR_CON_NOTIFIED = False
-        ERROR_CON_NOFIFIED_AMOUNT = 0
         LAST_RECORD_CB_DIAG_AT = 0.0
         p = pyaudio.PyAudio()
         success, detail = get_device_details(rec_type, sj, p)
-
         if not success:
             raise Exception("Failed to get device details")
 
         device_detail = detail["device_detail"]
-        sr_ori = detail["sample_rate"]
-        num_of_channels = detail["num_of_channels"]
-        chunk_size = detail["chunk_size"]
+        sr_ori, num_of_channels, chunk_size = detail["sample_rate"], detail["num_of_channels"], detail["chunk_size"]
+        
         transcribe_rate = timedelta(seconds=sj.cache["transcribe_rate"] / 1000)
-        max_buffer_s = int(sj.cache.get(f"max_buffer_{rec_type}", 10))
-        max_sentences = int(sj.cache.get(f"max_sentences_{rec_type}", 5))
+        max_buffer_s, max_sentences = int(sj.cache.get(f"max_buffer_{rec_type}", 10)), int(sj.cache.get(f"max_sentences_{rec_type}", 5))
         sentence_limitless = sj.cache.get(f"{rec_type}_no_limit", False)
         tl_engine_whisper = engine in model_values
-
         taskname = "Transcribe & Translate" if is_tc and is_tl else "Transcribe" if is_tc else "Translate"
-        more_information = f"\n> Language: {lang_source} → {lang_target}" if is_tl else f"\n> Language: {lang_source}"
-        more_information += f"\n> {taskname} using {model_name_tc}"
-        if is_tl and (model_name_tc != engine):
-            more_information += f" → {engine}"
+        auto = lang_source.lower() == "auto detect"
+        language = f"{lang_source} → {lang_target}" if is_tl else lang_source
 
-        # ask confirmation first if enabled
-        # show the selected device and recording type
-        bc.mw.stop_lb()
-        if sj.cache["rec_ask_confirmation_first"]:
-            if not mbox(
-                "Record Confirmation",
-                f"> Device: {device} ({'Speaker' if speaker else 'Mic'})" \
-                f"\n> Sample Rate: {sr_ori} | Channels: {num_of_channels} | Chunk Size: {chunk_size}" \
-                f"{more_information}\n\nContinue?",
-                3,
-                master,
-            ):
-                bc.mw.rec_stop()
-                bc.mw.after_rec_stop()
-                return
+        if not sj.cache["supress_record_warning"] and sr_ori > 48000:
+            logger.warning(f"Sample rate is high ({sr_ori} Hz). May cause issues. Can be suppressed in settings.")
+        if is_tl and not tl_engine_whisper:
+            try: requests.get("https://www.google.com/", timeout=5)
+            except Exception: logger.warning("No internet connection detected. API Translation might fail.")
 
-        # warn user if sample_rate is more than 48000
-        if not sj.cache["supress_record_warning"]:
-            if sr_ori > 48000 and not mbox(
-                    "Warning",
-                    f"Sample rate is more than 48000 Hz ({sr_ori} Hz). This might cause some issues (audio " \
-                    "might not get picked up). If this happen you can try to change sample rate or change the " \
-                    "conversion method. (You can turn off this warning in setting->general->suppress record warning)" \
-                    "\n\nDo you want to continue?",
-                    3,
-                    master,
-                ):
-                bc.mw.rec_stop()
-                bc.mw.after_rec_stop()
-                return
-
-            if is_tl and not tl_engine_whisper:
-                # check connection first
-                try:
-                    logger.info("Checking for internet connection")
-                    requests.get("https://www.google.com/", timeout=5)
-                except Exception as e:
-                    logger.exception(e)
-                    if not mbox(
-                        "Warning",
-                        "Failed to check for internet connection. Translation might not work. " \
-                        "(You can turn off this warning in setting->general->suppress record warning)" \
-                        "\n\nDo you want to continue?",
-                        3,
-                        master,
-                    ):
-                        bc.mw.rec_stop()
-                        bc.mw.after_rec_stop()
-                        return
-
-        bc.mw.start_lb()
-
-        vad_checked = False
+        vad_checked, silero_disabled = False, False
         frame_duration_ms = get_frame_duration(sr_ori, chunk_size)
         threshold_enable = sj.cache.get(f"threshold_enable_{rec_type}", True)
         threshold_db = sj.cache.get(f"threshold_db_{rec_type}", -20)
         threshold_auto = sj.cache.get(f"threshold_auto_{rec_type}", True)
         use_silero = sj.cache.get(f"threshold_auto_silero_{rec_type}", True)
-        silero_disabled = False
         silero_min_conf = sj.cache.get(f"threshold_silero_{rec_type}_min", 0.75)
         auto_break_buffer = sj.cache.get(f"auto_break_buffer_{rec_type}", True)
-
-        logger.debug(
-            f"[record] init rec_type={rec_type} threshold_enable={threshold_enable} "
-            f"threshold_auto={threshold_auto} use_silero={use_silero} auto_break_buffer={auto_break_buffer}"
-        )
-
-        auto = lang_source.lower() == "auto detect"
         use_temp = sj.cache["use_temp"]
-        language = f"{lang_source} → {lang_target}" if is_tl else lang_source
-        # Create Toplevel in non-headless mode
-        if not is_headless:
-            root = Toplevel(master)
-            root.title("Loading...")
-            root.transient(master)
-            root.geometry("450x275")
-            root.protocol("WM_DELETE_WINDOW", lambda: master.state("iconic"))
 
-            # ----------------- Modal window -----------------
-            root.geometry(f"+{master.winfo_rootx() + 50}+{master.winfo_rooty() + 50}")
-            root.maxsize(600, 325)
-            root.minsize(400, 225)
-
-            frame_lbl = ttk.Frame(root)
-            frame_lbl.pack(side="top", fill="both", padx=5, pady=5, expand=True)
-
-            frame_btn = ttk.Frame(root)
-            frame_btn.pack(side="top", fill="x", padx=5, pady=(0, 5), expand=True)
-
-            frame_lbl_1 = ttk.Frame(frame_lbl)
-            frame_lbl_1.pack(side="top", fill="x")
-
-            frame_lbl_2 = ttk.Frame(frame_lbl)
-            frame_lbl_2.pack(side="top", fill="x")
-
-            frame_lbl_3 = ttk.Frame(frame_lbl)
-            frame_lbl_3.pack(side="top", fill="x")
-
-            frame_lbl_4 = ttk.Frame(frame_lbl)
-            frame_lbl_4.pack(side="top", fill="x")
-
-            frame_lbl_5 = ttk.Frame(frame_lbl)
-            frame_lbl_5.pack(side="top", fill="x")
-
-            frame_lbl_6 = ttk.Frame(frame_lbl)
-            frame_lbl_6.pack(side="top", fill="x")
-
-            frame_lbl_7 = ttk.Frame(frame_lbl)
-            frame_lbl_7.pack(side="top", fill="x")
-
-            frame_lbl_8 = ttk.Frame(frame_lbl)
-            frame_lbl_8.pack(side="top", fill="x", expand=True)
-
-            # 1
-            lbl_device = LabelTitleText(frame_lbl_1, "Device: ", device)
-            lbl_device.pack(side="left", fill="x", padx=5, pady=5)
-
-            # 2
-            lbl_sample_rate = LabelTitleText(frame_lbl_2, "Sample Rate: ", "⌛")
-            lbl_sample_rate.pack(side="left", fill="x", padx=5, pady=5)
-            lbl_sample_rate.set_text(sr_ori)
-
-            lbl_channels = LabelTitleText(frame_lbl_2, "Channels: ", "⌛")
-            lbl_channels.pack(side="left", fill="x", padx=5, pady=5)
-            lbl_channels.set_text(num_of_channels)
-
-            lbl_chunk_size = LabelTitleText(frame_lbl_2, "Chunk Size: ", "⌛")
-            lbl_chunk_size.pack(side="left", fill="x", padx=5, pady=5)
-            lbl_chunk_size.set_text(chunk_size)
-
-            # 3
-            lbl_buffer = LabelTitleText(frame_lbl_3, "Buffer: ", "0/0 sec")
-            lbl_buffer.pack(side="left", fill="x", padx=5, pady=5)
-            lbl_buffer.set_text(f"0/{round(max_buffer_s, 2)} sec")
-
-            lbl_sentences = LabelTitleText(frame_lbl_3, "Sentences: ", "0/0")
-            lbl_sentences.pack(side="left", fill="x", padx=5, pady=5)
-
-            # 4
-            progress_buffer = ttk.Progressbar(frame_lbl_4, orient="horizontal", length=200, mode="determinate")
-            progress_buffer.pack(side="left", fill="x", padx=5, pady=5, expand=True)
-
-            # 5
-            lbl_timer = ttk.Label(frame_lbl_5, text="REC: 00:00:00")
-            lbl_timer.pack(side="left", fill="x", padx=5, pady=5)
-            lbl_timer.configure(text=f"REC: 00:00:00 | {language}")
-
-            lbl_status = ttk.Label(frame_lbl_5, text="⌛ Setting up session...")
-            lbl_status.pack(side="right", fill="x", padx=5, pady=5)
-
-            # 6
-            cbtn_enable_threshold = CustomCheckButton(
-                frame_lbl_6,
-                threshold_enable,
-                lambda x: set_treshold(x) or toggle_enable_threshold(),
-                text="Enable Threshold",
-                state="disabled"
-            )
-            cbtn_enable_threshold.pack(side="left", fill="x", padx=5, pady=5)
-            try:
-                _gv = getattr(cbtn_enable_threshold, "get_value", None)
-                if callable(_gv):
-                    _cbtn_var = _gv()
-                else:
-                    _inst = getattr(cbtn_enable_threshold, "instate", None)
-                    _cbtn_var = _inst(["selected"]) if callable(_inst) else None
-            except Exception:
-                _cbtn_var = None
-            try:
-                _inst_fn = getattr(cbtn_enable_threshold, "instate", None)
-                _inst_state = _inst_fn(["selected"]) if callable(_inst_fn) else None
-            except Exception:
-                _inst_state = None
-            
-
-            cbtn_auto_threshold = CustomCheckButton(
-                frame_lbl_6,
-                threshold_auto,
-                lambda x: set_threshold_auto(x) or toggle_auto_threshold(),
-                text="Auto Threshold",
-                state="disabled"
-            )
-            cbtn_auto_threshold.pack(side="left", fill="x", padx=5, pady=5)
-
-            cbtn_break_buffer_on_silence = CustomCheckButton(
-                frame_lbl_6,
-                auto_break_buffer,
-                lambda x: set_threshold_auto_break_buffer(x),  # pylint: disable=unnecessary-lambda
-                text="Break buffer on silence",
-                state="disabled"
-            )
-            cbtn_break_buffer_on_silence.pack(side="left", fill="x", padx=5, pady=5)
-
-            # 7
-            lbl_sensitivity = ttk.Label(frame_lbl_7, text="Filter Noise")
-            lbl_sensitivity.pack(side="left", fill="x", padx=5, pady=5)
-
-            var_sensitivity = IntVar()
-            radio_vad_1 = ttk.Radiobutton(frame_lbl_7, text="1", variable=var_sensitivity, value=1, state="disabled")
-            radio_vad_1.pack(side="left", fill="x", padx=5, pady=5)
-            radio_vad_2 = ttk.Radiobutton(frame_lbl_7, text="2", variable=var_sensitivity, value=2, state="disabled")
-            radio_vad_2.pack(side="left", fill="x", padx=5, pady=5)
-            radio_vad_3 = ttk.Radiobutton(frame_lbl_7, text="3", variable=var_sensitivity, value=3, state="disabled")
-            radio_vad_3.pack(side="left", fill="x", padx=5, pady=5)
-
-            vert_sep = ttk.Separator(frame_lbl_7, orient="vertical")
-            vert_sep.pack(side="left", fill="y", padx=5, pady=5)
-
-            cbtn_enable_silero = CustomCheckButton(
-                frame_lbl_7,
-                use_silero,
-                lambda x: set_use_silero(x),  # pylint: disable=unnecessary-lambda
-                text="Use Silero",
-                state="disabled"
-            )
-            cbtn_enable_silero.pack(side="left", fill="x", padx=5, pady=5)
-            tooltip_cbtn_silero = tk_tooltip(
-                cbtn_enable_silero,
-                "Use Silero VAD for more accurate VAD alongside WebRTC VAD"
-                " (Silero will be automatically disabled if it failed on usage)",
-            )
-
-            spn_silero_min_conf = SpinboxNumOnly(
-                root,
-                frame_lbl_7,
-                0.1,
-                1.0,
-                lambda x: set_silero_min_conf(float(x)),
-                initial_value=sj.cache.get(f"threshold_silero_{rec_type}_min", 0.75),
-                num_float=True,
-                allow_empty=False,
-                delay=10,
-                increment=0.05,
-            )
-            spn_silero_min_conf.configure(state="disabled")
-            spn_silero_min_conf.pack(side="left", fill="x", padx=5, pady=5)
-            tk_tooltip(
-                spn_silero_min_conf, "Set the minimum confidence for your input to be considered as speech when using Silero VAD"
-            )
-
-            lbl_threshold = ttk.Label(frame_lbl_7, text="Threshold")
-            lbl_threshold.pack(side="left", fill="x", padx=5, pady=5)
-
-            scale_threshold = ttk.Scale(frame_lbl_7, from_=-60.0, to=0.0, orient="horizontal", state="disabled")
-            scale_threshold.pack(side="left", fill="x", padx=5, pady=5, expand=True)
-            scale_threshold.set(sj.cache.get(f"threshold_db_{rec_type}", -20))
-
-            lbl_threshold_db = ttk.Label(frame_lbl_7, text="0.0 dB")
-            lbl_threshold_db.pack(side="left", fill="x", padx=5, pady=5)
-            lbl_threshold_db.configure(text=f"{sj.cache.get(f'threshold_db_{rec_type}'):.2f} dB")
-
-            # 8
-            lbl_mic = ttk.Label(frame_lbl_8, image=bc.mic_emoji if not speaker else bc.speaker_emoji)
-            lbl_mic.pack(side="left", fill="x", padx=(5, 0), pady=0)
-
-            audiometer = AudioMeter(frame_lbl_8, root, True, MIN_THRESHOLD, MAX_THRESHOLD, height=10)
-            audiometer.pack(side="left", fill="x", padx=5, pady=0, expand=True)
-            audiometer.set_disabled(not sj.cache["show_audio_visualizer_in_record"])
-            audiometer.set_threshold(sj.cache.get(f"threshold_db_{rec_type}"))
-
-            # btn
-            btn_pause = ttk.Button(frame_btn, text="Pause", state="disabled")
-            btn_pause.pack(side="left", fill="x", padx=5, expand=True)
-
-            btn_stop = ttk.Button(frame_btn, text="Stop", style="Accent.TButton")
-            btn_stop.pack(side="right", fill="x", padx=5, expand=True)
-            try:
-                root.iconbitmap(p_app_icon)
-            except Exception:
-                pass
-
-        # ----------------- Vars that is load after window to show loading -----------------
-        max_int16 = np.iinfo(np.int16).max  # bit depth of 16 bit audio (32768)
         separator = str_separator_to_html(literal_eval(quote(sj.cache["separate_with"])))
         webrtc_vad = webrtcvad.Vad(sj.cache.get(f"threshold_auto_mode_{rec_type}", 3))
-        ta_mod = cast(Any, torchaudio)
-        set_backend = getattr(ta_mod, "set_audio_backend", None)  # type: ignore[attr-defined]
-        if callable(set_backend):
-            try:
-                set_backend("soundfile")
-            except Exception as exc:
-                logger.debug(f"torchaudio backend setup skipped: {exc}")
+        
+        if callable(getattr(torchaudio, "set_audio_backend", None)):
+            try: torchaudio.set_audio_backend("soundfile") # type: ignore
+            except Exception: pass
+                
         silero_model = torch.hub.load(repo_or_dir=dir_silero_vad, source="local", model="silero_vad", onnx=True)
         silero_vad = cast(Any, silero_model[0] if isinstance(silero_model, tuple) else silero_model)
         silero_vad.reset_states()
 
-        # cannot transcribe and translate concurrently. Will need to wait for the previous transcribe to finish
-        if is_tc and is_tl and tl_engine_whisper:
-            bc.tc_lock = Lock()
-        else:
-            bc.tc_lock = None
+        bc.tc_lock = Lock() if (is_tc and is_tl and tl_engine_whisper) else None
 
-        # ---- load model -----
+        # Load models
         model_args = get_model_args(sj.cache)
-        _model_tc, _model_tl, stable_tc, stable_tl, to_args = get_model(
-            is_tc, is_tl, tl_engine_whisper, model_name_tc, engine, sj.cache, **model_args
-        )
+        _, _, stable_tc, stable_tl, to_args = get_model(is_tc, is_tl, tl_engine_whisper, model_name_tc, engine, sj.cache, **model_args)
         whisper_args = get_tc_args(to_args, sj.cache)
-        whisper_args["verbose"] = None  # set to none so no printing of the progress to stdout
-        whisper_lang = get_whisper_lang_similar(lang_source) if not auto else None
-        whisper_args["language"] = TO_LANGUAGE_CODE[whisper_lang] if whisper_lang else None
+        whisper_args["verbose"] = None
+        whisper_args["language"] = TO_LANGUAGE_CODE.get(get_whisper_lang_similar(lang_source)) if not auto else None
 
-        # Decide initial prompt behavior.
-        # If `enable_initial_prompt` is True, prefer per-language entries from
-        # `initial_prompts_map` and fall back to built-in defaults. In this mode
-        # we do NOT use the global `initial_prompt` setting.
-        try:
-            enabled = bool(sj.cache.get("enable_initial_prompt", False))
-            if enabled:
-                from ..whisper.prompts import pick_initial_prompt
+        if sj.cache.get("enable_initial_prompt", False):
+            from ..whisper.prompts import pick_initial_prompt
+            prompt = pick_initial_prompt(whisper_args.get("language"), True, sj.cache.get("initial_prompts_map", {}), None)
+            if prompt: whisper_args["initial_prompt"] = prompt
+            else: whisper_args.pop("initial_prompt", None)
+        else:
+            whisper_args.pop("initial_prompt", None)
 
-                user_map = sj.cache.get("initial_prompts_map", {}) or {}
-                prompt = pick_initial_prompt(whisper_args.get("language"), True, user_map, None)
-                if prompt:
-                    whisper_args["initial_prompt"] = prompt
-                else:
-                    whisper_args.pop("initial_prompt", None)
-            else:
-                # When disabled: ensure no initial prompt is used at all
-                whisper_args.pop("initial_prompt", None)
-        except Exception:
-            # best-effort only; fall back to whatever settings provide
-            pass
-        demucs_enabled = bool(whisper_args.get("demucs", False))
-        vad_enabled = bool(whisper_args.get("vad", False))
-        path_diag_flags = {
-            "rate_skip": False,
-            "min_len_skip": False,
-            "numpy_audio_path": False,
-            "temp_file_audio_path": False,
-            "transcribe_path": False,
-            "whisper_tl_path": False,
-            "api_tl_path": False,
-        }
+        demucs_enabled, vad_enabled = bool(whisper_args.get("demucs", False)), bool(whisper_args.get("vad", False))
+        if sj.cache["use_faster_whisper"] and not use_temp: whisper_args["input_sr"] = WHISPER_SR
+        if demucs_enabled and vad_enabled: use_temp = True  # Force temp file
+        
+        hallucination_filters = get_hallucination_filter('rec', sj.cache["path_filter_rec"]) if sj.cache["filter_rec"] else {}
+        cuda_device = model_args["device"]
 
-        logger.info(
-            "[PathDiag] env"
-            f" python={python_version()} torch={getattr(torch, '__version__', 'unknown')}"
-            f" torchaudio={getattr(torchaudio, '__version__', 'unknown')}"
-            f" use_faster_whisper={sj.cache.get('use_faster_whisper')}"
-            f" device={model_args.get('device')}"
-        )
-        logger.info(
-            "[PathDiag] runtime"
-            f" rec_type={rec_type} is_tc={is_tc} is_tl={is_tl} tl_engine_whisper={tl_engine_whisper}"
-            f" use_temp_initial={use_temp} demucs={demucs_enabled} vad={vad_enabled}"
-            f" transcribe_rate_ms={sj.cache.get('transcribe_rate')}"
-            f" min_input_length={sj.cache.get(f'min_input_length_{rec_type}', 0.4)}"
-        )
+        logger.info(f"Session starting: {taskname} | Engine: {engine} | Device: {cuda_device} | Demucs: {demucs_enabled}")
 
-        if sj.cache["use_faster_whisper"] and not use_temp:
-            whisper_args["input_sr"] = WHISPER_SR  # when using numpy array as input, will need to set input_sr
-
-        translation_queue: Queue = Queue()
-        translation_task_lock = Lock()
-        latest_api_task = None
-        inflight_api_text = ""
+        # Worker Queues
+        translation_queue, translation_task_lock = Queue(), Lock()
+        latest_api_task, inflight_api_text = None, ""
 
         def build_full_transcribed_text(current_res: Any) -> str:
-            """Build a full transcription snapshot (finalized + current line)."""
-            lines = []
-
-            def _to_text(item: Any) -> str:
-                if isinstance(item, str):
-                    return item.strip()
-                return str(getattr(item, "text", "")).strip()
-
-            for item in bc.tc_sentences:
-                as_text = _to_text(item)
-                if as_text:
-                    lines.append(as_text)
-
-            current_text = _to_text(current_res)
-            if current_text:
-                lines.append(current_text)
-
+            lines = [str(getattr(item, "text", item)).strip() for item in bc.tc_sentences if str(getattr(item, "text", item)).strip()]
+            if current_res and str(getattr(current_res, "text", current_res)).strip():
+                lines.append(str(getattr(current_res, "text", current_res)).strip())
             return "\n".join(lines)
 
-        logger.info("Loading transcribe/translate models...")
+        def _dispatch_translation(audio_target: Any, text_snapshot: str):
+            """统一的翻译任务分发入口"""
+            if not is_tl: return
+            if tl_engine_whisper:
+                translation_queue.put({
+                    "kind": "whisper", "audio": audio_target, "separator": separator, 
+                    "cleanup_audio": use_temp and not sj.cache.get("keep_temp", False) and isinstance(audio_target, str)
+                })
+            else:
+                text_key = text_snapshot.strip()
+                if not text_key: return
+                nonlocal latest_api_task
+                with translation_task_lock:
+                    if text_key != inflight_api_text:
+                        latest_api_task = {
+                            "kind": "api", "text": text_key, "lang_source": lang_source, 
+                            "lang_target": lang_target, "engine": engine, "separator": separator
+                        }
 
-        def queue_api_translation(task: dict):
-            """Keep only latest API translation task while one may be in-flight."""
-            nonlocal latest_api_task, inflight_api_text
-            text_key = str(task.get("text", "")).strip()
-            if not text_key:
-                return
-
-            with translation_task_lock:
-                # If exactly same full snapshot is already in-flight, skip it.
-                if text_key == inflight_api_text:
-                    return
-                latest_api_task = task
-
+        # Translation Worker Thread
         def run_translation_worker():
             nonlocal latest_api_task, inflight_api_text
             while bc.recording or not translation_queue.empty() or latest_api_task is not None:
                 if not bc.recording:
-                    # Stop was requested: drop pending translation work to avoid stale UI updates.
-                    while True:
-                        try:
-                            pending_task = translation_queue.get_nowait()
-                            if pending_task.get("cleanup_audio") and isinstance(pending_task.get("audio"), str):
-                                try:
-                                    os.remove(pending_task["audio"])
-                                except Exception:
-                                    pass
-                        except Empty:
-                            break
-                    with translation_task_lock:
-                        latest_api_task = None
-                        inflight_api_text = ""
+                    while not translation_queue.empty():
+                        pt = translation_queue.get_nowait()
+                        if pt.get("cleanup_audio") and isinstance(pt.get("audio"), str):
+                            try: os.remove(pt["audio"])
+                            except Exception: pass
                     break
 
                 task = None
-
-                # Whisper tasks remain FIFO in the queue.
-                try:
-                    task = translation_queue.get(timeout=0.1)
+                try: task = translation_queue.get(timeout=0.1)
                 except Empty:
-                    pass
-
-                # API tasks are coalesced: process only the latest snapshot.
-                if task is None:
                     with translation_task_lock:
-                        if latest_api_task is not None:
-                            task = latest_api_task
-                            latest_api_task = None
-                            inflight_api_text = str(task.get("text", "")).strip()
+                        if latest_api_task:
+                            task, latest_api_task = latest_api_task, None
+                            inflight_api_text = task["text"]
 
-                if task is None:
-                    continue
+                if not task: continue
 
                 try:
-                    if sj.cache["debug_realtime_record"]:
-                        logger.debug(f"Translation worker picked task | kind={task['kind']}")
                     update_status_lbl()
                     if task["kind"] == "whisper":
-                        run_whisper_tl(
-                            task["audio"],
-                            stable_tl,
-                            task["separator"],
-                            hallucination_filters,
-                            **whisper_args,
-                        )
+                        run_whisper_tl(task["audio"], stable_tl, task["separator"], hallucination_filters, **whisper_args)
                     else:
-                        tl_api(
-                            task["text"],
-                            task["lang_source"],
-                            task["lang_target"],
-                            task["engine"],
-                            task["separator"],
-                        )
+                        tl_api(task["text"], task["lang_source"], task["lang_target"], task["engine"], task["separator"])
                 except Exception as e:
                     logger.exception(e)
                 finally:
                     if task.get("kind") == "api":
-                        with translation_task_lock:
-                            inflight_api_text = ""
+                        with translation_task_lock: inflight_api_text = ""
                     if task.get("cleanup_audio") and isinstance(task.get("audio"), str):
-                        try:
-                            os.remove(task["audio"])
-                        except Exception:
-                            pass
-                    if sj.cache["debug_realtime_record"]:
-                        logger.debug(f"Translation worker finished task | kind={task['kind']}")
+                        try: os.remove(task["audio"])
+                        except Exception: pass
                     update_status_lbl()
 
         Thread(target=run_translation_worker, daemon=True).start()
 
-        # ! if both demucs and vad is enabled, use file instead of numpy array to avoid error
-        if demucs_enabled and vad_enabled:
-            logger.info("Both demucs and vad is enabled. Force using file instead of numpy array")
-            use_temp = True
-            logger.info("[PathDiag] force_use_temp reason=demucs_and_vad")
-
-        cuda_device = model_args["device"]
-
-        # ---- load hallucination filter -----
-        if sj.cache["filter_rec"]:
-            hallucination_filters = get_hallucination_filter('rec', sj.cache["path_filter_rec"])
-        else:
-            hallucination_filters = {}
-
-        logger.info("Models loaded, preparing audio stream...")
-
-        bc.mw.stop_lb(rec_type)
-        logger.info("-" * 50)
-        logger.info(f"Taskname: {taskname}")
-        logger.info(f"TC: {is_tc}")
-        logger.info(f"TL: {is_tl}")
-        logger.info(f"Model: {model_name_tc}")
-        logger.info(f"Engine: {engine}")
-        logger.info(f"CUDA: {cuda_device}")
-        logger.info(f"Auto mode: {auto}")
-        logger.info(f"Whisper Lang/Key: {whisper_lang}/{whisper_args['language']}")
-        logger.info(f"Source Languange: {lang_source}")
-        if is_tl:
-            logger.info(f"Target Language: {lang_target}")
-        logger.info(f"Model Args: {model_args}")
-        logger.info(f"Process Args: {whisper_args}")
-
-        # ----------------- Start modal -----------------
-        # window to show progress
-        if root is not None:
-            root.title("Recording")
-
-        t_start = time()
-        paused = False
-        duration_seconds = 0
-        bc.current_rec_status = "▶️ Recording (Waiting for speech)"
-        bc.auto_detected_lang = "~"
-        if is_headless and bc.web_bridge is not None:
-            try:
-                bc.web_bridge.set_recording_state(
-                    {
-                        "status": bc.current_rec_status,
-                        "device": device,
-                        "lang_source": lang_source,
-                        "lang_target": lang_target if is_tl else "-",
-                        "engine": engine,
-                        "mode": taskname,
-                        "timer": "00:00:00",
-                        "buffer": f"0/{round(max_buffer_s, 2)} sec",
-                        "sentences": "0",
-                    }
-                )
-            except Exception:
-                pass
-
-        def stop_recording():
-            bc.recording = False  # only set flag to false because cleanup is handled directly down below
-            if not is_headless:
-                btn_stop.configure(state="disabled", text="Stopping...")  # disable btn
-                btn_pause.configure(state="disabled")
-
-        def toggle_pause():
-            nonlocal paused
-            paused = not paused
-            if paused:
-                if bc.stream:
-                    bc.stream.stop_stream()
-                if not is_headless:
-                    btn_pause.configure(text="Resume")
-                if root is not None:
-                    root.title(f"Recording {rec_type} (Paused)")
-                bc.current_rec_status = "⏸️ Paused"
-                update_status_lbl()
-                silero_vad.reset_states()
-            else:
-                if bc.stream:
-                    bc.stream.start_stream()
-                if not is_headless:
-                    btn_pause.configure(text="Pause")
-                if root is not None:
-                    root.title(f"Recording {rec_type}")
-
-        def toggle_enable_threshold(persist: bool = True):
-            try:
-                _gv3 = getattr(cbtn_enable_threshold, "get_value", None)
-                if callable(_gv3):
-                    _cbtn_var3 = _gv3()
-                else:
-                    _inst3 = getattr(cbtn_enable_threshold, "instate", None)
-                    _cbtn_var3 = _inst3(["selected"]) if callable(_inst3) else None
-            except Exception:
-                _cbtn_var3 = None
-            try:
-                _inst_fn3 = getattr(cbtn_enable_threshold, "instate", None)
-                _inst_state3 = _inst_fn3(["selected"]) if callable(_inst_fn3) else None
-            except Exception:
-                _inst_state3 = None
-            val = cbtn_enable_threshold.instate(["selected"])
-            if persist:
-                sj.save_key(f"threshold_enable_{rec_type}", val)
-            if val:
-                cbtn_auto_threshold.configure(state="normal")
-                cbtn_break_buffer_on_silence.configure(state="normal")
-                frame_lbl_7.pack(side="top", fill="x")
-                frame_lbl_8.pack(side="top", fill="x", expand=True)
-
-                audiometer.start()
-            else:
-                cbtn_auto_threshold.configure(state="disabled")
-                cbtn_break_buffer_on_silence.configure(state="disabled")
-                frame_lbl_7.pack_forget()
-                frame_lbl_8.pack_forget()
-
-                audiometer.stop()
-            toggle_auto_threshold(persist=persist)
-
-        def toggle_auto_threshold(persist: bool = True):
-            val = cbtn_auto_threshold.instate(["selected"])
-            if persist:
-                sj.save_key(f"threshold_auto_{rec_type}", val)
-            if val:
-                audiometer.set_auto(True)
-                audiometer.configure(height=10)
-
-                lbl_threshold.pack_forget()
-                scale_threshold.pack_forget()
-                lbl_threshold_db.pack_forget()
-
-                lbl_sensitivity.pack(side="left", fill="x", padx=5, pady=5)
-                radio_vad_1.pack(side="left", fill="x", padx=5, pady=5)
-                radio_vad_2.pack(side="left", fill="x", padx=5, pady=5)
-                radio_vad_3.pack(side="left", fill="x", padx=5, pady=5)
-                cbtn_enable_silero.pack(side="left", fill="x", padx=5, pady=5)
-                if use_silero:
-                    spn_silero_min_conf.pack(side="left", fill="x", padx=5, pady=5)
-            else:
-                audiometer.set_auto(False)
-                audiometer.configure(height=20)
-
-                lbl_sensitivity.pack_forget()
-                radio_vad_1.pack_forget()
-                radio_vad_2.pack_forget()
-                radio_vad_3.pack_forget()
-                vert_sep.pack_forget()
-                cbtn_enable_silero.pack_forget()
-                spn_silero_min_conf.pack_forget()
-
-                lbl_threshold.pack(side="left", fill="x", padx=5, pady=5)
-                scale_threshold.pack(side="left", fill="x", padx=5, pady=5, expand=True)
-                lbl_threshold_db.pack(side="left", fill="x", padx=5, pady=5)
-
-        def slider_move(event):
-            global threshold_db
-            threshold_db = float(event)
-            lbl_threshold_db.configure(text=f"{threshold_db:.2f} dB")
-            audiometer.set_threshold(threshold_db)
-            sj.save_key(f"threshold_db_{rec_type}", threshold_db)
-
-        def set_treshold(state: bool):
-            global threshold_enable
-            threshold_enable = state
-
-        def set_threshold_auto(state: bool):
-            global threshold_auto
-            threshold_auto = state
-
-        def set_use_silero(state: bool):
-            global use_silero
-            use_silero = state
-            logger.info(f"Silero VAD is {'enabled' if state else 'disabled'}")
-            sj.save_key(f"threshold_auto_silero_{rec_type}", state)
-            silero_vad.reset_states()
-            if state:
-                spn_silero_min_conf.pack(side="left", fill="x", padx=5, pady=5)
-            else:
-                spn_silero_min_conf.pack_forget()
-
-        def set_silero_min_conf(state: float):
-            global silero_min_conf
-            sj.save_key(f"threshold_silero_{rec_type}_min", state)
-            silero_min_conf = state
-
-        def set_webrtc_level(mode: int):
-            webrtc_vad.set_mode(mode)
-
-        def set_threshold_auto_break_buffer(state: bool):
-            nonlocal auto_break_buffer
-            auto_break_buffer = state
-
-        def disable_silerovad():
-            """
-            Disable silero when not possible to use it
-            """
-            global silero_disabled
-            if cbtn_enable_silero.instate(["selected"]):
-                cbtn_enable_silero.invoke()
-            silero_disabled = True
-            cbtn_enable_silero.configure(state="disabled")
-            tooltip_cbtn_silero.text = "Silero VAD is unavailable on this current " \
-                                    "device configuration (check log for details)"
-
-        def disable_auto_threshold():  # pylint: disable=unused-variable
-            """
-            Disable auto threshold when not possible to use it
-            """
-            if cbtn_auto_threshold.instate(["selected"]):
-                cbtn_auto_threshold.invoke()
-            cbtn_auto_threshold.configure(state="disabled")
-            if not is_headless:
-                tk_tooltip(
-                    cast(Any, cbtn_auto_threshold),
-                    "Auto threshold is unavailable on this current device configuration (check log for details)"
-                )
-            disable_silerovad()
-
+        # UI & State Updaters
+        t_start, duration_seconds, paused = time(), 0.0, False
+        bc.current_rec_status, bc.auto_detected_lang = "▶️ Recording (Waiting for speech)", "~"
+        
         def update_status_lbl():
-            if is_headless and bc.web_bridge is not None:
+            if bc.web_bridge:
                 bc.web_bridge.update_task_message(bc.current_rec_status)
-                try:
-                    bc.web_bridge.set_recording_state(
-                        {
-                            "status": bc.current_rec_status,
-                            "device": device,
-                            "lang_source": lang_source,
-                            "lang_target": lang_target if is_tl else "-",
-                            "engine": engine,
-                            "mode": taskname,
-                        }
-                    )
-                except Exception:
-                    pass
-            else:
-                lbl_status.configure(text=bc.current_rec_status)
+                try: bc.web_bridge.set_recording_state({"status": bc.current_rec_status, "device": device, "lang_source": lang_source, "lang_target": lang_target if is_tl else "-", "engine": engine, "mode": taskname})
+                except Exception: pass
 
-        def update_modal_ui():
-            nonlocal t_start, paused
+        def update_web_ui():
             while bc.recording:
-                if paused:
-                    sleep(0.1)
-                    continue
+                if paused: sleep(0.1); continue
                 try:
-                    timer = strftime("%H:%M:%S", gmtime(time() - t_start))
-                    data_queue_size = (bc.data_queue.qsize() * chunk_size) / 1024  # approx buffer size in kb
-                    lbl_timer.configure(
-                        text=f"REC: {timer} | "
-                        f"{language.replace('auto detect', f'auto detect ({bc.auto_detected_lang})') if auto else language}"
-                    )
-                    lbl_buffer.set_text(
-                        f"{round(duration_seconds, 2)}/{round(max_buffer_s, 2)} sec (~{round(data_queue_size, 2)} kb)"
-                    )
-                    sentence_text = f"{len(bc.tc_sentences) or len(bc.tl_sentences) or '0'}"
-                    if not sentence_limitless:
-                        sentence_text += f"/{max_sentences}"
-                    lbl_sentences.set_text(sentence_text)
-
-                    progress_buffer["value"] = duration_seconds / max_buffer_s * 100
-                    update_status_lbl()
-                    if is_headless and bc.web_bridge is not None:
-                        try:
-                            bc.web_bridge.set_recording_state(
-                                {
-                                    "status": bc.current_rec_status,
-                                    "device": device,
-                                    "lang_source": lang_source,
-                                    "lang_target": lang_target if is_tl else "-",
-                                    "engine": engine,
-                                    "mode": taskname,
-                                    "timer": timer,
-                                    "buffer": f"{round(duration_seconds, 2)}/{round(max_buffer_s, 2)} sec",
-                                    "sentences": sentence_text,
-                                }
-                            )
-                        except Exception:
-                            pass
+                    s_txt = f"{len(bc.tc_sentences) or len(bc.tl_sentences) or '0'}" + (f"/{max_sentences}" if not sentence_limitless else "")
+                    if bc.web_bridge:
+                        try: bc.web_bridge.set_recording_state({"status": bc.current_rec_status, "device": device, "lang_source": lang_source, "lang_target": lang_target if is_tl else "-", "engine": engine, "mode": taskname, "timer": strftime("%H:%M:%S", gmtime(time() - t_start)), "buffer": f"{round(duration_seconds, 2)}/{round(max_buffer_s, 2)} sec", "sentences": s_txt})
+                        except Exception: pass
                     sleep(0.1)
-                except Exception as e:
-                    if "invalid command name" not in str(e):
-                        logger.exception(e)
-                        logger.warning("Failed to update modal ui | Ignore if already closed")
-                        break
+                except Exception: break
 
-        cbtn_enable_threshold.configure(state="normal")
-        cbtn_auto_threshold.configure(state="normal")
-        cbtn_break_buffer_on_silence.configure(state="normal")
-        cbtn_enable_silero.configure(state="normal")
-        spn_silero_min_conf.configure(state="normal")
-        btn_pause.configure(state="normal", command=toggle_pause)
-        btn_stop.configure(state="normal", command=stop_recording)
-        scale_threshold.configure(command=slider_move, state="normal")
-        temp_map = {1: radio_vad_1, 2: radio_vad_2, 3: radio_vad_3} 
-        radio_vad_1.configure(command=lambda: set_webrtc_level(1), state="normal")
-        radio_vad_2.configure(command=lambda: set_webrtc_level(2), state="normal")
-        radio_vad_3.configure(command=lambda: set_webrtc_level(3), state="normal")
-        if not is_headless:
-            cbtn_invoker(threshold_auto, cast(Any, temp_map[sj.cache.get(f"threshold_auto_level_{rec_type}", 3)]))
-        if not use_silero:
-            spn_silero_min_conf.pack_forget()
-        try:
-            _gv2 = getattr(cbtn_enable_threshold, "get_value", None)
-            if callable(_gv2):
-                _cbtn_var2 = _gv2()
-            else:
-                _inst2 = getattr(cbtn_enable_threshold, "instate", None)
-                _cbtn_var2 = _inst2(["selected"]) if callable(_inst2) else None
-        except Exception:
-            _cbtn_var2 = None
-        try:
-            _inst_fn2 = getattr(cbtn_enable_threshold, "instate", None)
-            _inst_state2 = _inst_fn2(["selected"]) if callable(_inst_fn2) else None
-        except Exception:
-            _inst_state2 = None
-        toggle_enable_threshold(persist=False)
-        update_ui_thread = Thread(target=update_modal_ui, daemon=True)
-        update_ui_thread.start()
+        update_status_lbl()
+        Thread(target=update_web_ui, daemon=True).start()
 
-        # ----------------- Start recording -----------------
-        lbl_status.configure(text="▶️ Recording")
-        # recording session init
-        bc.tc_sentences = []
-        bc.tl_sentences = []
-        temp_list = []
-        prev_tc_res = ""
-        prev_tl_res = ""
-        next_transcribe_time = None
-        last_sample = bytes()
-        samp_width = p.get_sample_size(pyaudio.paInt16)
+        # Audio stream setup
+        bc.tc_sentences, bc.tl_sentences, temp_list = [], [], []
+        prev_tc_res, prev_tl_res, next_transcribe_time = "", "", None
+        last_sample, samp_width = bytes(), p.get_sample_size(pyaudio.paInt16)
         sr_divider = WHISPER_SR if not use_temp else sr_ori
-        result = None  # Global result holder for transcription
+        is_silence, was_recording, t_silence, max_db, min_db = False, False, time(), MAX_THRESHOLD, MIN_THRESHOLD
+        
+        bc.stream = p.open(format=pyaudio.paInt16, channels=num_of_channels, rate=sr_ori, input=True, frames_per_buffer=chunk_size, input_device_index=int(device_detail["index"]), stream_callback=record_cb)
 
-        # threshold
-        is_silence = False
-        was_recording = False
-        t_silence = time()
-        max_db = MAX_THRESHOLD
-        min_db = MIN_THRESHOLD
-        bc.stream = p.open(
-            format=pyaudio.paInt16,  # 16 bit audio
-            channels=num_of_channels,
-            rate=sr_ori,
-            input=True,
-            frames_per_buffer=chunk_size,
-            input_device_index=int(device_detail["index"]),
-            stream_callback=record_cb,
-        )
-        logger.debug("Recording session started")
-        def break_buffer_store_update(reason: str = ""):
-            """
-            处理缓冲区满 (Buffer Full) 或 静音打断 (Silence) 时的逻辑。
-            核心目标：找出最近的停顿处（Gap）进行无损切割，将前半段定稿，后半段退回继续识别。
-            """
+        def break_buffer_store_update(reason=""):
             nonlocal last_sample, duration_seconds, next_transcribe_time
             global prev_tc_res, prev_tl_res
+            logger.info(f"Buffer break [{reason}] | bytes={len(last_sample)} dur={duration_seconds:.2f}s")
+            
+            preserved_tc, had_set_sample = False, False
 
-            logger.info(f"触发缓冲区打断 | 原因={reason} 字节数={len(last_sample)} 时长={duration_seconds:.2f}秒")
-
-            preserved_prev_tc = False
-            preserved_prev_tl = False
-            had_set_last_sample = False
-
-            # =========================================================================
-            # 步骤 1：尝试智能断句 (Smart-Split)
-            # =========================================================================
+            # Smart Split Logic
             if reason == "buffer_full" and is_tc and prev_tc_res and hasattr(prev_tc_res, 'segments'):
-                WhisperResultClass = type(prev_tc_res)
-                segments = prev_tc_res.segments
+                split_time, pre_segs, post_segs = _calculate_smart_split(prev_tc_res.segments, (prev_tc_buffer_seconds / 2.0) if prev_tc_buffer_seconds > 0 else 0.0)
                 
-                # 1.1 提取词级时间戳 (扁平化所有有效词汇)
-                word_infos = []
-                for sidx, seg in enumerate(segments):
-                    for widx, w in enumerate(seg.to_dict().get('words', [])):
-                        text = str(w.get('word', w.get('text', ''))).strip()
-                        if not text: 
-                            continue
-                        
-                        try:
-                            start = float(w.get('start', w.get('end', 0.0)))
-                            end = float(w.get('end', start))
-                        except Exception:
-                            continue
-                            
-                        avg = (start + end) / 2.0
-                        word_infos.append((sidx, widx, text, avg, start, end))
-
-                # 1.2 划定安全切割区 (为了保证上下文，只在当前缓冲区后半段寻找停顿点)
-                half_point = (prev_tc_buffer_seconds / 2.0) if prev_tc_buffer_seconds > 0 else 0.0
-                filtered_words = [wi for wi in word_infos if wi[3] >= half_point]
-
-                # 1.3 寻找最长停顿间隔 (Max Gap)
-                max_gap, max_idx = -1.0, None
-                for i in range(len(filtered_words) - 1):
-                    cur_end = filtered_words[i][5]        # 当前词的结束时间
-                    next_start = filtered_words[i + 1][4] # 下一个词的开始时间
-                    gap = next_start - cur_end
-                    if gap > max_gap:
-                        max_gap = gap
-                        max_idx = i
-
-                # 1.4 如果找到了合适的停顿点，执行文本与音频的【双重切割】
-                if max_idx is not None and max_gap > 0:
-                    left_word, right_word = filtered_words[max_idx], filtered_words[max_idx + 1]
-                    seg_l, seg_r = left_word[0], right_word[0]
-                    split_time = (left_word[5] + right_word[4]) / 2.0
-
-                    # --- [逻辑切割]：拆分 Segments 对象 ---
-                    pre_segs, post_segs = [], []
-                    
-                    if seg_l != seg_r:
-                        # 【场景 A】：停顿恰好发生在两个完整的句子（Segment）之间
-                        # 最完美的切割，无需干预内部时间戳，直接切开列表即可！
-                        pre_segs = [s.to_dict() for s in segments[:seg_l + 1]]
-                        post_segs = [s.to_dict() for s in segments[seg_l + 1:]]
-                    else:
-                        # 【场景 B】：停顿发生在某个句子（Segment）内部，需要将其拆成两半
-                        for i, seg in enumerate(segments):
-                            seg_d = seg.to_dict()
-                            if i < seg_l:
-                                pre_segs.append(seg_d)
-                            elif i > seg_l:
-                                post_segs.append(seg_d)
-                            else:
-                                # i == seg_l，精确切分单词
-                                words = seg_d.get('words', [])
-                                pre_w = [w for w in words if (float(w.get('start', 0.0)) + float(w.get('end', 0.0))) / 2.0 < split_time]
-                                post_w = [w for w in words if (float(w.get('start', 0.0)) + float(w.get('end', 0.0))) / 2.0 >= split_time]
-                                
-                                # 前半截如果有词，才组装
-                                if pre_w:
-                                    pre_d = deepcopy(seg_d)
-                                    pre_d['words'] = pre_w
-                                    pre_d['text'] = " ".join([w.get('word', w.get('text', '')).strip() for w in pre_w]).strip()
-                                    pre_d['start'] = seg_d.get('start', pre_w[0].get('start', 0.0))
-                                    pre_d['end'] = pre_w[-1].get('end', split_time)
-                                    if pre_d['start'] > pre_d['end']: pre_d['start'] = pre_d['end']
-                                    pre_segs.append(pre_d)
-                                    
-                                # 后半截如果有词，才组装
-                                if post_w:
-                                    post_d = deepcopy(seg_d)
-                                    post_d['words'] = post_w
-                                    post_d['text'] = " ".join([w.get('word', w.get('text', '')).strip() for w in post_w]).strip()
-                                    post_d['start'] = post_w[0].get('start', split_time)
-                                    post_d['end'] = seg_d.get('end', post_w[-1].get('end', split_time))
-                                    if post_d['start'] > post_d['end']: post_d['start'] = post_d['end']
-                                    post_segs.append(post_d)
-
-                    # 尝试安全组装结果，并在成功后执行物理切割与联动
+                if split_time is not None:
                     try:
-                        pre_res = WhisperResultClass(pre_segs) if pre_segs else prev_tc_res
-                        post_res = WhisperResultClass(post_segs) if post_segs else prev_tc_res
+                        pre_res = type(prev_tc_res)(pre_segs) if pre_segs else prev_tc_res
+                        post_res = type(prev_tc_res)(post_segs) if post_segs else prev_tc_res
 
-                        # --- [物理切割]：拆分 Audio Bytes 字节流 ---
-                        bytes_before = int(round(split_time * sr_divider)) * samp_width * num_of_channels
-                        bytes_before = max(0, min(bytes_before, len(last_sample)))  # 边界保护
-                        pre_audio_bytes = last_sample[:bytes_before]
-                        post_audio_bytes = last_sample[bytes_before:]
-
-                        # 将前半段写入临时文件 (供下游可能需要的 Whisper 翻译)
-                        wf_pre = BytesIO()
-                        with w_open(wf_pre, 'wb') as wav_writer_pre:
-                            wav_writer_pre.setframerate(sr_divider)
-                            wav_writer_pre.setsampwidth(samp_width)
-                            wav_writer_pre.setnchannels(num_of_channels)
-                            wav_writer_pre.writeframes(pre_audio_bytes)
+                        bytes_before = max(0, min(int(round(split_time * sr_divider)) * samp_width * num_of_channels, len(last_sample)))
+                        pre_audio_bytes, last_sample = last_sample[:bytes_before], last_sample[bytes_before:]
                         
-                        pre_audio_path = generate_temp_filename(dir_temp)
-                        with open(pre_audio_path, 'wb') as f:
-                            f.write(wf_pre.getvalue())
+                        pre_audio_path = _save_to_temp(pre_audio_bytes, num_of_channels, samp_width, sr_divider)
 
-
-                        # =========================================================================
-                        # 步骤 2：联动与更新
-                        # =========================================================================
-                        
-                        # 2.1 前半段正式定稿入库
                         bc.tc_sentences.append(pre_res)
-                        
-                        # 2.2 截断音频缓冲区，留下后半截
-                        last_sample = post_audio_bytes
                         duration_seconds = len(last_sample) / (samp_width * num_of_channels * sr_divider)
-                        had_set_last_sample = True
+                        had_set_sample, preserved_tc, prev_tc_res = True, True, post_res
                         next_transcribe_time = datetime.utcnow()
 
-                        # 2.3 设置后半句为当前草稿，标记已保留
-                        prev_tc_res = post_res
-                        preserved_prev_tc = True
-                        
-                        logger.info(f"Smart-Split 成功 | 切割点={split_time:.3f}s 停顿={max_gap:.3f}s")
-
-                        # 去重与长度限制
-                        bc.tc_sentences = unique_rec_list(bc.tc_sentences)
-                        if not sentence_limitless and len(bc.tc_sentences) > max_sentences:
-                            bc.tc_sentences = bc.tc_sentences[-max_sentences:]
-
-                        # 2.4 UI 联动 (把切完的后半截草稿推给 UI)
+                        bc.tc_sentences = _enforce_sentence_limits(bc.tc_sentences, sentence_limitless, max_sentences)
                         bc.update_tc(prev_tc_res, separator)
-
-                        # 2.5 翻译联动
-                        if is_tl:
-                            if tl_engine_whisper:
-                                translation_queue.put({
-                                    'kind': 'whisper',
-                                    'audio': pre_audio_path,
-                                    'separator': separator,
-                                    'cleanup_audio': use_temp and not sj.cache.get('keep_temp', False),
-                                })
-                            else:
-                                full_tc_text = build_full_transcribed_text(prev_tc_res)
-                                queue_api_translation({
-                                    'kind': 'api',
-                                    'text': full_tc_text,
-                                    'lang_source': lang_source,
-                                    'lang_target': lang_target,
-                                    'engine': engine,
-                                    'separator': separator,
-                                })
+                        _dispatch_translation(pre_audio_path, build_full_transcribed_text(prev_tc_res))
                     except Exception as e:
-                        # 兜底：一旦组装出问题，放弃本次切割，跳出执行步骤 3
-                        logger.warning(f"WhisperResultClass 组装失败或物理切割异常, 退回兜底逻辑: {e}")
-                        had_set_last_sample = False
+                        logger.warning(f"Smart-Split fallback due to error: {e}")
 
-            # =========================================================================
-            # 步骤 3：常规打断兜底逻辑 (未触发智能切割，或执行过程遭遇异常)
-            # =========================================================================
-            if not preserved_prev_tc:
-                # 把现有的识别结果全部定稿
-                if is_tc and prev_tc_res:
-                    bc.tc_sentences.append(prev_tc_res)
-                
-                # 去重和限制处理
-                bc.tc_sentences = unique_rec_list(bc.tc_sentences)
-                if not sentence_limitless and len(bc.tc_sentences) > max_sentences:
-                    bc.tc_sentences = bc.tc_sentences[-max_sentences:]
-
-                if len(bc.tc_sentences) > 0:
-                    bc.update_tc(None, separator)
-                    
-                if is_tl and not tl_engine_whisper:
-                    full_tc_text = build_full_transcribed_text(None)
-                    queue_api_translation({
-                        'kind': 'api',
-                        'text': full_tc_text,
-                        'lang_source': lang_source,
-                        'lang_target': lang_target,
-                        'engine': engine,
-                        'separator': separator,
-                    })
-
-            # --- 步骤 4：翻译部分 (Whisper 引擎专用兜底处理) ---
-            if is_tl and not preserved_prev_tl:
-                if prev_tl_res and tl_engine_whisper:
-                    bc.tl_sentences.append(prev_tl_res)
-            
-            if tl_engine_whisper:
-                bc.tl_sentences = unique_rec_list(bc.tl_sentences)
-                if not sentence_limitless and len(bc.tl_sentences) > max_sentences:
-                    bc.tl_sentences = bc.tl_sentences[-max_sentences:]
-                if len(bc.tl_sentences) > 0:
-                    bc.update_tl(None, separator)
-
-            # --- 步骤 5：环境与状态清理 ---
-            if not had_set_last_sample:
-                # 如果没有切割保留音频，说明全清空了，重置缓冲区
-                last_sample = bytes()
-                duration_seconds = 0
-                
-            if not preserved_prev_tc:
+            # Fallback Logic (If split wasn't applicable or failed)
+            if not preserved_tc:
+                if is_tc and prev_tc_res: bc.tc_sentences.append(prev_tc_res)
+                bc.tc_sentences = _enforce_sentence_limits(bc.tc_sentences, sentence_limitless, max_sentences)
+                if bc.tc_sentences: bc.update_tc(None, separator)
+                _dispatch_translation(None, build_full_transcribed_text(None))
                 prev_tc_res = ""
-            if not preserved_prev_tl:
-                prev_tl_res = ""
-      # transcribing loop
-        while bc.recording:
-            if sj.cache["debug_realtime_record"]:
-                logger.debug(
-                    f"Record loop tick | paused={paused} queue={bc.data_queue.qsize()} last_sample={len(last_sample)} bytes "
-                    f"status={bc.current_rec_status}"
-                )
-            if paused:
-                sleep(0.1)
-                continue
 
-            try:
-                data = bc.data_queue.get(timeout=0.1)
+            if is_tl:
+                if prev_tl_res and tl_engine_whisper: bc.tl_sentences.append(prev_tl_res)
+                bc.tl_sentences = _enforce_sentence_limits(bc.tl_sentences, sentence_limitless, max_sentences)
+                if bc.tl_sentences: bc.update_tl(None, separator)
+                prev_tl_res = ""
+
+            if not had_set_sample:
+                last_sample, duration_seconds = bytes(), 0
+
+        # Main Transcribing Loop
+        while bc.recording:
+            if paused: sleep(0.1); continue
+
+            try: data = bc.data_queue.get(timeout=0.1)
             except Empty:
-                if sj.cache["debug_realtime_record"]:
-                    logger.debug("Record loop waiting for audio data")
-                # no audio is being recorded, Could be because threshold is not met or because device is paused
-                # in case of speaker device, it will pause the stream  when the speaker is not playing anything
-                if auto_break_buffer:
-                    # if silence has been detected for more than 1 second, break the buffer (last_sample)
-                    if is_silence and time() - t_silence > 1:
-                        # Diagnostic log for silence timeout
-                        try:
-                            logger.info(
-                                "Silence timeout -> breaking buffer | "
-                                f"duration={time() - t_silence:.3f}s threshold_db={threshold_db} last_db={last_db if last_db is not None else 'N/A'}"
-                            )
-                        except Exception:
-                            logger.info("Silence timeout -> breaking buffer")
-                        is_silence = False
-                        break_buffer_store_update()
-                        bc.current_rec_status = "▶️ Recording (Waiting for speech)"
-                        if sj.cache["debug_realtime_record"]:
-                            logger.debug("Silence found for more than 1 second. Buffer reseted")
-                # Queue can briefly go idle while there is still buffered audio waiting to be processed.
-                if len(last_sample) == 0:
-                    continue
-                now_idle = datetime.utcnow()
-                if next_transcribe_time is None or next_transcribe_time > now_idle:
-                    continue
-                if sj.cache["debug_realtime_record"]:
-                    logger.debug(
-                        f"Record loop queue idle but buffered audio exists; forcing pass with {len(last_sample)} bytes"
-                    )
+                if auto_break_buffer and is_silence and time() - t_silence > 1:
+                    is_silence = False
+                    break_buffer_store_update("silence")
+                    bc.current_rec_status = "▶️ Recording (Waiting for speech)"
+                if not last_sample or (next_transcribe_time and next_transcribe_time > datetime.utcnow()): continue
                 data = b""
 
-            # update now if there is audio being recorded
             now = datetime.utcnow()
+            if not next_transcribe_time: next_transcribe_time = now + transcribe_rate
 
-            # Set next_transcribe_time for the first time.
-            if not next_transcribe_time:  # run only once
-                next_transcribe_time = now + transcribe_rate
-                if sj.cache["debug_realtime_record"]:
-                    logger.debug(f"Record loop scheduled first transcribe at {next_transcribe_time}")
-
-            # Getting the stream data from the queue while also clearing the queue.
             last_sample += data
-            while True:
-                try:
-                    data = bc.data_queue.get_nowait()
-                    last_sample += data
-                except Empty:
-                    break
+            while not bc.data_queue.empty(): last_sample += bc.data_queue.get_nowait()
 
-            if sj.cache["debug_realtime_record"]:
-                logger.debug(
-                    f"Record loop buffered audio | duration={duration_seconds:.2f}s next_transcribe_time={next_transcribe_time}"
-                )
-
-            # Run transcription based on transcribe rate that is set by user.
-            # The more delay it have the more it will reduces stress on the GPU / CPU (if using cpu).
-            if next_transcribe_time > now:
-                if not path_diag_flags["rate_skip"]:
-                    path_diag_flags["rate_skip"] = True
-                    wait_ms = int((next_transcribe_time - now).total_seconds() * 1000)
-                    logger.info(f"[PathDiag] skip reason=transcribe_rate wait_ms={wait_ms}")
-                if sj.cache["debug_realtime_record"]:
-                    logger.debug("Record loop skipped transcription because rate limit has not elapsed")
-                continue
-
-            # update next_transcribe_time
+            if next_transcribe_time > now: continue
             next_transcribe_time = now + transcribe_rate
 
-            if sj.cache["debug_realtime_record"]:
-                logger.info(f"Processing Audio | buffer_seconds={duration_seconds:.2f} bytes={len(last_sample)}")
-
-            # need to make temp in memory to make sure the audio will be read properly
-            wf = BytesIO()
-            wav_writer: Wave_write = w_open(wf, "wb")
-            wav_writer.setframerate(WHISPER_SR if not use_temp else sr_ori)
-            wav_writer.setsampwidth(samp_width)
-            wav_writer.setnchannels(num_of_channels)
-            wav_writer.writeframes(last_sample)
-            wav_writer.close()
-            wf.seek(0)
-
             duration_seconds = len(last_sample) / (samp_width * num_of_channels * sr_divider)
+            if duration_seconds < sj.cache.get(f"min_input_length_{rec_type}", 0.4): continue
+
+            # Create audio target (numpy array or temp file)
+            # Create audio target (numpy array or temp file)
+            audio_target = None
             if not use_temp:
-                if not path_diag_flags["numpy_audio_path"]:
-                    path_diag_flags["numpy_audio_path"] = True
-                    logger.info(
-                        f"[PathDiag] audio_input_path=numpy demucs={demucs_enabled} channels={num_of_channels}"
-                    )
-                # Read the audio data
-                wav_reader: Wave_read = w_open(wf)
-                samples = wav_reader.getnframes()
-                audio_bytes = wav_reader.readframes(samples)
-                wav_reader.close()
-
-                # Convert the wave data straight to a numpy array for the model.
-                audio_as_np_int16 = np.frombuffer(audio_bytes, dtype=np.int16).flatten()
-                audio_as_np_float32 = audio_as_np_int16.astype(np.float32)
-                if num_of_channels == 1:
-                    audio_np = audio_as_np_float32 / max_int16  # normalized as Numpy array
-                    if demucs_enabled:
-                        audio_target = torch.from_numpy(audio_np).to(cuda_device)  # convert to torch tensor
-                    else:
-                        audio_target = audio_np
-                else:
-                    # Samples are interleaved, so for a stereo stream with left channel
-                    # of [L0, L1, L2, ...] and right channel of [R0, R1, R2, ...]
-                    # the output is ordered as [[L0, R0], [L1, R1], [L2, R2], ...
-                    chunk_length = len(audio_as_np_float32) / num_of_channels
-                    audio_reshaped = np.reshape(audio_as_np_float32, (int(chunk_length), num_of_channels))
-                    audio_np = audio_reshaped[:, 0] / max_int16  # take left channel only
-                    if demucs_enabled:
-                        audio_target = torch.from_numpy(audio_np).to(cuda_device)  # convert to torch tensor
-                    else:
-                        audio_target = audio_np
-
-                if sj.cache["debug_recorded_audio"]:
-                    wav.write(generate_temp_filename(dir_debug), WHISPER_SR, audio_np)
+                wf = BytesIO()
+                with w_open(wf, "wb") as wav_writer:
+                    wav_writer.setframerate(WHISPER_SR)
+                    wav_writer.setsampwidth(samp_width)
+                    wav_writer.setnchannels(num_of_channels)
+                    wav_writer.writeframes(last_sample)
+                wf.seek(0)
+                
+                # --- 修复的部分 ---
+                with w_open(wf, "rb") as wav_reader:
+                    audio_bytes = wav_reader.readframes(wav_reader.getnframes())
+                audio_target = _bytes_to_numpy(audio_bytes, num_of_channels, demucs_enabled, cuda_device)
             else:
-                if not path_diag_flags["temp_file_audio_path"]:
-                    path_diag_flags["temp_file_audio_path"] = True
-                    logger.info(f"[PathDiag] audio_input_path=temp_file sr={sr_ori} channels={num_of_channels}")
-                # add to the temp list to delete later
-                audio_target = generate_temp_filename(dir_temp)
+                audio_target = _save_to_temp(last_sample, num_of_channels, samp_width, sr_ori)
                 temp_list.append(audio_target)
 
-                # block until the file is written
-                t_start_write = time()
-                with open(audio_target, "wb") as f:
-                    f.write(wf.getvalue())
-
-                if sj.cache["debug_realtime_record"]:
-                    logger.debug(f"File Write Time: {time() - t_start_write}")
-
-            # if duration is < 0.4 seconds, skip. Wait until more context is available
-            if duration_seconds < sj.cache.get(f"min_input_length_{rec_type}", 0.4):
-                if not path_diag_flags["min_len_skip"]:
-                    path_diag_flags["min_len_skip"] = True
-                    logger.info(
-                        "[PathDiag] skip reason=min_input_length"
-                        f" duration={duration_seconds:.3f} threshold={sj.cache.get(f'min_input_length_{rec_type}', 0.4)}"
-                    )
-                if sj.cache["debug_realtime_record"]:
-                    logger.debug(f"Duration is {duration_seconds} seconds. Skipping")
-                continue
-
-            # If only translating and its using whisper engine
+            # Execution logic
             if is_tl and tl_engine_whisper and not is_tc:
-                if not path_diag_flags["whisper_tl_path"]:
-                    path_diag_flags["whisper_tl_path"] = True
-                    logger.info("[PathDiag] branch=translate_only_whisper")
-                if sj.cache["debug_realtime_record"]:
-                    logger.info("Translating")
                 bc.current_rec_status = "▶️ Recording ⟳ Translating Audio"
-                if sj.cache["debug_realtime_record"]:
-                    logger.debug(f"Queueing whisper translation | audio={audio_target}")
-                translation_queue.put(
-                    {
-                        "kind": "whisper",
-                        "audio": audio_target,
-                        "separator": separator,
-                        "cleanup_audio": use_temp and not sj.cache["keep_temp"] and isinstance(audio_target, str),
-                    }
-                )
+                _dispatch_translation(audio_target, "")
             else:
-                if not path_diag_flags["transcribe_path"]:
-                    path_diag_flags["transcribe_path"] = True
-                    logger.info("[PathDiag] branch=transcribe_then_translate_or_transcribe_only")
-                # will automatically check translate on or not depend on input
-                # translate is called from here because other engine need to get transcribed text first if translating
-                if sj.cache["debug_realtime_record"]:
-                    logger.info("Transcribing")
-
                 bc.current_rec_status = "▶️ Recording ⟳ Transcribing Audio"
-                if sj.cache["debug_realtime_record"]:
-                    logger.debug(
-                        f"Calling stable_tc | audio={audio_target} use_temp={use_temp} whisper_lang={whisper_args.get('language')}"
-                    )
-                # record the buffer length at the moment we submit the transcribe request
                 prev_tc_buffer_seconds = duration_seconds
-                if bc.tc_lock is not None:
-                    with bc.tc_lock:
-                        result: Any = cast(Any, stable_tc(  # type: ignore
-                            audio_target, task="transcribe", **whisper_args
-                        ))
-                else:
-                    result: Any = cast(Any, stable_tc(  # type: ignore
-                        audio_target, task="transcribe", **whisper_args
-                    ))
-
-                if sj.cache["debug_realtime_record"]:
-                    logger.debug(f"stable_tc returned | is_none={result is None}")
-
-                if result is None:
-                    logger.warning("Transcribing failed, check log for details!")
+                
+                # Execute Transcribe
+                try:
+                    if bc.tc_lock:
+                        with bc.tc_lock: result = cast(Any, stable_tc(audio_target, task="transcribe", **whisper_args))
+                    else:
+                        result = cast(Any, stable_tc(audio_target, task="transcribe", **whisper_args))
+                except Exception as e:
+                    logger.warning(f"Transcribing error: {e}")
                     continue
 
-                if sj.cache["filter_rec"]:
+                if sj.cache["filter_rec"] and result:
                     try:
                         result = remove_segments_by_str(
-                            result,
-                            hallucination_filters[get_whisper_lang_name(result.language) \
-                                                  if auto else whisper_lang],
-                            sj.cache["filter_rec_case_sensitive"],
-                            sj.cache["filter_rec_strip"],
-                            sj.cache["filter_rec_ignore_punctuations"],
-                            sj.cache["filter_rec_exact_match"],
-                            sj.cache["filter_rec_similarity"],
-                            sj.cache["debug_realtime_record"],
+                            result, hallucination_filters[get_whisper_lang_name(result.language) if auto else whisper_lang],
+                            sj.cache["filter_rec_case_sensitive"], sj.cache["filter_rec_strip"],
+                            sj.cache["filter_rec_ignore_punctuations"], sj.cache["filter_rec_exact_match"],
+                            sj.cache["filter_rec_similarity"], sj.cache["debug_realtime_record"]
                         )
-                    except Exception as e:
-                        logger.exception(e)
-                        logger.error("Error in filtering hallucination")
+                    except Exception: pass
 
-                text = result.text.strip()
-                bc.auto_detected_lang = result.language or "~"
+                text = result.text.strip() if result else ""
+                bc.auto_detected_lang = result.language if result else "~"
 
-                if len(text) > 0:
-                    if sj.cache["debug_realtime_record"]:
-                        logger.debug("New text (Whisper)")
-                        if sj.cache["verbose_record"]:
-                            stablets_verbose_log(result)
-                        else:
-                            logger.debug(f"{text}")
-
+                if text:
                     prev_tc_res = result
-                    # Use the standard update path: pass the new result as `new_res` so the UI updates the same line.
                     bc.update_tc(result, separator)
-
-                    if is_tl:
-                        bc.current_rec_status = "▶️ Recording ⟳ Translating text"
-                        if tl_engine_whisper:
-                            if sj.cache["debug_realtime_record"]:
-                                logger.debug(f"Queueing whisper translation from text | audio={audio_target}")
-                            translation_queue.put(
-                                {
-                                    "kind": "whisper",
-                                    "audio": audio_target,
-                                    "separator": separator,
-                                    "cleanup_audio": use_temp and not sj.cache["keep_temp"] and isinstance(audio_target, str),
-                                }
-                            )
-                        else:
-                            if not path_diag_flags["api_tl_path"]:
-                                path_diag_flags["api_tl_path"] = True
-                                logger.info("[PathDiag] branch=api_translation_coalesced_queue")
-                            if sj.cache["debug_realtime_record"]:
-                                logger.debug(f"Queueing API translation | text_len={len(text)} engine={engine}")
-                            full_tc_text = build_full_transcribed_text(result)
-                            queue_api_translation(
-                                {
-                                    "kind": "api",
-                                    "text": full_tc_text,
-                                    "lang_source": lang_source,
-                                    "lang_target": lang_target,
-                                    "engine": engine,
-                                    "separator": separator,
-                                }
-                            )
-                    else:
-                        bc.current_rec_status = "▶️ Recording"
-                    result = None
-                    if sj.cache["debug_realtime_record"]:
-                        logger.debug("Record loop finished processing one chunk")
+                    bc.current_rec_status = "▶️ Recording ⟳ Translating text" if is_tl else "▶️ Recording"
+                    _dispatch_translation(audio_target, build_full_transcribed_text(result))
                 else:
-                    if sj.cache["debug_realtime_record"]:
-                        logger.debug(
-                            "stable_tc produced empty text | "
-                            f"language={getattr(result, 'language', '~')} segments={len(getattr(result, 'segments', []))}"
-                        )
                     bc.current_rec_status = "▶️ Recording"
-                    result = None
 
-            if use_temp and not sj.cache["keep_temp"] and isinstance(audio_target, str):
-                if not is_tl or not tl_engine_whisper:
-                    os.remove(audio_target)
-                    temp_list.remove(audio_target)
+            # Cleanup Temp Audio
+            if use_temp and not sj.cache.get("keep_temp", False) and isinstance(audio_target, str):
+                if not (is_tl and tl_engine_whisper):
+                    try: os.remove(audio_target); temp_list.remove(audio_target)
+                    except Exception: pass
 
-            # break up the buffer If we've reached max recording time
-            if duration_seconds > max_buffer_s:
-                if sj.cache["debug_realtime_record"]:
-                    logger.debug(f"Record loop reached max buffer seconds: {duration_seconds:.2f}")
-                break_buffer_store_update("buffer_full")
+            if duration_seconds > max_buffer_s: break_buffer_store_update("buffer_full")
+            if bc.current_rec_status == "▶️ Recording ⟳ Transcribing Audio": bc.current_rec_status = "▶️ Recording"
 
-            if bc.current_rec_status == "▶️ Recording ⟳ Transcribing Audio":
-                bc.current_rec_status = "▶️ Recording"  # reset status when no text/translation followed
-
-        # ----------------- End recording -----------------
-        logger.debug("Stopping Record Session")
-
+        # ----------------- Shutdown sequence -----------------
         bc.current_rec_status = "⚠️ Stopping stream"
         update_status_lbl()
-        logger.info("-" * 50)
-        logger.info("Stopping stream")
-        bc.stream.stop_stream()
-        bc.stream.close()
-        bc.stream = None
-        bc.rec_tc_thread = None
-        bc.rec_tl_thread = None
+        if bc.stream: bc.stream.stop_stream(); bc.stream.close(); bc.stream = None
+        bc.rec_tc_thread = bc.rec_tl_thread = None
 
         bc.current_rec_status = "⚠️ Terminating pyaudio"
         update_status_lbl()
-        logger.info("Terminating pyaudio")
         p.terminate()
-        p = None
 
-        # empty the queue
-        bc.current_rec_status = "⚠️ Emptying queue"
-        update_status_lbl()
-        logger.info("Emptying queue")
-        while not bc.data_queue.empty():
-            bc.data_queue.get()
+        while not bc.data_queue.empty(): bc.data_queue.get()
 
-        if not sj.cache["keep_temp"]:
-            bc.current_rec_status = "⚠️ Cleaning up audioFiles (if any)"
-            update_status_lbl()
-            logger.info("Cleaning up audioFiles (if any)")
+        if not sj.cache.get("keep_temp", False):
             for audio in temp_list:
-                try:
-                    os.remove(audio)
-                except Exception:
-                    pass
-            logger.info("Done!")
+                try: os.remove(audio)
+                except Exception: pass
 
         bc.current_rec_status = "⏹️ Stopped"
-
-        del _model_tc, _model_tl
-
         update_status_lbl()
-        if not is_headless:
-            audiometer.stop()
-        bc.mw.after_rec_stop()
-        if root is not None and root.winfo_exists():
-            root.destroy()
 
-        logger.info("Modal closed")
-        logger.info("-" * 50)
     except Exception as e:
-        logger.exception(e)
-        logger.error("Error in record session")
-        if "The system cannot find the file specified" in str(e) and not bc.has_ffmpeg:
-            logger.error("FFmpeg not found in system path. Please install FFmpeg and add it to system path")
-            e = Exception("FFmpeg not found in system path. Please install FFmpeg and add it to system path")
-
-        assert bc.mw is not None
-        mbox("Error in record session", f"{str(e)}", 2, bc.mw.root)
-        if hasattr(bc.mw, "rec_stop"):
-            bc.mw.rec_stop()
-        if hasattr(bc.mw, "after_rec_stop"):
-            bc.mw.after_rec_stop()
-        if root and root.winfo_exists():
-            root.destroy()  # close if not destroyed
+        logger.error(f"Error in record session: {str(e)}")
     finally:
         torch.cuda.empty_cache()
         logger.info("Record session ended")
 
 
 def record_cb(in_data, _frame_count, _time_info, _status):
-    """
-    Record Audio From stream buffer and save it to queue in global class
-    Will also check for sample rate and threshold setting 
-    """
-    global frame_duration_ms, max_db, min_db, is_silence, t_silence, was_recording, vad_checked, LAST_RECORD_CB_DIAG_AT, last_db
+    """Audio stream callback for PyAudio"""
+    global frame_duration_ms, max_db, min_db, is_silence, t_silence, was_recording, vad_checked, LAST_RECORD_CB_DIAG_AT, last_db, threshold_auto, silero_disabled
 
     try:
-        # Run resample and use resampled audio if not using temp file
         resampled = resample_sr(in_data, sr_ori, WHISPER_SR)
-        if not use_temp:  # when use_temp will use the original audio
-            in_data = resampled
+        data_to_queue = resampled if not use_temp else in_data
 
-        # run vad at least once to check if it is possible to use with current device config
         if not vad_checked:
             vad_checked = True
-            logger.debug("Checking if webrtcvad is possible to use. You can ignore the error log if it fails!")
-            # Quick probe to ensure WebRTC and Silero can run on this device/config
-            try:
-                webrtc_probe = get_speech_webrtc(resampled, WHISPER_SR, frame_duration_ms, webrtc_vad)
-                if sj.cache.get("debug_realtime_record"):
-                    logger.debug(f"WebRTC probe sample -> is_speech_candidate={webrtc_probe} frame_ms={frame_duration_ms}")
-            except Exception as _err:
-                if sj.cache.get("debug_realtime_record"):
-                    logger.exception(_err)
-
-            logger.debug("Checking if silero is possible to use. You can ignore the error log if it fails!")
-            try:
-                silero_probe = to_silero(resampled, num_of_channels, samp_width)
-                # Silero requires a minimum chunk length; early callbacks can be too short.
-                if silero_probe.numel() >= 512:
-                    try:
-                        _conf = silero_vad(silero_probe, WHISPER_SR)
-                        if sj.cache.get("debug_realtime_record"):
-                            logger.debug(f"Silero probe run -> conf_sample={float(_conf.item()):.3f}")
-                    except Exception as _e2:
-                        if sj.cache.get("debug_realtime_record"):
-                            logger.exception(_e2)
-                else:
-                    logger.debug("Silero probe skipped: input audio chunk is too short")
-            except Exception as _e:
-                if sj.cache.get("debug_realtime_record"):
-                    logger.exception(_e)
+            # Silent probe checks to ensure models don't crash hard on first run
+            try: get_speech_webrtc(resampled, WHISPER_SR, frame_duration_ms, webrtc_vad)
+            except Exception: pass
+            try: 
+                sil_probe = to_silero(resampled, num_of_channels, samp_width)
+                if sil_probe.numel() >= 512: silero_vad(sil_probe, WHISPER_SR)
+            except Exception: pass
 
         if not threshold_enable:
-            bc.data_queue.put(in_data)  # record regardless of db
-            if sj.cache.get("debug_realtime_record"):
-                logger.debug(f"record_cb: threshold disabled -> queued chunk bytes={len(in_data)} queue_after={bc.data_queue.qsize()}")
-            if time() - LAST_RECORD_CB_DIAG_AT >= 1.0:
-                LAST_RECORD_CB_DIAG_AT = time()
-                logger.info(f"record_cb gate | threshold_enable=False queue={bc.data_queue.qsize()} bytes={len(in_data)}")
+            bc.data_queue.put(data_to_queue)
+            return (in_data, pyaudio.paContinue)
+
+        # Threshold logic
+        db = get_db(in_data)
+        last_db = db
+        if db > max_db: max_db = db
+        elif db < min_db: min_db = db
+
+        is_speech = False
+        if threshold_auto:
+            try:
+                is_speech = bool(get_speech_webrtc(resampled, WHISPER_SR, frame_duration_ms, webrtc_vad))
+                if is_speech and use_silero and not silero_disabled:
+                    sil_data = to_silero(resampled, num_of_channels, samp_width)
+                    if sil_data.numel() >= 512:
+                        conf = float(silero_vad(sil_data, WHISPER_SR).item())
+                        is_speech = conf >= silero_min_conf
+            except Exception: 
+                pass # Silently ignore short chunk errors
         else:
-            # only record if db is above threshold
-            db = get_db(in_data)
-            audiometer.set_db(db)
-            # record last db sample for diagnostics
-            last_db = db
+            is_speech = db > threshold_db
 
-            if db > max_db:
-                max_db = db
-                audiometer.set_max(db)
-            elif db < min_db:
-                min_db = db
-                audiometer.set_min(db)
-
-            # using vad
-            if threshold_auto:
-                try:
-                    webrtc_res = get_speech_webrtc(resampled, WHISPER_SR, frame_duration_ms, webrtc_vad)
-                except Exception as _e:
-                    webrtc_res = False
-                    if sj.cache.get("debug_realtime_record"):
-                        logger.exception(_e)
-
-                if sj.cache.get("debug_realtime_record"):
-                    logger.debug(f"WebRTC VAD -> candidate={webrtc_res} db={db:.2f} frame_ms={frame_duration_ms}")
-
-                is_speech = bool(webrtc_res)
-                if use_silero and is_speech and not silero_disabled:  # double check with silero if enabled
-                    conf_val = None
-                    try:
-                        conf: torch.Tensor = silero_vad(to_silero(resampled, num_of_channels, samp_width), WHISPER_SR)
-                        conf_val = float(conf.item())
-                        is_speech = conf_val >= silero_min_conf
-                    except Exception as _e:
-                        # if silero fails, fall back to webrtc result
-                        is_speech = bool(webrtc_res)
-                        if sj.cache.get("debug_realtime_record"):
-                            logger.exception(_e)
-
-                    if sj.cache.get("debug_realtime_record"):
-                        logger.debug(f"Silero double-check -> conf={conf_val if conf_val is not None else 'err'} min_conf={silero_min_conf} final_is_speech={is_speech}")
-
-                audiometer.set_recording(is_speech)
-            else:
-                is_speech = db > threshold_db
-                # Rate-limited real-time DB output for observing typical DB values
-                try:
-                    global LAST_DB_PRINT_AT
-                    if time() - LAST_DB_PRINT_AT >= 0.5:
-                        LAST_DB_PRINT_AT = time()
-                        silence_dur = (time() - t_silence) if is_silence and t_silence else 0.0
-                        logger.info(
-                            f"DB sample | db={db:.2f} dB threshold_db={threshold_db} is_speech={is_speech} "
-                            f"silence_duration={silence_dur:.3f}s last_db={last_db if last_db is not None else 'N/A'}"
-                        )
-                except Exception:
-                    pass
-
-            if is_speech:
-                bc.data_queue.put(in_data)
-                was_recording = True
-                # If we were previously marked as in-silence, clear it now that speech is detected
-                if is_silence:
-                    is_silence = False
-                    try:
-                        t_silence = 0.0
-                    except Exception:
-                        pass
-                    if sj.cache.get("debug_realtime_record"):
-                        logger.debug("Speech detected -> clearing is_silence flag and t_silence")
-                if sj.cache.get("debug_realtime_record"):
-                    logger.debug(f"Queued chunk -> db={db:.2f} is_speech=True queue_after={bc.data_queue.qsize()} bytes={len(in_data)}")
-            else:
-                bc.current_rec_status = "▶️ Recording (Waiting for speech)"
-                if was_recording:
-                    was_recording = False
-                    if not is_silence:  # mark as silence if not already marked
-                        is_silence = True
-                        t_silence = time()
-                        # Detailed diagnostic for silence start
-                        try:
-                            logger.info(
-                                "Silence started -> will trigger auto break after silence timeout if configured | "
-                                f"threshold_db={threshold_db} dB db={last_db:.2f} silence_started_at={t_silence:.3f}"
-                            )
-                        except Exception:
-                            logger.info("Silence started -> will trigger auto break after silence timeout if configured")
-
-            if time() - LAST_RECORD_CB_DIAG_AT >= 1.0:
-                LAST_RECORD_CB_DIAG_AT = time()
-                logger.info(
-                    "record_cb gate | "
-                    f"threshold_enable={threshold_enable} threshold_auto={threshold_auto} "
-                    f"db={db:.2f} is_speech={is_speech} queue={bc.data_queue.qsize()} bytes={len(in_data)}"
-                )
+        # Queue management
+        if is_speech:
+            bc.data_queue.put(data_to_queue)
+            was_recording = True
+            if is_silence: is_silence, t_silence = False, 0.0
+        else:
+            bc.current_rec_status = "▶️ Recording (Waiting for speech)"
+            if was_recording:
+                was_recording = False
+                if not is_silence: is_silence, t_silence = True, time()
 
         return (in_data, pyaudio.paContinue)
     except Exception as e:
         if "Input audio chunk is too short" not in str(e):
-            logger.exception(e)
-            logger.error("Error in record_cb")
+            logger.error(f"record_cb error: {str(e)}")
         if "Error while processing frame" in str(e):
-            logger.error("WEBRTC Error!")
-            if frame_duration_ms >= 20:
-                logger.warning(
-                    "Webrtc Fail to process frame, trying to lower frame duration." \
-                    f"{frame_duration_ms} -> {frame_duration_ms - 10}"
-                )
-                frame_duration_ms -= 10
-                vad_checked = False  # try again with new frame duration
-            else:
-                disable_auto_threshold()  # pylint: disable=undefined-variable
-                logger.warning("Not possible to use Auto Threshold with the current device config! So it is now disabled")
-
-        elif "Input audio chunk is too short" in str(e):
-            logger.debug("Silero callback skipped: input audio chunk is too short")
-
+            if frame_duration_ms >= 20: frame_duration_ms -= 10; vad_checked = False
+            else: threshold_auto = False
         return (in_data, pyaudio.paContinue)
 
+# =========================================================================
+# API / WORKER EXECUTORS
+# =========================================================================
 
 def run_whisper_tl(audio, stable_tl, separator: str, hallucination_filters, **whisper_args):
-    """Run Translate"""
-    assert bc.mw is not None
+    """Run Whisper translation task"""
     global prev_tl_res
-    result = stable_tl(audio, task="translate", **whisper_args)
-
-    if sj.cache["filter_rec"]:
-        try:
+    try:
+        result = stable_tl(audio, task="translate", **whisper_args)
+        if sj.cache["filter_rec"]:
             result = remove_segments_by_str(
-                result, hallucination_filters["english"], sj.cache["filter_rec_case_sensitive"],
-                sj.cache["filter_rec_strip"], sj.cache["filter_rec_ignore_punctuations"], sj.cache["filter_rec_exact_match"],
-                sj.cache["filter_rec_similarity"], sj.cache["debug_realtime_record"]
+                result, hallucination_filters.get("english", []), sj.cache["filter_rec_case_sensitive"],
+                sj.cache["filter_rec_strip"], sj.cache["filter_rec_ignore_punctuations"], 
+                sj.cache["filter_rec_exact_match"], sj.cache["filter_rec_similarity"], False
             )
-        except Exception as e:
-            logger.exception(e)
-            logger.error("Error in filtering hallucination")
-
-    text = result.text.strip()
-    bc.auto_detected_lang = result.language or "~"
-
-    if len(text) > 0:
-        if sj.cache["debug_realtime_record"]:
-            logger.debug("New translated text (Whisper)")
-            if sj.cache["verbose_record"]:
-                stablets_verbose_log(result)
-            else:
-                logger.debug(f"{text}")
-
-        prev_tl_res = result
-        bc.update_tl(result, separator)
-
+        text = result.text.strip()
+        bc.auto_detected_lang = result.language or "~"
+        if text:
+            prev_tl_res = result
+            bc.update_tl(result, separator)
+    except Exception as e:
+        logger.error(f"Whisper TL Error: {e}")
 
 def tl_api(text: str, lang_source: str, lang_target: str, engine: str, separator: str):
-    """Translate the result of realtime_recording_thread using translation API"""
-    assert bc.mw is not None
+    """Run Network API translation task"""
     global prev_tl_res
-
     try:
-        debug_log = sj.cache["debug_translate"]
-        proxies = get_proxies(sj.cache["http_proxy"], sj.cache["https_proxy"])
         source_units = [line.strip() for line in text.splitlines() if line.strip()]
-        if not source_units:
-            stripped = text.strip()
-            if not stripped:
-                return
-            source_units = [stripped]
+        if not source_units: return
 
-        if not source_units:
-            return
-
-        q = source_units
-        kwargs = {"live_input": True}
-        source_lang = lang_source
-
-        # Prefer detected language from transcription when available.
-        detected = (bc.auto_detected_lang or "").strip()
-        if detected and detected != "~":
+        kwargs, source_lang = {"live_input": True}, lang_source
+        if bc.auto_detected_lang and bc.auto_detected_lang != "~":
             try:
-                detected_name = get_whisper_lang_name(detected) if len(detected) <= 3 else detected
-                if verify_language_in_key(detected_name.lower(), engine):
-                    source_lang = detected_name
-            except Exception:
-                pass
+                det_name = get_whisper_lang_name(bc.auto_detected_lang)
+                if verify_language_in_key(det_name.lower(), engine): source_lang = det_name
+            except Exception: pass
 
         if engine == "LibreTranslate":
-            kwargs["libre_link"] = sj.cache["libre_link"]  # type: ignore
-            kwargs["libre_api_key"] = sj.cache["libre_api_key"]  # type: ignore
+            kwargs.update({"libre_link": sj.cache["libre_link"], "libre_api_key": sj.cache["libre_api_key"]})
 
-        success, result = translate(engine, q, source_lang, lang_target, proxies, debug_log, **kwargs)
-        if not success:
-            raise Exception(result)
+        success, result = translate(engine, source_units, source_lang, lang_target, get_proxies(sj.cache["http_proxy"], sj.cache["https_proxy"]), False, **kwargs)
+        if not success: raise Exception(result)
 
         result_list = result if isinstance(result, list) else [result]
-        aligned_units = []
-        for idx, src_unit in enumerate(source_units):
-            raw_item = result_list[idx] if idx < len(result_list) else None
-            cleaned_item = str(raw_item).strip() if raw_item is not None else ""
-            if cleaned_item:
-                aligned_units.append(cleaned_item)
+        aligned_units = [str(result_list[idx]).strip() for idx in range(len(source_units)) if idx < len(result_list) and str(result_list[idx]).strip()]
 
-        if aligned_units:
-            if engine == "Selenium Chrome Translate":
-                bc.tl_sentences = aligned_units
-                prev_tl_res = ""
-                bc.update_tl(None, separator)
-                return
+        if not aligned_units: return
 
-            # Merge adjacent lines when both boundary chars are not punctuation.
-            merged_units = []
-            for unit in aligned_units:
-                current = unit.strip()
-                if not current:
-                    continue
-
-                if not merged_units:
-                    merged_units.append(current)
-                    continue
-
-                prev = merged_units[-1].rstrip()
-                curr = current.lstrip()
-
-                prev_tail = prev[-1] if prev else ""
-                curr_head = curr[0] if curr else ""
-                prev_tail_is_punct = bool(prev_tail and re.match(r"[^\w\s]", prev_tail))
-                curr_head_is_punct = bool(curr_head and re.match(r"[^\w\s]", curr_head))
-
-                if not prev_tail_is_punct and not curr_head_is_punct:
-                    # For CJK, concatenation is natural; for latin scripts keep a separator space.
-                    use_space = bool(re.match(r"[A-Za-z0-9]", prev_tail) and re.match(r"[A-Za-z0-9]", curr_head))
-                    glue = " " if use_space else ""
-                    merged_units[-1] = f"{prev}{glue}{curr}"
-                else:
-                    merged_units.append(curr)
-
-            bc.tl_sentences = merged_units if merged_units else aligned_units
-            prev_tl_res = ""
+        if engine == "Selenium Chrome Translate":
+            bc.tl_sentences, prev_tl_res = aligned_units, ""
             bc.update_tl(None, separator)
+            return
+
+        # Merge formatting (Spacing logic for non-CJK text)
+        merged_units = []
+        for curr in aligned_units:
+            if not merged_units:
+                merged_units.append(curr); continue
+            prev = merged_units[-1].rstrip()
+            curr = curr.lstrip()
+            
+            p_tail, c_head = prev[-1] if prev else "", curr[0] if curr else ""
+            if not (p_tail and re.match(r"[^\w\s]", p_tail)) and not (c_head and re.match(r"[^\w\s]", c_head)):
+                glue = " " if re.match(r"[A-Za-z0-9]", p_tail) and re.match(r"[A-Za-z0-9]", c_head) else ""
+                merged_units[-1] = f"{prev}{glue}{curr}"
+            else:
+                merged_units.append(curr)
+
+        bc.tl_sentences, prev_tl_res = merged_units or aligned_units, ""
+        bc.update_tl(None, separator)
     except Exception as e:
-        logger.exception(e)
-        global ERROR_CON_NOTIFIED, ERROR_CON_NOFIFIED_AMOUNT
-        if not ERROR_CON_NOTIFIED:
-            native_notify(f"Error: translation with {engine} failed", str(e))  # type: ignore[arg-type]
-            ERROR_CON_NOFIFIED_AMOUNT += 1  # type: ignore[operator]
-            if ERROR_CON_NOFIFIED_AMOUNT > 3:  # after 3 times, stop notifying
-                ERROR_CON_NOTIFIED = True
+        logger.error(f"API Translation ({engine}) failed: {str(e)}")

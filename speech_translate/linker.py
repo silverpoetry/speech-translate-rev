@@ -4,51 +4,21 @@ from platform import system
 import re
 from shlex import quote
 from threading import Lock, Thread
-from tkinter import Text, ttk
-from typing import Any, TYPE_CHECKING, List, Literal, Optional, Union, cast
+from typing import Any, List, Literal, Optional, Union
 
-from PIL import ImageTk
-
-try:
-    from tkhtmlview import HTMLText as _HTMLTextBase
-except Exception:
-    _HTMLTextBase = Text
-
-
-class HTMLText(_HTMLTextBase):  # type: ignore[misc]
-    """HTML text widget with a Text fallback when tkhtmlview is unavailable."""
-
-    def set_html(self, html_content: str):
-        content = str(html_content or "")
-        content = content.replace("<br />", "\n").replace("<br/>", "\n").replace("<br>", "\n")
-        content = re.sub(r"<[^>]+>", "", content)
-        self.delete("1.0", "end")
-        self.insert("1.0", content)
-
+# 本地依赖 (请确保这些导入路径在你的项目中仍然有效)
 from speech_translate.utils.helper import generate_color, str_separator_to_html, wrap_result
 from speech_translate.utils.types import ToInsert
-
 from ._path import dir_debug, dir_export, dir_log, dir_temp, dir_user, p_app_icon, p_app_settings
 from .utils.setting import SettingJson
 
 if system() == "Windows":
     from multiprocessing import Queue
-
     import pyaudiowpatch as pyaudio  # type: ignore # pylint: disable=import-error
 else:
     import pyaudio  # type: ignore # pylint: disable=import-error
-
     # to get qsize on platform other than windows
     from .utils.custom.queue import MyQueue as Queue
-
-# Forward declaration for type hinting
-if TYPE_CHECKING:
-    from .ui.window.about import AboutWindow
-    from .ui.window.log import LogWindow
-    from .ui.window.main import AppTray, MainWindow
-    from .ui.window.setting import SettingWindow
-    from .ui.window.transcribed import TcsWindow
-    from .ui.window.translated import TlsWindow
 
 # ------------------ #
 sj: SettingJson = SettingJson(p_app_settings, [dir_user, dir_temp, dir_log, dir_export, dir_debug], p_app_icon)
@@ -56,8 +26,8 @@ sj: SettingJson = SettingJson(p_app_settings, [dir_user, dir_temp, dir_log, dir_
 
 class BridgeClass:
     """
-    Class containing all references needed to avoid circular import. 
-    Some methods are also created here for easier management.
+    Class containing all references needed to avoid circular import.
+    Acts as the central state manager and data bridge for the Web UI.
     """
     def __init__(self):
         self.cuda: str = ""
@@ -66,70 +36,38 @@ class BridgeClass:
         self.fg_color: str = ""
         self.has_ffmpeg = False
 
-        # file
+        # file processing states
         self.file_processing: bool = False
         self.transcribing_file: bool = False
         self.translating_file: bool = False
 
-        # rec
+        # record states
         self.rec_tc_thread: Optional[Thread] = None
         self.rec_tl_thread: Optional[Thread] = None
         self.recording: bool = False
 
-        # Style
-        self.native_theme: str = ""
-        self.theme_lists: List[str] = []
-        self.style: Optional[ttk.Style] = None
-
-        # model download
+        # model download states
         self.dl_thread: Optional[Thread] = None
         self.cancel_dl: bool = False
 
-        # web ui bridge
+        # web ui bridge (由启动Web服务的入口注入)
         self.web_bridge = None
 
-        # References to class
-        self.tray: Optional[AppTray] = None
-        """Tray app class"""
-        self.mw: Optional[MainWindow] = None
-        """Main window class"""
-        self.sw: Optional[SettingWindow] = None
-        """Setting window class"""
-        self.lw: Optional[LogWindow] = None
-        """Log window class"""
-        self.about: Optional[AboutWindow] = None
-        """About window class"""
-        self.ex_tcw: Optional[TcsWindow] = None
-        """Detached transcribed window class"""
-        self.ex_tlw: Optional[TlsWindow] = None
-        """Detached translated window class"""
-
-        # stream / transcribe
+        # stream / transcribe variables
         self.stream: Optional[pyaudio.Stream] = None
         self.data_queue = Queue()
         self.current_rec_status: str = ""
         self.auto_detected_lang: str = "~"
         self.tc_lock: Optional[Lock] = None
+        
+        # Core data storage for realtime text
         self.tc_sentences: List = []
         self.tl_sentences: List = []
 
-        # file process
+        # file process counters
         self.file_tced_counter: int = 0
         self.file_tled_counter: int = 0
         self.mod_file_counter: int = 0
-
-        # photoimage
-        self.help_emoji: Union[ImageTk.PhotoImage, str] = ""
-        self.wrench_emoji: Union[ImageTk.PhotoImage, str] = ""
-        self.folder_emoji: Union[ImageTk.PhotoImage, str] = ""
-        self.file_emoji: Union[ImageTk.PhotoImage, str] = ""
-        self.open_emoji: Union[ImageTk.PhotoImage, str] = ""
-        self.trash_emoji: Union[ImageTk.PhotoImage, str] = ""
-        self.refresh_emoji: Union[ImageTk.PhotoImage, str] = ""
-        self.reset_emoji: Union[ImageTk.PhotoImage, str] = ""
-        self.question_emoji: Union[ImageTk.PhotoImage, str] = ""
-        self.mic_emoji: Union[ImageTk.PhotoImage, str] = ""
-        self.speaker_emoji: Union[ImageTk.PhotoImage, str] = ""
 
     def enable_rec(self):
         self.recording = True
@@ -156,205 +94,118 @@ class BridgeClass:
         self.translating_file = False
 
     def insert_to_mw(self, text: str, mode: Literal["tc", "tl"], separator: str):
+        """直接将增量文本通过 Web Bridge 推送给前端"""
         if self.web_bridge is not None:
             target = "main_transcribed" if mode == "tc" else "main_translated"
             self.web_bridge.append_live_text(target, text, separator)
+            # 如果前端还有悬浮窗/分离窗口的需求，可以保留这两个目标推送
             detached_target = "detached_transcribed" if mode == "tc" else "detached_translated"
             self.web_bridge.append_live_text(detached_target, text, separator)
-
-        assert self.mw is not None
-        if mode == "tc":
-            self.mw.tb_transcribed.insert("end", text + separator)
-        elif mode == "tl":
-            self.mw.tb_translated.insert("end", text + separator)
 
     def update_result_display(
         self, total_len: int, res_with_conf: List[ToInsert], mode: Literal["mw_tc", "ex_tc", "mw_tl", "ex_tl"]
     ):
-        """Update display of the result to the respective text box.
-
-        Parameters
-        ----------
-        total_len : int
-            Total word length of the result.
-        res_with_conf : List[ToInsert]
-            List of result with confidence value.
-        mode : Literal[&quot;mw_tc&quot;, &quot;ex_tc&quot;, &quot;mw_tl&quot;, &quot;ex_tl&quot;]
-            Mode to determine which text box to update.
         """
-        # we access setting using .get here to remove pylance warning "LiteralString" is not a string literal
-        # the 0 for second argument is just a placeholder
-        # make deepcopy because we would modify the list
+        根据信心值计算颜色，生成带样式的 HTML 字符串，并通过 Web Bridge 发送给前端渲染。
+        """
         copied_res = deepcopy(res_with_conf)
 
-        # if not infinite and text too long
-        # remove words from the start based on how over the limit it is
+        # 长度限制处理：如果超过了设定的最大字符数，从头部裁剪旧文本
         if sj.cache.get(f"tb_{mode}_limit_max") and total_len > sj.cache.get(f"tb_{mode}_max", 0):
             over_for = total_len - sj.cache.get(f"tb_{mode}_max")  # type: ignore
             index = 0
 
-            while over_for > 0:
-                # first get the sentence / word
+            while over_for > 0 and index < len(copied_res):
                 temp = copied_res[index]["text"]
-
-                # get amount of characters to delete, while also decrementing the over_for
                 delete_for = len(temp) if over_for > len(temp) else over_for
                 over_for -= delete_for
-
-                # now delete the characters in the sentence and reassign it to the list of sentences with confidence
                 temp = temp[delete_for:]
                 copied_res[index]["text"] = temp
-
                 index += 1
 
-        # wrap result with the max length of the line set by the user
+        # 换行处理
         if sj.cache.get(f"tb_{mode}_limit_max_per_line"):
-            # Previously is_last is None, but now its either True or False
-            # is last will determine the line break
             copied_res = wrap_result(copied_res, sj.cache.get(f"tb_{mode}_max_per_line", 0))
 
-        # insert to each respective area !! before inserting check some value:
-        # if last, there will be a separator already so no need to add line break
+        # 组装带颜色的 <span> 标签
         to_insert = ""
         for res in copied_res:
             temp = res["text"]
-
             if sj.cache.get(f"tb_{mode}_use_conf_color", False):
                 color = res["color"]
             else:
                 color = sj.cache.get(f"tb_{mode}_font_color", None)
 
             if color is None:
-                color = self.fg_color
+                color = self.fg_color or "#000000"
 
             to_insert += f"""<span style="color: {color}">{temp}</span>"""
 
+        # 外层容器样式
         insert = f"""<div style='font-family: {sj.cache.get(f"tb_{mode}_font")}; text-align: left;
-                    font-size: {sj.cache.get(f"tb_{mode}_font_size")}px; replace-background-color:;
+                    font-size: {sj.cache.get(f"tb_{mode}_font_size")}px; background-color: transparent;
                     font-weight: {"bold" if sj.cache.get(f"tb_{mode}_font_bold") else "normal"};'>
                         {to_insert}
                     </div>"""
 
-        def update_it(widget: Any, insert, pos):
-            if sj.cache.get(f"tb_{mode}_auto_scroll"):
-                widget.set_html(insert)
-                widget.see("end")
-            else:
-                widget.set_html(insert)
-                widget.yview_moveto(pos)
-
-            if self.web_bridge is not None:
-                bridge_target = {
-                    "mw_tc": "main_transcribed_html",
-                    "mw_tl": "main_translated_html",
-                    "ex_tc": "detached_transcribed_html",
-                    "ex_tl": "detached_translated_html",
-                }.get(mode)
-                if bridge_target is not None:
-                    self.web_bridge.update_live_html(bridge_target, insert)
-
-        # Headless/webview mode: no Tk text widgets are present, so push HTML directly.
-        mw_has_widgets = self.mw is not None and hasattr(self.mw, "tb_transcribed") and hasattr(self.mw, "tb_translated")
-        ex_has_widgets = self.ex_tcw is not None and self.ex_tlw is not None
+        # 通过 WebSocket 推送完整 HTML 到前端对应的 ID 容器
         if self.web_bridge is not None:
-            if ("mw" in mode and not mw_has_widgets) or ("ex" in mode and not ex_has_widgets):
-                bridge_target = {
-                    "mw_tc": "main_transcribed_html",
-                    "mw_tl": "main_translated_html",
-                    "ex_tc": "detached_transcribed_html",
-                    "ex_tl": "detached_translated_html",
-                }.get(mode)
-                if bridge_target is not None:
-                    self.web_bridge.update_live_html(bridge_target, insert)
-                return
-
-        if "mw" in mode:
-            assert self.mw is not None
-            tb = self.mw.tb_transcribed if "tc" in mode else self.mw.tb_translated
-            sb = self.mw.sb_transcribed if "tc" in mode else self.mw.sb_translated
-            insert.replace("replace-background-color:;", f'background-color: {self.mw.root.cget("bg")};')
-            prev_pos = sb.get()[0]
-            self.mw.root.after(0, update_it, cast(Any, tb), insert, prev_pos)
-        else:
-            assert self.ex_tcw and self.ex_tlw is not None
-            lbl = self.ex_tcw.lbl_text if "tc" in mode else self.ex_tlw.lbl_text
-            sb = self.ex_tcw.hidden_sb_y if "tc" in mode else self.ex_tlw.hidden_sb_y
-            insert.replace("replace-background-color:;", f'background-color: {sj.cache.get(f"tb_{mode}_bg_color")};')
-            prev_pos = sb.get()[0]
-            lbl.after(0, update_it, cast(Any, lbl), insert, prev_pos)
+            bridge_target = {
+                "mw_tc": "main_transcribed_html",
+                "mw_tl": "main_translated_html",
+                "ex_tc": "detached_transcribed_html",
+                "ex_tl": "detached_translated_html",
+            }.get(mode)
+            
+            if bridge_target is not None:
+                self.web_bridge.update_live_html(bridge_target, insert)
 
     def map_result_lists(self, source_list, store_list: List[ToInsert], separator: str):
         """
-        Map List of whisper result according to user setting while also calculating its color based on the confidence value.
-
-        Parameters
-        ----------
-        source_list : 
-            Source list to be mapped, can be either a list of whisper result or a list of string.
-        store_list : List[ToInsert]
-            List to store the mapped result.
-        separator : str
-            Separator to be added to the end of the result.
-
-        Returns
-        -------
-        total_len : int
-            Total word length of the mapped result.
+        遍历 Whisper 结果，根据信心值(Confidence)映射颜色配置，返回总字符长度。
         """
         total_len = 0
         low_color = sj.cache["gradient_low_conf"]
         high_color = sj.cache["gradient_high_conf"]
 
         for sentence in source_list:
-            # if it's a string, confidence is None
             if isinstance(sentence, str):
-                # already a full sentence, add separator directly
                 sentence = sentence.strip() + separator
                 total_len += len(sentence)
                 store_list.append({"text": sentence, "color": None, "is_last": None})
-
-            # colorization based on confidence per sentence, so get the confidence value from the segment
+                
             elif sj.cache["colorize_per_segment"]:
                 for segment in sentence.segments:
-                    # lstrip if first only
                     temp = segment.text.lstrip() if segment.id == 0 else segment.text
-                    confidence_total_word = 0
-                    for word in segment.words:
-                        confidence_total_word += word.probability
-
+                    confidence_total_word = sum(word.probability for word in segment.words)
                     word_len = len(segment.words) if len(segment.words) != 0 else 1
                     confidence = confidence_total_word / word_len
 
-                    store_list.append(
-                        {
-                            "text": temp,
-                            "color": generate_color(confidence, low_color, high_color),
-                            "is_last": None
-                        }
-                    )
+                    store_list.append({
+                        "text": temp,
+                        "color": generate_color(confidence, low_color, high_color),
+                        "is_last": None
+                    })
                     total_len += len(temp)
-
-                # add separator on the last group of segments in the sentence
-                last_item = store_list[-1]
-                last_item["text"] += separator
-
-            # colorization based on confidence per word, so get the confidence value from the word
+                
+                # 为该句子的最后一个片段加上分隔符
+                if store_list:
+                    store_list[-1]["text"] += separator
+                    
             elif sj.cache["colorize_per_word"]:
                 for segment in sentence.segments:
                     for word in segment.words:
                         temp = word.word.lstrip() if word.id == 0 else word.word
-                        store_list.append(
-                            {
-                                "text": temp,
-                                "color": generate_color(word.probability, low_color, high_color),
-                                "is_last": None
-                            }
-                        )
+                        store_list.append({
+                            "text": temp,
+                            "color": generate_color(word.probability, low_color, high_color),
+                            "is_last": None
+                        })
                         total_len += len(temp)
-
-            # no colorization based on confidence. just append the sentence (the full sentence)
+                if store_list:
+                    store_list[-1]["text"] += separator
+                    
             else:
-                # already a full sentence, add separator directly
                 temp = sentence.text.strip() + separator
                 total_len += len(sentence)
                 store_list.append({"text": temp, "color": None, "is_last": None})
@@ -362,74 +213,50 @@ class BridgeClass:
         return total_len
 
     def swap_textbox(self):
-        """Swap the text box between the transcribed and translated"""
-        assert self.mw is not None
+        """如果前端需要交换原文和译文的显示内容，可以通过此方法对调数据并重新推送"""
         separator = str_separator_to_html(literal_eval(quote(sj.cache["separate_with"])))
         self.tc_sentences, self.tl_sentences = self.tl_sentences, self.tc_sentences
         self.update_tc(None, separator)
         self.update_tl(None, separator)
 
     def update_tc(self, new_res, separator: str):
-        """Update the transcribed text box with the new text.
-
-        Parameters
-        ----------
-        new_res :
-            New result to be added to the transcribed text box.
-        separator : str
-            Separator to be added to the end of the new result.
-        """
+        """刷新转录文本 (Transcription)"""
         res_with_conf: List[ToInsert] = []
         total_len = self.map_result_lists(self.tc_sentences, res_with_conf, separator)
         if new_res is not None:
             total_len += self.map_result_lists([new_res], res_with_conf, separator)
-
+            
         self.update_result_display(total_len, res_with_conf, "mw_tc")
         self.update_result_display(total_len, res_with_conf, "ex_tc")
 
     def update_tl(self, new_res, separator: str):
-        """Update the translated text box with the new text.
-
-        Parameters
-        ----------
-        new_res : 
-            New result to be added to the translated text box.
-        separator :
-            Separator to be added to the end of the new result.
-        """
+        """刷新翻译文本 (Translation)"""
         res_with_conf: List[ToInsert] = []
         total_len = self.map_result_lists(self.tl_sentences, res_with_conf, separator)
         if new_res is not None:
             total_len += self.map_result_lists([new_res], res_with_conf, separator)
-
+            
         self.update_result_display(total_len, res_with_conf, "mw_tl")
         self.update_result_display(total_len, res_with_conf, "ex_tl")
 
     def clear_mw_tc(self):
         if self.web_bridge is not None:
             self.web_bridge.clear_live("main_transcribed")
-        assert self.mw is not None
-        self.mw.tb_transcribed.delete("1.0", "end")
 
     def clear_mw_tl(self):
         if self.web_bridge is not None:
             self.web_bridge.clear_live("main_translated")
-        assert self.mw is not None
-        self.mw.tb_translated.delete("1.0", "end")
 
     def clear_ex_tc(self):
         if self.web_bridge is not None:
             self.web_bridge.clear_live("detached_transcribed")
-        assert self.ex_tcw is not None
-        self.ex_tcw.lbl_text.set_html("")
 
     def clear_ex_tl(self):
         if self.web_bridge is not None:
             self.web_bridge.clear_live("detached_translated")
-        assert self.ex_tlw is not None
-        self.ex_tlw.lbl_text.set_html("")
 
     def clear_all(self):
+        """一键清空历史数据并通知前端清屏"""
         self.tc_sentences = []
         self.tl_sentences = []
         self.clear_mw_tc()
