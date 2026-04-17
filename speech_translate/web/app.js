@@ -379,9 +379,20 @@ function baseName(p) {
 function updateFileImportListUI(files) {
   if (!els.fileImportList) return;
   const list = Array.isArray(files) ? files : [];
+  if (!list || list.length === 0) {
+    els.fileImportList.innerHTML = '<li class="file-queue-empty" style="color:var(--muted)">队列为空</li>';
+    return;
+  }
+
   els.fileImportList.innerHTML = list
-    .map((f, idx) => `<li class="file-queue-item" data-index="${idx}">${escapeHtml(baseName(f))}</li>`)
-    .join('') || '<li class="file-queue-empty" style="color:var(--muted)">队列为空</li>';
+    .map((f, idx) => `
+      <li class="file-queue-item" data-index="${idx}">
+        <span class="file-queue-name">${escapeHtml(baseName(f))}</span>
+        <div class="file-queue-actions">
+          <button class="btn-icon btn-icon-sm" data-action="remove-file-from-queue" data-index="${idx}" title="删除"><span class="btn-glyph glyph-trash" aria-hidden="true"></span></button>
+        </div>
+      </li>`)
+    .join('');
 }
 
 function previewValue(value) {
@@ -1550,6 +1561,30 @@ function bindEvents() {
         state.fileImportQueue = files;
         updateFileImportListUI(files);
         await refreshState();
+      } else if (action === 'clear-import-queue') {
+        // Clear the backend queue
+        const r = await apiCall('clear_import_queue');
+        if (!r || r.ok === false) {
+          throw new Error((r && r.message) || '清空队列失败');
+        }
+        state.fileImportQueue = [];
+        updateFileImportListUI([]);
+        await refreshState();
+      } else if (action === 'remove-file-from-queue') {
+        // Remove a specific file from queue by index
+        const idxAttr = button.getAttribute('data-index');
+        const idx = idxAttr ? parseInt(idxAttr, 10) : NaN;
+        if (!Number.isFinite(idx)) {
+          throw new Error('无效索引');
+        }
+        const r = await apiCall('remove_file_from_import_queue', idx);
+        if (!r || r.ok === false) {
+          throw new Error((r && r.message) || '删除失败');
+        }
+        const files2 = r.files || [];
+        state.fileImportQueue = files2;
+        updateFileImportListUI(files2);
+        await refreshState();
       } else if (action === 'start-import-queue') {
         // Persist import settings then start processing queued files
         await saveImportSettings();
@@ -1787,6 +1822,7 @@ async function init() {
     els.modelManagerDownloadPill = $('model-manager-download-pill');
     els.fileExportDirPill = $('file-export-dir-pill');
     els.fileImportList = $('file_import_list');
+    els.btnImportStart = $('btn-import-start');
     els.modelManagerHint = $('model-manager-hint');
     els.modelStatusCard = $('model-status-card');
     els.globalModelState = $('global-model-state');

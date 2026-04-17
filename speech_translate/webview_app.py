@@ -2117,6 +2117,93 @@ class WebBridge(WebTaskBridge):
             "message": "File import started",
         }
 
+    def remove_file_from_import_queue(self, index: Optional[int] = None) -> Dict[str, Any]:
+        """Remove a file from the import queue by index and return the updated queue."""
+        with self._lock:
+            if index is None:
+                return {"ok": False, "message": "缺少索引"}
+            try:
+                idx = int(index)
+            except Exception:
+                return {"ok": False, "message": "索引无效"}
+            if idx < 0 or idx >= len(self._file_import_queue):
+                return {"ok": False, "message": "索引超出范围"}
+            removed = self._file_import_queue.pop(idx)
+        # notify UI
+        try:
+            self._emit_ui_update(["import"])
+        except Exception:
+            pass
+        return {"ok": True, "files": list(self._file_import_queue), "removed": removed}
+
+    def clear_import_queue(self) -> Dict[str, Any]:
+        """Clear all files from the import queue."""
+        with self._lock:
+            self._file_import_queue = []
+        try:
+            self._emit_ui_update(["import"])
+        except Exception:
+            pass
+        return {"ok": True, "files": []}
+
+    def set_file_processing_state(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Update web UI task state for file processing flows.
+
+        Expected payload keys (from utils.audio.file._start_ui_updater):
+          - task: human title
+          - elapsed: elapsed string
+          - queue: list of [filename, status] rows
+          - current_file / processed / progress
+        This method maps the payload into the task state and emits UI updates.
+        """
+        try:
+            title = str(payload.get("task", "") or "").strip()
+            elapsed = payload.get("elapsed")
+            current = payload.get("current_file") or payload.get("current")
+            processed = payload.get("processed")
+            progress = payload.get("progress")
+            queue = payload.get("queue") or []
+
+            # Build a concise message for the task area
+            parts = []
+            if current:
+                parts.append(str(current))
+            if processed:
+                parts.append(str(processed))
+            if elapsed:
+                parts.append(str(elapsed))
+            message = " | ".join(parts) if parts else str(payload.get("message", ""))
+
+            # Use existing update helpers to keep monotonic progress handling
+            if title:
+                with self._lock:
+                    self.task_state.title = title
+            # progress and message from progress-log source to avoid being overridden
+            try:
+                if progress is not None:
+                    self.update_task_progress(float(progress), source="progress-log")
+            except Exception:
+                pass
+
+            try:
+                if message:
+                    self.update_task_message(message, source="progress-log")
+            except Exception:
+                pass
+
+            # Update per-file rows if provided
+            if isinstance(queue, list):
+                try:
+                    # Expect queue as list of [filename, status]
+                    self.update_task_rows(list(queue))
+                except Exception:
+                    pass
+
+            return {"ok": True}
+        except Exception as exc:
+            logger.exception(exc)
+            return {"ok": False, "message": str(exc)}
+
     def add_files_to_import_queue(self, files: Optional[list[str]] = None) -> Dict[str, Any]:
         """Add selected files to the import queue without starting processing."""
         # keep same pre-checks as import_files to avoid conflicting resource usage

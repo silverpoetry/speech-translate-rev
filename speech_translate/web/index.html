@@ -105,15 +105,18 @@
             </div>
 
             <div class="inline-actions import-actions">
-              <button class="btn-with-icon btn-major" data-action="add-files-to-queue">导入</button>
-              <button class="btn-with-icon" data-action="start-import-queue">开始处理</button>
+              <button class="primary btn-with-icon btn-recording" data-action="start-import-queue" id="btn-import-start">开始处理</button>
               <label class="toggle-row"><input id="transcribe_f_import" type="checkbox" /> 转写</label>
               <label class="toggle-row"><input id="translate_f_import" type="checkbox" /> 翻译</label>
             </div>
 
             <div class="file-queue-box" style="margin-top:8px;">
               <div class="section-head">
-                <div><h4>导入文件队列</h4></div>
+                <div><h4>文件队列</h4></div>
+                <div class="floating-action-row">
+                  <button class="btn-icon btn-icon-blue" data-action="add-files-to-queue" data-tooltip="导入文件" title="导入文件"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                  <button class="btn-icon" data-action="clear-import-queue" data-tooltip="清空队列" title="清空队列"><span class="btn-glyph glyph-trash" aria-hidden="true"></span></button>
+                </div>
               </div>
               <div class="file-queue-body">
                 <ul id="file_import_list" style="list-style:none;margin:0;padding:6px 8px;max-height:160px;overflow:auto"></ul>

@@ -744,6 +744,45 @@ button.secondary {
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath fill='%23000' d='M2 5h6l2 2h8v9H2V5zm2 3v6h12V8H4z'/%3E%3C/svg%3E");
 }
 
+.glyph-trash {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M3 4h10v1H3V4zm1 2h8l-.6 8H4.6L4 6zm2-3h4v1H6V3z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M3 4h10v1H3V4zm1 2h8l-.6 8H4.6L4 6zm2-3h4v1H6V3z'/%3E%3C/svg%3E");
+}
+
+.btn-icon-sm {
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.file-queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: transparent;
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+  font-size: 0.9rem;
+}
+
+.file-queue-item .file-queue-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  flex: 1 1 auto;
+}
+
+.file-queue-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
 button.btn-with-icon {
   display: inline-flex;
   align-items: center;
