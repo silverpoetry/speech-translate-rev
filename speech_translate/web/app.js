@@ -205,6 +205,13 @@ function bindUiEvents() {
     const detail = event && event.detail ? event.detail : {};
     const sections = Array.isArray(detail.sections) ? detail.sections : ['task'];
     scheduleUiRefresh(sections);
+    try {
+      if (sections.includes('import')) {
+        refreshFileProcessingState().catch(() => {});
+      }
+    } catch (e) {
+      console.debug('import-refresh skipped', e);
+    }
   });
 
   state.uiEventsBound = true;
@@ -380,19 +387,90 @@ function updateFileImportListUI(files) {
   if (!els.fileImportList) return;
   const list = Array.isArray(files) ? files : [];
   if (!list || list.length === 0) {
-    els.fileImportList.innerHTML = '<li class="file-queue-empty" style="color:var(--muted)">队列为空</li>';
+    els.fileImportList.innerHTML = '<li class="file-queue-empty" style="color:var(--muted); padding:8px;">队列为空</li>';
     return;
   }
 
+  // 辅助函数：根据状态文字生成对应的 HTML（包含进度条动画）
+  const renderStatusCell = (statusText) => {
+    const s = String(statusText || '').trim();
+    if (!s) return '<span class="status-badge muted">无</span>';
+
+    const sLower = s.toLowerCase();
+
+    // 如果包含失败、错误字眼
+    if (sLower.includes('fail') || sLower.includes('error') || sLower.includes('parse')) {
+      return `<span class="status-badge error" style="color:var(--danger)">${escapeHtml(s)}</span>`;
+    }
+
+    // 如果已经完成
+    if (sLower.includes('transcribed') || sLower.includes('translated') || sLower.includes('refined') || sLower.includes('aligned')) {
+      return `<span class="status-badge success" style="color:var(--success)">${escapeHtml(s)}</span>`;
+    }
+
+    // 如果正在处理中 (显示微型进度条/动画效果)
+    if (sLower.includes('please wait') || sLower.includes('processing') || sLower.includes('re-transcribing')) {
+      return `
+        <div style="display:flex; align-items:center; gap:6px;">
+          <div class="mini-spinner" style="width:12px; height:12px; border:2px solid var(--accent); border-top-color:transparent; border-radius:50%; animation: spin 1s linear infinite;"></div>
+          <span class="status-badge active" style="color:var(--accent); font-size:0.9em;">处理中...</span>
+        </div>
+      `;
+    }
+
+    // 默认情况 (Waiting)
+    return `<span class="status-badge muted" style="color:var(--muted)">${escapeHtml(s)}</span>`;
+  };
+
   els.fileImportList.innerHTML = list
-    .map((f, idx) => `
-      <li class="file-queue-item" data-index="${idx}">
-        <span class="file-queue-name">${escapeHtml(baseName(f))}</span>
-        <div class="file-queue-actions">
+    .map((item, idx) => {
+      let name = '';
+      let statusStr = '';
+
+      if (Array.isArray(item)) {
+        name = String(item[0] || '');
+        statusStr = String(item[1] || '');
+      } else if (item && typeof item === 'object') {
+        name = item.name || baseName(item.path || '');
+        statusStr = item.status || '';
+      }
+
+      // 解析来自后端的组合状态 (用逗号分隔的)
+      // 例如: "Transcribing please wait..., Waiting" 
+      const parts = statusStr.split(',').map(p => p.trim());
+      const tcStatus = parts[0] || 'Waiting';
+      const tlStatus = parts[1] || 'Waiting'; // 如果没有翻译部分，默认显示等待
+
+      return `
+      <li class="file-queue-item" data-index="${idx}" style="display:flex; padding:6px 8px; border-bottom:1px solid var(--surface-2); align-items:center;">
+        <span class="file-queue-name" style="flex:2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:8px;" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+        <span class="file-queue-status-tc" style="flex:1; overflow:hidden;">${renderStatusCell(tcStatus)}</span>
+        <span class="file-queue-status-tl" style="flex:1; overflow:hidden;">${renderStatusCell(tlStatus)}</span>
+        <div class="file-queue-actions" style="width:32px; text-align:right;">
           <button class="btn-icon btn-icon-sm" data-action="remove-file-from-queue" data-index="${idx}" title="删除"><span class="btn-glyph glyph-trash" aria-hidden="true"></span></button>
         </div>
-      </li>`)
+      </li>`;
+    })
     .join('');
+}
+async function refreshFileProcessingState() {
+  if (!window.pywebview || !window.pywebview.api) return;
+  try {
+    const res = await apiCall('get_file_processing_state');
+    if (!res || res.ok === false) return;
+    const files = Array.isArray(res.files) ? res.files : [];
+    state.fileImportQueue = files;
+    updateFileImportListUI(files);
+
+    const total = Number(res.files_total || (files ? files.length : 0)) || 0;
+    const completed = Number(res.files_completed || 0) || 0;
+    const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+    if (els.globalTaskProgressText) els.globalTaskProgressText.textContent = `${pct}%`;
+    if (els.globalTaskProgressFill) els.globalTaskProgressFill.style.width = `${pct}%`;
+    if (els.globalTaskProgressWrap) els.globalTaskProgressWrap.style.display = total > 0 ? 'inline-flex' : 'none';
+  } catch (err) {
+    console.debug('Failed to refresh file processing state', err);
+  }
 }
 
 function previewValue(value) {
@@ -1592,6 +1670,8 @@ function bindEvents() {
         if (!res || res.ok === false) {
           throw new Error((res && res.message) || '开始处理失败');
         }
+        // Refresh file processing state immediately so UI keeps the list and shows progress
+        await refreshFileProcessingState();
         await refreshState();
       } else if (action === 'import-files') {
         await saveImportSettings();

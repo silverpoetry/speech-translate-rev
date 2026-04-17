@@ -4,6 +4,7 @@ from os import makedirs, path
 from threading import Thread
 from time import gmtime, sleep, strftime, time
 from typing import Any, Dict, List, Literal
+import os
 
 import stable_whisper
 from torch import cuda
@@ -22,23 +23,64 @@ from ..whisper.result import remove_segments_by_str, split_res
 from ..whisper.save import save_output_stable_ts
 
 # =========================================================================
-# GLOBAL STATE & HELPERS
+# GLOBAL STATE & DECOUPLED UI SYNC
 # =========================================================================
 
-# Dictionary mapping index -> status string for O(1) updates and robust state tracking
 status_tc: Dict[int, str] = {}
 status_tl: Dict[int, str] = {}
 status_mod: Dict[int, str] = {}
-F_IMPORT_COUNTER = 0
-
 ACTIVE_STATUSES = {"Waiting", "Transcribing please wait...", "Translating please wait...", "Processing", "Re-transcribing..."}
 
+# 全局任务类型标记，帮助组合状态
+GLOBAL_IS_TC = False
+GLOBAL_IS_TL = False
+GLOBAL_IS_MOD = False
+
+def _sync_ui(index: int):
+    """自动判断文件是否处理完成，并把最纯粹的状态文字抛给 webview_app 去渲染"""
+    if not bc.web_bridge: return
+    
+    parts = []
+    if GLOBAL_IS_TC:
+        s = status_tc.get(index, 'Waiting')
+        if s and s != 'Waiting': parts.append(s)
+    if GLOBAL_IS_TL:
+        s = status_tl.get(index, 'Waiting')
+        if s and s != 'Waiting': parts.append(s)
+    if GLOBAL_IS_MOD:
+        s = status_mod.get(index, 'Waiting')
+        if s and s != 'Waiting': parts.append(s)
+        
+    combined_status = ", ".join(parts) if parts else "Waiting"
+    
+    # 精确判断该文件是否彻底走完生命周期
+    is_completed = False
+    lower_status = combined_status.lower()
+    if "fail" in lower_status or "error" in lower_status or "parse error" in lower_status:
+        is_completed = True
+    elif GLOBAL_IS_TC and GLOBAL_IS_TL:
+        if "transcribed" in status_tc.get(index, "").lower() and "translated" in status_tl.get(index, "").lower():
+            is_completed = True
+    elif GLOBAL_IS_TC:
+        if "transcribed" in status_tc.get(index, "").lower():
+            is_completed = True
+    elif GLOBAL_IS_TL:
+        if "translated" in status_tl.get(index, "").lower():
+            is_completed = True
+    elif GLOBAL_IS_MOD:
+        mod_s = status_mod.get(index, "").lower()
+        if "refined" in mod_s or "aligned" in mod_s or "translated" in mod_s:
+            is_completed = True
+
+    # 抛给前端桥接器去处理 UI 细节
+    bc.web_bridge.sync_file_status(index, combined_status, is_completed)
+
 def _update_status(status_map: Dict[int, str], index: int, msg: str):
-    """安全更新内存中的任务状态字典"""
+    """修改状态并触发 UI 同步"""
     status_map[index] = msg
+    _sync_ui(index)
 
 def _save_metadata(filepath: str, meta_data: dict):
-    """统一的 Metadata JSON 写入辅助函数（支持增量更新）"""
     try:
         makedirs(path.dirname(filepath), exist_ok=True)
         if path.exists(filepath):
@@ -46,38 +88,25 @@ def _save_metadata(filepath: str, meta_data: dict):
                 existing = json.load(f)
                 existing.update(meta_data)
                 meta_data = existing
-                
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(meta_data, f, ensure_ascii=False, indent=4)
     except Exception as e:
-        logger.warning(f"Failed to save metadata to {filepath}: {e}")
+        logger.warning(f"Failed to save metadata: {e}")
+
+def _generate_save_name(template: str, file_name: str, lang_src: str, lang_tgt: str, tc_model: str, tl_engine: str, action: str = "") -> str:
+    res = template.replace("{file}", file_name).replace("{lang-source}", lang_src).replace("{lang-target}", lang_tgt)\
+                  .replace("{transcribe-with}", tc_model).replace("{translate-with}", tl_engine)
+    if action:
+        for fmt, value in get_task_format(action, action, f"{action} with {tc_model or tl_engine}", f"{action} from {lang_src} to {lang_tgt}", both=True).items():
+            res = res.replace(fmt, value)
+    return res
 
 def _monitor_thread(thread: Thread, check_cancel: callable):
-    """统一的线程阻塞与取消监控器"""
     while thread.is_alive():
         if not check_cancel():
             kill_thread(thread)
             raise Exception("Cancelled")
         sleep(0.1)
-
-def _start_ui_updater(task_desc: str, t_start: float, get_q_data: callable, get_payload: callable, is_active_func: callable):
-    """专门负责向 WebBridge 推送实时状态的守护线程"""
-    def updater():
-        while bc.file_processing and is_active_func():
-            try:
-                payload = get_payload()
-                payload.update({
-                    "task": task_desc,
-                    "elapsed": strftime('%H:%M:%S', gmtime(time() - t_start)),
-                    "queue": get_q_data()
-                })
-                if bc.web_bridge:
-                    bc.web_bridge.set_file_processing_state(payload)
-                sleep(1)
-            except Exception as e:
-                logger.warning(f"Failed to update web UI: {e}")
-                break
-    Thread(target=updater, daemon=True).start()
 
 # =========================================================================
 # ATOMIC EXECUTORS
@@ -129,19 +158,15 @@ def run_translate_api(query: stable_whisper.WhisperResult, engine: str, lang_sou
 # =========================================================================
 
 def _cancellable_tc(file_path, lang_source, lang_target, model_name, tc_func, tl_func, auto, is_tc, is_tl, engine, base_name, meta_path, index, filters, **kwargs):
-    global F_IMPORT_COUNTER
     start = time()
     try:
         _update_status(status_tc, index, "Transcribing please wait...")
         fail_status = [False, ""]
         
-        # 1. 恢复：通过字典精确匹配长短名称
         format_dict = get_task_format("transcribed", f"transcribed {lang_source}", f"transcribed with {model_name}", f"transcribed {lang_source} with {model_name}")
         format_dict.update(get_task_format("tc", f"tc {lang_source}", f"tc with {model_name}", f"tc {lang_source} with {model_name}", short_only=True))
-        
         tc_save_name = base_name
-        for fmt, val in format_dict.items():
-            tc_save_name = tc_save_name.replace(fmt, val)
+        for fmt, val in format_dict.items(): tc_save_name = tc_save_name.replace(fmt, val)
 
         thread = Thread(target=run_whisper, args=[tc_func, file_path, "transcribe", fail_status], kwargs=kwargs, daemon=True)
         thread.start()
@@ -175,25 +200,18 @@ def _cancellable_tc(file_path, lang_source, lang_target, model_name, tc_func, tl
         _update_status(status_tc, index, "Failed to transcribe")
         if is_tl: _update_status(status_tl, index, "Skipped (TC Failed)")
         if str(e) != "Cancelled": logger.error(f"TC Error: {e}")
-    finally:
-        F_IMPORT_COUNTER += 1
-
 
 def _cancellable_tl(query, lang_source, lang_target, tl_func, engine, base_name, meta_path, index, media_path, filters, **kwargs):
-    global F_IMPORT_COUNTER
     start = time()
     try:
         _update_status(status_tl, index, "Translating please wait...")
         export_dir = dir_export if sj.cache["dir_export"] == "auto" else sj.cache["dir_export"]
         fail_status = [False, ""]
 
-        # 2. 恢复：通过字典精确匹配长短名称
         format_dict = get_task_format("translated", f"translated {lang_source} to {lang_target}", f"translated with {engine}", f"translated {lang_source} to {lang_target} with {engine}")
         format_dict.update(get_task_format("tl", f"tl {lang_source} to {lang_target}", f"tl with {engine}", f"tl {lang_source} to {lang_target} with {engine}", short_only=True))
-        
         tl_save_name = base_name
-        for fmt, val in format_dict.items():
-            tl_save_name = tl_save_name.replace(fmt, val)
+        for fmt, val in format_dict.items(): tl_save_name = tl_save_name.replace(fmt, val)
 
         if engine in model_values:
             thread = Thread(target=run_whisper, args=[tl_func, query, "translate", fail_status], kwargs=kwargs, daemon=True)
@@ -225,9 +243,6 @@ def _cancellable_tl(query, lang_source, lang_target, tl_func, engine, base_name,
     except Exception as e:
         _update_status(status_tl, index, "Failed to translate")
         if str(e) != "Cancelled": logger.error(f"TL Error: {e}")
-    finally:
-        F_IMPORT_COUNTER += 1
-
 
 # =========================================================================
 # PUBLIC BATCH APIS
@@ -235,8 +250,9 @@ def _cancellable_tl(query, lang_source, lang_target, tl_func, engine, base_name,
 
 def process_file(data_files: List[str], model_name_tc: str, lang_source: str, lang_target: str, is_tc: bool, is_tl: bool, engine: str) -> None:
     try:
-        global status_tc, status_tl, F_IMPORT_COUNTER
-        status_tc, status_tl, F_IMPORT_COUNTER = {}, {}, 0
+        global status_tc, status_tl, GLOBAL_IS_TC, GLOBAL_IS_TL, GLOBAL_IS_MOD
+        status_tc, status_tl = {}, {}
+        GLOBAL_IS_TC, GLOBAL_IS_TL, GLOBAL_IS_MOD = is_tc, is_tl, False
         bc.file_tced_counter = bc.file_tled_counter = 0
         
         tl_engine_whisper = engine in model_values
@@ -247,6 +263,7 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
         _, _, stable_tc, stable_tl, to_args = get_model(is_tc, is_tl, tl_engine_whisper, model_name_tc, engine, sj.cache, **get_model_args(sj.cache))
         whisper_args = get_tc_args(to_args, sj.cache)
         whisper_args["language"] = TO_LANGUAGE_CODE[get_whisper_lang_similar(lang_source)] if lang_source != "auto detect" else None
+        whisper_args["verbose"] = None
         filters = get_hallucination_filter('file', sj.cache["path_filter_file_import"]) if sj.cache["filter_file_import"] else {}
 
         taskname = "Transcribe & Translate" if is_tc and is_tl else "Transcribe" if is_tc else "Translate"
@@ -255,37 +272,19 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
         bc.enable_file_tc()
         bc.enable_file_tl()
 
+        if bc.web_bridge:
+            bc.web_bridge.init_file_batch(f"Task: {taskname} with {model_name_tc}", data_files)
+
         def is_still_active():
             for i in range(len(data_files)):
                 if is_tc and status_tc.get(i, 'Waiting') in ACTIVE_STATUSES: return True
                 if is_tl and status_tl.get(i, 'Waiting') in ACTIVE_STATUSES: return True
             return False
 
-        def get_q_data():
-            show = []
-            for i, f in enumerate(data_files):
-                parts = []
-                if is_tc: parts.append(status_tc.get(i, 'Waiting'))
-                if is_tl: parts.append(status_tl.get(i, 'Waiting'))
-                show.append([filename_only(f), ", ".join(parts)])
-            return show
-        
-        def get_payload():
-            prog_len = len(data_files) * 2 if (is_tc and is_tl) or (not is_tc and is_tl and not tl_engine_whisper) else len(data_files)
-            return {
-                "current_file": f"{min(bc.file_tced_counter + bc.file_tled_counter, len(data_files))}/{len(data_files)}",
-                "processed": f"{bc.file_tced_counter} TC, {bc.file_tled_counter} TL",
-                "progress": (F_IMPORT_COUNTER / prog_len * 100) if prog_len > 0 else 100
-            }
-        
-        _start_ui_updater(f"Task: {taskname} with {model_name_tc}", t_start, get_q_data, get_payload, is_still_active)
-
         for i, file in enumerate(data_files):
             if not bc.file_processing: break
 
             file_name = filename_only(file)[slice_s:slice_e]
-            
-            # 3. 修复：提取完整的 Base Name (先解析时间戳，再做基础替换)
             base_name = datetime.now().strftime(export_fmt)
             base_name = base_name.replace("{file}", file_name)\
                                  .replace("{lang-source}", lang_source)\
@@ -293,7 +292,6 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
                                  .replace("{transcribe-with}", model_name_tc)\
                                  .replace("{translate-with}", engine)
 
-            # Metadata 命名解析
             meta_name = base_name
             for fmt, val in get_task_format("metadata", "metadata", "metadata", "metadata", both=True).items():
                 meta_name = meta_name.replace(fmt, val)
@@ -304,13 +302,6 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
                 "transcribe": is_tc, "translate": is_tl, "model": model_name_tc, "engine": engine
             })
 
-            # Visualized suppression 命名解析
-            if sj.cache["visualize_suppression"]:
-                vis_name = base_name
-                for fmt, val in get_task_format("visualized supression", "visualized supression", f"visualized supression with vad {whisper_args.get('vad', False)}", f"visualized supression with vad {whisper_args.get('vad', False)}", both=True).items():
-                    vis_name = vis_name.replace(fmt, val)
-                stable_whisper.visualize_suppression(file, path.join(export_dir, vis_name + ".png"), vad=whisper_args.get("vad", False))
-
             if is_tl and not is_tc and tl_engine_whisper:
                 Thread(target=_cancellable_tl, args=[file, lang_source, lang_target, stable_tl, engine, base_name, meta_path, i, file, filters], kwargs=whisper_args, daemon=True).start()
             else:
@@ -318,7 +309,6 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
                 tc_thread.start()
                 tc_thread.join()
 
-        # 精确等待所有异步子任务完成，避免死锁
         while bc.file_processing and is_still_active():
             sleep(0.5)
 
@@ -337,8 +327,9 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
 
 def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement", "alignment"]):
     try:
-        global status_mod
+        global status_mod, GLOBAL_IS_TC, GLOBAL_IS_TL, GLOBAL_IS_MOD
         status_mod = {}
+        GLOBAL_IS_TC, GLOBAL_IS_TL, GLOBAL_IS_MOD = False, False, True
         bc.mod_file_counter = 0
         action = "Refinement" if mode == "refinement" else "Alignment"
         
@@ -352,28 +343,17 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
 
         t_start = time()
 
+        if bc.web_bridge:
+            bc.web_bridge.init_file_batch(f"Task {mode} with {model_name_tc}", [f[0] for f in data_files])
+
         def is_still_active():
             return any(status_mod.get(i, 'Waiting') in ACTIVE_STATUSES for i in range(len(data_files)))
-
-        def get_q_data():
-            return [[filename_only(f[0]), status_mod.get(i, 'Waiting')] for i, f in enumerate(data_files)]
-        
-        def get_payload():
-            return {
-                "current_file": f"{bc.mod_file_counter}/{len(data_files)}",
-                "processed": f"{bc.mod_file_counter} {action}",
-                "progress": (bc.mod_file_counter / len(data_files) * 100) if data_files else 100
-            }
-            
-        _start_ui_updater(f"Task {mode} with {model_name_tc}", t_start, get_q_data, get_payload, is_still_active)
 
         for i, file_data in enumerate(data_files):
             if not bc.file_processing: break
 
             audio_path, mod_path = file_data[0], file_data[1]
             file_name = filename_only(audio_path)[slice_s:slice_e]
-            
-            # 时间戳解析还原
             base_name = datetime.now().strftime(sj.cache["export_format"])
             base_name = base_name.replace("{file}", file_name).replace("{lang-source}", "").replace("{lang-target}", "")\
                                  .replace("{transcribe-with}", model_name_tc).replace("{translate-with}", "")
@@ -387,8 +367,7 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
             task_short = {"refinement": "rf", "alignment": "al"}
             format_dict = get_task_format(action, action, f"{action} with {model_name_tc}", f"{action} with {model_name_tc}")
             format_dict.update(get_task_format(task_short[mode], task_short[mode], f"{task_short[mode]} with {model_name_tc}", f"{task_short[mode]} with {model_name_tc}", short_only=True))
-            for fmt, val in format_dict.items():
-                save_name = save_name.replace(fmt, val)
+            for fmt, val in format_dict.items(): save_name = save_name.replace(fmt, val)
 
             try:
                 mod_src = stable_whisper.WhisperResult(mod_path) if mod_path.endswith(".json") else open(mod_path, "r", encoding="utf-8").read()
@@ -448,21 +427,20 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
 
 def translate_result(data_files: List, engine: str, lang_target: str):
     try:
-        global status_mod
+        global status_mod, GLOBAL_IS_TC, GLOBAL_IS_TL, GLOBAL_IS_MOD
         status_mod = {}
+        GLOBAL_IS_TC, GLOBAL_IS_TL, GLOBAL_IS_MOD = False, False, True
         bc.mod_file_counter = 0
         export_dir = dir_translate if sj.cache["dir_export"] == "auto" else sj.cache["dir_export"] + "/@translated"
         slice_s, slice_e = int(sj.cache["file_slice_start"]) if sj.cache["file_slice_start"] else None, int(sj.cache["file_slice_end"]) if sj.cache["file_slice_end"] else None
         
         t_start = time()
 
+        if bc.web_bridge:
+            bc.web_bridge.init_file_batch(f"Task Translate with {engine}", data_files)
+
         def is_still_active():
             return any(status_mod.get(i, 'Waiting') in ACTIVE_STATUSES for i in range(len(data_files)))
-
-        def get_q_data(): return [[filename_only(f), status_mod.get(i, 'Waiting')] for i, f in enumerate(data_files)]
-        def get_payload(): return {"current_file": f"{bc.mod_file_counter}/{len(data_files)}", "processed": f"{bc.mod_file_counter} Translated", "progress": (bc.mod_file_counter / len(data_files) * 100) if data_files else 100}
-            
-        _start_ui_updater(f"Task Translate with {engine}", t_start, get_q_data, get_payload, is_still_active)
 
         api_kwargs = {"libre_link": sj.cache["libre_link"], "libre_api_key": sj.cache["libre_api_key"]} if engine == "LibreTranslate" else {}
 
@@ -476,8 +454,6 @@ def translate_result(data_files: List, engine: str, lang_target: str):
 
             lang_src = to_language_name(result.language) or "auto"
             file_name = filename_only(file_path)[slice_s:slice_e]
-            
-            # 时间戳解析还原
             base_name = datetime.now().strftime(sj.cache["export_format"])
             base_name = base_name.replace("{file}", file_name).replace("{lang-source}", lang_src).replace("{lang-target}", lang_target)\
                                  .replace("{transcribe-with}", "").replace("{translate-with}", engine)
@@ -490,8 +466,7 @@ def translate_result(data_files: List, engine: str, lang_target: str):
             save_name = base_name
             format_dict = get_task_format("translated result", f"translated result from {lang_src} to {lang_target}", f"translated result with {engine}", f"translated result from {lang_src} to {lang_target} with {engine}")
             format_dict.update(get_task_format("tl res", f"tl res from {lang_src} to {lang_target}", f"tl res with {engine}", f"tl res from {lang_src} to {lang_target} with {engine}", short_only=True))
-            for fmt, val in format_dict.items():
-                save_name = save_name.replace(fmt, val)
+            for fmt, val in format_dict.items(): save_name = save_name.replace(fmt, val)
 
             _update_status(status_mod, i, "Translating please wait...")
             fail_status = [False, ""]

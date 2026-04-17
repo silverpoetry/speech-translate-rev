@@ -783,6 +783,14 @@ button.secondary {
   align-items: center;
 }
 
+.file-queue-status {
+  flex: 0 0 200px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-align: left;
+  padding-left: 8px;
+}
+
 .file-queue-toolbar {
   display: flex;
   justify-content: flex-end;
@@ -2068,5 +2076,15 @@ textarea:focus {
   .split-view,
   .dual-advanced-grid {
     padding: 14px;
+  }
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
   }
 }
