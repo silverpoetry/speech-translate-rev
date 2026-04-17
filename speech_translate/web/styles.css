@@ -995,10 +995,10 @@ button.btn-icon:hover[data-tooltip]::before {
 .file-export-block {
   display: grid;
   gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #fafafa;
+  padding: 0; /* remove internal padded card styling when inside advanced-panel */
+  border: none;
+  border-radius: 0;
+  background: transparent;
 }
 
 .file-export-head {
@@ -1015,6 +1015,24 @@ button.btn-icon:hover[data-tooltip]::before {
 .file-export-formats {
   gap: 10px 12px;
   flex-wrap: wrap;
+}
+
+/* inside advanced-panel we prefer compact, wrapping format toggles */
+.advanced-panel .file-export-formats {
+  gap: 8px 10px;
+  align-items: center;
+}
+
+.advanced-panel .file-export-formats .toggle-row {
+  white-space: normal; /* allow wrapping labels to avoid overflow */
+  min-width: 96px;
+}
+
+.advanced-panel .file-export-head.file-export-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 6px;
 }
 
 .file-export-formats > span {

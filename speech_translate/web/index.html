@@ -104,45 +104,10 @@
               </div>
             </div>
 
-            <div class="inline-actions">
-              <button class="btn-with-icon btn-major" data-action="import-files">导入并处理</button>
-            </div>
-
-            <div class="form-grid import-grid">
-              <label>
-                <span>源语言</span>
-                <select id="source_lang_f_import"></select>
-              </label>
-              <label>
-                <span>目标语言</span>
-                <select id="target_lang_f_import"></select>
-              </label>
-              <label>
-                <span>翻译引擎</span>
-                <select id="tl_engine_f_import"></select>
-              </label>
-            </div>
-
             <div class="inline-actions import-actions">
+              <button class="btn-with-icon btn-major" data-action="import-files">导入并处理</button>
               <label class="toggle-row"><input id="transcribe_f_import" type="checkbox" /> 转写</label>
               <label class="toggle-row"><input id="translate_f_import" type="checkbox" /> 翻译</label>
-            </div>
-
-            <div class="file-export-block">
-              <div class="file-export-head">
-                <span class="pill pill-muted" id="file-export-dir-pill">输出目录：auto</span>
-                <button class="btn-icon btn-icon-blue" data-action="pick-export-dir" data-tooltip="设置导出目录" title="设置导出目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
-              </div>
-              <div class="inline-actions import-actions compact-gap file-export-formats">
-                <span>输出格式</span>
-                <label class="toggle-row"><input id="export_txt" type="checkbox" /> TXT</label>
-                <label class="toggle-row"><input id="export_srt" type="checkbox" /> SRT</label>
-                <label class="toggle-row"><input id="export_vtt" type="checkbox" /> VTT</label>
-                <label class="toggle-row"><input id="export_ass" type="checkbox" /> ASS</label>
-                <label class="toggle-row"><input id="export_json" type="checkbox" /> JSON</label>
-                <label class="toggle-row"><input id="export_csv" type="checkbox" /> CSV</label>
-                <label class="toggle-row"><input id="export_mp4" type="checkbox" /> MP4 (带字幕)</label>
-              </div>
             </div>
 
             <div class="status-row import-status core-status-bottom">
@@ -150,6 +115,56 @@
               <span class="pill pill-muted" id="import-engine-pill">引擎</span>
             </div>
           </section>
+
+          <div class="dual-advanced-grid">
+            <details class="advanced-panel panel-card" open>
+              <summary>语言配置</summary>
+              <div class="floating-action-row">
+                <button class="btn-icon" data-action="save-import-settings" data-tooltip="保存文件语言配置" title="保存文件语言配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+              </div>
+              <div class="advanced-panel-body">
+                <div class="form-grid">
+                  <label>
+                    <span>源语言</span>
+                    <select id="source_lang_f_import"></select>
+                  </label>
+                  <label>
+                    <span>目标语言</span>
+                    <select id="target_lang_f_import"></select>
+                  </label>
+                  <label>
+                    <span>翻译引擎</span>
+                    <select id="tl_engine_f_import"></select>
+                  </label>
+                </div>
+              </div>
+            </details>
+
+            <details class="advanced-panel panel-card" open>
+              <summary>输出设置</summary>
+              <div class="floating-action-row">
+                <button class="btn-icon" data-action="save-import-settings" data-tooltip="保存文件输出设置" title="保存文件输出设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+              </div>
+              <div class="advanced-panel-body">
+                <div class="file-export-block">
+                  <div class="inline-actions import-actions compact-gap file-export-formats">
+                    <span>输出格式</span>
+                    <label class="toggle-row"><input id="export_txt" type="checkbox" /> TXT</label>
+                    <label class="toggle-row"><input id="export_srt" type="checkbox" /> SRT</label>
+                    <label class="toggle-row"><input id="export_vtt" type="checkbox" /> VTT</label>
+                    <label class="toggle-row"><input id="export_ass" type="checkbox" /> ASS</label>
+                    <label class="toggle-row"><input id="export_json" type="checkbox" /> JSON</label>
+                    <label class="toggle-row"><input id="export_csv" type="checkbox" /> CSV</label>
+                    <label class="toggle-row"><input id="export_mp4" type="checkbox" /> MP4 (带字幕)</label>
+                  </div>
+                  <div class="file-export-head file-export-foot">
+                    <span class="pill pill-muted" id="file-export-dir-pill">输出目录：auto</span>
+                    <button class="btn-icon btn-icon-blue" data-action="pick-export-dir" data-tooltip="设置导出目录" title="设置导出目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                  </div>
+                </div>
+              </div>
+            </details>
+          </div>
         </article>
 
         <article class="workflow-card tab-panel" id="tab-realtime" role="tabpanel">
