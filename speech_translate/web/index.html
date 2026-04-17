@@ -95,12 +95,13 @@
 
         <article class="workflow-card tab-panel" id="tab-file" role="tabpanel">
           <section class="panel-card core-card">
-            <div class="floating-action-row">
-              <button class="btn-icon" data-action="save-import-settings" data-tooltip="保存文件配置" title="保存文件配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
-            </div>
             <div class="section-head">
               <div>
                 <h3>文件转写</h3>
+              </div>
+              <div class="floating-action-row">
+                <button class="btn-icon btn-icon-blue" data-action="add-files-to-queue" data-tooltip="导入文件" title="导入文件"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                <button class="btn-icon" data-action="clear-import-queue" data-tooltip="清空队列" title="清空队列"><span class="btn-glyph glyph-trash" aria-hidden="true"></span></button>
               </div>
             </div>
 
@@ -111,16 +112,7 @@
             </div>
 
             <div class="file-queue-box" style="margin-top:8px;">
-              <div class="section-head">
-                <div><h4>文件队列</h4></div>
-              </div>
               <div class="file-queue-body">
-                <div class="file-queue-toolbar">
-                  <div class="floating-action-row">
-                    <button class="btn-icon btn-icon-blue" data-action="add-files-to-queue" data-tooltip="导入文件" title="导入文件"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
-                    <button class="btn-icon" data-action="clear-import-queue" data-tooltip="清空队列" title="清空队列"><span class="btn-glyph glyph-trash" aria-hidden="true"></span></button>
-                  </div>
-                </div>
                 <ul id="file_import_list" style="list-style:none;margin:0;padding:6px 8px;max-height:160px;overflow:auto"></ul>
               </div>
             </div>

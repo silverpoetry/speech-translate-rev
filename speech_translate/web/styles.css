@@ -791,6 +791,13 @@ button.secondary {
   align-items: center;
 }
 
+.file-queue-toolbar .tool-actions {
+  position: relative; /* keep inside the local flow */
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 button.btn-with-icon {
   display: inline-flex;
   align-items: center;
