@@ -462,6 +462,15 @@ async function refreshFileProcessingState() {
     state.fileImportQueue = files;
     updateFileImportListUI(files);
 
+    // synchronize import start/stop button based on backend 'active' flag
+    try {
+      if (typeof res.active !== 'undefined') {
+        syncImportButton(Boolean(res.active));
+      }
+    } catch (e) {
+      console.debug('syncImportButton failed', e);
+    }
+
     const total = Number(res.files_total || (files ? files.length : 0)) || 0;
     const completed = Number(res.files_completed || 0) || 0;
     const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -787,6 +796,14 @@ function syncRecordingButton(recordingState) {
   els.btnRecordingToggle.textContent = active ? '停止录制' : '开始录制';
   els.btnRecordingToggle.dataset.action = active ? 'stop-recording' : 'start-recording';
   els.btnRecordingToggle.classList.toggle('is-stop', active);
+}
+
+function syncImportButton(active) {
+  if (!els.btnImportStart) return;
+  const isActive = Boolean(active);
+  els.btnImportStart.textContent = isActive ? '停止处理' : '开始处理';
+  els.btnImportStart.dataset.action = isActive ? 'stop-import-queue' : 'start-import-queue';
+  els.btnImportStart.classList.toggle('is-stop', isActive);
 }
 
 function getSelectedImportModelEngine() {
@@ -1516,6 +1533,39 @@ async function stopRecording() {
   }
 }
 
+async function startImportQueue() {
+  try {
+    // optimistic UI: immediately show as active
+    syncImportButton(true);
+    await saveImportSettings();
+    const res = await apiCall('start_import_queue');
+    if (!res || res.ok === false) {
+      // revert optimistic state on failure
+      syncImportButton(false);
+      throw new Error((res && res.message) || '开始处理失败');
+    }
+    await refreshFileProcessingState();
+    console.log('File import started', res);
+  } catch (err) {
+    console.error('startImportQueue error', err);
+  }
+}
+
+async function stopImportQueue() {
+  try {
+    const res = await apiCall('stop_import_queue');
+    if (res && res.ok) {
+      // optimistic: mark button as stopped
+      syncImportButton(false);
+    } else {
+      console.error('stopImportQueue failed', res && res.message);
+    }
+    await refreshFileProcessingState();
+  } catch (err) {
+    console.error('stopImportQueue error', err);
+  }
+}
+
 
 async function openDirectory(kind) {
   await apiCall('open_directory', kind);
@@ -1664,14 +1714,10 @@ function bindEvents() {
         updateFileImportListUI(files2);
         await refreshState();
       } else if (action === 'start-import-queue') {
-        // Persist import settings then start processing queued files
-        await saveImportSettings();
-        const res = await apiCall('start_import_queue');
-        if (!res || res.ok === false) {
-          throw new Error((res && res.message) || '开始处理失败');
-        }
-        // Refresh file processing state immediately so UI keeps the list and shows progress
-        await refreshFileProcessingState();
+        await startImportQueue();
+        await refreshState();
+      } else if (action === 'stop-import-queue') {
+        await stopImportQueue();
         await refreshState();
       } else if (action === 'import-files') {
         await saveImportSettings();

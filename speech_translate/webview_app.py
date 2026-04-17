@@ -1292,6 +1292,56 @@ class WebBridge(WebTaskBridge):
 
         source_options = TL_ENGINE_SOURCE_DICT.get(engine, TL_ENGINE_SOURCE_DICT["Google Translate"])
         target_options = TL_ENGINE_TARGET_DICT.get(engine, TL_ENGINE_TARGET_DICT["Google Translate"])
+        def _normalize_entry(e):
+            if isinstance(e, str):
+                return {"path": e, "name": os.path.basename(e), "status": "", "is_completed": False}
+            if isinstance(e, dict):
+                return {
+                    "path": e.get("path", ""),
+                    "name": e.get("name", os.path.basename(e.get("path", ""))),
+                    "status": e.get("status", ""),
+                    "is_completed": bool(e.get("is_completed", False)),
+                }
+            try:
+                s = str(e)
+            except Exception:
+                s = ""
+            return {"path": s, "name": os.path.basename(s), "status": "", "is_completed": False}
+
+        def _normalize_queue_list(qlist):
+            return [_normalize_entry(x) for x in (qlist or [])]
+
+        # Merge visible queue with processing queue: keep all items in _file_import_queue
+        # but overlay statuses from _processing_queue when available so completed
+        # items remain visible during processing.
+        def _merged_queue():
+            with self._lock:
+                main = _normalize_queue_list(self._file_import_queue)
+                proc = [_normalize_entry(x) for x in list(self._processing_queue or [])]
+
+            proc_map = {p.get("path"): p for p in proc if p.get("path")}
+
+            merged = []
+            seen = set()
+            for item in main:
+                path = item.get("path")
+                if path in proc_map:
+                    p = proc_map[path]
+                    item["status"] = p.get("status") or item.get("status")
+                    item["is_completed"] = bool(p.get("is_completed", item.get("is_completed", False)))
+                    if not item.get("name"):
+                        item["name"] = p.get("name", os.path.basename(path))
+                merged.append(item)
+                seen.add(path)
+
+            # Append any processing-only entries not present in main
+            for p in proc:
+                path = p.get("path")
+                if path and path not in seen:
+                    merged.append(p)
+
+            return merged
+
         return {
             "backend_options": ["whisper", "faster-whisper"],
             "selected_backend": backend,
@@ -1311,40 +1361,56 @@ class WebBridge(WebTaskBridge):
             "selected_target": settings.get("target_lang_f_import"),
             "transcribe": settings.get("transcribe_f_import"),
             "translate": settings.get("translate_f_import"),
-            "queued_files": [
-                {"path": p, "name": os.path.basename(p), "status": ""} for p in (self._processing_queue and [x.get('path') for x in self._processing_queue] or self._file_import_queue)
-            ],
+            "queued_files": _merged_queue(),
         }
 
     def get_import_ui_details(self) -> Dict[str, Any]:
         return self._build_import_ui(verify_available=True)
+    def _get_full_display_queue(self) -> List[Dict[str, Any]]:
+        """获取完整的合并队列，用于 UI 渲染，确保已完成的旧文件不会消失"""
+        with self._lock:
+            display_list = []
+            # 1. 以全局总队列为基础底底盘
+            for q in getattr(self, "_file_import_queue", []):
+                if isinstance(q, str):
+                    display_list.append({"path": q, "name": os.path.basename(q), "status": "", "is_completed": False})
+                elif isinstance(q, dict):
+                    display_list.append({
+                        "path": q.get("path", ""),
+                        "name": q.get("name", os.path.basename(q.get("path", ""))),
+                        "status": q.get("status", ""),
+                        "is_completed": bool(q.get("is_completed", False))
+                    })
+                else:
+                    try:
+                        s = str(q)
+                        display_list.append({"path": s, "name": os.path.basename(s), "status": "", "is_completed": False})
+                    except Exception:
+                        pass
 
+            # 2. 如果当前有正在执行的批次，将最新状态实时覆盖上去
+            proc_queue = getattr(self, "_processing_queue", [])
+            if proc_queue:
+                proc_map = {p.get("path"): p for p in proc_queue if p.get("path")}
+                for item in display_list:
+                    path = item.get("path")
+                    if path in proc_map:
+                        p = proc_map[path]
+                        # 覆盖为执行中的最新状态
+                        item["status"] = str(p.get("status", item.get("status", "")))
+                        item["is_completed"] = bool(p.get("is_completed", item.get("is_completed", False)))
+                        
+            return display_list
     def get_file_processing_state(self) -> Dict[str, Any]:
         """Return the current processing queue and simple completion counts."""
-        with self._lock:
-            files = list(self._processing_queue) if self._processing_queue else [{"path": p, "name": os.path.basename(p), "status": ""} for p in self._file_import_queue]
-        # compute completion counts based on settings
-        settings = self.get_settings_snapshot()
-        is_tc = bool(settings.get("transcribe_f_import", True))
-        is_tl = bool(settings.get("translate_f_import", True))
-        total = len(files)
-        completed = 0
-        for item in files:
-            status = str(item.get("status", "")).lower()
-            done = False
-            if is_tc and is_tl:
-                if "transcribed" in status and "translated" in status:
-                    done = True
-            elif is_tc:
-                if "transcribed" in status:
-                    done = True
-            elif is_tl:
-                if "translated" in status:
-                    done = True
-            if done:
-                completed += 1
-        return {"ok": True, "files": files, "files_total": total, "files_completed": completed}
-
+        # 统一使用全景视图
+        display_queue = self._get_full_display_queue()
+        total = len(display_queue)
+        completed = sum(1 for item in display_queue if item.get("is_completed", False))
+        
+        # active: we consider processing active when a processing queue exists and the processing flag is set
+        active = bool(getattr(self, "_processing_queue", None)) and bool(getattr(bc, "file_processing", False))
+        return {"ok": True, "files": display_queue, "files_total": total, "files_completed": completed, "active": active}
     def _build_main_ui(self) -> Dict[str, Any]:
         settings = dict(sj.cache)
         return {
@@ -2147,6 +2213,43 @@ class WebBridge(WebTaskBridge):
             "message": "File import started",
         }
 
+    def stop_import_queue(self) -> Dict[str, Any]:
+        """Request cancellation of current file import processing.
+
+        This will signal the file-processing worker to stop by clearing the
+        `file_processing` flag. The worker checks that flag and will exit
+        gracefully; we also emit an UI update so the web UI can reflect the
+        cancellation immediately.
+        """
+        with self._lock:
+            processing_exists = bool(getattr(self, "_processing_queue", None)) and len(getattr(self, "_processing_queue", [])) > 0
+        if not processing_exists:
+            return {"ok": False, "message": "No import is running"}
+
+        # Signal cancellation
+        bc.disable_file_process()
+
+        # Mark items as cancelled for immediate UI feedback
+        with self._lock:
+            try:
+                for item in getattr(self, "_processing_queue", []) or []:
+                    item["status"] = "Cancelled"
+            except Exception:
+                pass
+
+        # Update task message and push a UI refresh
+        try:
+            self.update_task_message("Cancelling file import...", source="import")
+        except Exception:
+            pass
+
+        try:
+            self._emit_ui_update(["import"])
+        except Exception:
+            pass
+
+        return {"ok": True, "message": "Cancel requested"}
+
     def remove_file_from_import_queue(self, index: Optional[int] = None) -> Dict[str, Any]:
         """Remove a file from the import queue by index and return the updated queue."""
         with self._lock:
@@ -2162,8 +2265,11 @@ class WebBridge(WebTaskBridge):
                 # also try to remove matching path from file_import_queue if present
                 try:
                     path_to_remove = removed.get('path')
-                    if path_to_remove in self._file_import_queue:
-                        self._file_import_queue.remove(path_to_remove)
+                    # support both string and dict entries in _file_import_queue
+                    for i, q in enumerate(list(self._file_import_queue)):
+                        if (isinstance(q, str) and q == path_to_remove) or (isinstance(q, dict) and q.get('path') == path_to_remove):
+                            self._file_import_queue.pop(i)
+                            break
                 except Exception:
                     pass
             else:
@@ -2187,24 +2293,28 @@ class WebBridge(WebTaskBridge):
         except Exception:
             pass
         return {"ok": True, "files": []}
-
     def init_file_batch(self, task_name: str, files: list):
         """初始化批处理 UI 状态（由 file.py 在任务开始时调用一次）"""
         self.batch_start_time = time()
         with self._lock:
             self.task_state.title = task_name
-            # 将传入的文件列表初始化为内部队列，默认状态都是 Waiting，未完成
+            # 执行队列依然只装新文件（不干扰后台干活）
             self._processing_queue = [
                 {"path": f, "name": os.path.basename(f), "status": "Waiting", "is_completed": False}
                 for f in files
             ]
         
-        # 初始化底部全局进度条为 0%
-        self.update_task_message(f"已准备好 {len(files)} 个文件", source="file-import")
-        self.update_task_progress(0.0, source="file-import")
+        # ⚠️ 关键修改：UI 渲染使用全景队列
+        display_queue = self._get_full_display_queue()
+        total = len(display_queue)
+        completed_count = sum(1 for item in display_queue if item.get("is_completed", False))
+        pct = int((completed_count / total) * 100) if total > 0 else 0
         
-        # 触发前端列表刷新
-        task_rows = [[item.get('name', ''), item.get('status', '')] for item in self._processing_queue]
+        self.update_task_message(f"已准备好 {len(files)} 个待处理文件 | 队列共 {total} 个", source="file-import")
+        self.update_task_progress(float(pct), source="file-import")
+        
+        # 触发前端列表刷新（发送完整列表）
+        task_rows = [[item.get('name', ''), item.get('status', '')] for item in display_queue]
         self.update_task_rows(task_rows)
         try:
             self._emit_ui_update(["import"])
@@ -2213,31 +2323,32 @@ class WebBridge(WebTaskBridge):
     def sync_file_status(self, index: int, combined_status: str, is_completed: bool):
         """同步单个文件的状态，并自动重新计算底部全局进度（由 file.py 频繁调用）"""
         with self._lock:
-            # 更新指定文件的具体状态
-            if 0 <= index < len(self._processing_queue):
+            # 只更新后台正在跑的那个批次的状态
+            if getattr(self, "_processing_queue", []) and 0 <= index < len(self._processing_queue):
                 self._processing_queue[index]["status"] = combined_status
                 self._processing_queue[index]["is_completed"] = is_completed
 
-            # ======= 计算底部的全局进度（只看已彻底完成的文件） =======
-            total = len(self._processing_queue)
-            completed_count = sum(1 for item in self._processing_queue if item.get("is_completed", False))
-            pct = int((completed_count / total) * 100) if total > 0 else 0
-            
-            elapsed = ""
-            if hasattr(self, 'batch_start_time'):
-                from time import gmtime, strftime, time
-                elapsed = strftime('%H:%M:%S', gmtime(time() - self.batch_start_time))
-            
-            msg = f"已完成 {completed_count}/{total} 个文件"
-            if elapsed:
-                msg += f" | 耗时: {elapsed}"
+        # ⚠️ 关键修改：提取包含所有旧文件的全景队列
+        display_queue = self._get_full_display_queue()
+        total = len(display_queue)
+        completed_count = sum(1 for item in display_queue if item.get("is_completed", False))
+        pct = int((completed_count / total) * 100) if total > 0 else 0
+        
+        elapsed = ""
+        if hasattr(self, 'batch_start_time'):
+            from time import gmtime, strftime, time
+            elapsed = strftime('%H:%M:%S', gmtime(time() - self.batch_start_time))
+        
+        msg = f"已完成 {completed_count}/{total} 个文件"
+        if elapsed:
+            msg += f" | 耗时: {elapsed}"
 
         # 1. 推送全局进度给底部状态栏
         self.update_task_progress(float(pct), source="file-import")
         self.update_task_message(msg, source="file-import")
         
-        # 2. 推送具体的文字状态给文件列表（如 Transcribing...）
-        task_rows = [[item.get('name', ''), item.get('status', '')] for item in self._processing_queue]
+        # 2. 推送具体的文字状态给文件列表（由于用的是 display_queue，旧文件不会消失了！）
+        task_rows = [[item.get('name', ''), item.get('status', '')] for item in display_queue]
         self.update_task_rows(task_rows)
         
         try:
@@ -2289,8 +2400,17 @@ class WebBridge(WebTaskBridge):
         # Append new files to queue (avoid duplicates)
         added = 0
         for f in files:
-            if f not in self._file_import_queue:
-                self._file_import_queue.append(f)
+            # check existing entries (support str or dict)
+            exists = False
+            for q in self._file_import_queue:
+                if isinstance(q, str) and q == f:
+                    exists = True
+                    break
+                if isinstance(q, dict) and q.get("path") == f:
+                    exists = True
+                    break
+            if not exists:
+                self._file_import_queue.append({"path": f, "name": os.path.basename(f), "status": "Waiting", "is_completed": False})
                 added += 1
 
         return {"ok": True, "count": len(self._file_import_queue), "added": added, "files": list(self._file_import_queue)}
@@ -2346,10 +2466,30 @@ class WebBridge(WebTaskBridge):
                 self._runtime_model_message = f"Loading model cache for {model_name_tc}"
                 self._model_load_running = True
 
-        # capture the queue (do not remove from visible queue; keep processing queue separate)
-        files = list(self._file_import_queue)
+        # build list of files to process: skip items already marked completed
         with self._lock:
-            self._processing_queue = [{"path": f, "name": os.path.basename(f), "status": "Waiting"} for f in files]
+            queued = list(self._file_import_queue)
+        files_to_process = []
+        for entry in queued:
+            if isinstance(entry, str):
+                path = entry
+                completed = False
+            elif isinstance(entry, dict):
+                path = entry.get("path", "")
+                completed = bool(entry.get("is_completed", False))
+            else:
+                try:
+                    path = str(entry)
+                except Exception:
+                    path = ""
+                completed = False
+            if not completed:
+                files_to_process.append(path)
+
+        if not files_to_process:
+            return {"ok": False, "message": "No files to process (all items are already completed)"}
+
+        # Note: process_file will call back into init_file_batch to initialize _processing_queue
 
         self.reset_task_state("File Import")
         self.bind_headless_main_window()
@@ -2363,7 +2503,8 @@ class WebBridge(WebTaskBridge):
         def worker():
             try:
                 bc.enable_file_process()
-                audio_file_module.process_file(list(files), model_name_tc, lang_source, lang_target, is_tc, is_tl, engine)
+                # pass only files that actually need processing
+                audio_file_module.process_file(list(files_to_process), model_name_tc, lang_source, lang_target, is_tc, is_tl, engine)
                 summary_parts = []
                 if is_tc:
                     summary_parts.append(f"{bc.file_tced_counter} transcribed")
@@ -2382,11 +2523,35 @@ class WebBridge(WebTaskBridge):
                     self._runtime_model_loaded = False
                     self._runtime_model_message = f"Model load failed: {exc}"
             finally:
-                bc.disable_file_process()
-                if needs_runtime_model:
-                    self._model_load_running = False
-                # clear processing queue on finish
+                # persist final statuses from processing queue back into visible queue
                 with self._lock:
+                    try:
+                        for proc in list(getattr(self, "_processing_queue", []) or []):
+                            ppath = proc.get("path")
+                            # find matching entry in _file_import_queue and update
+                            for i, q in enumerate(list(self._file_import_queue)):
+                                if isinstance(q, str) and q == ppath:
+                                    # replace string entry with dict
+                                    self._file_import_queue[i] = {
+                                        "path": ppath,
+                                        "name": proc.get("name", os.path.basename(ppath)),
+                                        "status": proc.get("status", ""),
+                                        "is_completed": bool(proc.get("is_completed", False)),
+                                    }
+                                    break
+                                if isinstance(q, dict) and q.get("path") == ppath:
+                                    q["status"] = proc.get("status", q.get("status", ""))
+                                    q["is_completed"] = bool(proc.get("is_completed", q.get("is_completed", False)))
+                                    if not q.get("name"):
+                                        q["name"] = proc.get("name", os.path.basename(ppath))
+                                    break
+                    except Exception:
+                        pass
+
+                    bc.disable_file_process()
+                    if needs_runtime_model:
+                        self._model_load_running = False
+                    # clear processing queue on finish
                     self._processing_queue = []
                 try:
                     self._emit_ui_update(["import"])
