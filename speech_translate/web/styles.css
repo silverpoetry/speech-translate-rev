@@ -783,6 +783,14 @@ button.secondary {
   align-items: center;
 }
 
+.file-queue-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 6px 8px 0;
+  align-items: center;
+}
+
 button.btn-with-icon {
   display: inline-flex;
   align-items: center;
