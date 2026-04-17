@@ -9,7 +9,7 @@ from pathlib import Path
 from platform import processor, release, system, version
 from signal import SIGINT, signal
 from threading import Lock, Thread
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, Optional, List, cast
 from time import sleep, strftime, time
 from urllib.request import Request, urlopen
 
@@ -820,6 +820,8 @@ class WebBridge(WebTaskBridge):
         self._runtime_model_message = "模型未预加载"
         self._model_manager_engine = "whisper"
         self._model_manager_model = "small"
+        # file import queue for web UI: list of file paths awaiting processing
+        self._file_import_queue: List[str] = []
         self._audio_source_cache: Dict[str, Any] = {
             "host_api_options": [],
             "mic_options_by_host": {},
@@ -1307,6 +1309,7 @@ class WebBridge(WebTaskBridge):
             "selected_target": settings.get("target_lang_f_import"),
             "transcribe": settings.get("transcribe_f_import"),
             "translate": settings.get("translate_f_import"),
+            "queued_files": list(self._file_import_queue),
         }
 
     def get_import_ui_details(self) -> Dict[str, Any]:
@@ -2067,6 +2070,158 @@ class WebBridge(WebTaskBridge):
                 self._runtime_model_loaded = False
                 self._runtime_model_message = f"Loading model cache for {model_name_tc}"
                 self._model_load_running = True
+
+        self.reset_task_state("File Import")
+        self.bind_headless_main_window()
+
+        # Replace tkinter-dependent dialogs in this module with headless adapters.
+        audio_file_module.FileProcessDialog = (
+            lambda master, title, mode, headers: HeadlessFileProcessDialog(master, title, mode, headers, bridge=self)
+        )
+        audio_file_module.mbox = headless_mbox
+
+        def worker():
+            try:
+                bc.enable_file_process()
+                audio_file_module.process_file(list(files), model_name_tc, lang_source, lang_target, is_tc, is_tl, engine)
+                summary_parts = []
+                if is_tc:
+                    summary_parts.append(f"{bc.file_tced_counter} transcribed")
+                if is_tl:
+                    summary_parts.append(f"{bc.file_tled_counter} translated")
+                summary = ", ".join(summary_parts) if summary_parts else "no output generated"
+                self.finish_task(f"File import finished: {summary}")
+                if needs_runtime_model:
+                    self._runtime_model_loaded = True
+                    self._runtime_model_message = f"Model ready: {model_name_tc}"
+            except Exception as exc:
+                logger.exception(exc)
+                logger.error(f"File import failed: {exc}")
+                self.update_task_error(str(exc))
+                if needs_runtime_model:
+                    self._runtime_model_loaded = False
+                    self._runtime_model_message = f"Model load failed: {exc}"
+            finally:
+                bc.disable_file_process()
+                if needs_runtime_model:
+                    self._model_load_running = False
+                auto_close_selenium = bool(self.get_settings_snapshot().get("selenium_auto_close_on_task_done", True))
+                if auto_close_selenium and is_tl and engine == "Selenium Chrome Translate":
+                    shutdown_selenium_translator()
+
+        Thread(target=worker, daemon=True).start()
+        return {
+            "ok": True,
+            "count": len(files),
+            "engine_whisper": engine in model_keys,
+            "message": "File import started",
+        }
+
+    def add_files_to_import_queue(self, files: Optional[list[str]] = None) -> Dict[str, Any]:
+        """Add selected files to the import queue without starting processing."""
+        # keep same pre-checks as import_files to avoid conflicting resource usage
+        if not self._wait_recording_idle(timeout_s=12.0):
+            return {
+                "ok": False,
+                "message": "Recording is still cleaning up resources. Please try file import again in a few seconds.",
+            }
+
+        if self._model_load_running:
+            return {
+                "ok": False,
+                "message": "Model loading is still in progress. Please wait before importing files.",
+            }
+
+        rec_state = self.get_recording_state()
+        rec_status = str(rec_state.get("status", "")).lower()
+        rec_active = bool(rec_state.get("active", False)) or bool(bc.recording)
+        if rec_active or rec_status in {"stopping...", "initializing recording..."}:
+            return {
+                "ok": False,
+                "message": "Recording is still running or stopping. Please wait a moment before importing files.",
+            }
+
+        if not files:
+            window = self.get_window()
+            if window is None:
+                return {"ok": False, "message": "Window not ready"}
+            webview = import_module("webview")
+            file_dialog = getattr(getattr(webview, "FileDialog", object), "OPEN", webview.OPEN_DIALOG)
+            files = window.create_file_dialog(
+                file_dialog,
+                allow_multiple=True,
+                file_types=[
+                    "Media Files (*.wav;*.mp3;*.ogg;*.flac;*.aac;*.wma;*.m4a;*.mp4;*.mkv;*.avi;*.mov;*.webm)",
+                    "All Files (*.*)",
+                ],
+            )
+
+        if not files:
+            return {"ok": False, "message": "No files selected"}
+
+        # Append new files to queue (avoid duplicates)
+        added = 0
+        for f in files:
+            if f not in self._file_import_queue:
+                self._file_import_queue.append(f)
+                added += 1
+
+        return {"ok": True, "count": len(self._file_import_queue), "added": added, "files": list(self._file_import_queue)}
+
+    def start_import_queue(self) -> Dict[str, Any]:
+        """Start processing files currently in the import queue."""
+        if not self._file_import_queue:
+            return {"ok": False, "message": "No files in queue"}
+
+        # Same resource checks as import_files
+        if not self._wait_recording_idle(timeout_s=12.0):
+            return {
+                "ok": False,
+                "message": "Recording is still cleaning up resources. Please try file import again in a few seconds.",
+            }
+
+        if self._model_load_running:
+            return {
+                "ok": False,
+                "message": "Model loading is still in progress. Please wait before starting file import.",
+            }
+
+        rec_state = self.get_recording_state()
+        rec_status = str(rec_state.get("status", "")).lower()
+        rec_active = bool(rec_state.get("active", False)) or bool(bc.recording)
+        if rec_active or rec_status in {"stopping...", "initializing recording..."}:
+            return {
+                "ok": False,
+                "message": "Recording is still running or stopping. Please wait a moment before importing files.",
+            }
+
+        from speech_translate.utils.audio import file as audio_file_module
+        from speech_translate.utils.whisper.helper import model_keys
+
+        settings = self.get_settings_snapshot()
+        lang_source = str(settings.get("source_lang_f_import", "English"))
+        lang_target = str(settings.get("target_lang_f_import", "Indonesian"))
+        is_tc = bool(settings.get("transcribe_f_import", True))
+        is_tl = bool(settings.get("translate_f_import", True))
+        engine = str(settings.get("tl_engine_f_import", "Google Translate"))
+        model_name_tc = self._normalize_model_key(str(settings.get("model_f_import", "")))
+        engine = self._normalize_model_key(engine)
+        needs_runtime_model = bool(is_tc) or (bool(is_tl) and engine in model_keys)
+
+        if needs_runtime_model:
+            same_model_loaded = bool(self._runtime_model_loaded) and self._runtime_model_key == model_name_tc
+            self._runtime_model_key = model_name_tc
+            if same_model_loaded:
+                self._model_load_running = False
+                self._runtime_model_message = f"Model ready: {model_name_tc}"
+            else:
+                self._runtime_model_loaded = False
+                self._runtime_model_message = f"Loading model cache for {model_name_tc}"
+                self._model_load_running = True
+
+        # consume the queue
+        files = list(self._file_import_queue)
+        self._file_import_queue = []
 
         self.reset_task_state("File Import")
         self.bind_headless_main_window()

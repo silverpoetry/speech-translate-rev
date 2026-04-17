@@ -105,9 +105,19 @@
             </div>
 
             <div class="inline-actions import-actions">
-              <button class="btn-with-icon btn-major" data-action="import-files">导入并处理</button>
+              <button class="btn-with-icon btn-major" data-action="add-files-to-queue">导入</button>
+              <button class="btn-with-icon" data-action="start-import-queue">开始处理</button>
               <label class="toggle-row"><input id="transcribe_f_import" type="checkbox" /> 转写</label>
               <label class="toggle-row"><input id="translate_f_import" type="checkbox" /> 翻译</label>
+            </div>
+
+            <div class="file-queue-box" style="margin-top:8px;">
+              <div class="section-head">
+                <div><h4>导入文件队列</h4></div>
+              </div>
+              <div class="file-queue-body">
+                <ul id="file_import_list" style="list-style:none;margin:0;padding:6px 8px;max-height:160px;overflow:auto"></ul>
+              </div>
             </div>
 
             <div class="status-row import-status core-status-bottom">

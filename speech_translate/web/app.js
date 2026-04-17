@@ -15,6 +15,7 @@ const state = {
   initInFlight: null,
   autoSaveBound: false,
   autoSaveTimers: {},
+  fileImportQueue: [],
 };
 
 const els = {};
@@ -356,6 +357,31 @@ function renderImportSettings(data) {
     els.btnLoadModel.disabled = !hasModel;
     els.btnLoadModel.title = hasModel ? '加载模型' : '当前后端没有已下载模型';
   }
+
+  // render queued files list if provided by backend
+  try {
+    const queued = Array.isArray(importUi.queued_files) ? importUi.queued_files : [];
+    if (els.fileImportList) {
+      updateFileImportListUI(queued);
+      state.fileImportQueue = queued;
+    }
+  } catch (e) {
+    console.debug('Failed to render import queue', e);
+  }
+}
+
+function baseName(p) {
+  if (!p) return '';
+  const parts = String(p).split(/[/\\\\]/);
+  return parts[parts.length - 1] || p;
+}
+
+function updateFileImportListUI(files) {
+  if (!els.fileImportList) return;
+  const list = Array.isArray(files) ? files : [];
+  els.fileImportList.innerHTML = list
+    .map((f, idx) => `<li class="file-queue-item" data-index="${idx}">${escapeHtml(baseName(f))}</li>`)
+    .join('') || '<li class="file-queue-empty" style="color:var(--muted)">队列为空</li>';
 }
 
 function previewValue(value) {
@@ -1513,6 +1539,25 @@ function bindEvents() {
         await pickDirectory('model');
       } else if (action === 'pick-selenium-chrome-dir') {
         await pickDirectory('selenium_chrome');
+      } else if (action === 'add-files-to-queue') {
+        // Open file dialog and add selected files to backend queue
+        const result = await apiCall('add_files_to_import_queue');
+        if (!result || result.ok === false) {
+          throw new Error((result && result.message) || '导入失败');
+        }
+        // update queue UI from response
+        const files = result.files || [];
+        state.fileImportQueue = files;
+        updateFileImportListUI(files);
+        await refreshState();
+      } else if (action === 'start-import-queue') {
+        // Persist import settings then start processing queued files
+        await saveImportSettings();
+        const res = await apiCall('start_import_queue');
+        if (!res || res.ok === false) {
+          throw new Error((res && res.message) || '开始处理失败');
+        }
+        await refreshState();
       } else if (action === 'import-files') {
         await saveImportSettings();
         const importResult = await apiCall('import_files');
@@ -1741,6 +1786,7 @@ async function init() {
     els.modelManagerEnginePill = $('model-manager-engine-pill');
     els.modelManagerDownloadPill = $('model-manager-download-pill');
     els.fileExportDirPill = $('file-export-dir-pill');
+    els.fileImportList = $('file_import_list');
     els.modelManagerHint = $('model-manager-hint');
     els.modelStatusCard = $('model-status-card');
     els.globalModelState = $('global-model-state');
