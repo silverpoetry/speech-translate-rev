@@ -802,16 +802,24 @@ class AppState:
 
 
 class WebBridge(WebTaskBridge):
-    """Bridge exposed to the pywebview frontend."""
+    """
+    Bridge exposed to the pywebview frontend.
+    Handles all communication between the Web UI and the Python backend.
+    """
 
     def __init__(self):
         super().__init__()
+        # --- Lifecycle ---
         self._startup_t0: Optional[float] = None
         self._first_state_logged = False
         self._main_window_show_allowed = False
         self._main_geometry_lock = Lock()
         self._main_geometry_last_saved = ""
+        
+        # --- Detached Windows ---
         self.detached_window_manager = DetachedWindowManager(self)
+        
+        # --- Model Management ---
         self._model_status_cache: Dict[str, Dict[str, Any]] = {}
         self._model_download_running = False
         self._model_load_running = False
@@ -820,33 +828,31 @@ class WebBridge(WebTaskBridge):
         self._runtime_model_message = "模型未预加载"
         self._model_manager_engine = "whisper"
         self._model_manager_model = "small"
-        # file import queue for web UI: list of file paths awaiting processing
-        self._file_import_queue: List[str] = []
-        # When processing starts, this holds list of dicts: {"path": str, "name": str, "status": str}
-        self._processing_queue: List[Dict[str, Any]] = []
+        
+        # --- File Batch Processing ---
+        self._file_import_queue: List[Any] = []     # 全局全景队列 (容纳所有文件)
+        self._processing_queue: List[Dict] = []     # 当前正在处理的局部队列
+        
+        # --- Realtime Recording ---
+        self._record_worker_thread: Optional[Thread] = None
+        self.recording_state: Dict[str, Any] = {
+            "status": "Idle", "active": False, "device": "-", "lang_source": "-",
+            "lang_target": "-", "engine": "-", "mode": "-", "timer": "00:00:00",
+            "buffer": "0/0 sec", "sentences": "0",
+        }
+        
+        # --- Audio Devices ---
         self._audio_source_cache: Dict[str, Any] = {
-            "host_api_options": [],
-            "mic_options_by_host": {},
-            "speaker_options_by_host": {},
-            "mic_options_all": [],
-            "speaker_options_all": [],
+            "host_api_options": [], "mic_options_by_host": {}, "speaker_options_by_host": {},
+            "mic_options_all": [], "speaker_options_all": [],
         }
         self._audio_source_cache_ready = False
         self._audio_source_cache_loading = True
         Thread(target=self._prime_audio_source_cache, daemon=True).start()
-        self.recording_state: Dict[str, Any] = {
-            "status": "Idle",
-            "active": False,
-            "device": "-",
-            "lang_source": "-",
-            "lang_target": "-",
-            "engine": "-",
-            "mode": "-",
-            "timer": "00:00:00",
-            "buffer": "0/0 sec",
-            "sentences": "0",
-        }
-        self._record_worker_thread: Optional[Thread] = None
+
+    # =========================================================================
+    # SECTION 1: LIFECYCLE & WINDOW MANAGEMENT
+    # =========================================================================
 
     def set_startup_t0(self, started_at: float) -> None:
         self._startup_t0 = started_at
@@ -863,210 +869,47 @@ class WebBridge(WebTaskBridge):
         self._log_startup_marker(f"js_{label}")
         return {"ok": True, "marker": label}
 
-    def _wait_recording_idle(self, timeout_s: float = 12.0) -> bool:
-        """Wait until realtime recording resources are fully released."""
-        start_t = time()
-        while time() - start_t < timeout_s:
-            worker_alive = self._record_worker_thread is not None and self._record_worker_thread.is_alive()
-            stream_released = bc.stream is None
-            rec_flag_off = not bc.recording
-            if stream_released and rec_flag_off and not worker_alive:
-                return True
-            sleep(0.05)
-        return False
-
-    def update_task_message(self, message: str, source: str = "general"):
-        super().update_task_message(message, source=source)
-
-        text = str(message or "").strip()
-        if not text:
-            return
-
-        lowered = text.lower()
-        with self._lock:
-            if lowered.startswith("loading model and preparing pipeline"):
-                # Do not downgrade a warm model to loading when import starts.
-                if not self._runtime_model_loaded:
-                    self._model_load_running = True
-                    self._runtime_model_message = f"Loading model cache for {self._runtime_model_key}"
-                else:
-                    self._model_load_running = False
-                    self._runtime_model_message = f"Model ready: {self._runtime_model_key}"
-                return
-
-            if lowered.startswith("loading model:") or lowered.startswith("loading model cache for"):
-                candidate = text.split(":", 1)[1].strip() if ":" in text else ""
-                next_key = self._normalize_model_key(candidate) if candidate else self._runtime_model_key
-
-                if self._runtime_model_loaded and next_key and self._runtime_model_key == next_key:
-                    # Same model already resident: keep loaded state instead of flickering to loading.
-                    self._model_load_running = False
-                    self._runtime_model_message = f"Model ready: {self._runtime_model_key}"
-                else:
-                    self._runtime_model_key = next_key
-                    self._model_load_running = True
-                    self._runtime_model_loaded = False
-                    self._runtime_model_message = f"Loading model cache for {self._runtime_model_key}"
-                return
-
-            if lowered.startswith("model loaded:") or lowered.startswith("model ready:"):
-                # As soon as model init is done, show loaded even while file processing continues.
-                model_key = text.split(":", 1)[1].strip() if ":" in text else self._runtime_model_key
-                if model_key:
-                    self._runtime_model_key = self._normalize_model_key(model_key)
-                self._model_load_running = False
-                self._runtime_model_loaded = True
-                self._runtime_model_message = f"Model ready: {self._runtime_model_key}"
-                return
-
-            if lowered.startswith("model load failed"):
-                self._model_load_running = False
-                self._runtime_model_loaded = False
-                self._runtime_model_message = text
-                return
-
-    def _prime_audio_source_cache(self) -> None:
-        try:
-            host_api_options = get_host_apis()
-            mic_options_all = get_input_devices("")
-            speaker_options_all = get_output_devices("")
-
-            default_host_api = ""
-            default_mic = ""
-            default_speaker = ""
-
-            ok_default_host, default_host_info = get_default_host_api()
-            if ok_default_host and isinstance(default_host_info, dict):
-                default_host_api = str(default_host_info.get("name", ""))
-
-            ok_default_mic, default_mic_info = get_default_input_device()
-            if ok_default_mic and isinstance(default_mic_info, dict):
-                default_mic_name = str(default_mic_info.get("name", ""))
-                if default_mic_name:
-                    default_mic = next(
-                        (
-                            str(item)
-                            for item in mic_options_all
-                            if isinstance(item, str)
-                            and "[ID:" in item
-                            and default_mic_name.lower() in item.lower()
-                        ),
-                        "",
-                    )
-
-            ok_default_speaker, default_speaker_info = get_default_output_device()
-            if ok_default_speaker and isinstance(default_speaker_info, dict):
-                default_speaker_name = str(default_speaker_info.get("name", ""))
-                if default_speaker_name:
-                    default_speaker = next(
-                        (
-                            str(item)
-                            for item in speaker_options_all
-                            if isinstance(item, str)
-                            and "[ID:" in item
-                            and default_speaker_name.lower() in item.lower()
-                        ),
-                        "",
-                    )
-
-            mic_options_by_host: Dict[str, Any] = {}
-            speaker_options_by_host: Dict[str, Any] = {}
-            for host_api in host_api_options:
-                if isinstance(host_api, str) and host_api.startswith("["):
-                    continue
-                mic_options_by_host[host_api] = get_input_devices(str(host_api))
-                speaker_options_by_host[host_api] = get_output_devices(str(host_api))
-
-            self._audio_source_cache = {
-                "host_api_options": host_api_options,
-                "mic_options_by_host": mic_options_by_host,
-                "speaker_options_by_host": speaker_options_by_host,
-                "mic_options_all": mic_options_all,
-                "speaker_options_all": speaker_options_all,
-                "default_host_api": default_host_api,
-                "default_mic": default_mic,
-                "default_speaker": default_speaker,
-            }
-        except Exception as exc:
-            logger.exception(exc)
-            self._audio_source_cache = {
-                "host_api_options": [],
-                "mic_options_by_host": {},
-                "speaker_options_by_host": {},
-                "mic_options_all": ["[ERROR] Failed to load input devices"],
-                "speaker_options_all": ["[ERROR] Failed to load output devices"],
-                "default_host_api": "",
-                "default_mic": "",
-                "default_speaker": "",
-            }
-        finally:
-            self._audio_source_cache_loading = False
-            self._audio_source_cache_ready = True
-            try:
-                self._emit_ui_update(["state"])
-            except Exception:
-                pass
-
     def bind_window(self, window):
         super().bind_window(window)
         self._log_startup_marker("bind_window")
         try:
-            if hasattr(window, "events") and hasattr(window.events, "shown"):
-                window.events.shown += lambda *_: self._on_main_window_shown(window)
-            if hasattr(window, "events") and hasattr(window.events, "loaded"):
-                window.events.loaded += lambda *_: self._log_startup_marker("main_window_loaded")
-            if hasattr(window, "events") and hasattr(window.events, "closed"):
-                window.events.closed += lambda *_: self._save_main_window_geometry(force=True)
+            if hasattr(window, "events"):
+                if hasattr(window.events, "shown"):
+                    window.events.shown += lambda *_: self._on_main_window_shown(window)
+                if hasattr(window.events, "loaded"):
+                    window.events.loaded += lambda *_: self._log_startup_marker("main_window_loaded")
+                if hasattr(window.events, "closed"):
+                    window.events.closed += lambda *_: self._save_main_window_geometry(force=True)
         except Exception:
             pass
 
     def _on_main_window_shown(self, window) -> None:
         if not self._main_window_show_allowed:
-            try:
-                window.hide()
-            except Exception:
-                pass
+            try: window.hide()
+            except Exception: pass
         self._log_startup_marker("main_window_shown")
 
     def show_main_window(self) -> None:
         self._main_window_show_allowed = True
         window = self.get_window()
-        if window is None:
-            return
-
-        try:
-            window.show()
-        except Exception:
-            return
-
-        try:
-            window.bring_to_front()
-        except Exception:
-            pass
-
+        if not window: return
+        try: window.show()
+        except Exception: return
+        try: window.bring_to_front()
+        except Exception: pass
         self._log_startup_marker("main_window_shown_after_init")
 
     def _save_main_window_geometry(self, force: bool = False) -> None:
         window = self.get_window()
-        if window is None:
-            return
-
+        if window is None: return
         native_window = getattr(window, "native", None)
-        if native_window is None:
-            return
+        if native_window is None: return
 
-        width = None
-        height = None
-        raw_width = None
-        raw_height = None
-        scale_factor = 1.0
-
+        width, height, raw_width, raw_height, scale_factor = None, None, None, None, 1.0
         try:
             scale_factor = float(getattr(native_window, "scale_factor", 1.0) or 1.0)
-            if scale_factor <= 0:
-                scale_factor = 1.0
-        except Exception:
-            scale_factor = 1.0
+            if scale_factor <= 0: scale_factor = 1.0
+        except Exception: pass
 
         try:
             client_size = getattr(native_window, "ClientSize", None)
@@ -1075,474 +918,80 @@ class WebBridge(WebTaskBridge):
                 raw_height = int(getattr(client_size, "Height"))
                 width = int(round(raw_width / scale_factor))
                 height = int(round(raw_height / scale_factor))
-        except Exception:
-            width = None
-            height = None
+        except Exception: pass
 
         if width is None or height is None:
             try:
                 width = int(getattr(window, "width"))
                 height = int(getattr(window, "height"))
-            except Exception:
-                return
+            except Exception: return
 
         if width >= 600 and height >= 300:
             geometry = f"{width}x{height}"
             with self._main_geometry_lock:
-                if not force and geometry == self._main_geometry_last_saved:
-                    return
-
+                if not force and geometry == self._main_geometry_last_saved: return
                 self._main_geometry_last_saved = geometry
                 sj.save_key("mw_size", geometry)
-
-            logger.info(
-                f"[MainGeometry][save] logical={geometry} "
-                f"raw_client={raw_width}x{raw_height} scale_factor={scale_factor:.3f} force={force}"
-            )
+            logger.info(f"[MainGeometry][save] logical={geometry} raw_client={raw_width}x{raw_height} scale_factor={scale_factor:.3f} force={force}")
 
     def bind_tray(self, tray):
         super().bind_tray(tray)
 
-    def _resolve_model_dir(self) -> str:
-        configured = sj.cache.get("dir_model", "auto")
-        return configured if configured != "auto" else get_default_download_root()
+    def quit_app(self) -> None:
+        self.detached_window_manager.close_all()
+        if tray := self.get_tray():
+            try: tray.stop()
+            except Exception: pass
+        if window := self.get_window():
+            try:
+                self._save_main_window_geometry()
+                window.destroy()
+            except Exception: pass
 
-    def _get_model_manager_keys(self) -> list[str]:
-        base_models = ["tiny", "base", "small", "medium", "large-v1", "large-v2", "large-v3"]
-        result: list[str] = []
-        for model_key in base_models:
-            result.append(model_key)
-            if "large" not in model_key:
-                result.append(f"{model_key}.en")
-        return result
+    def open_directory(self, name: str) -> Dict[str, str]:
+        mapping = {"export": self._resolve_export_dir(), "log": self._resolve_log_dir(), "debug": dir_debug, "model": self._resolve_model_dir()}
+        if target := mapping.get(name): open_folder(target)
+        return {"target": target or ""}
 
-    def _verify_model_status(self, engine: str, model_key: str, model_dir: str) -> tuple[bool, str]:
+    def select_directory(self, name: str) -> Dict[str, Any]:
+        target_map = {
+            "export": ("dir_export", self._resolve_export_dir()),
+            "model": ("dir_model", self._resolve_model_dir()),
+            "selenium_chrome": ("selenium_chrome_user_data_dir", self._resolve_selenium_chrome_user_data_dir()),
+        }
+        setting_info = target_map.get(str(name or "").strip().lower())
+        if not setting_info: return {"ok": False, "message": "Unsupported directory target", "path": ""}
+        
+        setting_key, default_dir = setting_info
+        if not (window := self.get_window()): return {"ok": False, "message": "Window not ready", "path": ""}
+
         try:
-            if engine == "faster-whisper":
-                return verify_model_faster_whisper(model_key, model_dir), ""
-            return verify_model_whisper(model_key, model_dir), ""
+            webview = import_module("webview")
+            file_dialog = getattr(getattr(webview, "FileDialog", object), "FOLDER", webview.FOLDER_DIALOG)
+            selected = window.create_file_dialog(file_dialog, directory=default_dir)
         except Exception as exc:
             logger.exception(exc)
-            return False, str(exc)
+            return {"ok": False, "message": str(exc), "path": ""}
 
-    def _cache_model_status(
-        self,
-        engine: str,
-        model_key: str,
-        downloaded: bool,
-        error: str = "",
-        downloading: bool = False,
-        progress: Optional[float] = None,
-        speed: str = "",
-    ) -> None:
-        cache_key = f"{engine}:{model_key}"
-        if progress is None:
-            progress = 100.0 if downloaded else 0.0
-        self._model_status_cache[cache_key] = {
-            "engine": engine,
-            "model": model_key,
-            "downloaded": downloaded,
-            "error": error,
-            "downloading": downloading,
-            "progress": float(max(0.0, min(100.0, progress))),
-            "speed": speed,
-        }
+        if not selected: return {"ok": False, "message": "No folder selected", "path": default_dir}
+        selected_path = str(selected[0] if isinstance(selected, (list, tuple)) else selected).strip()
+        if not selected_path: return {"ok": False, "message": "No folder selected", "path": default_dir}
 
-    @staticmethod
-    def _path_size(path: str) -> int:
-        if not path:
-            return 0
-        if os.path.isfile(path):
-            try:
-                return os.path.getsize(path)
-            except Exception:
-                return 0
-        if os.path.isdir(path):
-            total = 0
-            for root, _dirs, files in os.walk(path):
-                for name in files:
-                    try:
-                        total += os.path.getsize(os.path.join(root, name))
-                    except Exception:
-                        pass
-            return total
-        return 0
+        sj.save_key(setting_key, selected_path)
+        if setting_key == "dir_model": self._model_status_cache.clear()
+        return {"ok": True, "message": "Directory selected", "path": selected_path, "setting": setting_key}
 
-    @staticmethod
-    def _fmt_bytes(value: float) -> str:
-        if value <= 0:
-            return "0 B"
-        units = ["B", "KB", "MB", "GB", "TB"]
-        size = float(value)
-        idx = 0
-        while size >= 1024.0 and idx < len(units) - 1:
-            size /= 1024.0
-            idx += 1
-        if idx == 0:
-            return f"{int(size)} {units[idx]}"
-        return f"{size:.1f} {units[idx]}"
+    def open_link(self, url: str) -> Dict[str, str]:
+        open_url(url)
+        return {"url": url}
 
-    def _estimate_total_whisper_bytes(self, model_key: str) -> int:
-        try:
-            from whisper import _MODELS  # pylint: disable=import-outside-toplevel
+    def notify(self, title: str, message: str) -> Dict[str, str]:
+        logger.info(f"{title}: {message}")
+        return {"title": title, "message": message}
 
-            url = _MODELS.get(model_key)
-            if not url:
-                return 0
-            req = Request(url, method="HEAD")
-            with urlopen(req, timeout=6) as resp:  # nosec B310
-                content_length = resp.headers.get("Content-Length")
-            return int(content_length) if content_length else 0
-        except Exception:
-            return 0
-
-    def _build_model_manager_state(self, engine_hint: Optional[str] = None, include_both: bool = False) -> Dict[str, Any]:
-        model_dir = self._resolve_model_dir()
-        engines = ["whisper", "faster-whisper"]
-        selected_engine = str(engine_hint or self._model_manager_engine or "whisper")
-        if selected_engine not in engines:
-            selected_engine = "whisper"
-        self._model_manager_engine = selected_engine
-
-        models = self._get_model_manager_keys()
-        selected_model = str(self._model_manager_model or "small")
-        if selected_model not in models:
-            selected_model = "small"
-        self._model_manager_model = selected_model
-
-        rows = []
-        row_engines = engines if include_both else [selected_engine]
-        for row_engine in row_engines:
-            for model_key in models:
-                cache_key = f"{row_engine}:{model_key}"
-                cached = self._model_status_cache.get(cache_key)
-                rows.append(
-                    {
-                        "model": model_key,
-                        "engine": row_engine,
-                        "downloaded": cached.get("downloaded") if cached else None,
-                        "downloading": cached.get("downloading") if cached else False,
-                        "progress": float(cached.get("progress", 0.0)) if cached else 0.0,
-                        "speed": str(cached.get("speed", "")) if cached else "",
-                        "error": cached.get("error") if cached else "",
-                    }
-                )
-
-        return {
-            "engine_options": engines,
-            "model_options": models,
-            "selected_engine": selected_engine,
-            "selected_model": selected_model,
-            "model_dir": model_dir,
-            "download_running": self._model_download_running,
-            "view_scope": "both" if include_both else "selected",
-            "rows": rows,
-        }
-
-    def _normalize_model_key(self, value: str) -> str:
-        if value in model_select_dict:
-            return model_select_dict[value]
-        if value in model_values:
-            return value
-        for display_name, model_key in model_select_dict.items():
-            if model_key == value:
-                return model_key
-        return value
-
-    def _normalize_engine_name(self, value: str) -> str:
-        if value in TL_ENGINE_SOURCE_DICT:
-            return value
-        return value
-
-    def _is_model_available_for_backend(self, model_key: str, backend: str, model_dir: str) -> bool:
-        if backend == "faster-whisper":
-            try:
-                return verify_model_faster_whisper(model_key, model_dir)
-            except Exception:
-                return False
-        return os.path.exists(os.path.join(model_dir, f"{model_key}.pt"))
-
-    def _build_import_ui(self, verify_available: bool = True) -> Dict[str, Any]:
-        settings = dict(sj.cache)
-        engine = self._normalize_engine_name(str(settings.get("tl_engine_f_import", "Selenium Chrome Translate")))
-        selected_model_display = str(settings.get("model_f_import", "")).strip()
-        model_name = self._normalize_model_key(selected_model_display)
-        backend = "faster-whisper" if bool(settings.get("use_faster_whisper", True)) else "whisper"
-        model_dir = self._resolve_model_dir()
-        downloadable_model_keys = list(model_select_dict.keys())
-        if verify_available:
-            available_model_display_names = []
-            for display_name in downloadable_model_keys:
-                key = self._normalize_model_key(display_name)
-                if self._is_model_available_for_backend(key, backend, model_dir):
-                    available_model_display_names.append(display_name)
-
-            if available_model_display_names:
-                if selected_model_display not in available_model_display_names:
-                    selected_model_display = available_model_display_names[0]
-                    model_name = self._normalize_model_key(selected_model_display)
-                else:
-                    model_name = self._normalize_model_key(selected_model_display)
-            else:
-                selected_model_display = ""
-                model_name = ""
-        else:
-            # Fast-start path: defer expensive model availability checks.
-            available_model_display_names = [selected_model_display] if selected_model_display else []
-
-        source_options = TL_ENGINE_SOURCE_DICT.get(engine, TL_ENGINE_SOURCE_DICT["Google Translate"])
-        target_options = TL_ENGINE_TARGET_DICT.get(engine, TL_ENGINE_TARGET_DICT["Google Translate"])
-        def _normalize_entry(e):
-            if isinstance(e, str):
-                return {"path": e, "name": os.path.basename(e), "status": "", "is_completed": False}
-            if isinstance(e, dict):
-                return {
-                    "path": e.get("path", ""),
-                    "name": e.get("name", os.path.basename(e.get("path", ""))),
-                    "status": e.get("status", ""),
-                    "is_completed": bool(e.get("is_completed", False)),
-                }
-            try:
-                s = str(e)
-            except Exception:
-                s = ""
-            return {"path": s, "name": os.path.basename(s), "status": "", "is_completed": False}
-
-        def _normalize_queue_list(qlist):
-            return [_normalize_entry(x) for x in (qlist or [])]
-
-        # Merge visible queue with processing queue: keep all items in _file_import_queue
-        # but overlay statuses from _processing_queue when available so completed
-        # items remain visible during processing.
-        def _merged_queue():
-            with self._lock:
-                main = _normalize_queue_list(self._file_import_queue)
-                proc = [_normalize_entry(x) for x in list(self._processing_queue or [])]
-
-            proc_map = {p.get("path"): p for p in proc if p.get("path")}
-
-            merged = []
-            seen = set()
-            for item in main:
-                path = item.get("path")
-                if path in proc_map:
-                    p = proc_map[path]
-                    item["status"] = p.get("status") or item.get("status")
-                    item["is_completed"] = bool(p.get("is_completed", item.get("is_completed", False)))
-                    if not item.get("name"):
-                        item["name"] = p.get("name", os.path.basename(path))
-                merged.append(item)
-                seen.add(path)
-
-            # Append any processing-only entries not present in main
-            for p in proc:
-                path = p.get("path")
-                if path and path not in seen:
-                    merged.append(p)
-
-            return merged
-
-        return {
-            "backend_options": ["whisper", "faster-whisper"],
-            "selected_backend": backend,
-            "model_options": available_model_display_names,
-            "engine_options": [
-                "Selenium Chrome Translate",
-                "Google Translate",
-                "MyMemoryTranslator",
-                "LibreTranslate",
-            ] + [x for x in model_select_dict.keys()],
-            "source_options": source_options,
-            "target_options": target_options,
-            "selected_model": selected_model_display,
-            "selected_model_key": model_name,
-            "selected_engine": engine,
-            "selected_source": settings.get("source_lang_f_import"),
-            "selected_target": settings.get("target_lang_f_import"),
-            "transcribe": settings.get("transcribe_f_import"),
-            "translate": settings.get("translate_f_import"),
-            "queued_files": _merged_queue(),
-        }
-
-    def get_import_ui_details(self) -> Dict[str, Any]:
-        return self._build_import_ui(verify_available=True)
-    def _get_full_display_queue(self) -> List[Dict[str, Any]]:
-        """获取完整的合并队列，用于 UI 渲染，确保已完成的旧文件不会消失"""
-        with self._lock:
-            display_list = []
-            # 1. 以全局总队列为基础底底盘
-            for q in getattr(self, "_file_import_queue", []):
-                if isinstance(q, str):
-                    display_list.append({"path": q, "name": os.path.basename(q), "status": "", "is_completed": False})
-                elif isinstance(q, dict):
-                    display_list.append({
-                        "path": q.get("path", ""),
-                        "name": q.get("name", os.path.basename(q.get("path", ""))),
-                        "status": q.get("status", ""),
-                        "is_completed": bool(q.get("is_completed", False))
-                    })
-                else:
-                    try:
-                        s = str(q)
-                        display_list.append({"path": s, "name": os.path.basename(s), "status": "", "is_completed": False})
-                    except Exception:
-                        pass
-
-            # 2. 如果当前有正在执行的批次，将最新状态实时覆盖上去
-            proc_queue = getattr(self, "_processing_queue", [])
-            if proc_queue:
-                proc_map = {p.get("path"): p for p in proc_queue if p.get("path")}
-                for item in display_list:
-                    path = item.get("path")
-                    if path in proc_map:
-                        p = proc_map[path]
-                        # 覆盖为执行中的最新状态
-                        item["status"] = str(p.get("status", item.get("status", "")))
-                        item["is_completed"] = bool(p.get("is_completed", item.get("is_completed", False)))
-                        
-            return display_list
-    def get_file_processing_state(self) -> Dict[str, Any]:
-        """Return the current processing queue and simple completion counts."""
-        # 统一使用全景视图
-        display_queue = self._get_full_display_queue()
-        total = len(display_queue)
-        completed = sum(1 for item in display_queue if item.get("is_completed", False))
-        
-        # active: we consider processing active when a processing queue exists and the processing flag is set
-        active = bool(getattr(self, "_processing_queue", None)) and bool(getattr(bc, "file_processing", False))
-        return {"ok": True, "files": display_queue, "files_total": total, "files_completed": completed, "active": active}
-    def _build_main_ui(self) -> Dict[str, Any]:
-        settings = dict(sj.cache)
-        return {
-            "input_options": ["mic", "speaker"],
-            "source_options": WHISPER_LANG_LIST,
-            "target_options": WHISPER_LANG_LIST,
-            "engine_options": ["Selenium Chrome Translate", "Google Translate", "MyMemoryTranslator", "LibreTranslate"],
-            "selected_input": settings.get("input"),
-            "selected_source": settings.get("source_lang_mw"),
-            "selected_target": settings.get("target_lang_mw"),
-            "selected_engine": settings.get("tl_engine_mw"),
-            "transcribe": settings.get("transcribe_mw", True),
-            "translate": settings.get("translate_mw", True),
-            "auto_scroll_log": settings.get("auto_scroll_log"),
-            "auto_refresh_log": settings.get("auto_refresh_log"),
-        }
-
-    def _build_record_device_ui(self, device: str) -> Dict[str, Any]:
-        settings = dict(sj.cache)
-        return {
-            "sample_rate": settings.get(f"sample_rate_{device}"),
-            "chunk_size": settings.get(f"chunk_size_{device}"),
-            "channels": settings.get(f"channels_{device}"),
-            "auto_sample_rate": settings.get(f"auto_sample_rate_{device}"),
-            "auto_channels": settings.get(f"auto_channels_{device}"),
-            "min_input": settings.get(f"min_input_length_{device}"),
-            "max_buffer": settings.get(f"max_buffer_{device}"),
-            "max_sentences": settings.get(f"max_sentences_{device}"),
-            "no_limit": settings.get(f"{device}_no_limit"),
-            "threshold_enable": settings.get(f"threshold_enable_{device}"),
-            "threshold_auto": settings.get(f"threshold_auto_{device}"),
-            "auto_break_buffer": settings.get(f"auto_break_buffer_{device}"),
-            "threshold_auto_level": settings.get(f"threshold_auto_level_{device}"),
-            "threshold_auto_silero": settings.get(f"threshold_auto_silero_{device}"),
-            "threshold_silero_min": settings.get(f"threshold_silero_{device}_min"),
-            "threshold_db": settings.get(f"threshold_db_{device}"),
-        }
-
-    def _build_audio_source_options(self, selected_host_api: Optional[str] = None) -> Dict[str, Any]:
-        settings = dict(sj.cache)
-        host_api = str(settings.get("hostAPI", "") if selected_host_api is None else selected_host_api)
-
-        host_api_options = self._audio_source_cache.get("host_api_options", [])
-        default_host_api = str(self._audio_source_cache.get("default_host_api", ""))
-        if not host_api_options:
-            fallback_host_api = str(settings.get("hostAPI", "") or host_api or "")
-            host_api_options = [fallback_host_api] if fallback_host_api else []
-        if host_api and host_api not in host_api_options:
-            host_api = ""
-        if not host_api and default_host_api in host_api_options:
-            host_api = default_host_api
-        if not host_api:
-            host_api = str(next((x for x in host_api_options if isinstance(x, str) and not x.startswith("[")), ""))
-
-        if host_api:
-            mic_options = self._audio_source_cache.get("mic_options_by_host", {}).get(host_api) or []
-            speaker_options = self._audio_source_cache.get("speaker_options_by_host", {}).get(host_api) or []
-        else:
-            mic_options = self._audio_source_cache.get("mic_options_all", [])
-            speaker_options = self._audio_source_cache.get("speaker_options_all", [])
-        if not mic_options:
-            fallback_mic = str(settings.get("mic", "") or "")
-            mic_options = [fallback_mic] if fallback_mic else []
-        if not speaker_options:
-            fallback_speaker = str(settings.get("speaker", "") or "")
-            speaker_options = [fallback_speaker] if fallback_speaker else []
-
-        selected_mic = settings.get("mic")
-        selected_speaker = settings.get("speaker")
-        default_mic = self._audio_source_cache.get("default_mic", "")
-        default_speaker = self._audio_source_cache.get("default_speaker", "")
-
-        if selected_mic not in mic_options:
-            selected_mic = default_mic if default_mic in mic_options else (mic_options[0] if mic_options else "")
-        if selected_speaker not in speaker_options:
-            selected_speaker = default_speaker if default_speaker in speaker_options else (
-                speaker_options[0] if speaker_options else ""
-            )
-
-        return {
-            "host_api_options": host_api_options,
-            "mic_options": mic_options,
-            "speaker_options": speaker_options,
-            "selected_host_api": host_api,
-            "selected_mic": selected_mic,
-            "selected_speaker": selected_speaker,
-        }
-
-    def _build_record_ui(self) -> Dict[str, Any]:
-        settings = dict(sj.cache)
-        audio_sources = self._build_audio_source_options()
-        return {
-            "input": settings.get("input"),
-            "host_api": settings.get("hostAPI"),
-            "mic": settings.get("mic"),
-            "speaker": settings.get("speaker"),
-            "host_api_options": audio_sources.get("host_api_options", []),
-            "mic_options": audio_sources.get("mic_options", []),
-            "speaker_options": audio_sources.get("speaker_options", []),
-            "verbose_record": settings.get("verbose_record"),
-            "transcribe_rate": settings.get("transcribe_rate"),
-            "model_device_preference": settings.get("model_device_preference", "auto"),
-            "model_device_options": ["auto", "cpu", "cuda"],
-            "separate_with": settings.get("separate_with"),
-            "use_temp": settings.get("use_temp"),
-            "keep_temp": settings.get("keep_temp"),
-            "file_use_official_whisper": settings.get("file_use_official_whisper", False),
-            "show_audio_visualizer_in_setting": settings.get("show_audio_visualizer_in_setting"),
-            "mic_device": self._build_record_device_ui("mic"),
-            "speaker_device": self._build_record_device_ui("speaker"),
-        }
-
-    def _build_runtime_model_state(self) -> Dict[str, Any]:
-        loaded = bool(self._runtime_model_loaded)
-        loading = bool(self._model_load_running) and not loaded
-        return {
-            "key": self._runtime_model_key,
-            "loading": loading,
-            "loaded": loaded,
-            "message": self._runtime_model_message,
-        }
-
-    def _build_about(self) -> Dict[str, Any]:
-        return {
-            "name": APP_NAME,
-            "version": __version__,
-            "os": f"{system()} {release()} {version()}",
-            "cpu": processor(),
-            "log_file": self.get_log_file_name(),
-            "model_dir": self._resolve_model_dir(),
-            "export_dir": self._resolve_export_dir(),
-        }
+    # =========================================================================
+    # SECTION 2: SYSTEM & SETTINGS STATE GENERATION
+    # =========================================================================
 
     def _resolve_export_dir(self) -> str:
         configured = sj.cache.get("dir_export", "auto")
@@ -1554,131 +1003,7 @@ class WebBridge(WebTaskBridge):
 
     def _resolve_selenium_chrome_user_data_dir(self) -> str:
         configured = str(sj.cache.get("selenium_chrome_user_data_dir", "") or "").strip()
-        if configured:
-            return configured
-        return str(Path(dir_user) / "selenium_chrome_profile")
-
-    def get_state(self) -> Dict[str, Any]:
-        state_t0 = time()
-        settings = dict(sj.cache)
-        t_settings = time()
-        compact_settings = {
-            "theme": settings.get("theme"),
-            "log_level": settings.get("log_level"),
-            "dir_export": settings.get("dir_export"),
-            "dir_model": settings.get("dir_model"),
-            "export_to": settings.get("export_to"),
-            "source_lang_mw": settings.get("source_lang_mw"),
-            "target_lang_mw": settings.get("target_lang_mw"),
-            "input": settings.get("input"),
-            "tl_engine_mw": settings.get("tl_engine_mw"),
-            "transcribe_mw": settings.get("transcribe_mw", True),
-            "translate_mw": settings.get("translate_mw", True),
-            "auto_scroll_log": settings.get("auto_scroll_log"),
-            "auto_refresh_log": settings.get("auto_refresh_log"),
-            "source_lang_f_import": settings.get("source_lang_f_import"),
-            "target_lang_f_import": settings.get("target_lang_f_import"),
-            "transcribe_f_import": settings.get("transcribe_f_import"),
-            "translate_f_import": settings.get("translate_f_import"),
-            "tl_engine_f_import": settings.get("tl_engine_f_import"),
-            "model_f_import": settings.get("model_f_import"),
-            "selenium_compact_level": settings.get("selenium_compact_level", 2),
-            "selenium_z_order_mode": settings.get("selenium_z_order_mode", "behind-main"),
-            "selenium_auto_close_on_task_done": settings.get("selenium_auto_close_on_task_done", True),
-            "selenium_chrome_user_data_dir": settings.get("selenium_chrome_user_data_dir", ""),
-            "enable_initial_prompt": settings.get("enable_initial_prompt", False),
-            "initial_prompts_map": settings.get("initial_prompts_map", {}),
-            "condition_on_previous_text": settings.get("condition_on_previous_text", True),
-        }
-
-        import_ui = self._build_import_ui(verify_available=False)
-        t_import = time()
-        main_ui = self._build_main_ui()
-        t_main = time()
-        record_ui = self._build_record_ui()
-        t_record = time()
-        runtime_model = self._build_runtime_model_state()
-        t_runtime = time()
-        live_ui = self.snapshot_live_state()
-        t_live = time()
-        about = self._build_about()
-        t_about = time()
-        current_log = self.get_log_file_name()
-        log_content = self.get_log_content()
-        t_log = time()
-
-        result = asdict(
-            AppState(
-                app_name=APP_NAME,
-                version=__version__,
-                os_name=system(),
-                os_release=release(),
-                os_version=version(),
-                cpu=processor(),
-                settings=compact_settings,
-                import_ui=import_ui,
-                main_ui=main_ui,
-                record_ui=record_ui,
-                runtime_model=runtime_model,
-                live_ui=live_ui,
-                about=about,
-                log_level=sj.cache.get("log_level", "DEBUG"),
-                current_log=current_log,
-                log_content=log_content,
-            )
-        )
-        result["detached_config"] = {
-            "tc": self.get_detached_config("tc"),
-            "tl": self.get_detached_config("tl"),
-        }
-
-        if not self._first_state_logged:
-            self._first_state_logged = True
-            self._log_startup_marker("first_get_state")
-            logger.debug(
-                "[StartupState] get_state breakdown ms: "
-                f"settings={int((t_settings - state_t0) * 1000)} "
-                f"import_ui={int((t_import - t_settings) * 1000)} "
-                f"main_ui={int((t_main - t_import) * 1000)} "
-                f"record_ui={int((t_record - t_main) * 1000)} "
-                f"runtime_model={int((t_runtime - t_record) * 1000)} "
-                f"live_ui={int((t_live - t_runtime) * 1000)} "
-                f"about={int((t_about - t_live) * 1000)} "
-                f"log={int((t_log - t_about) * 1000)} "
-                f"total={int((t_log - state_t0) * 1000)}"
-            )
-        return result
-
-    def get_log_file_name(self) -> str:
-        from speech_translate._logging import current_log
-
-        return current_log
-
-    def get_log_content(self) -> str:
-        from speech_translate._logging import current_log
-
-        log_path = Path(dir_log) / current_log
-        try:
-            content = log_path.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            return f"Log file not found: {log_path}"
-        except Exception as exc:
-            logger.exception(exc)
-            return f"Failed to read log file: {exc}"
-
-        if len(content) > 200000:
-            content = content[-200000:]
-        return content
-
-    def refresh_log(self) -> Dict[str, str]:
-        return {"content": self.get_log_content(), "file": self.get_log_file_name()}
-
-    def clear_log(self) -> Dict[str, str]:
-        from speech_translate._logging import clear_current_log_file
-
-        clear_current_log_file()
-        logger.info("Log cleared from web UI")
-        return self.refresh_log()
+        return configured if configured else str(Path(dir_user) / "selenium_chrome_profile")
 
     def get_setting(self, key: str) -> Any:
         return sj.cache.get(key)
@@ -1686,46 +1011,29 @@ class WebBridge(WebTaskBridge):
     def set_setting(self, key: str, value: Any) -> Dict[str, Any]:
         if key == "selenium_settings":
             payload = value if isinstance(value, dict) else {}
-
-            try:
-                compact = int(payload.get("compact_level", 2))
-            except Exception:
-                compact = 2
-            compact = max(0, min(3, compact))
-
+            compact = max(0, min(3, int(payload.get("compact_level", 2))))
             z_order_raw = str(payload.get("z_order_mode", "behind-main")).strip().lower()
-            allowed_z = {"normal", "behind-main", "bottom"}
-            z_order = z_order_raw if z_order_raw in allowed_z else "behind-main"
-
+            z_order = z_order_raw if z_order_raw in {"normal", "behind-main", "bottom"} else "behind-main"
             auto_close = bool(payload.get("auto_close_on_task_done", True))
-            chrome_user_data_dir = str(payload.get("chrome_user_data_dir", "") or "").strip()
+            chrome_user_data_dir = str(payload.get("chrome_user_data_dir", "")).strip()
 
-            # Keep Selenium settings update atomic under a single API request.
             sj.save_key("selenium_compact_level", compact)
             sj.save_key("selenium_z_order_mode", z_order)
             sj.save_key("selenium_auto_close_on_task_done", auto_close)
             sj.save_key("selenium_chrome_user_data_dir", chrome_user_data_dir)
 
-            return {
-                "key": key,
-                "value": {
-                    "selenium_compact_level": sj.cache.get("selenium_compact_level", compact),
-                    "selenium_z_order_mode": sj.cache.get("selenium_z_order_mode", z_order),
-                    "selenium_auto_close_on_task_done": sj.cache.get("selenium_auto_close_on_task_done", auto_close),
-                    "selenium_chrome_user_data_dir": sj.cache.get("selenium_chrome_user_data_dir", chrome_user_data_dir),
-                },
-            }
+            return {"key": key, "value": {
+                "selenium_compact_level": sj.cache.get("selenium_compact_level", compact),
+                "selenium_z_order_mode": sj.cache.get("selenium_z_order_mode", z_order),
+                "selenium_auto_close_on_task_done": sj.cache.get("selenium_auto_close_on_task_done", auto_close),
+                "selenium_chrome_user_data_dir": sj.cache.get("selenium_chrome_user_data_dir", chrome_user_data_dir),
+            }}
 
         if key == "selenium_compact_level":
-            try:
-                value = int(value)
-            except Exception:
-                value = 2
             value = max(0, min(3, int(value)))
         elif key == "selenium_z_order_mode":
-            allowed = {"normal", "behind-main", "bottom"}
             as_text = str(value).strip().lower()
-            value = as_text if as_text in allowed else "behind-main"
+            value = as_text if as_text in {"normal", "behind-main", "bottom"} else "behind-main"
         elif key == "selenium_auto_close_on_task_done":
             value = bool(value)
         elif key == "selenium_chrome_user_data_dir":
@@ -1734,7 +1042,6 @@ class WebBridge(WebTaskBridge):
         sj.save_key(key, value)
         if key == "log_level":
             from speech_translate._logging import change_log_level
-
             change_log_level(str(value))
         return {"key": key, "value": sj.cache.get(key)}
 
@@ -1745,18 +1052,417 @@ class WebBridge(WebTaskBridge):
         return {"key": key, "value": sj.cache.get(key)}
 
     def set_record_setting(self, key: str, value: Any) -> Dict[str, Any]:
-        logger.debug(f"[webview_app.set_record_setting] request key={key} value={value}")
         if key == "model_device_preference":
             normalized = str(value or "auto").strip().lower()
             value = normalized if value in {"auto", "cpu", "cuda"} else "auto"
         sj.save_key(key, value)
-        logger.debug(f"[webview_app.set_record_setting] saved key={key} value={sj.cache.get(key)}")
         return {"key": key, "value": sj.cache.get(key)}
+
+    def get_log_file_name(self) -> str:
+        from speech_translate._logging import current_log
+        return current_log
+
+    def get_log_content(self) -> str:
+        from speech_translate._logging import current_log
+        log_path = Path(dir_log) / current_log
+        try: content = log_path.read_text(encoding="utf-8")
+        except FileNotFoundError: return f"Log file not found: {log_path}"
+        except Exception as exc:
+            logger.exception(exc)
+            return f"Failed to read log file: {exc}"
+
+        return content[-200000:] if len(content) > 200000 else content
+
+    def refresh_log(self) -> Dict[str, str]:
+        return {"content": self.get_log_content(), "file": self.get_log_file_name()}
+
+    def clear_log(self) -> Dict[str, str]:
+        from speech_translate._logging import clear_current_log_file
+        clear_current_log_file()
+        logger.info("Log cleared from web UI")
+        return self.refresh_log()
+
+    def get_state(self) -> Dict[str, Any]:
+        state_t0 = time()
+        settings = dict(sj.cache)
+        t_settings = time()
+        
+        compact_settings = {
+            "theme": settings.get("theme"), "log_level": settings.get("log_level"), "dir_export": settings.get("dir_export"),
+            "dir_model": settings.get("dir_model"), "export_to": settings.get("export_to"), "source_lang_mw": settings.get("source_lang_mw"),
+            "target_lang_mw": settings.get("target_lang_mw"), "input": settings.get("input"), "tl_engine_mw": settings.get("tl_engine_mw"),
+            "transcribe_mw": settings.get("transcribe_mw", True), "translate_mw": settings.get("translate_mw", True),
+            "auto_scroll_log": settings.get("auto_scroll_log"), "auto_refresh_log": settings.get("auto_refresh_log"),
+            "source_lang_f_import": settings.get("source_lang_f_import"), "target_lang_f_import": settings.get("target_lang_f_import"),
+            "transcribe_f_import": settings.get("transcribe_f_import"), "translate_f_import": settings.get("translate_f_import"),
+            "tl_engine_f_import": settings.get("tl_engine_f_import"), "model_f_import": settings.get("model_f_import"),
+            "selenium_compact_level": settings.get("selenium_compact_level", 2), "selenium_z_order_mode": settings.get("selenium_z_order_mode", "behind-main"),
+            "selenium_auto_close_on_task_done": settings.get("selenium_auto_close_on_task_done", True), "selenium_chrome_user_data_dir": settings.get("selenium_chrome_user_data_dir", ""),
+            "enable_initial_prompt": settings.get("enable_initial_prompt", False), "initial_prompts_map": settings.get("initial_prompts_map", {}),
+            "condition_on_previous_text": settings.get("condition_on_previous_text", True),
+        }
+
+        import_ui, t_import = self._build_import_ui(verify_available=False), time()
+        main_ui, t_main = self._build_main_ui(), time()
+        record_ui, t_record = self._build_record_ui(), time()
+        runtime_model, t_runtime = self._build_runtime_model_state(), time()
+        live_ui, t_live = self.snapshot_live_state(), time()
+        about, t_about = self._build_about(), time()
+        current_log, log_content, t_log = self.get_log_file_name(), self.get_log_content(), time()
+
+        result = asdict(AppState(
+            app_name=APP_NAME, version=__version__, os_name=system(), os_release=release(),
+            os_version=version(), cpu=processor(), settings=compact_settings, import_ui=import_ui,
+            main_ui=main_ui, record_ui=record_ui, runtime_model=runtime_model, live_ui=live_ui,
+            about=about, log_level=sj.cache.get("log_level", "DEBUG"), current_log=current_log, log_content=log_content,
+        ))
+        result["detached_config"] = {"tc": self.get_detached_config("tc"), "tl": self.get_detached_config("tl")}
+
+        if not self._first_state_logged:
+            self._first_state_logged = True
+            self._log_startup_marker("first_get_state")
+        return result
+
+    def reload_state(self) -> Dict[str, Any]:
+        return self.get_state()
+
+    def get_task_state(self) -> Dict[str, Any]:
+        return self.snapshot_task_state()
+
+    def get_live_state(self) -> Dict[str, Any]:
+        return self.snapshot_live_state()
+
+    def _build_main_ui(self) -> Dict[str, Any]:
+        s = dict(sj.cache)
+        return {
+            "input_options": ["mic", "speaker"], "source_options": WHISPER_LANG_LIST, "target_options": WHISPER_LANG_LIST,
+            "engine_options": ["Selenium Chrome Translate", "Google Translate", "MyMemoryTranslator", "LibreTranslate"],
+            "selected_input": s.get("input"), "selected_source": s.get("source_lang_mw"), "selected_target": s.get("target_lang_mw"),
+            "selected_engine": s.get("tl_engine_mw"), "transcribe": s.get("transcribe_mw", True), "translate": s.get("translate_mw", True),
+            "auto_scroll_log": s.get("auto_scroll_log"), "auto_refresh_log": s.get("auto_refresh_log"),
+        }
+
+    def _build_record_device_ui(self, device: str) -> Dict[str, Any]:
+        s = dict(sj.cache)
+        return {
+            "sample_rate": s.get(f"sample_rate_{device}"), "chunk_size": s.get(f"chunk_size_{device}"), "channels": s.get(f"channels_{device}"),
+            "auto_sample_rate": s.get(f"auto_sample_rate_{device}"), "auto_channels": s.get(f"auto_channels_{device}"),
+            "min_input": s.get(f"min_input_length_{device}"), "max_buffer": s.get(f"max_buffer_{device}"), "max_sentences": s.get(f"max_sentences_{device}"),
+            "no_limit": s.get(f"{device}_no_limit"), "threshold_enable": s.get(f"threshold_enable_{device}"), "threshold_auto": s.get(f"threshold_auto_{device}"),
+            "auto_break_buffer": s.get(f"auto_break_buffer_{device}"), "threshold_auto_level": s.get(f"threshold_auto_level_{device}"),
+            "threshold_auto_silero": s.get(f"threshold_auto_silero_{device}"), "threshold_silero_min": s.get(f"threshold_silero_{device}_min"),
+            "threshold_db": s.get(f"threshold_db_{device}"),
+        }
+
+    def _build_record_ui(self) -> Dict[str, Any]:
+        s = dict(sj.cache)
+        audio_sources = self._build_audio_source_options()
+        return {
+            "input": s.get("input"), "host_api": s.get("hostAPI"), "mic": s.get("mic"), "speaker": s.get("speaker"),
+            "host_api_options": audio_sources.get("host_api_options", []), "mic_options": audio_sources.get("mic_options", []),
+            "speaker_options": audio_sources.get("speaker_options", []), "verbose_record": s.get("verbose_record"),
+            "transcribe_rate": s.get("transcribe_rate"), "model_device_preference": s.get("model_device_preference", "auto"),
+            "model_device_options": ["auto", "cpu", "cuda"], "separate_with": s.get("separate_with"),
+            "use_temp": s.get("use_temp"), "keep_temp": s.get("keep_temp"), "file_use_official_whisper": s.get("file_use_official_whisper", False),
+            "show_audio_visualizer_in_setting": s.get("show_audio_visualizer_in_setting"),
+            "mic_device": self._build_record_device_ui("mic"), "speaker_device": self._build_record_device_ui("speaker"),
+        }
+
+    def _build_about(self) -> Dict[str, Any]:
+        return {
+            "name": APP_NAME, "version": __version__, "os": f"{system()} {release()} {version()}", "cpu": processor(),
+            "log_file": self.get_log_file_name(), "model_dir": self._resolve_model_dir(), "export_dir": self._resolve_export_dir(),
+        }
+
+    # =========================================================================
+    # SECTION 3: AUDIO DEVICE SCANNING
+    # =========================================================================
+
+    def _prime_audio_source_cache(self) -> None:
+        try:
+            host_api_options = get_host_apis()
+            mic_options_all = get_input_devices("")
+            speaker_options_all = get_output_devices("")
+
+            ok_host, host_info = get_default_host_api()
+            default_host_api = str(host_info.get("name", "")) if ok_host and isinstance(host_info, dict) else ""
+
+            def find_default(device_info, all_options):
+                if not device_info or not isinstance(device_info, dict): return ""
+                name = str(device_info.get("name", ""))
+                return next((str(item) for item in all_options if isinstance(item, str) and "[ID:" in item and name.lower() in item.lower()), "") if name else ""
+
+            default_mic = find_default(get_default_input_device()[1], mic_options_all)
+            default_speaker = find_default(get_default_output_device()[1], speaker_options_all)
+
+            mic_options_by_host, speaker_options_by_host = {}, {}
+            for host_api in host_api_options:
+                if isinstance(host_api, str) and not host_api.startswith("["):
+                    mic_options_by_host[host_api] = get_input_devices(str(host_api))
+                    speaker_options_by_host[host_api] = get_output_devices(str(host_api))
+
+            self._audio_source_cache = {
+                "host_api_options": host_api_options, "mic_options_by_host": mic_options_by_host,
+                "speaker_options_by_host": speaker_options_by_host, "mic_options_all": mic_options_all,
+                "speaker_options_all": speaker_options_all, "default_host_api": default_host_api,
+                "default_mic": default_mic, "default_speaker": default_speaker,
+            }
+        except Exception as exc:
+            logger.exception(exc)
+            self._audio_source_cache = {
+                "host_api_options": [], "mic_options_by_host": {}, "speaker_options_by_host": {},
+                "mic_options_all": ["[ERROR] Failed to load input devices"], "speaker_options_all": ["[ERROR] Failed to load output devices"],
+                "default_host_api": "", "default_mic": "", "default_speaker": "",
+            }
+        finally:
+            self._audio_source_cache_loading = False
+            self._audio_source_cache_ready = True
+            try: self._emit_ui_update(["state"])
+            except Exception: pass
+
+    def _build_audio_source_options(self, selected_host_api: Optional[str] = None) -> Dict[str, Any]:
+        s = dict(sj.cache)
+        host_api = str(selected_host_api if selected_host_api is not None else s.get("hostAPI", ""))
+        host_api_options = self._audio_source_cache.get("host_api_options", [])
+        
+        if not host_api or host_api not in host_api_options:
+            host_api = str(self._audio_source_cache.get("default_host_api", "")) or str(next((x for x in host_api_options if isinstance(x, str) and not x.startswith("[")), ""))
+
+        if host_api:
+            mic_options = self._audio_source_cache.get("mic_options_by_host", {}).get(host_api) or []
+            speaker_options = self._audio_source_cache.get("speaker_options_by_host", {}).get(host_api) or []
+        else:
+            mic_options = self._audio_source_cache.get("mic_options_all", [])
+            speaker_options = self._audio_source_cache.get("speaker_options_all", [])
+
+        selected_mic, selected_speaker = s.get("mic"), s.get("speaker")
+        if selected_mic not in mic_options:
+            selected_mic = self._audio_source_cache.get("default_mic", "") if self._audio_source_cache.get("default_mic", "") in mic_options else (mic_options[0] if mic_options else "")
+        if selected_speaker not in speaker_options:
+            selected_speaker = self._audio_source_cache.get("default_speaker", "") if self._audio_source_cache.get("default_speaker", "") in speaker_options else (speaker_options[0] if speaker_options else "")
+
+        return {
+            "host_api_options": host_api_options, "mic_options": mic_options, "speaker_options": speaker_options,
+            "selected_host_api": host_api, "selected_mic": selected_mic, "selected_speaker": selected_speaker,
+        }
+
+    def get_audio_source_options(self, host_api: Optional[str] = None) -> Dict[str, Any]:
+        return self._build_audio_source_options(host_api)
+
+    # =========================================================================
+    # SECTION 4: MODEL MANAGEMENT
+    # =========================================================================
+
+    def _resolve_model_dir(self) -> str:
+        configured = sj.cache.get("dir_model", "auto")
+        return configured if configured != "auto" else get_default_download_root()
+
+    def _get_model_manager_keys(self) -> list[str]:
+        base_models = ["tiny", "base", "small", "medium", "large-v1", "large-v2", "large-v3"]
+        return [m if "large" in m else f"{m}.en" for m in base_models] + base_models # Returns both .en and standard
+
+    def _normalize_model_key(self, value: str) -> str:
+        if value in model_select_dict: return model_select_dict[value]
+        if value in model_values: return value
+        for display_name, model_key in model_select_dict.items():
+            if model_key == value: return model_key
+        return value
+
+    def _normalize_engine_name(self, value: str) -> str:
+        return value
+
+    def _is_model_available_for_backend(self, model_key: str, backend: str, model_dir: str) -> bool:
+        if backend == "faster-whisper":
+            try: return verify_model_faster_whisper(model_key, model_dir)
+            except Exception: return False
+        return os.path.exists(os.path.join(model_dir, f"{model_key}.pt"))
+
+    def _verify_model_status(self, engine: str, model_key: str, model_dir: str) -> tuple[bool, str]:
+        try:
+            return (verify_model_faster_whisper(model_key, model_dir) if engine == "faster-whisper" else verify_model_whisper(model_key, model_dir)), ""
+        except Exception as exc:
+            return False, str(exc)
+
+    def _cache_model_status(self, engine: str, model_key: str, downloaded: bool, error: str = "", downloading: bool = False, progress: Optional[float] = None, speed: str = "") -> None:
+        if progress is None: progress = 100.0 if downloaded else 0.0
+        self._model_status_cache[f"{engine}:{model_key}"] = {
+            "engine": engine, "model": model_key, "downloaded": downloaded, "error": error,
+            "downloading": downloading, "progress": float(max(0.0, min(100.0, progress))), "speed": speed,
+        }
+
+    @staticmethod
+    def _path_size(path: str) -> int:
+        if not path: return 0
+        if os.path.isfile(path): return os.path.getsize(path)
+        if os.path.isdir(path): return sum(os.path.getsize(os.path.join(root, f)) for root, _, files in os.walk(path) for f in files)
+        return 0
+
+    @staticmethod
+    def _fmt_bytes(value: float) -> str:
+        if value <= 0: return "0 B"
+        for unit in ["B", "KB", "MB", "GB", "TB"]:
+            if value < 1024.0: return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
+            value /= 1024.0
+        return f"{value:.1f} PB"
+
+    def _estimate_total_whisper_bytes(self, model_key: str) -> int:
+        try:
+            from whisper import _MODELS
+            if url := _MODELS.get(model_key):
+                with urlopen(Request(url, method="HEAD"), timeout=6) as resp:
+                    return int(resp.headers.get("Content-Length", 0))
+        except Exception: pass
+        return 0
+
+    def _build_model_manager_state(self, engine_hint: Optional[str] = None, include_both: bool = False) -> Dict[str, Any]:
+        self._model_manager_engine = str(engine_hint or self._model_manager_engine or "whisper")
+        if self._model_manager_engine not in {"whisper", "faster-whisper"}: self._model_manager_engine = "whisper"
+        
+        models = self._get_model_manager_keys()
+        self._model_manager_model = str(self._model_manager_model or "small")
+        if self._model_manager_model not in models: self._model_manager_model = "small"
+
+        rows = []
+        for row_engine in (["whisper", "faster-whisper"] if include_both else [self._model_manager_engine]):
+            for m_key in models:
+                cached = self._model_status_cache.get(f"{row_engine}:{m_key}")
+                rows.append({
+                    "model": m_key, "engine": row_engine, "downloaded": cached.get("downloaded") if cached else None,
+                    "downloading": cached.get("downloading", False) if cached else False,
+                    "progress": float(cached.get("progress", 0.0)) if cached else 0.0,
+                    "speed": str(cached.get("speed", "")) if cached else "",
+                    "error": cached.get("error", "") if cached else "",
+                })
+
+        return {
+            "engine_options": ["whisper", "faster-whisper"], "model_options": models,
+            "selected_engine": self._model_manager_engine, "selected_model": self._model_manager_model,
+            "model_dir": self._resolve_model_dir(), "download_running": self._model_download_running,
+            "view_scope": "both" if include_both else "selected", "rows": rows,
+        }
+
+    def _build_runtime_model_state(self) -> Dict[str, Any]:
+        loaded = bool(self._runtime_model_loaded)
+        return {"key": self._runtime_model_key, "loading": bool(self._model_load_running) and not loaded, "loaded": loaded, "message": self._runtime_model_message}
+
+    def get_model_manager_state(self, engine: Optional[str] = None) -> Dict[str, Any]:
+        if engine is not None: self._model_manager_engine = str(engine)
+        return self._build_model_manager_state(engine)
+
+    def get_runtime_model_state(self) -> Dict[str, Any]:
+        return self._build_runtime_model_state()
+
+    def check_model(self, model_key: str, engine: str = "whisper") -> Dict[str, Any]:
+        engine = engine.strip().lower()
+        self._model_manager_engine = engine if engine in {"whisper", "faster-whisper"} else "whisper"
+        self._model_manager_model = model_key
+
+        downloaded, error = self._verify_model_status(self._model_manager_engine, model_key, self._resolve_model_dir())
+        self._cache_model_status(self._model_manager_engine, model_key, downloaded, error, downloading=False)
+        state = self._build_model_manager_state(self._model_manager_engine)
+        state["checked"] = {"model": model_key, "engine": self._model_manager_engine, "downloaded": downloaded, "error": error}
+        return state
+
+    def check_all_models(self, engine: str = "whisper") -> Dict[str, Any]:
+        engine = engine.strip().lower()
+        if engine not in {"whisper", "faster-whisper", "both"}: engine = "whisper"
+        if engine != "both": self._model_manager_engine = engine
+
+        model_dir = self._resolve_model_dir()
+        for target_engine in (["whisper", "faster-whisper"] if engine == "both" else [engine]):
+            for m_key in self._get_model_manager_keys():
+                dl, err = self._verify_model_status(target_engine, m_key, model_dir)
+                self._cache_model_status(target_engine, m_key, dl, err, downloading=False)
+
+        return self._build_model_manager_state(self._model_manager_engine, include_both=(engine == "both"))
+
+    def download_model(self, model_key: str, engine: str = "whisper") -> Dict[str, Any]:
+        engine = engine.strip().lower()
+        engine = engine if engine in {"whisper", "faster-whisper"} else "whisper"
+        if self._model_download_running: return {"ok": False, "message": "Another download is running"}
+
+        self._model_manager_engine = engine
+        self._model_manager_model = model_key
+
+        def worker():
+            self._model_download_running = True
+            try:
+                model_dir = self._resolve_model_dir()
+                os.makedirs(model_dir, exist_ok=True)
+                self.reset_task_state("Model Download")
+                self.update_task_message(f"Preparing download for {model_key} ({engine})")
+                self.update_task_progress(5)
+
+                total_bytes = 0
+                if engine == "whisper":
+                    from whisper import _MODELS
+                    if not (url := _MODELS.get(model_key)): raise ValueError(f"Invalid model key: {model_key}")
+                    observe_path = os.path.join(model_dir, os.path.basename(url))
+                    total_bytes = self._estimate_total_whisper_bytes(model_key)
+                else:
+                    from faster_whisper.utils import _MODELS as FW_MODELS
+                    from huggingface_hub.file_download import repo_folder_name
+                    if not (repo_id := FW_MODELS.get(model_key)): raise ValueError(f"Invalid model key: {model_key}")
+                    observe_path = os.path.join(model_dir, repo_folder_name(repo_id=repo_id, repo_type="model"))
+
+                self._cache_model_status(engine, model_key, False, downloading=True, progress=5, speed="-")
+                result_box = {"ok": False, "error": None}
+
+                def _do_download():
+                    try:
+                        if engine == "whisper":
+                            from whisper import _MODELS, _download
+                            _download(_MODELS.get(model_key), model_dir, False)
+                        else:
+                            from faster_whisper.utils import download_model as fw_download_model
+                            fw_download_model(model_key, cache_dir=model_dir)
+                        result_box["ok"] = True
+                    except Exception as exc: result_box["error"] = exc
+
+                dl_thread = Thread(target=_do_download, daemon=True)
+                dl_thread.start()
+
+                last_bytes, last_time, start_t = 0, time(), time()
+                while dl_thread.is_alive():
+                    sleep(0.6)
+                    current_bytes, now = self._path_size(observe_path), time()
+                    speed_bps = max(0, current_bytes - last_bytes) / max(0.2, now - last_time)
+                    speed_text = f"{self._fmt_bytes(speed_bps)}/s" if speed_bps > 0 else "-"
+                    progress = min(95.0, max(5.0, (current_bytes / total_bytes * 95.0) if total_bytes > 0 else (5.0 + (now - start_t) * 0.9)))
+                    size_text = f"{self._fmt_bytes(current_bytes)}/{self._fmt_bytes(total_bytes)}" if total_bytes > 0 else self._fmt_bytes(current_bytes)
+
+                    self._cache_model_status(engine, model_key, False, downloading=True, progress=progress, speed=speed_text)
+                    self.update_task_progress(progress)
+                    self.update_task_message(f"Downloading {model_key} ({engine}) | {size_text} | speed {speed_text}")
+                    last_bytes, last_time = current_bytes, now
+
+                dl_thread.join()
+                if result_box.get("error"): raise cast(Exception, result_box["error"])
+
+                self.update_task_progress(90)
+                downloaded, error = False, ""
+                for _ in range(8):
+                    if downloaded := self._verify_model_status(engine, model_key, model_dir)[0]: break
+                    sleep(0.5)
+
+                self._cache_model_status(engine, model_key, downloaded, error, downloading=False, progress=100.0 if downloaded else 0.0, speed="-")
+                if not downloaded: raise RuntimeError(error or "Verification failed")
+
+                self.update_task_progress(100)
+                self.finish_task(f"Model downloaded: {model_key} ({engine})")
+            except Exception as exc:
+                logger.exception(exc)
+                self._cache_model_status(engine, model_key, False, str(exc), downloading=False)
+                self.update_task_error(str(exc))
+            finally:
+                self._model_download_running = False
+
+        Thread(target=worker, daemon=True).start()
+        return {"ok": True, "message": "Model download started", "model": model_key, "engine": engine}
 
     def load_runtime_model(self, model_key: str) -> Dict[str, Any]:
         model_key = self._normalize_model_key(str(model_key))
-        if self._model_load_running:
-            return {"ok": False, "message": "Another model load is already running"}
+        if self._model_load_running: return {"ok": False, "message": "Another load is running"}
 
         self._model_load_running = True
         sj.save_key("model_mw", model_key)
@@ -1768,19 +1474,16 @@ class WebBridge(WebTaskBridge):
         def worker():
             try:
                 whisper_load_api = _get_whisper_load_api()
-                settings = cast(SettingDict, self.get_settings_snapshot())
-                settings["model_mw"] = model_key
-                settings["model_f_import"] = model_key
-                engine = self._normalize_engine_name(str(settings.get("tl_engine_mw", "Google Translate")))
-                tl_engine_whisper = engine in model_values
-                is_tc = bool(settings.get("transcribe_mw", True))
-                is_tl = bool(settings.get("translate_mw", True))
-
-                model_args = whisper_load_api.get_model_args(settings)
+                s = cast(SettingDict, self.get_settings_snapshot())
+                s["model_mw"] = s["model_f_import"] = model_key
+                engine = self._normalize_engine_name(str(s.get("tl_engine_mw", "Google Translate")))
+                
                 self.reset_task_state("Model Load")
                 self.update_task_message(f"Loading model cache for {model_key}")
                 self.update_task_progress(5)
-                whisper_load_api.get_model(is_tc, is_tl, tl_engine_whisper, model_key, engine, settings, **model_args)
+                
+                whisper_load_api.get_model(bool(s.get("transcribe_mw", True)), bool(s.get("translate_mw", True)), engine in model_values, model_key, engine, s, **whisper_load_api.get_model_args(s))
+                
                 self.update_task_progress(100)
                 self.finish_task(f"Model ready: {model_key}")
                 self._runtime_model_loaded = True
@@ -1796,283 +1499,76 @@ class WebBridge(WebTaskBridge):
         Thread(target=worker, daemon=True).start()
         return {"ok": True, "message": "Model loading started", "model": model_key}
 
-    def get_audio_source_options(self, host_api: Optional[str] = None) -> Dict[str, Any]:
-        return self._build_audio_source_options(host_api)
-
-    def get_model_manager_state(self, engine: Optional[str] = None) -> Dict[str, Any]:
-        if engine is not None:
-            self._model_manager_engine = str(engine)
-        return self._build_model_manager_state(engine)
-
-    def check_model(self, model_key: str, engine: str = "whisper") -> Dict[str, Any]:
-        engine = str(engine).strip().lower()
-        if engine not in {"whisper", "faster-whisper"}:
-            engine = "whisper"
-        self._model_manager_engine = engine
-        self._model_manager_model = model_key
-
-        model_dir = self._resolve_model_dir()
-        downloaded, error = self._verify_model_status(engine, model_key, model_dir)
-        self._cache_model_status(engine, model_key, downloaded, error, downloading=False)
-        state = self._build_model_manager_state(engine)
-        state["checked"] = {"model": model_key, "engine": engine, "downloaded": downloaded, "error": error}
-        return state
-
-    def check_all_models(self, engine: str = "whisper") -> Dict[str, Any]:
-        engine = str(engine).strip().lower()
-        if engine not in {"whisper", "faster-whisper", "both"}:
-            engine = "whisper"
-        if engine in {"whisper", "faster-whisper"}:
-            self._model_manager_engine = engine
-
-        model_dir = self._resolve_model_dir()
-        engines_to_check = ["whisper", "faster-whisper"] if engine == "both" else [engine]
-        for target_engine in engines_to_check:
-            for model_key in self._get_model_manager_keys():
-                downloaded, error = self._verify_model_status(target_engine, model_key, model_dir)
-                self._cache_model_status(target_engine, model_key, downloaded, error, downloading=False)
-
-        return self._build_model_manager_state(self._model_manager_engine, include_both=(engine == "both"))
-
-    def download_model(self, model_key: str, engine: str = "whisper") -> Dict[str, Any]:
-        engine = str(engine).strip().lower()
-        if engine not in {"whisper", "faster-whisper"}:
-            engine = "whisper"
-
-        if self._model_download_running:
-            return {"ok": False, "message": "Another model download is already running"}
-
-        self._model_manager_engine = engine
-        self._model_manager_model = model_key
-
-        def worker():
-            self._model_download_running = True
-            try:
-                model_dir = self._resolve_model_dir()
-                os.makedirs(model_dir, exist_ok=True)
-
-                self.reset_task_state("Model Download")
-                self.update_task_message(f"Preparing download for {model_key} ({engine})")
-                self.update_task_progress(5)
-
-                # Track current download progress so card-level progress bars can update.
-                total_bytes = 0
-                observe_path = ""
-                if engine == "whisper":
-                    from whisper import _MODELS  # pylint: disable=import-outside-toplevel
-
-                    model_url = _MODELS.get(model_key)
-                    if model_url is None:
-                        raise ValueError(f"Invalid Whisper model key: {model_key}")
-                    observe_path = os.path.join(model_dir, os.path.basename(model_url))
-                    total_bytes = self._estimate_total_whisper_bytes(model_key)
+    # =========================================================================
+    # SECTION 5: REALTIME RECORDING
+    # =========================================================================
+    def _wait_recording_idle(self, timeout_s: float = 12.0) -> bool:
+        """等待实时录音资源完全释放，防止与文件处理发生资源抢占"""
+        start_t = time()
+        while time() - start_t < timeout_s:
+            worker_alive = self._record_worker_thread is not None and self._record_worker_thread.is_alive()
+            stream_released = getattr(bc, "stream", None) is None
+            rec_flag_off = not getattr(bc, "recording", False)
+            if stream_released and rec_flag_off and not worker_alive:
+                return True
+            sleep(0.05)
+        return False
+    def update_task_message(self, message: str, source: str = "general"):
+        super().update_task_message(message, source=source)
+        text = str(message or "").strip()
+        if not text: return
+        lowered = text.lower()
+        with self._lock:
+            if lowered.startswith("loading model and preparing pipeline"):
+                if not self._runtime_model_loaded:
+                    self._model_load_running = True
+                    self._runtime_model_message = f"Loading model cache for {self._runtime_model_key}"
                 else:
-                    from faster_whisper.utils import _MODELS as FW_MODELS  # pylint: disable=import-outside-toplevel
-                    from huggingface_hub.file_download import repo_folder_name  # pylint: disable=import-outside-toplevel
-
-                    repo_id = FW_MODELS.get(model_key)
-                    if repo_id is None:
-                        raise ValueError(f"Invalid Faster-Whisper model key: {model_key}")
-                    observe_path = os.path.join(model_dir, repo_folder_name(repo_id=repo_id, repo_type="model"))
-
-                self._cache_model_status(
-                    engine,
-                    model_key,
-                    downloaded=False,
-                    error="",
-                    downloading=True,
-                    progress=5,
-                    speed="-",
-                )
-
-                result_box: Dict[str, Any] = {"ok": False, "error": None}
-
-                def _do_download() -> None:
-                    try:
-                        if engine == "whisper":
-                            from whisper import _MODELS, _download  # pylint: disable=import-outside-toplevel
-
-                            url = _MODELS.get(model_key)
-                            if url is None:
-                                raise ValueError(f"Invalid Whisper model key: {model_key}")
-                            _download(url, model_dir, False)
-                        else:
-                            from faster_whisper.utils import download_model as fw_download_model  # pylint: disable=import-outside-toplevel
-
-                            fw_download_model(
-                                model_key,
-                                cache_dir=model_dir,
-                            )
-                        result_box["ok"] = True
-                    except Exception as exc:
-                        result_box["error"] = exc
-
-                dl_thread = Thread(target=_do_download, daemon=True)
-                dl_thread.start()
-
-                download_started_at = time()
-                last_bytes = 0
-                last_time = time()
-                while dl_thread.is_alive():
-                    sleep(0.6)
-                    now = time()
-                    current_bytes = self._path_size(observe_path)
-                    delta_bytes = max(0, current_bytes - last_bytes)
-                    delta_t = max(0.2, now - last_time)
-                    speed_bps = delta_bytes / delta_t
-                    speed_text = f"{self._fmt_bytes(speed_bps)}/s" if speed_bps > 0 else "-"
-
-                    if total_bytes > 0:
-                        progress = min(95.0, max(5.0, (current_bytes / total_bytes) * 95.0))
-                        size_text = f"{self._fmt_bytes(current_bytes)}/{self._fmt_bytes(total_bytes)}"
-                    else:
-                        progress = min(95.0, max(5.0, 5.0 + (now - download_started_at) * 0.9))
-                        size_text = self._fmt_bytes(current_bytes)
-
-                    self._cache_model_status(
-                        engine,
-                        model_key,
-                        downloaded=False,
-                        error="",
-                        downloading=True,
-                        progress=progress,
-                        speed=speed_text,
-                    )
-                    self.update_task_progress(progress)
-                    self.update_task_message(
-                        f"Downloading {model_key} ({engine}) | {size_text} | speed {speed_text}"
-                    )
-
-                    last_bytes = current_bytes
-                    last_time = now
-
-                dl_thread.join()
-                if result_box.get("error") is not None:
-                    raise cast(Exception, result_box["error"])
-
-                self.update_task_progress(90)
-                downloaded = False
-                error = ""
-                # Hugging Face cache finalization can lag slightly after downloader returns.
-                # Retry a few times to avoid false negative verification.
-                for _ in range(8):
-                    downloaded, error = self._verify_model_status(engine, model_key, model_dir)
-                    if downloaded:
-                        break
-                    sleep(0.5)
-
-                self._cache_model_status(
-                    engine,
-                    model_key,
-                    downloaded,
-                    error,
-                    downloading=False,
-                    progress=100.0 if downloaded else 0.0,
-                    speed="-",
-                )
-                if not downloaded:
-                    raise RuntimeError(error or "Download finished but verification failed")
-
-                self.update_task_progress(100)
-                self.finish_task(f"Model downloaded: {model_key} ({engine})")
-            except Exception as exc:
-                logger.exception(exc)
-                self._cache_model_status(engine, model_key, False, str(exc), downloading=False)
-                self.update_task_error(str(exc))
-            finally:
-                self._model_download_running = False
-
-        Thread(target=worker, daemon=True).start()
-        return {"ok": True, "message": "Model download started", "model": model_key, "engine": engine}
-
-    def open_directory(self, name: str) -> Dict[str, str]:
-        mapping = {
-            "export": self._resolve_export_dir(),
-            "log": self._resolve_log_dir(),
-            "debug": dir_debug,
-            "model": self._resolve_model_dir(),
-        }
-        target = mapping.get(name)
-        if target:
-            open_folder(target)
-        return {"target": target or ""}
-
-    def select_directory(self, name: str) -> Dict[str, Any]:
-        target_map = {
-            "export": ("dir_export", self._resolve_export_dir()),
-            "model": ("dir_model", self._resolve_model_dir()),
-            "selenium_chrome": ("selenium_chrome_user_data_dir", self._resolve_selenium_chrome_user_data_dir()),
-        }
-        setting_info = target_map.get(str(name or "").strip().lower())
-        if setting_info is None:
-            return {"ok": False, "message": "Unsupported directory target", "path": ""}
-
-        setting_key, default_dir = setting_info
-        window = self.get_window()
-        if window is None:
-            return {"ok": False, "message": "Window not ready", "path": ""}
-
-        try:
-            webview = import_module("webview")
-            file_dialog = getattr(getattr(webview, "FileDialog", object), "FOLDER", webview.FOLDER_DIALOG)
-            selected = window.create_file_dialog(file_dialog, directory=default_dir)
-        except Exception as exc:
-            logger.exception(exc)
-            return {"ok": False, "message": str(exc), "path": ""}
-
-        if not selected:
-            return {"ok": False, "message": "No folder selected", "path": default_dir}
-
-        selected_path = selected[0] if isinstance(selected, (list, tuple)) else selected
-        selected_path = str(selected_path or "").strip()
-        if not selected_path:
-            return {"ok": False, "message": "No folder selected", "path": default_dir}
-
-        sj.save_key(setting_key, selected_path)
-        if setting_key == "dir_model":
-            self._model_status_cache.clear()
-
-        return {"ok": True, "message": "Directory selected", "path": selected_path, "setting": setting_key}
-
-    def open_link(self, url: str) -> Dict[str, str]:
-        open_url(url)
-        return {"url": url}
-
-    def notify(self, title: str, message: str) -> Dict[str, str]:
-        logger.info(f"{title}: {message}")
-        return {"title": title, "message": message}
-
-    def reload_state(self) -> Dict[str, Any]:
-        return self.get_state()
-
-    def get_task_state(self) -> Dict[str, Any]:
-        return self.snapshot_task_state()
-
-    def get_runtime_model_state(self) -> Dict[str, Any]:
-        return self._build_runtime_model_state()
-
-    def get_live_state(self) -> Dict[str, Any]:
-        return self.snapshot_live_state()
+                    self._model_load_running = False
+                    self._runtime_model_message = f"Model ready: {self._runtime_model_key}"
+                return
+            if lowered.startswith("loading model:") or lowered.startswith("loading model cache for"):
+                candidate = text.split(":", 1)[1].strip() if ":" in text else ""
+                next_key = self._normalize_model_key(candidate) if candidate else self._runtime_model_key
+                if self._runtime_model_loaded and next_key and self._runtime_model_key == next_key:
+                    self._model_load_running = False
+                    self._runtime_model_message = f"Model ready: {self._runtime_model_key}"
+                else:
+                    self._runtime_model_key = next_key
+                    self._model_load_running = True
+                    self._runtime_model_loaded = False
+                    self._runtime_model_message = f"Loading model cache for {self._runtime_model_key}"
+                return
+            if lowered.startswith("model loaded:") or lowered.startswith("model ready:"):
+                self._runtime_model_key = self._normalize_model_key(text.split(":", 1)[1].strip() if ":" in text else self._runtime_model_key)
+                self._model_load_running = False
+                self._runtime_model_loaded = True
+                self._runtime_model_message = f"Model ready: {self._runtime_model_key}"
+                return
+            if lowered.startswith("model load failed"):
+                self._model_load_running = False
+                self._runtime_model_loaded = False
+                self._runtime_model_message = text
+                return
 
     def set_recording_state(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         status_text = str(payload.get("status", "")).lower()
         with self._lock:
             self.recording_state.update(payload)
-            if "active" not in payload:
-                self.recording_state["active"] = bool(bc.recording)
-            # Recording session loads model internally; reflect that in runtime model status.
+            if "active" not in payload: self.recording_state["active"] = bool(bc.recording)
+            
             if "initializing" in status_text:
                 self._model_load_running = True
                 self._runtime_model_loaded = False
-                if self._runtime_model_key:
-                    self._runtime_model_message = f"Loading model cache for {self._runtime_model_key}"
-            elif "recording" in status_text or "transcrib" in status_text or "translat" in status_text:
+                if self._runtime_model_key: self._runtime_model_message = f"Loading model cache for {self._runtime_model_key}"
+            elif any(x in status_text for x in ["recording", "transcrib", "translat"]):
                 self._model_load_running = False
                 if self._runtime_model_key:
                     self._runtime_model_loaded = True
                     self._runtime_model_message = f"Model ready: {self._runtime_model_key}"
             elif "stopped" in status_text:
                 self._model_load_running = False
+                
         self._emit_ui_update(["task"])
         return {"ok": True}
 
@@ -2080,259 +1576,194 @@ class WebBridge(WebTaskBridge):
         with self._lock:
             return dict(self.recording_state)
 
-    def create_recording_window(self) -> Dict[str, Any]:
-        self.detached_window_manager.create_recording_window()
-        return {"ok": True}
-
-    def quit_app(self) -> None:
-        # Close detached windows first
-        self.detached_window_manager.close_all()
-        
-        tray = self.get_tray()
-        if tray is not None:
-            try:
-                tray.stop()
-            except Exception:
-                pass
-        window = self.get_window()
-        if window is not None:
-            try:
-                self._save_main_window_geometry()
-                window.destroy()
-            except Exception:
-                pass
-
-    def import_files(self, files: Optional[list[str]] = None) -> Dict[str, Any]:
-        # If stop was just requested, wait for realtime recorder to fully release audio/model resources.
-        if not self._wait_recording_idle(timeout_s=12.0):
-            return {
-                "ok": False,
-                "message": "Recording is still cleaning up resources. Please try file import again in a few seconds.",
-            }
-
-        if self._model_load_running:
-            return {
-                "ok": False,
-                "message": "Model loading is still in progress. Please wait before starting file import.",
-            }
-
-        rec_state = self.get_recording_state()
-        rec_status = str(rec_state.get("status", "")).lower()
-        rec_active = bool(rec_state.get("active", False)) or bool(bc.recording)
-        if rec_active or rec_status in {"stopping...", "initializing recording..."}:
-            return {
-                "ok": False,
-                "message": "Recording is still running or stopping. Please wait a moment before importing files.",
-            }
-
-        if not files:
-            window = self.get_window()
-            if window is None:
-                return {"ok": False, "message": "Window not ready"}
-            webview = import_module("webview")
-            file_dialog = getattr(getattr(webview, "FileDialog", object), "OPEN", webview.OPEN_DIALOG)
-            files = window.create_file_dialog(
-                file_dialog,
-                allow_multiple=True,
-                file_types=[
-                    "Media Files (*.wav;*.mp3;*.ogg;*.flac;*.aac;*.wma;*.m4a;*.mp4;*.mkv;*.avi;*.mov;*.webm)",
-                    "All Files (*.*)",
-                ],
-            )
-
-        if not files:
-            return {"ok": False, "message": "No files selected"}
-
-        from speech_translate.utils.audio import file as audio_file_module
+    def start_recording(self, device: str = "mic", lang_source: str = "English", lang_target: str = "Indonesian", engine: str = "Selenium Chrome Translate", is_tc: bool = True, is_tl: bool = True) -> Dict[str, Any]:
+        from speech_translate.utils.audio.record import record_session
         from speech_translate.utils.whisper.helper import model_keys
 
-        settings = self.get_settings_snapshot()
-        lang_source = str(settings.get("source_lang_f_import", "English"))
-        lang_target = str(settings.get("target_lang_f_import", "Indonesian"))
-        is_tc = bool(settings.get("transcribe_f_import", True))
-        is_tl = bool(settings.get("translate_f_import", True))
-        engine = str(settings.get("tl_engine_f_import", "Google Translate"))
-        model_name_tc = self._normalize_model_key(str(settings.get("model_f_import", "")))
-        engine = self._normalize_model_key(engine)
-        needs_runtime_model = bool(is_tc) or (bool(is_tl) and engine in model_keys)
+        if bc.recording: return {"ok": False, "message": "Already recording"}
 
-        if needs_runtime_model:
-            same_model_loaded = bool(self._runtime_model_loaded) and self._runtime_model_key == model_name_tc
-            self._runtime_model_key = model_name_tc
-            if same_model_loaded:
-                self._model_load_running = False
-                self._runtime_model_message = f"Model ready: {model_name_tc}"
-            else:
-                self._runtime_model_loaded = False
-                self._runtime_model_message = f"Loading model cache for {model_name_tc}"
-                self._model_load_running = True
+        s = self.get_settings_snapshot()
+        lang_source = str(s.get("source_lang_mw", lang_source))
+        lang_target = str(s.get("target_lang_mw", lang_target))
+        device = str(s.get("input", device))
+        engine = self._normalize_engine_name(str(s.get("tl_engine_mw", engine)))
+        is_tc = bool(s.get("transcribe_mw", is_tc))
+        is_tl = bool(s.get("translate_mw", is_tl))
+        model_name_tc = self._normalize_model_key(str(s.get("model_mw", "")))
+        self._runtime_model_key = model_name_tc
 
-        self.reset_task_state("File Import")
+        if not is_tc and not is_tl: return {"ok": False, "message": "Please enable Transcribe or Translate"}
+
+        cached_bundle = False
+        try:
+            whisper_load_api = _get_whisper_load_api()
+            cached_bundle = whisper_load_api.is_model_bundle_cached(is_tc, is_tl, engine in model_values, model_name_tc, engine, cast(SettingDict, s), **whisper_load_api.get_model_args(cast(SettingDict, s)))
+        except Exception: pass
+
+        if cached_bundle:
+            self._model_load_running = False
+            self._runtime_model_loaded = True
+            self._runtime_model_message = f"Model ready: {self._runtime_model_key}"
+
         self.bind_headless_main_window()
+        bc.tc_sentences = []
+        bc.tl_sentences = []
+        self.clear_live()
+        bc.enable_rec()
+        
+        self.reset_task_state("Recording")
+        self.set_recording_state({
+            "status": "Preparing recording..." if cached_bundle else "Initializing recording...", "active": True,
+            "device": device, "lang_source": lang_source, "lang_target": lang_target, "engine": engine,
+            "mode": "Transcribe & Translate" if is_tc and is_tl else "Transcribe" if is_tc else "Translate",
+            "timer": "00:00:00", "buffer": "0/0 sec", "sentences": "0",
+        })
 
-        # Replace tkinter-dependent dialogs in this module with headless adapters.
-        audio_file_module.FileProcessDialog = (
-            lambda master, title, mode, headers: HeadlessFileProcessDialog(master, title, mode, headers, bridge=self)
-        )
-        audio_file_module.mbox = headless_mbox
+        import speech_translate.utils.audio.record as record_module
+        record_module.mbox = lambda *args, **kwargs: True
 
         def worker():
             try:
-                bc.enable_file_process()
-                audio_file_module.process_file(list(files), model_name_tc, lang_source, lang_target, is_tc, is_tl, engine)
-                summary_parts = []
-                if is_tc:
-                    summary_parts.append(f"{bc.file_tced_counter} transcribed")
-                if is_tl:
-                    summary_parts.append(f"{bc.file_tled_counter} translated")
-                summary = ", ".join(summary_parts) if summary_parts else "no output generated"
-                self.finish_task(f"File import finished: {summary}")
-                if needs_runtime_model:
-                    self._runtime_model_loaded = True
-                    self._runtime_model_message = f"Model ready: {model_name_tc}"
+                record_session(lang_source, lang_target, engine, model_name_tc, device, is_tc, is_tl, device.lower() == "speaker")
+                self.finish_task("Recording finished")
             except Exception as exc:
                 logger.exception(exc)
-                logger.error(f"File import failed: {exc}")
                 self.update_task_error(str(exc))
-                if needs_runtime_model:
-                    self._runtime_model_loaded = False
-                    self._runtime_model_message = f"Model load failed: {exc}"
             finally:
-                bc.disable_file_process()
-                if needs_runtime_model:
-                    self._model_load_running = False
-                auto_close_selenium = bool(self.get_settings_snapshot().get("selenium_auto_close_on_task_done", True))
-                if auto_close_selenium and is_tl and engine == "Selenium Chrome Translate":
+                bc.disable_rec()
+                self.set_recording_state({"status": "Stopped", "active": False})
+                if bool(self.get_settings_snapshot().get("selenium_auto_close_on_task_done", True)) and is_tl and engine == "Selenium Chrome Translate":
                     shutdown_selenium_translator()
+                self._record_worker_thread = None
 
-        Thread(target=worker, daemon=True).start()
+        self._record_worker_thread = Thread(target=worker, daemon=True)
+        self._record_worker_thread.start()
+        return {"ok": True, "device": device, "engine_whisper": engine in model_keys, "message": "Recording started"}
+
+    def stop_recording(self) -> Dict[str, Any]:
+        if not bc.recording: return {"ok": False, "message": "Not currently recording"}
+        self.set_recording_state({"status": "Stopping...", "active": False})
+        bc.disable_rec()
+        
+        if self._wait_recording_idle(timeout_s=12.0):
+            self.set_recording_state({"status": "Stopped", "active": False})
+            if bool(self.get_settings_snapshot().get("selenium_auto_close_on_task_done", True)) and self._normalize_engine_name(str(self.get_settings_snapshot().get("tl_engine_mw", ""))) == "Selenium Chrome Translate":
+                shutdown_selenium_translator()
+            return {"ok": True, "message": "Recording stopped"}
+        return {"ok": True, "message": "Stop requested; cleanup is still finishing in background"}
+
+    # =========================================================================
+    # SECTION 6: BATCH FILE PROCESSING QUEUE & UI SYNC
+    # =========================================================================
+
+    def _build_import_ui(self, verify_available: bool = True) -> Dict[str, Any]:
+        s = dict(sj.cache)
+        engine = self._normalize_engine_name(str(s.get("tl_engine_f_import", "Selenium Chrome Translate")))
+        selected_model_display = str(s.get("model_f_import", "")).strip()
+        model_name = self._normalize_model_key(selected_model_display)
+        backend = "faster-whisper" if bool(s.get("use_faster_whisper", True)) else "whisper"
+        
+        available_model_display_names = []
+        if verify_available:
+            model_dir = self._resolve_model_dir()
+            for display_name in list(model_select_dict.keys()):
+                if self._is_model_available_for_backend(self._normalize_model_key(display_name), backend, model_dir):
+                    available_model_display_names.append(display_name)
+            if available_model_display_names:
+                if selected_model_display not in available_model_display_names:
+                    selected_model_display = available_model_display_names[0]
+                model_name = self._normalize_model_key(selected_model_display)
+            else:
+                selected_model_display = model_name = ""
+        else:
+            available_model_display_names = [selected_model_display] if selected_model_display else []
+
         return {
-            "ok": True,
-            "count": len(files),
-            "engine_whisper": engine in model_keys,
-            "message": "File import started",
+            "backend_options": ["whisper", "faster-whisper"], "selected_backend": backend,
+            "model_options": available_model_display_names, "selected_model": selected_model_display, "selected_model_key": model_name,
+            "engine_options": ["Selenium Chrome Translate", "Google Translate", "MyMemoryTranslator", "LibreTranslate"] + list(model_select_dict.keys()),
+            "selected_engine": engine, "source_options": TL_ENGINE_SOURCE_DICT.get(engine, TL_ENGINE_SOURCE_DICT["Google Translate"]),
+            "target_options": TL_ENGINE_TARGET_DICT.get(engine, TL_ENGINE_TARGET_DICT["Google Translate"]),
+            "selected_source": s.get("source_lang_f_import"), "selected_target": s.get("target_lang_f_import"),
+            "transcribe": s.get("transcribe_f_import"), "translate": s.get("translate_f_import"),
+            "queued_files": self._get_full_display_queue(),
         }
 
-    def stop_import_queue(self) -> Dict[str, Any]:
-        """Request cancellation of current file import processing.
-
-        This will signal the file-processing worker to stop by clearing the
-        `file_processing` flag. The worker checks that flag and will exit
-        gracefully; we also emit an UI update so the web UI can reflect the
-        cancellation immediately.
-        """
+    def _get_full_display_queue(self) -> List[Dict[str, Any]]:
+        """获取完整的合并队列，用于 UI 渲染，确保已完成的旧文件不会消失"""
         with self._lock:
-            processing_exists = bool(getattr(self, "_processing_queue", None)) and len(getattr(self, "_processing_queue", [])) > 0
-        if not processing_exists:
-            return {"ok": False, "message": "No import is running"}
+            display_list = []
+            for q in getattr(self, "_file_import_queue", []):
+                if isinstance(q, str):
+                    display_list.append({"path": q, "name": os.path.basename(q), "status": "", "is_completed": False})
+                elif isinstance(q, dict):
+                    display_list.append({
+                        "path": q.get("path", ""), "name": q.get("name", os.path.basename(q.get("path", ""))),
+                        "status": q.get("status", ""), "is_completed": bool(q.get("is_completed", False))
+                    })
+                else:
+                    try: display_list.append({"path": str(q), "name": os.path.basename(str(q)), "status": "", "is_completed": False})
+                    except Exception: pass
 
-        # Signal cancellation
-        bc.disable_file_process()
+            if proc_queue := getattr(self, "_processing_queue", []):
+                proc_map = {p.get("path"): p for p in proc_queue if p.get("path")}
+                for item in display_list:
+                    if path := item.get("path"):
+                        if path in proc_map:
+                            p = proc_map[path]
+                            item["status"] = str(p.get("status", item.get("status", "")))
+                            item["is_completed"] = bool(p.get("is_completed", item.get("is_completed", False)))
+            return display_list
 
-        # Mark items as cancelled for immediate UI feedback
-        with self._lock:
-            try:
-                for item in getattr(self, "_processing_queue", []) or []:
-                    item["status"] = "Cancelled"
-            except Exception:
-                pass
-
-        # Update task message and push a UI refresh
-        try:
-            self.update_task_message("Cancelling file import...", source="import")
-        except Exception:
-            pass
-
-        try:
-            self._emit_ui_update(["import"])
-        except Exception:
-            pass
-
-        return {"ok": True, "message": "Cancel requested"}
-
-    def remove_file_from_import_queue(self, index: Optional[int] = None) -> Dict[str, Any]:
-        """Remove a file from the import queue by index and return the updated queue."""
-        with self._lock:
-            if index is None:
-                return {"ok": False, "message": "缺少索引"}
-            try:
-                idx = int(index)
-            except Exception:
-                return {"ok": False, "message": "索引无效"}
-            # If processing queue is active, remove from it first
-            if self._processing_queue and 0 <= idx < len(self._processing_queue):
-                removed = self._processing_queue.pop(idx)
-                # also try to remove matching path from file_import_queue if present
-                try:
-                    path_to_remove = removed.get('path')
-                    # support both string and dict entries in _file_import_queue
-                    for i, q in enumerate(list(self._file_import_queue)):
-                        if (isinstance(q, str) and q == path_to_remove) or (isinstance(q, dict) and q.get('path') == path_to_remove):
-                            self._file_import_queue.pop(i)
-                            break
-                except Exception:
-                    pass
-            else:
-                if idx < 0 or idx >= len(self._file_import_queue):
-                    return {"ok": False, "message": "索引超出范围"}
-                removed = self._file_import_queue.pop(idx)
-        # notify UI
-        try:
-            self._emit_ui_update(["import"])
-        except Exception:
-            pass
-        return {"ok": True, "files": list(self._file_import_queue), "removed": removed}
-
-    def clear_import_queue(self) -> Dict[str, Any]:
-        """Clear all files from the import queue."""
-        with self._lock:
-            self._file_import_queue = []
-            self._processing_queue = []
-        try:
-            self._emit_ui_update(["import"])
-        except Exception:
-            pass
-        return {"ok": True, "files": []}
+    def get_file_processing_state(self) -> Dict[str, Any]:
+        display_queue = self._get_full_display_queue()
+        return {
+            "ok": True, "files": display_queue, "files_total": len(display_queue),
+            "files_completed": sum(1 for item in display_queue if item.get("is_completed", False)),
+            "active": bool(getattr(self, "_processing_queue", None)) and bool(getattr(bc, "file_processing", False))
+        }
     def init_file_batch(self, task_name: str, files: list):
         """初始化批处理 UI 状态（由 file.py 在任务开始时调用一次）"""
         self.batch_start_time = time()
         with self._lock:
             self.task_state.title = task_name
-            # 执行队列依然只装新文件（不干扰后台干活）
-            self._processing_queue = [
-                {"path": f, "name": os.path.basename(f), "status": "Waiting", "is_completed": False}
-                for f in files
-            ]
-        
-        # ⚠️ 关键修改：UI 渲染使用全景队列
+            # 🛡️ 核心修复：执行队列只装载本次传入的 files_to_process（新文件）
+            # 这样 file.py 传过来的 index 才能与这里完美对齐！
+            self._processing_queue = []
+            for p in files:
+                self._processing_queue.append({
+                    "path": str(p),
+                    "name": os.path.basename(str(p)),
+                    "status": "Waiting",
+                    "is_completed": False
+                })
+
+        # 提取全景队列用于前端 UI 渲染（合并老文件和新文件）
         display_queue = self._get_full_display_queue()
         total = len(display_queue)
         completed_count = sum(1 for item in display_queue if item.get("is_completed", False))
-        pct = int((completed_count / total) * 100) if total > 0 else 0
         
-        self.update_task_message(f"已准备好 {len(files)} 个待处理文件 | 队列共 {total} 个", source="file-import")
-        self.update_task_progress(float(pct), source="file-import")
+        self.update_task_message(f"已准备好 {len(files)} 个待处理文件 | 队列共 {total} 个")
+        self.update_task_progress(float((completed_count / total * 100) if total > 0 else 0))
+        self.update_task_rows([[item.get('name', ''), item.get('status', '')] for item in display_queue])
         
-        # 触发前端列表刷新（发送完整列表）
-        task_rows = [[item.get('name', ''), item.get('status', '')] for item in display_queue]
-        self.update_task_rows(task_rows)
-        try:
-            self._emit_ui_update(["import"])
-        except Exception:
-            pass
+        def _async_emit():
+            try: self._emit_ui_update(["import"])
+            except Exception: pass
+        Thread(target=_async_emit, daemon=True).start()
     def sync_file_status(self, index: int, combined_status: str, is_completed: bool):
         """同步单个文件的状态，并自动重新计算底部全局进度（由 file.py 频繁调用）"""
         with self._lock:
-            # 只更新后台正在跑的那个批次的状态
+            # 更新正在执行的批次队列
             if getattr(self, "_processing_queue", []) and 0 <= index < len(self._processing_queue):
-                self._processing_queue[index]["status"] = combined_status
-                self._processing_queue[index]["is_completed"] = is_completed
+                if not self._processing_queue[index].get("is_completed", False) or is_completed:
+                    self._processing_queue[index]["status"] = combined_status
+                    self._processing_queue[index]["is_completed"] = is_completed
 
-        # ⚠️ 关键修改：提取包含所有旧文件的全景队列
+        # UI 更新依然依赖全景视图
         display_queue = self._get_full_display_queue()
         total = len(display_queue)
         completed_count = sum(1 for item in display_queue if item.get("is_completed", False))
-        pct = int((completed_count / total) * 100) if total > 0 else 0
         
         elapsed = ""
         if hasattr(self, 'batch_start_time'):
@@ -2343,524 +1774,225 @@ class WebBridge(WebTaskBridge):
         if elapsed:
             msg += f" | 耗时: {elapsed}"
 
-        # 1. 推送全局进度给底部状态栏
-        self.update_task_progress(float(pct), source="file-import")
-        self.update_task_message(msg, source="file-import")
+        self.update_task_progress(float((completed_count / total * 100) if total > 0 else 0))
+        self.update_task_message(msg)
+        self.update_task_rows([[item.get('name', ''), item.get('status', '')] for item in display_queue])
         
-        # 2. 推送具体的文字状态给文件列表（由于用的是 display_queue，旧文件不会消失了！）
-        task_rows = [[item.get('name', ''), item.get('status', '')] for item in display_queue]
-        self.update_task_rows(task_rows)
-        
-        try:
-            self._emit_ui_update(["import"])
-        except Exception:
-            pass
+        def _async_emit():
+            try: self._emit_ui_update(["import"])
+            except Exception: pass
+        Thread(target=_async_emit, daemon=True).start()
     def add_files_to_import_queue(self, files: Optional[list[str]] = None) -> Dict[str, Any]:
-        """Add selected files to the import queue without starting processing."""
-        # keep same pre-checks as import_files to avoid conflicting resource usage
-        if not self._wait_recording_idle(timeout_s=12.0):
-            return {
-                "ok": False,
-                "message": "Recording is still cleaning up resources. Please try file import again in a few seconds.",
-            }
-
-        if self._model_load_running:
-            return {
-                "ok": False,
-                "message": "Model loading is still in progress. Please wait before importing files.",
-            }
-
-        rec_state = self.get_recording_state()
-        rec_status = str(rec_state.get("status", "")).lower()
-        rec_active = bool(rec_state.get("active", False)) or bool(bc.recording)
-        if rec_active or rec_status in {"stopping...", "initializing recording..."}:
-            return {
-                "ok": False,
-                "message": "Recording is still running or stopping. Please wait a moment before importing files.",
-            }
+        if not self._wait_recording_idle(timeout_s=12.0): return {"ok": False, "message": "Recording is still cleaning up."}
+        if self._model_load_running: return {"ok": False, "message": "Model loading is in progress."}
+        if bool(self.get_recording_state().get("active", False)) or bool(bc.recording): return {"ok": False, "message": "Recording is active."}
 
         if not files:
-            window = self.get_window()
-            if window is None:
-                return {"ok": False, "message": "Window not ready"}
+            if not (window := self.get_window()): return {"ok": False, "message": "Window not ready"}
             webview = import_module("webview")
-            file_dialog = getattr(getattr(webview, "FileDialog", object), "OPEN", webview.OPEN_DIALOG)
-            files = window.create_file_dialog(
-                file_dialog,
-                allow_multiple=True,
-                file_types=[
-                    "Media Files (*.wav;*.mp3;*.ogg;*.flac;*.aac;*.wma;*.m4a;*.mp4;*.mkv;*.avi;*.mov;*.webm)",
-                    "All Files (*.*)",
-                ],
-            )
+            files = window.create_file_dialog(getattr(getattr(webview, "FileDialog", object), "OPEN", webview.OPEN_DIALOG), allow_multiple=True, file_types=["Media Files (*.wav;*.mp3;*.ogg;*.flac;*.aac;*.wma;*.m4a;*.mp4;*.mkv;*.avi;*.mov;*.webm)", "All Files (*.*)"])
 
-        if not files:
-            return {"ok": False, "message": "No files selected"}
+        if not files: return {"ok": False, "message": "No files selected"}
 
-        # Append new files to queue (avoid duplicates)
         added = 0
-        for f in files:
-            # check existing entries (support str or dict)
-            exists = False
-            for q in self._file_import_queue:
-                if isinstance(q, str) and q == f:
-                    exists = True
-                    break
-                if isinstance(q, dict) and q.get("path") == f:
-                    exists = True
-                    break
-            if not exists:
-                self._file_import_queue.append({"path": f, "name": os.path.basename(f), "status": "Waiting", "is_completed": False})
-                added += 1
-
+        with self._lock:
+            for f in files:
+                if not any((isinstance(q, str) and q == f) or (isinstance(q, dict) and q.get("path") == f) for q in self._file_import_queue):
+                    self._file_import_queue.append({"path": f, "name": os.path.basename(f), "status": "Waiting", "is_completed": False})
+                    added += 1
         return {"ok": True, "count": len(self._file_import_queue), "added": added, "files": list(self._file_import_queue)}
 
+    def remove_file_from_import_queue(self, index: Optional[int] = None) -> Dict[str, Any]:
+        with self._lock:
+            if index is None: return {"ok": False, "message": "缺少索引"}
+            try: idx = int(index)
+            except Exception: return {"ok": False, "message": "索引无效"}
+
+            if self._processing_queue and 0 <= idx < len(self._processing_queue):
+                removed = self._processing_queue.pop(idx)
+                path_to_remove = removed.get('path')
+                for i, q in enumerate(list(self._file_import_queue)):
+                    if (isinstance(q, str) and q == path_to_remove) or (isinstance(q, dict) and q.get('path') == path_to_remove):
+                        self._file_import_queue.pop(i)
+                        break
+            else:
+                if idx < 0 or idx >= len(self._file_import_queue): return {"ok": False, "message": "索引超出范围"}
+                removed = self._file_import_queue.pop(idx)
+                
+        try: self._emit_ui_update(["import"])
+        except Exception: pass
+        return {"ok": True, "files": list(self._file_import_queue), "removed": removed}
+
+    def clear_import_queue(self) -> Dict[str, Any]:
+        with self._lock:
+            self._file_import_queue = []
+            self._processing_queue = []
+        try: self._emit_ui_update(["import"])
+        except Exception: pass
+        return {"ok": True, "files": []}
+
+    def import_files(self, files: Optional[list[str]] = None) -> Dict[str, Any]:
+        """Legacy entry: Pick files, add to queue, and start."""
+        if not files:
+            if not (window := self.get_window()): return {"ok": False, "message": "Window not ready"}
+            webview = import_module("webview")
+            files = window.create_file_dialog(getattr(getattr(webview, "FileDialog", object), "OPEN", webview.OPEN_DIALOG), allow_multiple=True, file_types=["Media Files (*.wav;*.mp3;*.ogg;*.flac;*.aac;*.wma;*.m4a;*.mp4;*.mkv;*.avi;*.mov;*.webm)", "All Files (*.*)"])
+        if not files: return {"ok": False, "message": "No files selected"}
+            
+        res = self.add_files_to_import_queue(files)
+        if not res.get("ok"): return res
+        return self.start_import_queue()
+
     def start_import_queue(self) -> Dict[str, Any]:
-        """Start processing files currently in the import queue."""
-        if not self._file_import_queue:
-            return {"ok": False, "message": "No files in queue"}
+        if not self._file_import_queue: return {"ok": False, "message": "No files in queue"}
+        if not self._wait_recording_idle(timeout_s=12.0): return {"ok": False, "message": "Recording is still cleaning up."}
+        if self._model_load_running: return {"ok": False, "message": "Model loading is still in progress."}
 
-        # Same resource checks as import_files
-        if not self._wait_recording_idle(timeout_s=12.0):
-            return {
-                "ok": False,
-                "message": "Recording is still cleaning up resources. Please try file import again in a few seconds.",
-            }
-
-        if self._model_load_running:
-            return {
-                "ok": False,
-                "message": "Model loading is still in progress. Please wait before starting file import.",
-            }
-
-        rec_state = self.get_recording_state()
-        rec_status = str(rec_state.get("status", "")).lower()
-        rec_active = bool(rec_state.get("active", False)) or bool(bc.recording)
-        if rec_active or rec_status in {"stopping...", "initializing recording..."}:
-            return {
-                "ok": False,
-                "message": "Recording is still running or stopping. Please wait a moment before importing files.",
-            }
-
-        from speech_translate.utils.audio import file as audio_file_module
+        s = self.get_settings_snapshot()
         from speech_translate.utils.whisper.helper import model_keys
+        engine = self._normalize_model_key(str(s.get("tl_engine_f_import", "Google Translate")))
+        model_name_tc = self._normalize_model_key(str(s.get("model_f_import", "")))
+        is_tc, is_tl = bool(s.get("transcribe_f_import", True)), bool(s.get("translate_f_import", True))
 
-        settings = self.get_settings_snapshot()
-        lang_source = str(settings.get("source_lang_f_import", "English"))
-        lang_target = str(settings.get("target_lang_f_import", "Indonesian"))
-        is_tc = bool(settings.get("transcribe_f_import", True))
-        is_tl = bool(settings.get("translate_f_import", True))
-        engine = str(settings.get("tl_engine_f_import", "Google Translate"))
-        model_name_tc = self._normalize_model_key(str(settings.get("model_f_import", "")))
-        engine = self._normalize_model_key(engine)
-        needs_runtime_model = bool(is_tc) or (bool(is_tl) and engine in model_keys)
-
-        if needs_runtime_model:
-            same_model_loaded = bool(self._runtime_model_loaded) and self._runtime_model_key == model_name_tc
-            self._runtime_model_key = model_name_tc
-            if same_model_loaded:
+        if is_tc or (is_tl and engine in model_keys):
+            if bool(self._runtime_model_loaded) and self._runtime_model_key == model_name_tc:
                 self._model_load_running = False
                 self._runtime_model_message = f"Model ready: {model_name_tc}"
             else:
+                self._runtime_model_key = model_name_tc
                 self._runtime_model_loaded = False
-                self._runtime_model_message = f"Loading model cache for {model_name_tc}"
                 self._model_load_running = True
+                self._runtime_model_message = f"Loading model cache for {model_name_tc}"
 
-        # build list of files to process: skip items already marked completed
-        with self._lock:
-            queued = list(self._file_import_queue)
+        # 🛡️ 修复点 2：稳健地提取需要处理的文件路径
         files_to_process = []
-        for entry in queued:
-            if isinstance(entry, str):
-                path = entry
-                completed = False
-            elif isinstance(entry, dict):
-                path = entry.get("path", "")
-                completed = bool(entry.get("is_completed", False))
-            else:
-                try:
-                    path = str(entry)
-                except Exception:
-                    path = ""
-                completed = False
-            if not completed:
-                files_to_process.append(path)
+        with self._lock:
+            for entry in self._file_import_queue:
+                if isinstance(entry, dict):
+                    if not entry.get("is_completed", False):
+                        files_to_process.append(entry.get("path", ""))
+                elif isinstance(entry, str):
+                    files_to_process.append(entry)
 
-        if not files_to_process:
-            return {"ok": False, "message": "No files to process (all items are already completed)"}
-
-        # Note: process_file will call back into init_file_batch to initialize _processing_queue
+        if not files_to_process: return {"ok": False, "message": "All items are already completed"}
 
         self.reset_task_state("File Import")
         self.bind_headless_main_window()
 
-        # Replace tkinter-dependent dialogs in this module with headless adapters.
-        audio_file_module.FileProcessDialog = (
-            lambda master, title, mode, headers: HeadlessFileProcessDialog(master, title, mode, headers, bridge=self)
-        )
+        from speech_translate.utils.audio import file as audio_file_module
+        audio_file_module.FileProcessDialog = lambda master, title, mode, headers: HeadlessFileProcessDialog(master, title, mode, headers, bridge=self)
         audio_file_module.mbox = headless_mbox
 
         def worker():
             try:
                 bc.enable_file_process()
-                # pass only files that actually need processing
-                audio_file_module.process_file(list(files_to_process), model_name_tc, lang_source, lang_target, is_tc, is_tl, engine)
-                summary_parts = []
-                if is_tc:
-                    summary_parts.append(f"{bc.file_tced_counter} transcribed")
-                if is_tl:
-                    summary_parts.append(f"{bc.file_tled_counter} translated")
-                summary = ", ".join(summary_parts) if summary_parts else "no output generated"
+                audio_file_module.process_file(files_to_process, model_name_tc, str(s.get("source_lang_f_import", "English")), str(s.get("target_lang_f_import", "Indonesian")), is_tc, is_tl, engine)
+                summary = ", ".join([f"{bc.file_tced_counter} transcribed"] * is_tc + [f"{bc.file_tled_counter} translated"] * is_tl) or "no output generated"
                 self.finish_task(f"File import finished: {summary}")
-                if needs_runtime_model:
+                if self._model_load_running:
                     self._runtime_model_loaded = True
                     self._runtime_model_message = f"Model ready: {model_name_tc}"
             except Exception as exc:
                 logger.exception(exc)
-                logger.error(f"File import failed: {exc}")
                 self.update_task_error(str(exc))
-                if needs_runtime_model:
-                    self._runtime_model_loaded = False
-                    self._runtime_model_message = f"Model load failed: {exc}"
             finally:
-                # persist final statuses from processing queue back into visible queue
                 with self._lock:
-                    try:
-                        for proc in list(getattr(self, "_processing_queue", []) or []):
-                            ppath = proc.get("path")
-                            # find matching entry in _file_import_queue and update
-                            for i, q in enumerate(list(self._file_import_queue)):
-                                if isinstance(q, str) and q == ppath:
-                                    # replace string entry with dict
-                                    self._file_import_queue[i] = {
-                                        "path": ppath,
-                                        "name": proc.get("name", os.path.basename(ppath)),
-                                        "status": proc.get("status", ""),
-                                        "is_completed": bool(proc.get("is_completed", False)),
-                                    }
-                                    break
-                                if isinstance(q, dict) and q.get("path") == ppath:
-                                    q["status"] = proc.get("status", q.get("status", ""))
-                                    q["is_completed"] = bool(proc.get("is_completed", q.get("is_completed", False)))
-                                    if not q.get("name"):
-                                        q["name"] = proc.get("name", os.path.basename(ppath))
-                                    break
-                    except Exception:
-                        pass
-
-                    bc.disable_file_process()
-                    if needs_runtime_model:
-                        self._model_load_running = False
-                    # clear processing queue on finish
+                    proc_map = {p.get("path"): p for p in getattr(self, "_processing_queue", [])}
+                    for i, q in enumerate(self._file_import_queue):
+                        path = q if isinstance(q, str) else q.get("path", "")
+                        if path in proc_map:
+                            proc = proc_map[path]
+                            self._file_import_queue[i] = {
+                                "path": path, "name": proc.get("name", os.path.basename(path)),
+                                "status": proc.get("status", ""), "is_completed": bool(proc.get("is_completed", False))
+                            }
                     self._processing_queue = []
-                try:
-                    self._emit_ui_update(["import"])
-                except Exception:
-                    pass
-                auto_close_selenium = bool(self.get_settings_snapshot().get("selenium_auto_close_on_task_done", True))
-                if auto_close_selenium and is_tl and engine == "Selenium Chrome Translate":
+                bc.disable_file_process()
+                self._model_load_running = False
+                try: self._emit_ui_update(["import"])
+                except Exception: pass
+                if bool(s.get("selenium_auto_close_on_task_done", True)) and is_tl and engine == "Selenium Chrome Translate":
                     shutdown_selenium_translator()
 
         Thread(target=worker, daemon=True).start()
-        return {
-            "ok": True,
-            "count": len(files),
-            "engine_whisper": engine in model_keys,
-            "message": "File import started",
-        }
+        return {"ok": True, "count": len(files_to_process), "message": "File import started"}
+    def stop_import_queue(self) -> Dict[str, Any]:
+        with self._lock:
+            if not (bool(getattr(self, "_processing_queue", None)) and len(getattr(self, "_processing_queue", [])) > 0):
+                return {"ok": False, "message": "No import is running"}
+        bc.disable_file_process()
+        with self._lock:
+            for item in getattr(self, "_processing_queue", []) or []: item["status"] = "Cancelled"
+        try: self.update_task_message("Cancelling file import...", source="import")
+        except Exception: pass
+        try: self._emit_ui_update(["import"])
+        except Exception: pass
+        return {"ok": True, "message": "Cancel requested"}
+
+    # =========================================================================
+    # SECTION 7: DETACHED WINDOWS
+    # =========================================================================
 
     def get_detached_config(self, mode: str) -> Dict[str, Any]:
-        mode = str(mode).lower()
-        if mode not in {"tc", "tl"}:
-            mode = "tl"
+        mode = str(mode).lower() if str(mode).lower() in {"tc", "tl"} else "tl"
         return {
-            "font": sj.cache.get(f"tb_ex_{mode}_font", "Arial"),
-            "font_size": sj.cache.get(f"tb_ex_{mode}_font_size", 13),
-            "font_bold": sj.cache.get(f"tb_ex_{mode}_font_bold", True),
-            "font_color": sj.cache.get(f"tb_ex_{mode}_font_color", "#FFFFFF"),
-            "bg_color": sj.cache.get(f"tb_ex_{mode}_bg_color", "#000000"),
-            "always_on_top": sj.cache.get(f"ex_{mode}_always_on_top", 0),
-            "no_title_bar": sj.cache.get(f"ex_{mode}_no_title_bar", 0),
-            "opacity": sj.cache.get(f"ex_{mode}_opacity", 1.0),
+            "font": sj.cache.get(f"tb_ex_{mode}_font", "Arial"), "font_size": sj.cache.get(f"tb_ex_{mode}_font_size", 13),
+            "font_bold": sj.cache.get(f"tb_ex_{mode}_font_bold", True), "font_color": sj.cache.get(f"tb_ex_{mode}_font_color", "#FFFFFF"),
+            "bg_color": sj.cache.get(f"tb_ex_{mode}_bg_color", "#000000"), "always_on_top": sj.cache.get(f"ex_{mode}_always_on_top", 0),
+            "no_title_bar": sj.cache.get(f"ex_{mode}_no_title_bar", 0), "opacity": sj.cache.get(f"ex_{mode}_opacity", 1.0),
             "click_through": sj.cache.get(f"ex_{mode}_click_through", 0),
         }
 
     def set_detached_config(self, mode: str, key: str, value: Any) -> Dict[str, Any]:
-        mode = str(mode).lower()
-        if mode not in {"tc", "tl"}:
-            mode = "tl"
+        mode = str(mode).lower() if str(mode).lower() in {"tc", "tl"} else "tl"
         setting_key = f"ex_{mode}_{key}" if key in ("always_on_top", "no_title_bar", "opacity", "click_through") else f"tb_ex_{mode}_{key}"
         sj.save_key(setting_key, value)
         return {"key": setting_key, "value": sj.cache.get(setting_key)}
 
     def create_detached_window(self, mode: str = "tc", x: Optional[int] = None, y: Optional[int] = None) -> Dict[str, Any]:
-        """Create a detached subtitle window."""
-        mode = str(mode).lower()
-        if mode not in {"tc", "tl"}:
-            mode = "tl"
-        
-        raw_geometry = sj.cache.get(f"ex_{mode}_geometry", "900x240")
-        width, height = _parse_window_size(raw_geometry, 900, 240)
-        logger.info(
-            f"[DetachedGeometry][open-request] mode={mode} "
-            f"cache={raw_geometry} parsed={width}x{height}"
-        )
-        if x is None or y is None:
-            x, y = _center_window_pos(width, height)
-
-        x, y = _ensure_visible_or_center(int(x), int(y), int(width), int(height))
-
+        mode = str(mode).lower() if str(mode).lower() in {"tc", "tl"} else "tl"
+        width, height = _parse_window_size(sj.cache.get(f"ex_{mode}_geometry", "900x240"), 900, 240)
+        x, y = _ensure_visible_or_center(*(x, y) if x is not None and y is not None else _center_window_pos(width, height), width, height)
         self.detached_window_manager.create_window(mode, x, y, width, height)
-        logger.debug(f"[DetachedOpen] bridge create_window returned mode={mode}")
-
-        # Always apply current detached config when window is opened from any entry point.
         self.update_detached_config(mode)
-        logger.debug(f"[DetachedOpen] bridge update_detached_config called mode={mode}")
-
-        # Push current detached text immediately so opening from top buttons is consistent.
-        live_state = self.snapshot_live_state()
-        if mode == "tc":
-            html_content = live_state.get("detached_transcribed_html") or live_state.get("detached_transcribed_text") or ""
-        else:
-            html_content = live_state.get("detached_translated_html") or live_state.get("detached_translated_text") or ""
-        if html_content:
-            self.update_detached_content(mode, str(html_content))
-            logger.debug(f"[DetachedOpen] bridge update_detached_content called mode={mode}")
-
+        
+        live = self.snapshot_live_state()
+        if html := live.get(f"detached_{'transcribed' if mode == 'tc' else 'translated'}_html") or live.get(f"detached_{'transcribed' if mode == 'tc' else 'translated'}_text"):
+            self.update_detached_content(mode, str(html))
         return {"status": "created", "mode": mode}
 
     def toggle_detached_window(self, mode: str = "tc", x: Optional[int] = None, y: Optional[int] = None) -> Dict[str, Any]:
-        """Open a detached window, or close it if it is already open."""
-        mode = str(mode).lower()
-        if mode not in {"tc", "tl"}:
-            mode = "tl"
-
+        mode = str(mode).lower() if str(mode).lower() in {"tc", "tl"} else "tl"
         if mode in self.detached_window_manager.windows:
             self.detached_window_manager.close_window(mode)
             return {"status": "closed", "mode": mode}
-
         return self.create_detached_window(mode, x, y)
 
     def show_detached_window(self, mode: str = "tc") -> Dict[str, Any]:
-        """Show a detached window."""
-        mode = str(mode).lower()
-        if mode not in {"tc", "tl"}:
-            mode = "tl"
-        
+        mode = str(mode).lower() if str(mode).lower() in {"tc", "tl"} else "tl"
         self.detached_window_manager.show_window(mode)
         return {"status": "shown", "mode": mode}
 
     def hide_detached_window(self, mode: str = "tc") -> Dict[str, Any]:
-        """Hide a detached window."""
-        mode = str(mode).lower()
-        if mode not in {"tc", "tl"}:
-            mode = "tl"
-        
+        mode = str(mode).lower() if str(mode).lower() in {"tc", "tl"} else "tl"
         self.detached_window_manager.hide_window(mode)
         return {"status": "hidden", "mode": mode}
 
     def close_detached_window(self, mode: str = "tc") -> Dict[str, Any]:
-        """Close a detached window."""
-        mode = str(mode).lower()
-        if mode not in {"tc", "tl"}:
-            mode = "tl"
-        
+        mode = str(mode).lower() if str(mode).lower() in {"tc", "tl"} else "tl"
         self.detached_window_manager.close_window(mode)
         return {"status": "closed", "mode": mode}
 
     def update_detached_content(self, mode: str, html_content: str) -> Dict[str, Any]:
-        """Update content in a detached window."""
-        mode = str(mode).lower()
-        if mode not in {"tc", "tl"}:
-            mode = "tl"
-
-        if mode not in self.detached_window_manager.windows:
-            return {"status": "missing", "mode": mode}
-        
+        mode = str(mode).lower() if str(mode).lower() in {"tc", "tl"} else "tl"
+        if mode not in self.detached_window_manager.windows: return {"status": "missing", "mode": mode}
         self.detached_window_manager.update_window_content(mode, html_content)
         return {"status": "updated", "mode": mode}
 
     def update_detached_config(self, mode: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Update configuration for a detached window."""
-        mode = str(mode).lower()
-        if mode not in {"tc", "tl"}:
-            mode = "tl"
-        
-        # If no config provided, get the full config
-        if config is None:
-            config = self.get_detached_config(mode)
-        
-        self.detached_window_manager.update_window_config(mode, config)
+        mode = str(mode).lower() if str(mode).lower() in {"tc", "tl"} else "tl"
+        self.detached_window_manager.update_window_config(mode, config or self.get_detached_config(mode))
         return {"status": "config_updated", "mode": mode}
-
-    def start_recording(
-        self,
-        device: str = "mic",
-        lang_source: str = "English",
-        lang_target: str = "Indonesian",
-        engine: str = "Selenium Chrome Translate",
-        is_tc: bool = True,
-        is_tl: bool = True,
-    ) -> Dict[str, Any]:
-        """Start recording from microphone or speaker.
-        
-        Parameters
-        ----------
-        device : str
-            'mic' or 'speaker'
-        lang_source : str
-            Source language for transcription
-        lang_target : str
-            Target language for translation
-        engine : str
-            Translation engine to use
-        is_tc : bool
-            Whether to transcribe
-        is_tl : bool
-            Whether to translate
-        
-        Returns
-        -------
-        Dict with status information
-        """
-        from speech_translate.utils.audio.record import record_session
-        from speech_translate.utils.whisper.helper import model_keys
-
-        # Check if already recording
-        if bc.recording:
-            return {"ok": False, "message": "Already recording"}
-
-        # Get settings and normalize values
-        settings = self.get_settings_snapshot()
-        logger.debug(
-            f"[webview_app.start_recording] called | device={device} snapshot_threshold_enable_speaker={settings.get('threshold_enable_speaker')} "
-            f"snapshot_threshold_auto_speaker={settings.get('threshold_auto_speaker')}"
-        )
-        lang_source = str(settings.get("source_lang_mw", lang_source))
-        lang_target = str(settings.get("target_lang_mw", lang_target))
-        device = str(settings.get("input", device))
-        engine = str(settings.get("tl_engine_mw", engine))
-        is_tc = bool(settings.get("transcribe_mw", is_tc))
-        is_tl = bool(settings.get("translate_mw", is_tl))
-        model_name_tc = self._normalize_model_key(str(settings.get("model_mw", "")))
-        engine = self._normalize_engine_name(engine)
-        self._runtime_model_key = model_name_tc
-
-        cached_bundle = False
-        try:
-            whisper_load_api = _get_whisper_load_api()
-            model_args = whisper_load_api.get_model_args(cast(SettingDict, settings))
-            cached_bundle = whisper_load_api.is_model_bundle_cached(
-                is_tc,
-                is_tl,
-                engine in model_values,
-                model_name_tc,
-                engine,
-                cast(SettingDict, settings),
-                **model_args,
-            )
-        except Exception:
-            cached_bundle = False
-
-        if cached_bundle:
-            self._model_load_running = False
-            self._runtime_model_loaded = True
-            self._runtime_model_message = f"Model ready: {self._runtime_model_key}"
-
-        if not is_tc and not is_tl:
-            return {"ok": False, "message": "Please enable Transcribe or Translate before starting recording"}
-
-        # Bind headless main window for callbacks
-        self.bind_headless_main_window()
-        
-        # Clear previous transcription/translation by directly clearing the data structures
-        bc.tc_sentences = []
-        bc.tl_sentences = []
-        self.clear_live()
-        
-        # Enable recording flag
-        bc.enable_rec()
-        self.reset_task_state("Recording")
-        self.set_recording_state(
-            {
-                "status": "Preparing recording..." if cached_bundle else "Initializing recording...",
-                "active": True,
-                "device": device,
-                "lang_source": lang_source,
-                "lang_target": lang_target,
-                "engine": engine,
-                "mode": "Transcribe & Translate" if is_tc and is_tl else "Transcribe" if is_tc else "Translate",
-                "timer": "00:00:00",
-                "buffer": "0/0 sec",
-                "sentences": "0",
-            }
-        )
-        
-        # Replace tkinter-dependent dialogs in record module
-        # Make mbox always return True (continue) to skip confirmation dialogs
-        import speech_translate.utils.audio.record as record_module
-        record_module.mbox = lambda *args, **kwargs: True
-
-        def worker():
-            try:
-                logger.debug(f"[webview_app.start_recording.worker] worker starting record_session | device={device} settings_snapshot={self.get_settings_snapshot()}")
-                speaker = device.lower() == "speaker"
-                record_session(lang_source, lang_target, engine, model_name_tc, device, is_tc, is_tl, speaker)
-                self.finish_task("Recording finished")
-            except Exception as exc:
-                logger.exception(exc)
-                logger.error(f"Recording failed: {exc}")
-                self.update_task_error(str(exc))
-            finally:
-                bc.disable_rec()
-                self.set_recording_state({"status": "Stopped", "active": False})
-                auto_close_selenium = bool(self.get_settings_snapshot().get("selenium_auto_close_on_task_done", True))
-                if auto_close_selenium and is_tl and engine == "Selenium Chrome Translate":
-                    shutdown_selenium_translator()
-                self._record_worker_thread = None
-
-        self._record_worker_thread = Thread(target=worker, daemon=True)
-        self._record_worker_thread.start()
-        return {
-            "ok": True,
-            "device": device,
-            "engine_whisper": engine in model_keys,
-            "message": "Recording started",
-        }
-
-    def stop_recording(self) -> Dict[str, Any]:
-        """Stop the current recording session.
-        
-        Returns
-        -------
-        Dict with status information
-        """
-        if not bc.recording:
-            return {"ok": False, "message": "Not currently recording"}
-
-        self.set_recording_state({"status": "Stopping...", "active": False})
-        bc.disable_rec()
-        # Wait for full teardown so next actions (e.g., file import) won't contend with stale resources.
-        settled = self._wait_recording_idle(timeout_s=12.0)
-        if settled:
-            self.set_recording_state({"status": "Stopped", "active": False})
-            engine = self._normalize_engine_name(str(self.get_settings_snapshot().get("tl_engine_mw", "")))
-            auto_close_selenium = bool(self.get_settings_snapshot().get("selenium_auto_close_on_task_done", True))
-            if auto_close_selenium and engine == "Selenium Chrome Translate":
-                shutdown_selenium_translator()
-            return {"ok": True, "message": "Recording stopped"}
-
-        return {
-            "ok": True,
-            "message": "Stop requested; cleanup is still finishing in background",
-        }
-
-    def update_recording_popup(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Update dedicated recording popup window."""
-        self.set_recording_state(payload)
-        self.detached_window_manager.update_recording_status(payload)
-        return {"ok": True}
-
 
 class AppTray:
 

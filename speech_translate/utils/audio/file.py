@@ -76,9 +76,13 @@ def _sync_ui(index: int):
     bc.web_bridge.sync_file_status(index, combined_status, is_completed)
 
 def _update_status(status_map: Dict[int, str], index: int, msg: str):
-    """修改状态并触发 UI 同步"""
+    """修改状态并触发 UI 同步（带防崩溃保护）"""
     status_map[index] = msg
-    _sync_ui(index)
+    # 🛡️ 修复点：绝对的防弹保护，永远不能让 UI 更新报错杀死转录主线程
+    try:
+        _sync_ui(index)
+    except Exception as e:
+        logger.error(f"UI Sync Error suppressed: {e}")
 
 def _save_metadata(filepath: str, meta_data: dict):
     try:
@@ -283,7 +287,7 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
 
         for i, file in enumerate(data_files):
             if not bc.file_processing: break
-
+            logger.info(f"Loop entered for file: {file}")
             file_name = filename_only(file)[slice_s:slice_e]
             base_name = datetime.now().strftime(export_fmt)
             base_name = base_name.replace("{file}", file_name)\
