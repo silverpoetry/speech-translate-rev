@@ -1655,7 +1655,10 @@ class WebBridge(WebTaskBridge):
     # =========================================================================
     # SECTION 6: BATCH FILE PROCESSING QUEUE & UI SYNC
     # =========================================================================
-
+    # 补充这个缺失的前端 API 接口
+    def get_import_ui_details(self) -> Dict[str, Any]:
+        """供前端懒加载请求，扫描磁盘并返回所有可用的模型列表"""
+        return self._build_import_ui(verify_available=True)
     def _build_import_ui(self, verify_available: bool = True) -> Dict[str, Any]:
         s = dict(sj.cache)
         engine = self._normalize_engine_name(str(s.get("tl_engine_f_import", "Selenium Chrome Translate")))
