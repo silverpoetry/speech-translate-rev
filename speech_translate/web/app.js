@@ -1842,12 +1842,15 @@ function bindEvents() {
   if (els.modelImport) {
     els.modelImport.addEventListener('change', async () => {
       try {
-        await loadRuntimeModel();
+        // 只保存选择；不要自动触发模型加载。
+        await apiCall('set_import_setting', 'model_f_import', els.modelImport.value);
       } catch (error) {
-        console.error(error);
+        console.error('保存模型选择失败', error);
       }
     });
   }
+
+  // 加载按钮由页面的 data-action 统一事件处理器处理（action='load-model'），无需额外绑定。
 
   state.eventsBound = true;
 }

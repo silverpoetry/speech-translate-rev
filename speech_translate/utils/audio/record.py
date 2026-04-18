@@ -190,9 +190,9 @@ def record_session(
 
         if not sj.cache["supress_record_warning"] and sr_ori > 48000:
             logger.warning(f"Sample rate is high ({sr_ori} Hz). May cause issues. Can be suppressed in settings.")
-        if is_tl and not tl_engine_whisper:
-            try: requests.get("https://www.google.com/", timeout=5)
-            except Exception: logger.warning("No internet connection detected. API Translation might fail.")
+        # if is_tl and not tl_engine_whisper:
+        #     try: requests.get("https://www.google.com/", timeout=5)
+        #     except Exception: logger.warning("No internet connection detected. API Translation might fail.")
 
         vad_checked, silero_disabled = False, False
         frame_duration_ms = get_frame_duration(sr_ori, chunk_size)
