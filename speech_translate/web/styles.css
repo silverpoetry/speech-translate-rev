@@ -612,18 +612,19 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  #settings-shell {
-    column-count: 1;
-  }
-
   .button-grid,
   .form-grid,
   .import-grid,
   .record-grid,
   .record-subgrid,
-  .split-view,
-  .dual-advanced-grid {
+  .split-view {
     grid-template-columns: 1fr;
+  }
+
+  /* 响应式下降级为单列 */
+  .dual-advanced-grid,
+  #settings-shell {
+    column-count: 1;
   }
 
   .state-row {
@@ -764,7 +765,7 @@ button.secondary {
   padding: 6px 8px;
   border-radius: 6px;
   background: transparent;
-  border-bottom: 1px solid rgba(0,0,0,0.04);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
   font-size: 0.9rem;
 }
 
@@ -800,7 +801,7 @@ button.secondary {
 }
 
 .file-queue-toolbar .tool-actions {
-  position: relative; /* keep inside the local flow */
+  position: relative;
   display: flex;
   gap: 8px;
   align-items: center;
@@ -1057,7 +1058,7 @@ button.btn-icon:hover[data-tooltip]::before {
 .file-export-block {
   display: grid;
   gap: 8px;
-  padding: 0; /* remove internal padded card styling when inside advanced-panel */
+  padding: 0;
   border: none;
   border-radius: 0;
   background: transparent;
@@ -1079,14 +1080,13 @@ button.btn-icon:hover[data-tooltip]::before {
   flex-wrap: wrap;
 }
 
-/* inside advanced-panel we prefer compact, wrapping format toggles */
 .advanced-panel .file-export-formats {
   gap: 8px 10px;
   align-items: center;
 }
 
 .advanced-panel .file-export-formats .toggle-row {
-  white-space: normal; /* allow wrapping labels to avoid overflow */
+  white-space: normal;
   min-width: 96px;
 }
 
@@ -1097,7 +1097,7 @@ button.btn-icon:hover[data-tooltip]::before {
   padding-top: 6px;
 }
 
-.file-export-formats > span {
+.file-export-formats>span {
   color: var(--muted);
   font-size: 0.86rem;
   font-weight: 600;
@@ -1180,52 +1180,56 @@ button.btn-icon:hover[data-tooltip]::before {
   gap: 6px;
 }
 
-.tab-panel > .section-head,
-.tab-panel > .form-grid,
-.tab-panel > .status-row,
-.tab-panel > .inline-actions,
-.tab-panel > .task-banner,
-.tab-panel > .state-card,
-.tab-panel > .advanced-panel {
+.tab-panel>.section-head,
+.tab-panel>.form-grid,
+.tab-panel>.status-row,
+.tab-panel>.inline-actions,
+.tab-panel>.task-banner,
+.tab-panel>.state-card,
+.tab-panel>.advanced-panel {
   background: #ffffff;
   border-radius: var(--radius-md);
   padding: 10px 12px;
 }
 
-.tab-panel > .panel-card {
+.tab-panel>.panel-card {
   padding: 0;
 }
 
-.tab-panel > .panel-card.core-card {
+.tab-panel>.panel-card.core-card {
   padding: 12px;
 }
 
-.tab-panel > .advanced-panel {
+.tab-panel>.advanced-panel {
   padding: 0;
 }
 
+/* 优化：文件转写内的双层配置同样使用 Multi-column 替代 Grid */
 .dual-advanced-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  align-items: start;
+  display: block;
+  column-count: 2;
+  column-gap: 8px;
+  padding: 0;
 }
 
 .dual-advanced-grid .advanced-panel {
   margin-top: 0;
+  margin-bottom: 8px;
+  /* 垂直间距 */
   align-self: start;
+  display: inline-block;
+  /* 配合避开拆分 */
+  width: 100%;
+  break-inside: avoid-column;
+  page-break-inside: avoid;
 }
 
-.dual-advanced-grid {
-  padding: 0;
-}
-
-.tab-panel > .section-head {
+.tab-panel>.section-head {
   margin: 0;
 }
 
-.tab-panel > .status-row,
-.tab-panel > .inline-actions {
+.tab-panel>.status-row,
+.tab-panel>.inline-actions {
   margin: 0;
 }
 
@@ -1241,19 +1245,33 @@ button.btn-icon:hover[data-tooltip]::before {
   gap: 8px;
 }
 
+/* 优化：设置面板改用 CSS 多列布局 (Multi-column)，实现真正的竖向独立瀑布流 */
+/* 1. 设置基础的多列参数 */
 #settings-shell {
-  display: block;
   column-count: 2;
-  column-gap: 8px;
+  column-gap: 12px;
+  padding: 6px;
   min-width: 0;
 }
 
-#settings-shell > .advanced-panel {
+/* 2. 只要面板没有被 JS 隐藏 (display: none)，就作为区块显示以支持分列 */
+#settings-shell:not([style*="none"]) {
+  display: block !important;
+}
+
+/* 3. 确保内部卡片样式正常，并且不被切断跨列 */
+#settings-shell>.advanced-panel {
   display: inline-block;
   width: 100%;
-  margin: 0 0 8px;
-  break-inside: avoid;
+  margin: 0 0 12px 0;
+  /* 替代原 grid gap 的垂直间距 */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.04);
   box-sizing: border-box;
+  background: #ffffff;
+  break-inside: avoid-column;
+  /* 关键：防止卡片在两列之间被拆分 */
+  page-break-inside: avoid;
 }
 
 #settings-shell .advanced-panel-body,
@@ -1306,10 +1324,11 @@ button.btn-icon:hover[data-tooltip]::before {
   margin-top: 6px;
 }
 
-.advanced-panel > summary {
+.advanced-panel>summary {
   list-style: none;
   cursor: pointer;
-  padding: 10px 126px 10px 32px;
+  /* 默认只预留 48px 给单按钮空间，防止挤压较长标题 */
+  padding: 10px 48px 10px 32px;
   font-weight: 600;
   color: var(--text);
   background: #ffffff;
@@ -1318,16 +1337,26 @@ button.btn-icon:hover[data-tooltip]::before {
   border-radius: var(--radius-md);
 }
 
-.advanced-panel > summary,
+/* 动态适应右上角按钮数量：如果有 2 个或 3 个悬浮按钮，再增加右侧 padding */
+.advanced-panel:has(.floating-action-row > .btn-icon:nth-child(2))>summary {
+  padding-right: 88px;
+}
+
+.advanced-panel:has(.floating-action-row > .btn-icon:nth-child(3))>summary {
+  padding-right: 126px;
+}
+
+/* 原有的 summary 样式保持不变 */
+.advanced-panel>summary,
 .section-head h2 {
   color: #000000;
 }
 
-.advanced-panel > summary::-webkit-details-marker {
+.advanced-panel>summary::-webkit-details-marker {
   display: none;
 }
 
-.advanced-panel > summary::after {
+.advanced-panel>summary::after {
   content: "";
   position: absolute;
   left: 14px;
@@ -1339,19 +1368,18 @@ button.btn-icon:hover[data-tooltip]::before {
   transform: translateY(-62%) rotate(-45deg);
   transition: transform 140ms ease, border-color 140ms ease;
 }
-
-.advanced-panel[open] > summary::after {
+.advanced-panel[open]>summary::after {
   transform: translateY(-40%) rotate(45deg);
   border-color: #334155;
 }
 
-.advanced-panel[open] > summary {
+.advanced-panel[open]>summary {
   border-bottom-color: #e5e7eb;
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
 }
 
-.advanced-panel:not([open]) > summary {
+.advanced-panel:not([open])>summary {
   border-bottom-color: transparent;
   border-radius: var(--radius-md);
 }
@@ -1442,6 +1470,8 @@ button.btn-icon:hover[data-tooltip]::before {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
+  width: 100%;
+  min-width: 0;
 }
 
 .field-note {
@@ -1474,7 +1504,7 @@ button.btn-icon:hover[data-tooltip]::before {
   align-content: start;
 }
 
-.model-select-engine-inline > span {
+.model-select-engine-inline>span {
   color: var(--muted);
   font-size: 0.86rem;
 }
@@ -1550,6 +1580,8 @@ button.btn-icon:hover[data-tooltip]::before {
 label {
   display: grid;
   gap: 8px;
+  min-width: 0;
+  align-content: start;
 }
 
 .toggle-row {
@@ -1557,9 +1589,20 @@ label {
   align-items: center;
   gap: 8px;
   color: var(--text);
-  line-height: 1;
+  line-height: 1.4;
   min-height: 30px;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: normal;
+}
+
+.form-grid>.toggle-row,
+.form-grid>label.toggle-row {
+  grid-column: 1 / -1;
+}
+
+.toggle-row input[type="checkbox"],
+.toggle-row input[type="radio"] {
+  flex-shrink: 0;
 }
 
 .toggle-row input[type="checkbox"] {
@@ -1577,7 +1620,6 @@ label {
   transition: background 120ms ease, border-color 120ms ease;
   display: inline-block !important;
   vertical-align: middle;
-  flex-shrink: 0;
 }
 
 .toggle-row input[type="checkbox"]::after {
@@ -1621,6 +1663,17 @@ label span {
   font-size: 0.86rem;
 }
 
+label:has(input[type="range"]) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+label:has(input[type="range"])>span:first-child {
+  grid-column: 1 / -1;
+}
+
 input,
 select,
 textarea,
@@ -1630,6 +1683,20 @@ textarea,
   border: 1px solid #000000;
   background: #ffffff;
   color: var(--text);
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select,
+textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  cursor: pointer;
 }
 
 select,
@@ -1691,10 +1758,6 @@ select option:hover {
   color: #1e3a8a;
 }
 
-label {
-  min-width: 0;
-}
-
 .form-grid label,
 .record-subgrid label {
   min-width: 0;
@@ -1707,7 +1770,6 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
 }
 
-/* helper class used by dynamic prompt textareas */
 .card-input {
   border-radius: var(--radius-md);
   border: 1px solid #d9d9d9;
@@ -1794,7 +1856,7 @@ textarea:focus {
   gap: 6px;
 }
 
-.model-status-item + .model-status-item {
+.model-status-item+.model-status-item {
   margin-top: 4px;
 }
 
@@ -2021,6 +2083,7 @@ textarea:focus {
     opacity: 0;
     transform: translateY(14px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -2042,9 +2105,13 @@ textarea:focus {
 
   .hero,
   .card-grid,
-  .split-view,
-  .dual-advanced-grid {
+  .split-view {
     grid-template-columns: 1fr;
+  }
+
+  .dual-advanced-grid,
+  #settings-shell {
+    column-count: 1;
   }
 
   .hero-actions {
@@ -2065,10 +2132,6 @@ textarea:focus {
 
   .menu-list {
     grid-template-columns: 1fr;
-  }
-
-  #settings-shell {
-    column-count: 1;
   }
 
   .hero,
