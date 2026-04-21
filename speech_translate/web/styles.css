@@ -622,7 +622,6 @@ body {
   }
 
   /* 响应式下降级为单列 */
-  .dual-advanced-grid,
   #settings-shell {
     column-count: 1;
   }
@@ -1206,22 +1205,22 @@ button.btn-icon:hover[data-tooltip]::before {
 
 /* 优化：文件转写内的双层配置同样使用 Multi-column 替代 Grid */
 .dual-advanced-grid {
-  display: block;
-  column-count: 2;
-  column-gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
   padding: 0;
 }
 
 .dual-advanced-grid .advanced-panel {
   margin-top: 0;
-  margin-bottom: 8px;
-  /* 垂直间距 */
+  margin-bottom: 0;
   align-self: start;
-  display: inline-block;
-  /* 配合避开拆分 */
+  display: block;
   width: 100%;
-  break-inside: avoid-column;
-  page-break-inside: avoid;
+}
+
+.grid-span-all {
+  grid-column: span 2;
 }
 
 .tab-panel>.section-head {
@@ -2109,7 +2108,6 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
-  .dual-advanced-grid,
   #settings-shell {
     column-count: 1;
   }
@@ -2139,6 +2137,10 @@ textarea:focus {
   .split-view,
   .dual-advanced-grid {
     padding: 14px;
+  }
+
+  .dual-advanced-grid {
+    grid-template-columns: 1fr;
   }
 }
 
