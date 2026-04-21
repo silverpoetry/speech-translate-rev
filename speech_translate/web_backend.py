@@ -274,18 +274,6 @@ class WebTaskBridge:
 
     def update_task_message(self, message: str, source: str = "general"):
         with self._lock:
-            if self.task_state.title == "File Import":
-                # Prefer `file-import` source over noisy `progress-log` output.
-                # If current source is file-import, only file-import updates may override it.
-                if self._task_message_source == "file-import" and source != "file-import":
-                    return
-                # If current source is progress-log, allow file-import to override, otherwise block unrelated sources.
-                if self._task_message_source == "progress-log" and source not in ("progress-log", "file-import"):
-                    return
-                if source == "progress-log":
-                    self._task_message_source = "progress-log"
-                if source == "file-import":
-                    self._task_message_source = "file-import"
             self.task_state.message = message
         self._emit_ui_update(["task"])
 
@@ -293,21 +281,7 @@ class WebTaskBridge:
         with self._lock:
             incoming = float(progress)
             if self.task_state.title == "File Import":
-                # Progress source priority:
-                #  - file-import (highest) -> used for aggregated completed-file percentage
-                #  - progress-log (lower) -> noisy per-file/model logs
-                # If file-import is current, only accept file-import updates.
-                if self._task_progress_source == "file-import" and source != "file-import":
-                    return
-                # If progress-log is current, allow file-import to override, but block other sources.
-                if self._task_progress_source == "progress-log" and source not in ("progress-log", "file-import"):
-                    return
-                if source == "progress-log":
-                    self._task_progress_source = "progress-log"
-                if source == "file-import":
-                    self._task_progress_source = "file-import"
-
-                # File import receives progress from multiple sources; keep monotonic to avoid regressions/flicker.
+                # file-import receives progress from multiple sources; keep monotonic to avoid regressions/flicker.
                 self.task_state.progress = max(float(self.task_state.progress), incoming)
             else:
                 self.task_state.progress = incoming

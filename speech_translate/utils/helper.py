@@ -3,24 +3,20 @@ import html
 import os
 import subprocess
 import textwrap
-import tkinter as tk
 from collections import OrderedDict
 from datetime import datetime
 from difflib import SequenceMatcher
 from platform import system
 from random import choice
 from threading import Thread
-from tkinter import colorchooser, filedialog, ttk
 from typing import Callable, Dict, List, Optional, Union
 from webbrowser import open_new
 
 from loguru import logger
 from notifypy import Notify, exceptions
-from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 from speech_translate._constants import APP_NAME, HACKY_SPACE
-from speech_translate._path import APP_ICON_MISSING, p_app_icon, p_font_emoji
-from speech_translate.ui.custom.tooltip import tk_tooltip
+from speech_translate._path import APP_ICON_MISSING, p_app_icon
 from speech_translate.utils.types import ToInsert
 
 
@@ -303,18 +299,6 @@ def get_proxies(proxy_http: str, proxy_https: str):
     return proxies
 
 
-def cbtn_invoker(enabled: bool, widget: Union[ttk.Checkbutton, ttk.Radiobutton]):
-    """
-    Checkbutton invoker
-    Invoking twice will make it unchecked
-    """
-    if enabled:
-        widget.invoke()
-    else:
-        widget.invoke()
-        widget.invoke()
-
-
 def open_folder(filename: str):
     """
     Open folder of a give filename path
@@ -423,149 +407,6 @@ def filename_only(filename: str):
     return filename
 
 
-def choose_color(_widget, initial_color, parent):
-    """Choose color from colorchooser and insert it to _widget
-
-    Parameters
-    ----------
-      : 
-        widget to insert the color
-    initialColor : str
-        initial color
-    parent : 
-        tk window or toplevel
-    """
-    color = colorchooser.askcolor(initialcolor=initial_color, title="Choose a color", parent=parent)
-    if color[1] is not None:
-        _widget.delete(0, "end")
-        _widget.insert(0, color[1])
-
-
-def popup_menu(root: Union[tk.Tk, tk.Toplevel], menu: tk.Menu):
-    """
-    Display popup menu
-    """
-    try:
-        menu.tk_popup(root.winfo_pointerx(), root.winfo_pointery(), 0)
-    finally:
-        menu.grab_release()
-
-
-def tb_copy_only(event):
-    """Copy only in text box
-
-    Parameters
-    ----------
-    event :
-        event
-        
-
-    Returns
-    -------
-    str
-        "break" if not allowed
-    """
-    key = event.keysym
-
-    # Allow
-    allowed_state = [4, 8, 12]
-    if key.lower() in ["left", "right"]:  # Arrow left right
-        return
-    if event.state in allowed_state and key.lower() == "a":  # Ctrl + a
-        return
-    if event.state in allowed_state and key.lower() == "c":  # Ctrl + c
-        return
-
-    # If not allowed
-    return "break"
-
-
-def emoji_img(size, text, is_dark):
-    """Generate emoji image
-
-    Parameters
-    ----------
-    size : int
-        size of the image
-    text : str
-        emoji text
-
-    Returns
-    -------
-    ImageTk.PhotoImage
-        the emoji but in image format
-    """
-    font = ImageFont.truetype(p_font_emoji, size=int(round(size * 72 / 96, 0)))
-    if is_dark:
-        im = Image.new("RGBA", (size, size), (255, 255, 255, 0))
-    else:
-        im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(im)
-    draw.text((size / 2, size / 2), text, embedded_color=True, font=font, anchor="mm")
-    return ImageTk.PhotoImage(im)
-
-
-def bind_focus_recursively(root, root_widget):
-    """
-    Bind focus on widgets recursively
-    """
-    widgets = root_widget.winfo_children()
-
-    # now check if there are any children of the children
-    for widget in widgets:
-        if len(widget.winfo_children()) > 0:
-            bind_focus_recursively(root, widget)
-
-        if (
-            isinstance(widget, tk.Frame) or isinstance(widget, ttk.Frame) or isinstance(widget, tk.LabelFrame)
-            or isinstance(widget, ttk.LabelFrame) or isinstance(widget, tk.Label) or isinstance(widget, ttk.Label)
-        ):
-            # make sure that Button-1 is not already binded
-            if "<Button-1>" not in widget.bind():
-                widget.bind("<Button-1>", lambda event: root.focus_set())
-
-
-def windows_os_only(
-    widgets: List[Union[
-        ttk.Checkbutton,
-        ttk.Radiobutton,
-        ttk.Entry,
-        ttk.Combobox,
-        ttk.Button,
-        ttk.Labelframe,
-        tk.LabelFrame,
-        ttk.Frame,
-        tk.Frame,
-        tk.Label,
-        ttk.Label,
-        tk.Scale,
-        ttk.Scale,
-    ]]
-):
-    """
-    Disable widgets that are not available on Windows OS
-
-    Args
-    ----
-        widgets:
-            List of widgets to disable
-    """
-    if system() != "Windows":
-        hide = [ttk.LabelFrame, tk.LabelFrame, ttk.Frame, tk.Frame]
-
-        for widget in widgets:
-            if widget.winfo_class() in hide:
-                assert isinstance(widget, (ttk.LabelFrame, tk.LabelFrame, ttk.Frame, tk.Frame))
-                widget.pack_forget()
-            else:
-                assert isinstance(
-                    widget,
-                    (ttk.Checkbutton, ttk.Radiobutton, ttk.Entry, ttk.Combobox, ttk.Button, ttk.Label, tk.Scale, ttk.Scale),
-                )
-                widget.configure(state="disabled")
-                tk_tooltip(widget, "This feature is only available on Windows OS.")
-
-
 def get_opposite_hex_color(hex_color: str):
     """
     Get opposite color of a given color in hexadecimal
@@ -585,28 +426,3 @@ def get_opposite_hex_color(hex_color: str):
     opposite_rgb_color = tuple(255 - i for i in rgb_color)
     opposite_hex_color = "#%02x%02x%02x" % opposite_rgb_color  # pylint: disable=consider-using-f-string
     return opposite_hex_color
-
-
-def insert_entry_readonly(element: ttk.Entry, value: str):
-    element.configure(state="normal")
-    element.delete(0, "end")
-    element.insert(0, value)
-    element.configure(state="readonly")
-
-
-def change_folder_w_f_call(element: ttk.Entry, f_call: Callable, title, parent=None):
-    d_get = filedialog.askdirectory(parent=parent, title=title)
-    if d_get != "":
-        insert_entry_readonly(element, d_get)
-        f_call(d_get)
-
-
-def change_file_w_f_call(element: ttk.Entry, f_call: Callable, title, filetypes, parent=None):
-    f_get = filedialog.askopenfilename(
-        parent=parent,
-        title=title,
-        filetypes=filetypes,
-    )
-    if f_get != "":
-        insert_entry_readonly(element, f_get)
-        f_call(f_get)

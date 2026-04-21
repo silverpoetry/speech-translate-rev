@@ -262,6 +262,22 @@ function renderSettings(data) {
   if (els.seleniumChromeUserDataDir) {
     els.seleniumChromeUserDataDir.value = String(settings.selenium_chrome_user_data_dir ?? '');
   }
+
+  // Hallucination Filters
+  if (els.filterRec) els.filterRec.checked = Boolean(settings.filter_rec ?? true);
+  if (els.filterRecCaseSensitive) els.filterRecCaseSensitive.checked = Boolean(settings.filter_rec_case_sensitive ?? false);
+  if (els.filterRecStrip) els.filterRecStrip.checked = Boolean(settings.filter_rec_strip ?? true);
+  if (els.filterRecExactMatch) els.filterRecExactMatch.checked = Boolean(settings.filter_rec_exact_match ?? false);
+  if (els.filterRecIgnorePunctuations) els.filterRecIgnorePunctuations.value = String(settings.filter_rec_ignore_punctuations ?? "\"',.?!");
+  if (els.filterRecSimilarity) els.filterRecSimilarity.value = Number(settings.filter_rec_similarity ?? 0.75);
+
+  if (els.filterFileImport) els.filterFileImport.checked = Boolean(settings.filter_file_import ?? true);
+  if (els.filterFileImportCaseSensitive) els.filterFileImportCaseSensitive.checked = Boolean(settings.filter_file_import_case_sensitive ?? false);
+  if (els.filterFileImportStrip) els.filterFileImportStrip.checked = Boolean(settings.filter_file_import_strip ?? true);
+  if (els.filterFileImportExactMatch) els.filterFileImportExactMatch.checked = Boolean(settings.filter_file_import_exact_match ?? false);
+  if (els.filterFileImportIgnorePunctuations) els.filterFileImportIgnorePunctuations.value = String(settings.filter_file_import_ignore_punctuations ?? "\"',.?!");
+  if (els.filterFileImportSimilarity) els.filterFileImportSimilarity.value = Number(settings.filter_file_import_similarity ?? 0.75);
+
   // Per-language initial prompts
     if (els.enableInitialPrompts) {
       els.enableInitialPrompts.checked = Boolean(settings.enable_initial_prompt ?? false);
@@ -1044,6 +1060,12 @@ async function saveSettings(shouldRefresh = true) {
     ['tl_engine_mw', valueOf(els.translateEngineMain, 'Google Translate')],
     ['transcribe_mw', checkedOf(els.transcribeMain, true)],
     ['translate_mw', checkedOf(els.translateMain, true)],
+    ['filter_rec', checkedOf(els.filterRec, true)],
+    ['filter_rec_case_sensitive', checkedOf(els.filterRecCaseSensitive, false)],
+    ['filter_rec_strip', checkedOf(els.filterRecStrip, true)],
+    ['filter_rec_exact_match', checkedOf(els.filterRecExactMatch, false)],
+    ['filter_rec_ignore_punctuations', valueOf(els.filterRecIgnorePunctuations, "\"',.?!")],
+    ['filter_rec_similarity', Number(valueOf(els.filterRecSimilarity, 0.75))],
   ];
 
   for (const [key, value] of updates) {
@@ -1206,6 +1228,12 @@ async function saveImportSettings(shouldRefresh = true) {
     ['target_lang_f_import', els.targetImport.value],
     ['transcribe_f_import', els.transcribeImport.checked],
     ['translate_f_import', els.translateImport.checked],
+    ['filter_file_import', els.filterFileImport ? els.filterFileImport.checked : true],
+    ['filter_file_import_case_sensitive', els.filterFileImportCaseSensitive ? els.filterFileImportCaseSensitive.checked : false],
+    ['filter_file_import_strip', els.filterFileImportStrip ? els.filterFileImportStrip.checked : true],
+    ['filter_file_import_exact_match', els.filterFileImportExactMatch ? els.filterFileImportExactMatch.checked : false],
+    ['filter_file_import_ignore_punctuations', els.filterFileImportIgnorePunctuations ? els.filterFileImportIgnorePunctuations.value : "\"',.?!"],
+    ['filter_file_import_similarity', els.filterFileImportSimilarity ? Number(els.filterFileImportSimilarity.value) : 0.75],
   ];
 
   for (const [key, value] of updates) {
@@ -1368,12 +1396,14 @@ async function saveDetachedSettings(shouldRefresh = true) {
 const AUTO_SAVE_BUCKETS = {
   settings: new Set([
     'input_mode', 'source_lang_mw', 'target_lang_mw', 'tl_engine_mw',
-    'transcribe_mw', 'translate_mw'
+    'transcribe_mw', 'translate_mw',
+    'filter_rec', 'filter_rec_case_sensitive', 'filter_rec_strip', 'filter_rec_exact_match', 'filter_rec_ignore_punctuations', 'filter_rec_similarity'
   ]),
   import: new Set([
     'model_f_import', 'tl_engine_f_import', 'source_lang_f_import', 'target_lang_f_import',
     'transcribe_f_import', 'translate_f_import',
-    'export_txt', 'export_srt', 'export_vtt', 'export_ass', 'export_json', 'export_csv', 'export_mp4'
+    'export_txt', 'export_srt', 'export_vtt', 'export_ass', 'export_json', 'export_csv', 'export_mp4',
+    'filter_file_import', 'filter_file_import_case_sensitive', 'filter_file_import_strip', 'filter_file_import_exact_match', 'filter_file_import_ignore_punctuations', 'filter_file_import_similarity'
   ]),
   record: new Set([
     'verbose_record', 'use_temp', 'use_temp_alt', 'keep_temp', 'file_use_official_whisper',
@@ -1728,6 +1758,10 @@ function bindEvents() {
         await refreshState();
       } else if (action === 'open-repo') {
         await apiCall('open_link', 'https://github.com/Dadangdut33/Speech-Translate');
+      } else if (action === 'open-filter-rec') {
+        await apiCall('open_hallucination_filter', 'rec');
+      } else if (action === 'open-filter-file') {
+        await apiCall('open_hallucination_filter', 'file');
       } else if (action === 'save-selenium-settings') {
         await saveSeleniumSettings();
       } else if (action === 'save-settings') {
@@ -1978,6 +2012,21 @@ async function init() {
     els.workspaceHub = $('workspace-hub');
     els.settingsShell = $('settings-shell');
     els.taskCard = $('task-card');
+
+    // Hallucination filters
+    els.filterRec = $('filter_rec');
+    els.filterRecCaseSensitive = $('filter_rec_case_sensitive');
+    els.filterRecStrip = $('filter_rec_strip');
+    els.filterRecExactMatch = $('filter_rec_exact_match');
+    els.filterRecIgnorePunctuations = $('filter_rec_ignore_punctuations');
+    els.filterRecSimilarity = $('filter_rec_similarity');
+    els.filterFileImport = $('filter_file_import');
+    els.filterFileImportCaseSensitive = $('filter_file_import_case_sensitive');
+    els.filterFileImportStrip = $('filter_file_import_strip');
+    els.filterFileImportExactMatch = $('filter_file_import_exact_match');
+    els.filterFileImportIgnorePunctuations = $('filter_file_import_ignore_punctuations');
+    els.filterFileImportSimilarity = $('filter_file_import_similarity');
+
     // Per-language initial prompts UI
     els.enableInitialPrompts = $('enable_initial_prompt');
     els.conditionOnPreviousText = $('condition_on_previous_text');

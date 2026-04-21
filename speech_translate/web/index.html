@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>语音翻译</title>
   <link rel="stylesheet" href="styles.css?v=20260409-ui-cn-4" />
 </head>
+
 <body>
   <div class="bg-grid"></div>
   <main class="app-shell">
@@ -18,10 +20,14 @@
           </div>
         </div>
         <nav class="menu-list" aria-label="主菜单">
-          <button type="button" class="menu-item is-active" data-nav-target="realtime"><span class="menu-icon menu-icon-realtime"></span><span>实时转写</span></button>
-          <button type="button" class="menu-item" data-nav-target="file"><span class="menu-icon menu-icon-file"></span><span>文件转写</span></button>
-          <button type="button" class="menu-item" data-nav-target="model"><span class="menu-icon menu-icon-model"></span><span>模型选择</span></button>
-          <button type="button" class="menu-item" data-nav-target="settings"><span class="menu-icon menu-icon-settings"></span><span>设置</span></button>
+          <button type="button" class="menu-item is-active" data-nav-target="realtime"><span
+              class="menu-icon menu-icon-realtime"></span><span>实时转写</span></button>
+          <button type="button" class="menu-item" data-nav-target="file"><span
+              class="menu-icon menu-icon-file"></span><span>文件转写</span></button>
+          <button type="button" class="menu-item" data-nav-target="model"><span
+              class="menu-icon menu-icon-model"></span><span>模型选择</span></button>
+          <button type="button" class="menu-item" data-nav-target="settings"><span
+              class="menu-icon menu-icon-settings"></span><span>设置</span></button>
         </nav>
         <div class="sidebar-actions">
           <button class="btn-with-icon" data-open-dir="model">模型目录</button>
@@ -31,479 +37,590 @@
 
       <div class="dashboard-content">
         <section class="card workspace-hub" id="workspace-hub">
-      <div class="workflow-panels">
-        <article class="workflow-card tab-panel is-active" id="tab-model" role="tabpanel">
-          <section class="panel-card core-card">
+          <div class="workflow-panels">
+            <article class="workflow-card tab-panel is-active" id="tab-model" role="tabpanel">
+              <section class="panel-card core-card">
+                <div class="floating-action-row">
+                  <button class="btn-icon" data-action="save-import-settings" data-tooltip="保存模型配置" title="保存模型配置"><span
+                      class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+                </div>
+                <div class="section-head">
+                  <div>
+                    <h3>模型选择</h3>
+                  </div>
+                </div>
+
+                <div class="inline-actions">
+                  <button class="btn-with-icon btn-major" data-action="load-model" id="btn-load-model">加载模型</button>
+                </div>
+
+                <div class="form-grid import-grid model-select-grid model-select-inline">
+                  <div class="model-select-engine-inline">
+                    <span>Whisper 后端</span>
+                    <div class="model-engine-titlebar" id="model-import-engine-bar" role="tablist" aria-label="模型选择后端">
+                      <button type="button" class="model-engine-tab is-active" data-import-engine-option="whisper"
+                        role="tab" aria-selected="true">whisper</button>
+                      <button type="button" class="model-engine-tab" data-import-engine-option="faster-whisper"
+                        role="tab" aria-selected="false">faster-whisper</button>
+                    </div>
+                  </div>
+                  <label>
+                    <span>模型</span>
+                    <select id="model_f_import"></select>
+                  </label>
+                </div>
+                <div class="form-grid" style="margin-top:8px;">
+                  <label class="toggle-row"><input id="condition_on_previous_text" type="checkbox" />
+                    使用上一次输出作为提示</label>
+                </div>
+                <div class="status-row import-status core-status-bottom">
+                  <span class="pill pill-muted" id="import-model-pill">模型</span>
+                </div>
+              </section>
+
+              <details class="advanced-panel" open>
+                <summary>模型检查与下载</summary>
+                <div class="advanced-panel-body">
+                  <div class="model-manager-head">
+                    <div class="model-engine-titlebar" id="model-manager-engine-bar" role="tablist" aria-label="模型引擎">
+                      <button type="button" class="model-engine-tab is-active" data-engine-option="whisper" role="tab"
+                        aria-selected="true">whisper</button>
+                      <button type="button" class="model-engine-tab" data-engine-option="faster-whisper" role="tab"
+                        aria-selected="false">faster-whisper</button>
+                    </div>
+                    <div class="model-manager-tools">
+                      <button class="btn-icon btn-icon-blue" data-action="pick-model-dir" data-tooltip="设置模型目录"
+                        title="设置模型目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                    </div>
+                  </div>
+                  <div id="model-status-card" class="state-card model-status-card"></div>
+                  <div class="section-head model-manager-hint-wrap">
+                    <p id="model-manager-hint">说明：页面会自动检查当前引擎的全部模型。缺失模型可直接点击下载按钮，卡片内显示下载进度。</p>
+                  </div>
+                  <div class="status-row import-status model-manager-summary-row">
+                    <span class="pill pill-muted" id="model-manager-dir-pill">模型目录</span>
+                    <span class="pill pill-muted" id="model-manager-engine-pill">引擎</span>
+                    <span class="pill pill-muted" id="model-manager-download-pill">下载</span>
+                  </div>
+                </div>
+              </details>
+            </article>
+
+            <article class="workflow-card tab-panel" id="tab-file" role="tabpanel">
+              <section class="panel-card core-card">
+                <div class="section-head">
+                  <div>
+                    <h3>文件转写</h3>
+                  </div>
+                  <div class="floating-action-row">
+                    <button class="btn-icon btn-icon-blue" data-action="add-files-to-queue" data-tooltip="导入文件"
+                      title="导入文件"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                    <button class="btn-icon" data-action="clear-import-queue" data-tooltip="清空队列" title="清空队列"><span
+                        class="btn-glyph glyph-trash" aria-hidden="true"></span></button>
+                  </div>
+                </div>
+
+                <div class="inline-actions import-actions">
+                  <button class="primary btn-with-icon btn-recording" data-action="start-import-queue"
+                    id="btn-import-start">开始处理</button>
+                  <label class="toggle-row"><input id="transcribe_f_import" type="checkbox" /> 转写</label>
+                  <label class="toggle-row"><input id="translate_f_import" type="checkbox" /> 翻译</label>
+                </div>
+
+                <div class="file-queue-box" style="margin-top:8px;">
+                  <div class="file-queue-header"
+                    style="display:flex; padding:4px 8px; font-weight:bold; border-bottom:1px solid var(--border-color); font-size:0.9em; color:var(--muted);">
+                    <span style="flex:2;">文件名</span>
+                    <span style="flex:1;">转写状态</span>
+                    <span style="flex:1;">翻译状态</span>
+                    <span style="width:32px;">操作</span>
+                  </div>
+                  <div class="file-queue-body">
+                    <ul id="file_import_list" style="list-style:none;margin:0;padding:0;max-height:160px;overflow:auto">
+                    </ul>
+                  </div>
+                </div>
+
+                <div class="status-row import-status core-status-bottom">
+                  <span class="pill pill-muted" id="import-lang-pill">语言</span>
+                  <span class="pill pill-muted" id="import-engine-pill">引擎</span>
+                </div>
+              </section>
+
+              <div class="dual-advanced-grid">
+                <details class="advanced-panel panel-card" open>
+                  <summary>语言配置</summary>
+                  <div class="floating-action-row">
+                    <button class="btn-icon" data-action="save-import-settings" data-tooltip="保存文件语言配置"
+                      title="保存文件语言配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+                  </div>
+                  <div class="advanced-panel-body">
+                    <div class="form-grid">
+                      <label>
+                        <span>源语言</span>
+                        <select id="source_lang_f_import"></select>
+                      </label>
+                      <label>
+                        <span>目标语言</span>
+                        <select id="target_lang_f_import"></select>
+                      </label>
+                      <label>
+                        <span>翻译引擎</span>
+                        <select id="tl_engine_f_import"></select>
+                      </label>
+                    </div>
+                  </div>
+                </details>
+
+                <details class="advanced-panel panel-card" open>
+                  <summary>输出设置</summary>
+                  <div class="floating-action-row">
+                    <button class="btn-icon btn-icon-blue" data-action="pick-export-dir" data-tooltip="设置导出目录"
+                      title="设置导出目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                    <button class="btn-icon" data-action="save-import-settings" data-tooltip="保存文件输出设置"
+                      title="保存文件输出设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+                  </div>
+                  <div class="advanced-panel-body">
+                    <div class="file-export-block">
+                      <div class="inline-actions import-actions compact-gap file-export-formats">
+                        <span>输出格式</span>
+                        <label class="toggle-row"><input id="export_txt" type="checkbox" /> TXT</label>
+                        <label class="toggle-row"><input id="export_srt" type="checkbox" /> SRT</label>
+                        <label class="toggle-row"><input id="export_vtt" type="checkbox" /> VTT</label>
+                        <label class="toggle-row"><input id="export_ass" type="checkbox" /> ASS</label>
+                        <label class="toggle-row"><input id="export_json" type="checkbox" /> JSON</label>
+                        <label class="toggle-row"><input id="export_csv" type="checkbox" /> CSV</label>
+                        <label class="toggle-row"><input id="export_mp4" type="checkbox" /> MP4 (带字幕)</label>
+                      </div>
+                      <div class="file-export-head file-export-foot">
+                        <span class="pill pill-muted" id="file-export-dir-pill">输出目录：auto</span>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </article>
+
+            <article class="workflow-card tab-panel" id="tab-realtime" role="tabpanel">
+              <section class="panel-card core-card">
+                <div class="floating-action-row">
+                  <button class="btn-icon" data-action="create-detached-tc" data-tooltip="打开转写独立窗口"
+                    title="打开转写独立窗口"><span class="btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
+                  <button class="btn-icon btn-icon-blue" data-action="create-detached-tl" data-tooltip="打开翻译独立窗口"
+                    title="打开翻译独立窗口"><span class="btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
+                </div>
+                <div class="section-head">
+                  <div>
+                    <h3>实时转写</h3>
+                  </div>
+                </div>
+
+                <div class="inline-actions realtime-top-bar">
+                  <button class="primary btn-with-icon btn-recording" data-action="start-recording"
+                    id="btn-recording-toggle">开始录制</button>
+                  <label class="toggle-row"><input id="transcribe_mw" type="checkbox" checked /> 转写</label>
+                  <label class="toggle-row"><input id="translate_mw" type="checkbox" checked /> 翻译</label>
+                </div>
+
+                <div class="advanced-panel-body split-view transcript-shell">
+                  <div class="stack">
+                    <div id="main-transcribed-output" class="live-output">转写内容将显示在这里。</div>
+                  </div>
+                  <div class="stack">
+                    <div id="main-translated-output" class="live-output">翻译内容将显示在这里。</div>
+                  </div>
+                </div>
+
+                <div class="status-row import-status core-status-bottom">
+                  <span class="pill pill-muted" id="main-input-pill">输入</span>
+                  <span class="pill pill-muted" id="main-lang-pill">语言</span>
+                  <span class="pill pill-muted" id="main-engine-pill">引擎</span>
+                </div>
+              </section>
+
+              <div class="dual-advanced-grid">
+                <details class="advanced-panel panel-card" open>
+                  <summary>设备配置</summary>
+                  <div class="floating-action-row">
+                    <button class="btn-icon" data-action="save-settings" data-tooltip="保存实时配置" title="保存实时配置"><span
+                        class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+                  </div>
+                  <div class="advanced-panel-body">
+                    <div class="form-grid">
+                      <label>
+                        <span>输入</span>
+                        <select id="input_mode">
+                          <option value="mic">麦克风</option>
+                          <option value="speaker">扬声器</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>主机 API</span>
+                        <select id="hostAPI"></select>
+                      </label>
+                      <label>
+                        <span>麦克风</span>
+                        <select id="mic"></select>
+                      </label>
+                      <label>
+                        <span>扬声器</span>
+                        <select id="speaker"></select>
+                      </label>
+                    </div>
+                  </div>
+                </details>
+
+                <details class="advanced-panel panel-card" open>
+                  <summary>语言配置</summary>
+                  <div class="floating-action-row">
+                    <button class="btn-icon" data-action="save-settings" data-tooltip="保存实时配置" title="保存实时配置"><span
+                        class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+                  </div>
+                  <div class="advanced-panel-body">
+                    <div class="form-grid">
+                      <label>
+                        <span>源语言</span>
+                        <select id="source_lang_mw"></select>
+                      </label>
+                      <label>
+                        <span>目标语言</span>
+                        <select id="target_lang_mw"></select>
+                      </label>
+                      <label>
+                        <span>翻译引擎</span>
+                        <select id="tl_engine_mw"></select>
+                      </label>
+                    </div>
+                  </div>
+                </details>
+
+                <details class="advanced-panel panel-card grid-span-all" open>
+                  <summary>独立窗口设置</summary>
+                  <div class="floating-action-row">
+                    <button class="btn-icon" data-action="create-detached-tc" data-tooltip="打开转写独立窗口"
+                      title="打开转写独立窗口"><span class="btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
+                    <button class="btn-icon btn-icon-blue" data-action="create-detached-tl" data-tooltip="打开翻译独立窗口"
+                      title="打开翻译独立窗口"><span class="btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
+                    <button class="btn-icon" data-action="save-detached-settings" data-tooltip="保存独立窗口设置"
+                      title="保存独立窗口设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+                  </div>
+                  <div class="advanced-panel-body">
+                    <div class="form-grid">
+                      <label class="detached-mode-group">
+                        <span>选择模式</span>
+                        <div class="model-engine-titlebar detached-mode-titlebar" id="detached_mode_titlebar">
+                          <button type="button" class="model-engine-tab is-active" id="detached_mode_tc_btn"
+                            data-detached-mode="tc">转写</button>
+                          <button type="button" class="model-engine-tab" id="detached_mode_tl_btn"
+                            data-detached-mode="tl">翻译</button>
+                        </div>
+                      </label>
+                      <label>
+                        <span>字体</span>
+                        <input id="detached_font" type="text" placeholder="Arial" />
+                      </label>
+                      <label>
+                        <span>字号 (px)</span>
+                        <input id="detached_font_size" type="number" min="8" max="48" step="1" />
+                      </label>
+                      <label>
+                        <span>字体颜色</span>
+                        <input id="detached_font_color" type="text" placeholder="#FFFFFF" />
+                      </label>
+                    </div>
+                    <div class="form-grid">
+                      <label>
+                        <span>背景颜色</span>
+                        <input id="detached_bg_color" type="text" placeholder="#000000" />
+                      </label>
+                      <label>
+                        <span>透明度</span>
+                        <input id="detached_opacity" type="range" min="0.1" max="1" step="0.05" />
+                      </label>
+                    </div>
+                    <div class="inline-actions import-actions compact-gap">
+                      <label class="toggle-row"><input id="detached_always_on_top" type="checkbox" /> 窗口置顶</label>
+                      <label class="toggle-row"><input id="detached_no_title_bar" type="checkbox" /> 隐藏标题栏</label>
+                      <label class="toggle-row"><input id="detached_click_through" type="checkbox" /> 点击穿透</label>
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="card advanced-shell" id="settings-shell" style="display: none;">
+
+
+          <details class="advanced-panel">
+            <summary>Selenium 翻译窗口</summary>
             <div class="floating-action-row">
-              <button class="btn-icon" data-action="save-import-settings" data-tooltip="保存模型配置" title="保存模型配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+              <button class="btn-icon" data-action="save-selenium-settings" data-tooltip="保存 Selenium 设置"
+                title="保存 Selenium 设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
             </div>
-            <div class="section-head">
-              <div>
-                <h3>模型选择</h3>
-              </div>
-            </div>
-
-            <div class="inline-actions">
-              <button class="btn-with-icon btn-major" data-action="load-model" id="btn-load-model">加载模型</button>
-            </div>
-
-            <div class="form-grid import-grid model-select-grid model-select-inline">
-              <div class="model-select-engine-inline">
-                <span>Whisper 后端</span>
-                <div class="model-engine-titlebar" id="model-import-engine-bar" role="tablist" aria-label="模型选择后端">
-                  <button type="button" class="model-engine-tab is-active" data-import-engine-option="whisper" role="tab" aria-selected="true">whisper</button>
-                  <button type="button" class="model-engine-tab" data-import-engine-option="faster-whisper" role="tab" aria-selected="false">faster-whisper</button>
-                </div>
-              </div>
-              <label>
-                <span>模型</span>
-                <select id="model_f_import"></select>
-              </label>
-            </div>
-            <div class="form-grid" style="margin-top:8px;">
-              <label class="toggle-row"><input id="condition_on_previous_text" type="checkbox" /> 使用上一次输出作为提示</label>
-            </div>
-            <div class="status-row import-status core-status-bottom">
-              <span class="pill pill-muted" id="import-model-pill">模型</span>
-            </div>
-          </section>
-
-          <details class="advanced-panel" open>
-            <summary>模型检查与下载</summary>
             <div class="advanced-panel-body">
-              <div class="model-manager-head">
-                <div class="model-engine-titlebar" id="model-manager-engine-bar" role="tablist" aria-label="模型引擎">
-                  <button type="button" class="model-engine-tab is-active" data-engine-option="whisper" role="tab" aria-selected="true">whisper</button>
-                  <button type="button" class="model-engine-tab" data-engine-option="faster-whisper" role="tab" aria-selected="false">faster-whisper</button>
-                </div>
-                <div class="model-manager-tools">
-                  <button class="btn-icon btn-icon-blue" data-action="pick-model-dir" data-tooltip="设置模型目录" title="设置模型目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
-                </div>
+              <div class="form-grid">
+                <label>
+                  <span>窗口模式</span>
+                  <select id="selenium_compact_level">
+                    <option value="0">标准窗口（完整显示）</option>
+                    <option value="1">紧凑模式（较小窗口）</option>
+                    <option value="2">紧凑+低干扰（推荐）</option>
+                    <option value="3">最小化干扰（最小窗口）</option>
+                  </select>
+                </label>
+                <label>
+                  <span>窗口层级</span>
+                  <select id="selenium_z_order_mode">
+                    <option value="behind-main">主窗体后层</option>
+                    <option value="bottom">全局底层</option>
+                    <option value="normal">常规层级</option>
+                  </select>
+                </label>
+                <label class="field-span-2">
+                  <span>Chrome 用户目录</span>
+                  <div class="input-action-row">
+                    <input id="selenium_chrome_user_data_dir" type="text" placeholder="可手动输入目录，留空使用默认目录" />
+                    <button type="button" class="btn-icon" data-action="pick-selenium-chrome-dir"
+                      data-tooltip="选择 Chrome 用户目录" title="选择 Chrome 用户目录"><span class="btn-glyph glyph-folder"
+                        aria-hidden="true"></span></button>
+                  </div>
+                  <small class="field-note">留空默认：speech_translate/_user/selenium_chrome_profile</small>
+                </label>
               </div>
-              <div id="model-status-card" class="state-card model-status-card"></div>
-              <div class="section-head model-manager-hint-wrap">
-                <p id="model-manager-hint">说明：页面会自动检查当前引擎的全部模型。缺失模型可直接点击下载按钮，卡片内显示下载进度。</p>
+              <div class="inline-actions import-actions compact-gap">
+                <label class="toggle-row"><input id="selenium_auto_close_on_task_done" type="checkbox" /> 转写任务结束后自动关闭
+                  Selenium Chrome</label>
               </div>
-              <div class="status-row import-status model-manager-summary-row">
-                <span class="pill pill-muted" id="model-manager-dir-pill">模型目录</span>
-                <span class="pill pill-muted" id="model-manager-engine-pill">引擎</span>
-                <span class="pill pill-muted" id="model-manager-download-pill">下载</span>
+              <div class="status-row import-status">
+                <span class="pill pill-muted">仅在 Windows 有效</span>
               </div>
             </div>
           </details>
-        </article>
 
-        <article class="workflow-card tab-panel" id="tab-file" role="tabpanel">
-          <section class="panel-card core-card">
-            <div class="section-head">
-              <div>
-                <h3>文件转写</h3>
-              </div>
-              <div class="floating-action-row">
-                <button class="btn-icon btn-icon-blue" data-action="add-files-to-queue" data-tooltip="导入文件" title="导入文件"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
-                <button class="btn-icon" data-action="clear-import-queue" data-tooltip="清空队列" title="清空队列"><span class="btn-glyph glyph-trash" aria-hidden="true"></span></button>
-              </div>
-            </div>
-
-            <div class="inline-actions import-actions">
-              <button class="primary btn-with-icon btn-recording" data-action="start-import-queue" id="btn-import-start">开始处理</button>
-              <label class="toggle-row"><input id="transcribe_f_import" type="checkbox" /> 转写</label>
-              <label class="toggle-row"><input id="translate_f_import" type="checkbox" /> 翻译</label>
-            </div>
-
-            <div class="file-queue-box" style="margin-top:8px;">
-              <div class="file-queue-header"
-                style="display:flex; padding:4px 8px; font-weight:bold; border-bottom:1px solid var(--border-color); font-size:0.9em; color:var(--muted);">
-                <span style="flex:2;">文件名</span>
-                <span style="flex:1;">转写状态</span>
-                <span style="flex:1;">翻译状态</span>
-                <span style="width:32px;">操作</span>
-              </div>
-              <div class="file-queue-body">
-                <ul id="file_import_list" style="list-style:none;margin:0;padding:0;max-height:160px;overflow:auto"></ul>
-              </div>
-            </div>
-
-            <div class="status-row import-status core-status-bottom">
-              <span class="pill pill-muted" id="import-lang-pill">语言</span>
-              <span class="pill pill-muted" id="import-engine-pill">引擎</span>
-            </div>
-          </section>
-
-          <div class="dual-advanced-grid">
-            <details class="advanced-panel panel-card" open>
-              <summary>语言配置</summary>
-              <div class="floating-action-row">
-                <button class="btn-icon" data-action="save-import-settings" data-tooltip="保存文件语言配置" title="保存文件语言配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
-              </div>
-              <div class="advanced-panel-body">
-                <div class="form-grid">
-                  <label>
-                    <span>源语言</span>
-                    <select id="source_lang_f_import"></select>
-                  </label>
-                  <label>
-                    <span>目标语言</span>
-                    <select id="target_lang_f_import"></select>
-                  </label>
-                  <label>
-                    <span>翻译引擎</span>
-                    <select id="tl_engine_f_import"></select>
-                  </label>
-                </div>
-              </div>
-            </details>
-
-            <details class="advanced-panel panel-card" open>
-              <summary>输出设置</summary>
-              <div class="floating-action-row">
-                <button class="btn-icon btn-icon-blue" data-action="pick-export-dir" data-tooltip="设置导出目录" title="设置导出目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
-                <button class="btn-icon" data-action="save-import-settings" data-tooltip="保存文件输出设置" title="保存文件输出设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
-              </div>
-              <div class="advanced-panel-body">
-                <div class="file-export-block">
-                  <div class="inline-actions import-actions compact-gap file-export-formats">
-                    <span>输出格式</span>
-                    <label class="toggle-row"><input id="export_txt" type="checkbox" /> TXT</label>
-                    <label class="toggle-row"><input id="export_srt" type="checkbox" /> SRT</label>
-                    <label class="toggle-row"><input id="export_vtt" type="checkbox" /> VTT</label>
-                    <label class="toggle-row"><input id="export_ass" type="checkbox" /> ASS</label>
-                    <label class="toggle-row"><input id="export_json" type="checkbox" /> JSON</label>
-                    <label class="toggle-row"><input id="export_csv" type="checkbox" /> CSV</label>
-                    <label class="toggle-row"><input id="export_mp4" type="checkbox" /> MP4 (带字幕)</label>
-                  </div>
-                  <div class="file-export-head file-export-foot">
-                    <span class="pill pill-muted" id="file-export-dir-pill">输出目录：auto</span>
-                  </div>
-                </div>
-              </div>
-            </details>
-          </div>
-        </article>
-
-        <article class="workflow-card tab-panel" id="tab-realtime" role="tabpanel">
-          <section class="panel-card core-card">
+          <details class="advanced-panel">
+            <summary>录制设置（麦克风 / 扬声器）</summary>
             <div class="floating-action-row">
-              <button class="btn-icon" data-action="create-detached-tc" data-tooltip="打开转写独立窗口" title="打开转写独立窗口"><span class="btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
-              <button class="btn-icon btn-icon-blue" data-action="create-detached-tl" data-tooltip="打开翻译独立窗口" title="打开翻译独立窗口"><span class="btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
+              <button class="btn-icon" data-action="save-record-settings" data-tooltip="保存录制设置" title="保存录制设置"><span
+                  class="btn-glyph glyph-save" aria-hidden="true"></span></button>
             </div>
-            <div class="section-head">
-              <div>
-                <h3>实时转写</h3>
-              </div>
-            </div>
-
-            <div class="inline-actions realtime-top-bar">
-              <button class="primary btn-with-icon btn-recording" data-action="start-recording" id="btn-recording-toggle">开始录制</button>
-              <label class="toggle-row"><input id="transcribe_mw" type="checkbox" checked /> 转写</label>
-              <label class="toggle-row"><input id="translate_mw" type="checkbox" checked /> 翻译</label>
-            </div>
-
-            <div class="advanced-panel-body split-view transcript-shell">
-              <div class="stack">
-                <div id="main-transcribed-output" class="live-output">转写内容将显示在这里。</div>
-              </div>
-              <div class="stack">
-                <div id="main-translated-output" class="live-output">翻译内容将显示在这里。</div>
-              </div>
-            </div>
-
-            <div class="status-row import-status core-status-bottom">
-              <span class="pill pill-muted" id="main-input-pill">输入</span>
-              <span class="pill pill-muted" id="main-lang-pill">语言</span>
-              <span class="pill pill-muted" id="main-engine-pill">引擎</span>
-            </div>
-          </section>
-
-          <div class="dual-advanced-grid">
-            <details class="advanced-panel panel-card" open>
-              <summary>设备配置</summary>
-              <div class="floating-action-row">
-                <button class="btn-icon" data-action="save-settings" data-tooltip="保存实时配置" title="保存实时配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
-              </div>
-              <div class="advanced-panel-body">
-                <div class="form-grid">
-                  <label>
-                    <span>输入</span>
-                    <select id="input_mode">
-                      <option value="mic">麦克风</option>
-                      <option value="speaker">扬声器</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>主机 API</span>
-                    <select id="hostAPI"></select>
-                  </label>
-                  <label>
-                    <span>麦克风</span>
-                    <select id="mic"></select>
-                  </label>
-                  <label>
-                    <span>扬声器</span>
-                    <select id="speaker"></select>
-                  </label>
-                </div>
-              </div>
-            </details>
-
-            <details class="advanced-panel panel-card" open>
-              <summary>语言配置</summary>
-              <div class="floating-action-row">
-                <button class="btn-icon" data-action="save-settings" data-tooltip="保存实时配置" title="保存实时配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
-              </div>
-              <div class="advanced-panel-body">
-                <div class="form-grid">
-                  <label>
-                    <span>源语言</span>
-                    <select id="source_lang_mw"></select>
-                  </label>
-                  <label>
-                    <span>目标语言</span>
-                    <select id="target_lang_mw"></select>
-                  </label>
-                  <label>
-                    <span>翻译引擎</span>
-                    <select id="tl_engine_mw"></select>
-                  </label>
-                </div>
-              </div>
-            </details>
-
-            <details class="advanced-panel panel-card grid-span-all" open>
-              <summary>独立窗口设置</summary>
-              <div class="floating-action-row">
-                <button class="btn-icon" data-action="create-detached-tc" data-tooltip="打开转写独立窗口" title="打开转写独立窗口"><span class="btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
-                <button class="btn-icon btn-icon-blue" data-action="create-detached-tl" data-tooltip="打开翻译独立窗口" title="打开翻译独立窗口"><span class="btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
-                <button class="btn-icon" data-action="save-detached-settings" data-tooltip="保存独立窗口设置" title="保存独立窗口设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
-              </div>
-              <div class="advanced-panel-body">
-                <div class="form-grid">
-                  <label class="detached-mode-group">
-                    <span>选择模式</span>
-                    <div class="model-engine-titlebar detached-mode-titlebar" id="detached_mode_titlebar">
-                      <button type="button" class="model-engine-tab is-active" id="detached_mode_tc_btn" data-detached-mode="tc">转写</button>
-                      <button type="button" class="model-engine-tab" id="detached_mode_tl_btn" data-detached-mode="tl">翻译</button>
-                    </div>
-                  </label>
-                  <label>
-                    <span>字体</span>
-                    <input id="detached_font" type="text" placeholder="Arial" />
-                  </label>
-                  <label>
-                    <span>字号 (px)</span>
-                    <input id="detached_font_size" type="number" min="8" max="48" step="1" />
-                  </label>
-                  <label>
-                    <span>字体颜色</span>
-                    <input id="detached_font_color" type="text" placeholder="#FFFFFF" />
-                  </label>
-                </div>
-                <div class="form-grid">
-                  <label>
-                    <span>背景颜色</span>
-                    <input id="detached_bg_color" type="text" placeholder="#000000" />
-                  </label>
-                  <label>
-                    <span>透明度</span>
-                    <input id="detached_opacity" type="range" min="0.1" max="1" step="0.05" />
-                  </label>
-                </div>
-                <div class="inline-actions import-actions compact-gap">
-                  <label class="toggle-row"><input id="detached_always_on_top" type="checkbox" /> 窗口置顶</label>
-                  <label class="toggle-row"><input id="detached_no_title_bar" type="checkbox" /> 隐藏标题栏</label>
-                  <label class="toggle-row"><input id="detached_click_through" type="checkbox" /> 点击穿透</label>
-                </div>
-              </div>
-            </details>
-          </div>
-        </article>
-      </div>
-    </section>
-
-    <section class="card advanced-shell" id="settings-shell" style="display: none;">
-
-
-      <details class="advanced-panel">
-        <summary>Selenium 翻译窗口</summary>
-        <div class="floating-action-row">
-          <button class="btn-icon" data-action="save-selenium-settings" data-tooltip="保存 Selenium 设置" title="保存 Selenium 设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
-        </div>
-        <div class="advanced-panel-body">
-          <div class="form-grid">
-            <label>
-              <span>窗口模式</span>
-              <select id="selenium_compact_level">
-                <option value="0">标准窗口（完整显示）</option>
-                <option value="1">紧凑模式（较小窗口）</option>
-                <option value="2">紧凑+低干扰（推荐）</option>
-                <option value="3">最小化干扰（最小窗口）</option>
-              </select>
-            </label>
-            <label>
-              <span>窗口层级</span>
-              <select id="selenium_z_order_mode">
-                <option value="behind-main">主窗体后层</option>
-                <option value="bottom">全局底层</option>
-                <option value="normal">常规层级</option>
-              </select>
-            </label>
-            <label class="field-span-2">
-              <span>Chrome 用户目录</span>
-              <div class="input-action-row">
-                <input id="selenium_chrome_user_data_dir" type="text" placeholder="可手动输入目录，留空使用默认目录" />
-                <button type="button" class="btn-icon" data-action="pick-selenium-chrome-dir" data-tooltip="选择 Chrome 用户目录" title="选择 Chrome 用户目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
-              </div>
-              <small class="field-note">留空默认：speech_translate/_user/selenium_chrome_profile</small>
-            </label>
-          </div>
-          <div class="inline-actions import-actions compact-gap">
-            <label class="toggle-row"><input id="selenium_auto_close_on_task_done" type="checkbox" /> 转写任务结束后自动关闭 Selenium Chrome</label>
-          </div>
-          <div class="status-row import-status">
-            <span class="pill pill-muted">仅在 Windows 有效</span>
-          </div>
-        </div>
-      </details>
-
-      <details class="advanced-panel">
-        <summary>录制设置（麦克风 / 扬声器）</summary>
-        <div class="floating-action-row">
-          <button class="btn-icon" data-action="save-record-settings" data-tooltip="保存录制设置" title="保存录制设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
-        </div>
-        <div class="advanced-panel-body">
-          <div class="section-head">
-            <div>
-              <h3>录制参数</h3>
-              <p>用于麦克风和扬声器的采集、缓冲与 VAD 调整。</p>
-            </div>
-          </div>
-
-          <div class="form-grid">
-            <label>
-              <span>详细录制日志</span>
-              <select id="verbose_record">
-                <option value="true">true</option>
-                <option value="false">false</option>
-              </select>
-            </label>
-            <label>
-              <span>模型设备</span>
-              <select id="model_device_preference">
-                <option value="auto">Auto（自动）</option>
-                <option value="cpu">CPU</option>
-                <option value="cuda">CUDA (GPU)</option>
-              </select>
-              <small class="field-note">选择 CUDA 需要当前环境安装 GPU 版 torch/torchaudio。</small>
-            </label>
-            <label>
-              <span>转写间隔 (ms)</span>
-              <input id="transcribe_rate" type="number" min="1" max="1000" step="1" />
-            </label>
-            <label>
-              <span>分隔符</span>
-              <input id="separate_with" type="text" placeholder="\n" />
-            </label>
-          </div>
-
-          <div class="inline-actions import-actions compact-gap">
-            <label class="toggle-row"><input id="use_temp" type="radio" name="conversion_mode" value="numpy" /> Numpy 数组</label>
-            <label class="toggle-row"><input id="use_temp_alt" type="radio" name="conversion_mode" value="temp" /> 临时 wav 文件</label>
-            <label class="toggle-row"><input id="keep_temp" type="checkbox" /> 保留临时文件</label>
-            <label class="toggle-row"><input id="file_use_official_whisper" type="checkbox" /> 文件转写使用后端原生 transcribe</label>
-            <label class="toggle-row"><input id="show_audio_visualizer_in_setting" type="checkbox" /> 显示音频可视化</label>
-          </div>
-
-          <div class="record-grid">
-            <div class="record-device-card">
+            <div class="advanced-panel-body">
               <div class="section-head">
-                <h3>麦克风</h3>
+                <div>
+                  <h3>录制参数</h3>
+                  <p>用于麦克风和扬声器的采集、缓冲与 VAD 调整。</p>
+                </div>
               </div>
-              <div class="form-grid record-subgrid">
-                <label><span>采样率</span><input id="sample_rate_mic" type="number" min="4000" max="384000" step="1" /></label>
-                <label><span>块大小</span><input id="chunk_size_mic" type="number" min="320" max="1280" step="1" /></label>
-                <label><span>声道</span><input id="channels_mic" type="text" placeholder="单声道" /></label>
-                <label><span>最小输入时长</span><input id="min_input_length_mic" type="number" min="0.1" max="10" step="0.1" /></label>
-                <label><span>最大缓冲</span><input id="max_buffer_mic" type="number" min="1" max="30" step="1" /></label>
-                <label><span>最大句子数</span><input id="max_sentences_mic" type="number" min="1" max="100" step="1" /></label>
+
+              <div class="form-grid">
+                <label>
+                  <span>详细录制日志</span>
+                  <select id="verbose_record">
+                    <option value="true">true</option>
+                    <option value="false">false</option>
+                  </select>
+                </label>
+                <label>
+                  <span>模型设备</span>
+                  <select id="model_device_preference">
+                    <option value="auto">Auto（自动）</option>
+                    <option value="cpu">CPU</option>
+                    <option value="cuda">CUDA (GPU)</option>
+                  </select>
+                  <small class="field-note">选择 CUDA 需要当前环境安装 GPU 版 torch/torchaudio。</small>
+                </label>
+                <label>
+                  <span>转写间隔 (ms)</span>
+                  <input id="transcribe_rate" type="number" min="1" max="1000" step="1" />
+                </label>
+                <label>
+                  <span>分隔符</span>
+                  <input id="separate_with" type="text" placeholder="\n" />
+                </label>
               </div>
+
               <div class="inline-actions import-actions compact-gap">
-                <label class="toggle-row"><input id="auto_sample_rate_mic" type="checkbox" /> 自动采样率</label>
-                <label class="toggle-row"><input id="auto_channels_mic" type="checkbox" /> 自动声道</label>
-                <label class="toggle-row"><input id="mic_no_limit" type="checkbox" /> 不限长度</label>
+                <label class="toggle-row"><input id="use_temp" type="radio" name="conversion_mode" value="numpy" />
+                  Numpy 数组</label>
+                <label class="toggle-row"><input id="use_temp_alt" type="radio" name="conversion_mode" value="temp" />
+                  临时 wav 文件</label>
+                <label class="toggle-row"><input id="keep_temp" type="checkbox" /> 保留临时文件</label>
+                <label class="toggle-row"><input id="file_use_official_whisper" type="checkbox" /> 文件转写使用后端原生
+                  transcribe</label>
+                <label class="toggle-row"><input id="show_audio_visualizer_in_setting" type="checkbox" />
+                  显示音频可视化</label>
               </div>
-              <div class="inline-actions import-actions compact-gap">
-                <label class="toggle-row"><input id="threshold_enable_mic" type="checkbox" /> 阈值</label>
-                <label class="toggle-row"><input id="threshold_auto_mic" type="checkbox" /> 自动阈值</label>
-                <label class="toggle-row"><input id="threshold_auto_silero_mic" type="checkbox" /> 使用 Silero</label>
-                <label class="toggle-row"><input id="auto_break_buffer_mic" type="checkbox" /> 静音断句</label>
+
+              <div class="record-grid">
+                <div class="record-device-card">
+                  <div class="section-head">
+                    <h3>麦克风</h3>
+                  </div>
+                  <div class="form-grid record-subgrid">
+                    <label><span>采样率</span><input id="sample_rate_mic" type="number" min="4000" max="384000"
+                        step="1" /></label>
+                    <label><span>块大小</span><input id="chunk_size_mic" type="number" min="320" max="1280"
+                        step="1" /></label>
+                    <label><span>声道</span><input id="channels_mic" type="text" placeholder="单声道" /></label>
+                    <label><span>最小输入时长</span><input id="min_input_length_mic" type="number" min="0.1" max="10"
+                        step="0.1" /></label>
+                    <label><span>最大缓冲</span><input id="max_buffer_mic" type="number" min="1" max="30"
+                        step="1" /></label>
+                    <label><span>最大句子数</span><input id="max_sentences_mic" type="number" min="1" max="100"
+                        step="1" /></label>
+                  </div>
+                  <div class="inline-actions import-actions compact-gap">
+                    <label class="toggle-row"><input id="auto_sample_rate_mic" type="checkbox" /> 自动采样率</label>
+                    <label class="toggle-row"><input id="auto_channels_mic" type="checkbox" /> 自动声道</label>
+                    <label class="toggle-row"><input id="mic_no_limit" type="checkbox" /> 不限长度</label>
+                  </div>
+                  <div class="inline-actions import-actions compact-gap">
+                    <label class="toggle-row"><input id="threshold_enable_mic" type="checkbox" /> 阈值</label>
+                    <label class="toggle-row"><input id="threshold_auto_mic" type="checkbox" /> 自动阈值</label>
+                    <label class="toggle-row"><input id="threshold_auto_silero_mic" type="checkbox" /> 使用 Silero</label>
+                    <label class="toggle-row"><input id="auto_break_buffer_mic" type="checkbox" /> 静音断句</label>
+                  </div>
+                  <div class="form-grid record-subgrid">
+                    <label><span>自动级别</span><input id="threshold_auto_level_mic" type="number" min="1" max="3"
+                        step="1" /></label>
+                    <label><span>Silero 最小值</span><input id="threshold_silero_mic_min" type="number" min="0.1" max="1"
+                        step="0.05" /></label>
+                    <label><span>阈值 dB</span><input id="threshold_db_mic" type="range" min="-60" max="0"
+                        step="0.5" /><span class="range-value" id="threshold_db_mic_value">-30.0 dB</span></label>
+                  </div>
+                </div>
+
+                <div class="record-device-card">
+                  <div class="section-head">
+                    <h3>扬声器</h3>
+                  </div>
+                  <div class="form-grid record-subgrid">
+                    <label><span>采样率</span><input id="sample_rate_speaker" type="number" min="4000" max="384000"
+                        step="1" /></label>
+                    <label><span>块大小</span><input id="chunk_size_speaker" type="number" min="320" max="1280"
+                        step="1" /></label>
+                    <label><span>声道</span><input id="channels_speaker" type="text" placeholder="立体声" /></label>
+                    <label><span>最小输入时长</span><input id="min_input_length_speaker" type="number" min="0.1" max="10"
+                        step="0.1" /></label>
+                    <label><span>最大缓冲</span><input id="max_buffer_speaker" type="number" min="1" max="30"
+                        step="1" /></label>
+                    <label><span>最大句子数</span><input id="max_sentences_speaker" type="number" min="1" max="100"
+                        step="1" /></label>
+                  </div>
+                  <div class="inline-actions import-actions compact-gap">
+                    <label class="toggle-row"><input id="auto_sample_rate_speaker" type="checkbox" /> 自动采样率</label>
+                    <label class="toggle-row"><input id="auto_channels_speaker" type="checkbox" /> 自动声道</label>
+                    <label class="toggle-row"><input id="speaker_no_limit" type="checkbox" /> 不限长度</label>
+                  </div>
+                  <div class="inline-actions import-actions compact-gap">
+                    <label class="toggle-row"><input id="threshold_enable_speaker" type="checkbox" /> 阈值</label>
+                    <label class="toggle-row"><input id="threshold_auto_speaker" type="checkbox" /> 自动阈值</label>
+                    <label class="toggle-row"><input id="threshold_auto_silero_speaker" type="checkbox" /> 使用
+                      Silero</label>
+                    <label class="toggle-row"><input id="auto_break_buffer_speaker" type="checkbox" /> 静音断句</label>
+                  </div>
+                  <div class="form-grid record-subgrid">
+                    <label><span>自动级别</span><input id="threshold_auto_level_speaker" type="number" min="1" max="3"
+                        step="1" /></label>
+                    <label><span>Silero 最小值</span><input id="threshold_silero_speaker_min" type="number" min="0.1"
+                        max="1" step="0.05" /></label>
+                    <label><span>阈值 dB</span><input id="threshold_db_speaker" type="range" min="-60" max="0"
+                        step="0.5" /><span class="range-value" id="threshold_db_speaker_value">-30.0 dB</span></label>
+                  </div>
+                </div>
               </div>
-              <div class="form-grid record-subgrid">
-                <label><span>自动级别</span><input id="threshold_auto_level_mic" type="number" min="1" max="3" step="1" /></label>
-                <label><span>Silero 最小值</span><input id="threshold_silero_mic_min" type="number" min="0.1" max="1" step="0.05" /></label>
-                <label><span>阈值 dB</span><input id="threshold_db_mic" type="range" min="-60" max="0" step="0.5" /><span class="range-value" id="threshold_db_mic_value">-30.0 dB</span></label>
+
+              <div class="status-row import-status">
+                <span class="pill pill-muted" id="record-input-pill">输入</span>
+                <span class="pill pill-muted" id="record-mode-pill">模式</span>
+                <span class="pill pill-muted" id="record-visual-pill">可视化</span>
               </div>
             </div>
+          </details>
 
-            <div class="record-device-card">
+          <details class="advanced-panel">
+            <summary>幻觉过滤 (Hallucination Filter)</summary>
+            <div class="advanced-panel-body">
               <div class="section-head">
-                <h3>扬声器</h3>
+                <div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <h3 style="margin: 0;">实时转写过滤 (Record)</h3>
+                    <button class="btn-icon btn-icon-blue btn-icon-sm" data-action="open-filter-rec" data-tooltip="打开实时配置词典" title="打开实时配置词典"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                    <button class="btn-icon btn-icon-sm" data-action="save-settings" data-tooltip="保存录音配置" title="保存录音配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+                  </div>
+                  <p style="margin-top: 4px;">过滤 Whisper 在录音静音期间生成的幻觉文本。</p>
+                </div>
               </div>
-              <div class="form-grid record-subgrid">
-                <label><span>采样率</span><input id="sample_rate_speaker" type="number" min="4000" max="384000" step="1" /></label>
-                <label><span>块大小</span><input id="chunk_size_speaker" type="number" min="320" max="1280" step="1" /></label>
-                <label><span>声道</span><input id="channels_speaker" type="text" placeholder="立体声" /></label>
-                <label><span>最小输入时长</span><input id="min_input_length_speaker" type="number" min="0.1" max="10" step="0.1" /></label>
-                <label><span>最大缓冲</span><input id="max_buffer_speaker" type="number" min="1" max="30" step="1" /></label>
-                <label><span>最大句子数</span><input id="max_sentences_speaker" type="number" min="1" max="100" step="1" /></label>
+              <div class="form-grid">
+                <label class="toggle-row"><input id="filter_rec" type="checkbox" /> 启用实时转写过滤</label>
+                <label class="toggle-row"><input id="filter_rec_case_sensitive" type="checkbox" /> 区分大小写</label>
+                <label class="toggle-row"><input id="filter_rec_strip" type="checkbox" /> 去除首尾空格</label>
+                <label class="toggle-row"><input id="filter_rec_exact_match" type="checkbox" /> 精准匹配 (Exact Match)</label>
               </div>
-              <div class="inline-actions import-actions compact-gap">
-                <label class="toggle-row"><input id="auto_sample_rate_speaker" type="checkbox" /> 自动采样率</label>
-                <label class="toggle-row"><input id="auto_channels_speaker" type="checkbox" /> 自动声道</label>
-                <label class="toggle-row"><input id="speaker_no_limit" type="checkbox" /> 不限长度</label>
+              <div class="form-grid">
+                <label>
+                  <span>忽略标点符号</span>
+                  <input id="filter_rec_ignore_punctuations" type="text" placeholder=".,?!" />
+                </label>
+                <label>
+                  <span>模糊匹配相似度阈值</span>
+                  <input id="filter_rec_similarity" type="number" min="0.1" max="1.0" step="0.01" />
+                </label>
               </div>
-              <div class="inline-actions import-actions compact-gap">
-                <label class="toggle-row"><input id="threshold_enable_speaker" type="checkbox" /> 阈值</label>
-                <label class="toggle-row"><input id="threshold_auto_speaker" type="checkbox" /> 自动阈值</label>
-                <label class="toggle-row"><input id="threshold_auto_silero_speaker" type="checkbox" /> 使用 Silero</label>
-                <label class="toggle-row"><input id="auto_break_buffer_speaker" type="checkbox" /> 静音断句</label>
+
+              <div class="section-head" style="margin-top: 16px;">
+                <div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <h3 style="margin: 0;">文件导入过滤 (File Import)</h3>
+                    <button class="btn-icon btn-icon-blue btn-icon-sm" data-action="open-filter-file" data-tooltip="打开文件导入配置词典" title="打开文件导入配置词典"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                    <button class="btn-icon btn-icon-sm" data-action="save-import-settings" data-tooltip="保存导入配置" title="保存导入配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+                  </div>
+                  <p style="margin-top: 4px;">过滤文件导入解析期间的幻觉文本。</p>
+                </div>
               </div>
-              <div class="form-grid record-subgrid">
-                <label><span>自动级别</span><input id="threshold_auto_level_speaker" type="number" min="1" max="3" step="1" /></label>
-                <label><span>Silero 最小值</span><input id="threshold_silero_speaker_min" type="number" min="0.1" max="1" step="0.05" /></label>
-                <label><span>阈值 dB</span><input id="threshold_db_speaker" type="range" min="-60" max="0" step="0.5" /><span class="range-value" id="threshold_db_speaker_value">-30.0 dB</span></label>
+              <div class="form-grid">
+                <label class="toggle-row"><input id="filter_file_import" type="checkbox" /> 启用文件导入过滤</label>
+                <label class="toggle-row"><input id="filter_file_import_case_sensitive" type="checkbox" /> 区分大小写</label>
+                <label class="toggle-row"><input id="filter_file_import_strip" type="checkbox" /> 去除首尾空格</label>
+                <label class="toggle-row"><input id="filter_file_import_exact_match" type="checkbox" /> 精准匹配 (Exact
+                  Match)</label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  <span>忽略标点符号</span>
+                  <input id="filter_file_import_ignore_punctuations" type="text" placeholder=".,?!" />
+                </label>
+                <label>
+                  <span>模糊匹配相似度阈值</span>
+                  <input id="filter_file_import_similarity" type="number" min="0.1" max="1.0" step="0.01" />
+                </label>
               </div>
             </div>
-          </div>
+          </details>
 
-          <div class="status-row import-status">
-            <span class="pill pill-muted" id="record-input-pill">输入</span>
-            <span class="pill pill-muted" id="record-mode-pill">模式</span>
-            <span class="pill pill-muted" id="record-visual-pill">可视化</span>
-          </div>
-        </div>
-      </details>
-
-      <details class="advanced-panel">
-        <summary>引导词</summary>
-        <div class="floating-action-row">
-          <button class="btn-icon" data-action="save-initial-prompts" data-tooltip="保存引导词" title="保存引导词"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
-        </div>
-        <div class="advanced-panel-body">
-          <div class="form-grid">
-            <label class="toggle-row"><input id="enable_initial_prompt" type="checkbox" /> 使用引导词（全局）</label>
-          </div>
-          <div class="section-head">
-            <div>
-              <h3>引导词</h3>
+          <details class="advanced-panel">
+            <summary>引导词</summary>
+            <div class="floating-action-row">
+              <button class="btn-icon" data-action="save-initial-prompts" data-tooltip="保存引导词" title="保存引导词"><span
+                  class="btn-glyph glyph-save" aria-hidden="true"></span></button>
             </div>
-          </div>
-          <div class="form-grid" id="initial_prompts_container" style="gap: 12px 16px;">
-            <!-- per-language inputs generated by JS -->
-          </div>
-        </div>
-      </details>
+            <div class="advanced-panel-body">
+              <div class="form-grid">
+                <label class="toggle-row"><input id="enable_initial_prompt" type="checkbox" /> 使用引导词（全局）</label>
+              </div>
+              <div class="section-head">
+                <div>
+                  <h3>引导词</h3>
+                </div>
+              </div>
+              <div class="form-grid" id="initial_prompts_container" style="gap: 12px 16px;">
+                <!-- per-language inputs generated by JS -->
+              </div>
+            </div>
+          </details>
 
-    </section>
+        </section>
       </div>
     </div>
 
@@ -532,4 +649,5 @@
 
   <script src="app.js?v=20260409-ui-cn-4"></script>
 </body>
+
 </html>

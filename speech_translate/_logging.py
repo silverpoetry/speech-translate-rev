@@ -80,14 +80,6 @@ class StreamStderrToLogger(object):
                 logger.log("INFO", shorten)
                 recent_stderr.append(shorten)
 
-                progress_value = self._extract_progress_value(line)
-                if progress_value is not None and bc.web_bridge is not None:
-                    try:
-                        bc.web_bridge.update_task_progress(progress_value, source="progress-log")
-                        bc.web_bridge.update_task_message(shorten, source="progress-log")
-                    except Exception:
-                        pass
-
                 # limit to max 10
                 if len(recent_stderr) > 10:
                     recent_stderr.pop(0)

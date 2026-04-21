@@ -985,6 +985,27 @@ class WebBridge(WebTaskBridge):
         open_url(url)
         return {"url": url}
 
+    def open_hallucination_filter(self, target: str) -> Dict[str, str]:
+        try:
+            from speech_translate._path import p_filter_rec, p_filter_file_import
+            from speech_translate.utils.whisper.helper import create_hallucination_filter
+            path = p_filter_rec if target == "rec" else p_filter_file_import
+            if not os.path.exists(path):
+                create_hallucination_filter('rec' if target == "rec" else 'file')
+            
+            if sys.platform == "win32":
+                os.startfile(path)
+            elif sys.platform == "darwin":
+                import subprocess
+                subprocess.Popen(["open", path])
+            else:
+                import subprocess
+                subprocess.Popen(["xdg-open", path])
+            return {"ok": True}
+        except Exception as e:
+            logger.exception(e)
+            return {"ok": False, "message": str(e)}
+
     def notify(self, title: str, message: str) -> Dict[str, str]:
         logger.info(f"{title}: {message}")
         return {"title": title, "message": message}
@@ -1100,6 +1121,12 @@ class WebBridge(WebTaskBridge):
             "selenium_auto_close_on_task_done": settings.get("selenium_auto_close_on_task_done", True), "selenium_chrome_user_data_dir": settings.get("selenium_chrome_user_data_dir", ""),
             "enable_initial_prompt": settings.get("enable_initial_prompt", False), "initial_prompts_map": settings.get("initial_prompts_map", {}),
             "condition_on_previous_text": settings.get("condition_on_previous_text", True),
+            "filter_rec": settings.get("filter_rec", True), "filter_rec_case_sensitive": settings.get("filter_rec_case_sensitive", False),
+            "filter_rec_strip": settings.get("filter_rec_strip", True), "filter_rec_ignore_punctuations": settings.get("filter_rec_ignore_punctuations", "\"',.?!"),
+            "filter_rec_exact_match": settings.get("filter_rec_exact_match", False), "filter_rec_similarity": settings.get("filter_rec_similarity", 0.75),
+            "filter_file_import": settings.get("filter_file_import", True), "filter_file_import_case_sensitive": settings.get("filter_file_import_case_sensitive", False),
+            "filter_file_import_strip": settings.get("filter_file_import_strip", True), "filter_file_import_ignore_punctuations": settings.get("filter_file_import_ignore_punctuations", "\"',.?!"),
+            "filter_file_import_exact_match": settings.get("filter_file_import_exact_match", False), "filter_file_import_similarity": settings.get("filter_file_import_similarity", 0.75),
         }
 
         import_ui, t_import = self._build_import_ui(verify_available=False), time()
@@ -1390,10 +1417,9 @@ class WebBridge(WebTaskBridge):
                 model_dir = self._resolve_model_dir()
                 os.makedirs(model_dir, exist_ok=True)
                 self.reset_task_state("Model Download")
-                self.update_task_message(f"Preparing download for {model_key} ({engine})")
-                self.update_task_progress(5)
+                self.update_task_message(f"Preparing download for {model_key} ({engine})", source="model-download")
+                self.update_task_progress(5, source="model-download")
 
-                total_bytes = 0
                 if engine == "whisper":
                     from whisper import _MODELS
                     if not (url := _MODELS.get(model_key)): raise ValueError(f"Invalid model key: {model_key}")
@@ -1404,6 +1430,20 @@ class WebBridge(WebTaskBridge):
                     from huggingface_hub.file_download import repo_folder_name
                     if not (repo_id := FW_MODELS.get(model_key)): raise ValueError(f"Invalid model key: {model_key}")
                     observe_path = os.path.join(model_dir, repo_folder_name(repo_id=repo_id, repo_type="model"))
+                    try:
+                        self.update_task_message(f"Fetching model info for {model_key}...", source="model-download")
+                        import huggingface_hub
+                        api = huggingface_hub.HfApi()
+                        repo_info = api.repo_info(repo_id=repo_id, repo_type="model", files_metadata=True)
+                        allow_patterns = ["config.json", "preprocessor_config.json", "model.bin", "tokenizer.json", "vocabulary.*"]
+                        filtered = list(huggingface_hub.utils.filter_repo_objects(
+                            items=[f.rfilename for f in repo_info.siblings],
+                            allow_patterns=allow_patterns,
+                        ))
+                        total_bytes = sum(f.size for f in repo_info.siblings if f.rfilename in filtered and f.size is not None)
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch total size: {e}")
+                        total_bytes = 0
 
                 self._cache_model_status(engine, model_key, False, downloading=True, progress=5, speed="-")
                 result_box = {"ok": False, "error": None}
@@ -1432,14 +1472,14 @@ class WebBridge(WebTaskBridge):
                     size_text = f"{self._fmt_bytes(current_bytes)}/{self._fmt_bytes(total_bytes)}" if total_bytes > 0 else self._fmt_bytes(current_bytes)
 
                     self._cache_model_status(engine, model_key, False, downloading=True, progress=progress, speed=speed_text)
-                    self.update_task_progress(progress)
-                    self.update_task_message(f"Downloading {model_key} ({engine}) | {size_text} | speed {speed_text}")
+                    self.update_task_progress(progress, source="model-download")
+                    self.update_task_message(f"DL {model_key}: {size_text} ({speed_text})", source="model-download")
                     last_bytes, last_time = current_bytes, now
 
                 dl_thread.join()
                 if result_box.get("error"): raise cast(Exception, result_box["error"])
 
-                self.update_task_progress(90)
+                self.update_task_progress(90, source="model-download")
                 downloaded, error = False, ""
                 for _ in range(8):
                     if downloaded := self._verify_model_status(engine, model_key, model_dir)[0]: break
@@ -1448,7 +1488,7 @@ class WebBridge(WebTaskBridge):
                 self._cache_model_status(engine, model_key, downloaded, error, downloading=False, progress=100.0 if downloaded else 0.0, speed="-")
                 if not downloaded: raise RuntimeError(error or "Verification failed")
 
-                self.update_task_progress(100)
+                self.update_task_progress(100, source="model-download")
                 self.finish_task(f"Model downloaded: {model_key} ({engine})")
             except Exception as exc:
                 logger.exception(exc)
