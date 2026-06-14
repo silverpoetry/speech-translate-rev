@@ -1,10 +1,5 @@
-import os
-import subprocess
-import sys
 from threading import Thread
 from typing import Any, Dict, Optional, List
-
-from loguru import logger
 
 from speech_translate._logging import init_logging
 from speech_translate._path import dir_debug
@@ -15,6 +10,7 @@ from speech_translate.import_queue_manager import ImportQueueController
 from speech_translate.main_window_controller import MainWindowController
 from speech_translate.model_manager import ModelManagerController
 from speech_translate.recording_controller import RecordingSessionController
+from speech_translate.runtime_bootstrap import add_ffmpeg_to_path, get_whisper_load_api, install_no_console_popen
 from speech_translate.state_view_builder import StateViewBuilder
 from speech_translate.system_settings_controller import DEFAULT_PATH_CONFIG, SystemSettingsController
 from speech_translate.linker import sj
@@ -22,51 +18,7 @@ from speech_translate.web_backend import HeadlessFileProcessDialog, WebTaskBridg
 from speech_translate.utils.translate.language import TL_ENGINE_SOURCE_DICT, TL_ENGINE_TARGET_DICT
 from speech_translate.utils.translate.translator import shutdown_selenium_translator
 
-
-_whisper_load_api = None
-
-
-def _get_whisper_load_api():
-    global _whisper_load_api
-    if _whisper_load_api is None:
-        from speech_translate.utils.whisper import load as whisper_load
-
-        _whisper_load_api = whisper_load
-    return _whisper_load_api
-
-
-class NoConsolePopen(subprocess.Popen):
-    """Disable console windows when spawning subprocesses on Windows."""
-
-    def __init__(self, args, **kwargs):
-        if system() == "Windows" and "startupinfo" not in kwargs:
-            kwargs["startupinfo"] = subprocess.STARTUPINFO()
-            kwargs["startupinfo"].dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        super().__init__(args, **kwargs)
-
-
-subprocess.Popen = NoConsolePopen
-
-
-def add_ffmpeg_to_path(weak: bool = False) -> bool:
-    """Add ffmpeg executables to PATH."""
-    if getattr(sys, "frozen", False):
-        from static_ffmpeg import _add_paths, run
-
-        run.sys.stdout = sys.stderr
-        if weak:
-            has_ffmpeg = _add_paths._has("ffmpeg") is not None
-            has_ffprobe = _add_paths._has("ffprobe") is not None
-            if has_ffmpeg and has_ffprobe:
-                return False
-
-        ffmpeg, _ = run.get_or_fetch_platform_executables_else_raise()
-        os.environ["PATH"] = os.pathsep.join([os.path.dirname(ffmpeg), os.environ["PATH"]])
-        return True
-
-    from static_ffmpeg import _add_paths
-
-    return _add_paths.add_paths()
+install_no_console_popen()
 
 
 class WebBridge(WebTaskBridge):
@@ -82,9 +34,9 @@ class WebBridge(WebTaskBridge):
         super().__init__()
         # --- Lifecycle ---
         self.main_window_controller = MainWindowController(self, sj)
-        self.model_manager_controller = ModelManagerController(self, sj, _get_whisper_load_api)
+        self.model_manager_controller = ModelManagerController(self, sj, get_whisper_load_api)
         self.import_queue_controller = ImportQueueController(self, sj, HeadlessFileProcessDialog, headless_mbox, shutdown_selenium_translator)
-        self.recording_controller = RecordingSessionController(self, _get_whisper_load_api, shutdown_selenium_translator)
+        self.recording_controller = RecordingSessionController(self, get_whisper_load_api, shutdown_selenium_translator)
         self.state_view_builder = StateViewBuilder(self, sj)
         path_config = dict(DEFAULT_PATH_CONFIG)
         path_config["dir_debug"] = dir_debug
