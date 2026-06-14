@@ -73,6 +73,8 @@ def build_record_audio_target(
     demucs_enabled: bool,
     cuda_device: str,
     sr_ori: int,
+    save_to_temp_fn=save_to_temp,
+    bytes_to_numpy_fn=bytes_to_numpy,
 ) -> AudioTarget:
     if not use_temp:
         wf = BytesIO()
@@ -85,9 +87,9 @@ def build_record_audio_target(
 
         with w_open(wf, "rb") as wav_reader:
             audio_bytes = wav_reader.readframes(wav_reader.getnframes())
-        return bytes_to_numpy(audio_bytes, num_of_channels, demucs_enabled, cuda_device)
+        return bytes_to_numpy_fn(audio_bytes, num_of_channels, demucs_enabled, cuda_device)
 
-    audio_target = save_to_temp(session_state.last_sample, num_of_channels, samp_width, sr_ori)
+    audio_target = save_to_temp_fn(session_state.last_sample, num_of_channels, samp_width, sr_ori)
     session_state.temp_audio_paths.append(audio_target)
     return audio_target
 
@@ -114,6 +116,7 @@ def filter_realtime_transcription_result(
     auto: bool,
     configured_language: str | None,
     get_whisper_lang_name,
+    remove_segments_by_str_fn=remove_segments_by_str,
 ) -> TranscriptionResultLike | None:
     if not (sj.cache["filter_rec"] and result):
         return result
@@ -122,7 +125,7 @@ def filter_realtime_transcription_result(
         filter_language = get_whisper_lang_name(result.language) if auto else configured_language
         if not filter_language:
             return result
-        return remove_segments_by_str(
+        return remove_segments_by_str_fn(
             result,
             hallucination_filters.get(filter_language, []),
             sj.cache["filter_rec_case_sensitive"],

@@ -15,9 +15,8 @@ from whisper.tokenizer import TO_LANGUAGE_CODE
 
 from speech_translate._constants import WHISPER_SR
 from speech_translate._logging import logger
-from speech_translate._path import dir_silero_vad, dir_temp
 from speech_translate.linker import bc, sj
-from speech_translate.utils.audio.audio import get_db, get_frame_duration, get_speech_webrtc, resample_sr, to_silero
+from speech_translate.utils.audio.audio import get_db, get_speech_webrtc, resample_sr, to_silero
 from speech_translate.utils.audio.device import get_device_details
 from speech_translate.utils.audio import record_processing as processing_module
 from speech_translate.utils.audio.record_runtime import (
@@ -38,8 +37,6 @@ from speech_translate.utils.audio.record_runtime import (
 from speech_translate.utils.audio import record_streaming as streaming_module
 from speech_translate.utils.audio.record_types import (
     AudioTarget,
-    HallucinationFilters,
-    LockLike,
     RecordingModelRuntime,
     RecordingRuntime,
     RecordingSessionConfig,
@@ -49,12 +46,9 @@ from speech_translate.utils.audio.record_types import (
     RealtimeCallbackContext,
     RealtimeSessionState,
     RealtimeSharedState,
-    ResultSnapshot,
-    SegmentLike,
     SileroVadLike,
     SmartSplitOutcome,
     TranscriptionResultLike,
-    TranslationApiResult,
     TranslationTask,
     WhisperCallable,
 )
@@ -73,6 +67,10 @@ else:
 callback_context: RealtimeCallbackContext | None = None
 
 _build_smart_split_outcome = processing_module.build_smart_split_outcome
+
+
+# Keep these wrappers in record.py because tests and external callers monkey-patch
+# them directly. The real logic lives in record_processing / record_streaming.
 # =========================================================================
 # HELPER FUNCTIONS
 # =========================================================================
@@ -572,43 +570,15 @@ def _build_recording_stream_runtime(
     config: RecordingSessionConfig,
     p,
 ) -> RecordingStreamRuntime:
-    success, detail = get_device_details(rec_type, sj, p)
-    if not success:
-        raise Exception("Failed to get device details")
-
-    device_detail = cast(dict[str, object], detail["device_detail"])
-    sr_ori = int(detail["sample_rate"])
-    num_of_channels = int(detail["num_of_channels"])
-    chunk_size = int(detail["chunk_size"])
-
-    if not sj.cache["supress_record_warning"] and sr_ori > 48000:
-        logger.warning(f"Sample rate is high ({sr_ori} Hz). May cause issues. Can be suppressed in settings.")
-
-    webrtc_vad, silero_vad = _load_recording_vad_runtime(rec_type=rec_type)
-    samp_width = p.get_sample_size(pyaudio.paInt16)
-    sr_divider = WHISPER_SR if not config.use_temp else sr_ori
-    callback_ctx = _initialize_callback_context(
-        sample_rate=sr_ori,
-        chunk_size=chunk_size,
-        threshold_enable=config.threshold_enable,
-        threshold_db=config.threshold_db,
-        threshold_auto=config.threshold_auto,
-        use_silero=config.use_silero,
-        silero_min_conf=config.silero_min_conf,
-        num_of_channels=num_of_channels,
-        samp_width=samp_width,
-        use_temp=config.use_temp,
-        webrtc_vad=webrtc_vad,
-        silero_vad=silero_vad,
-    )
-    return RecordingStreamRuntime(
-        input_device_index=int(device_detail["index"]),
-        sr_ori=sr_ori,
-        num_of_channels=num_of_channels,
-        chunk_size=chunk_size,
-        samp_width=samp_width,
-        sr_divider=sr_divider,
-        callback_ctx=callback_ctx,
+    return streaming_module.build_recording_stream_runtime(
+        rec_type=rec_type,
+        config=config,
+        p=p,
+        get_device_details_fn=get_device_details,
+        load_recording_vad_runtime_fn=_load_recording_vad_runtime,
+        initialize_callback_context_fn=_initialize_callback_context,
+        audio_format=pyaudio.paInt16,
+        logger_instance=logger,
     )
 
 
@@ -739,24 +709,24 @@ def _start_recording_session_support_threads(
 
 
 def _prime_realtime_vad(ctx: RealtimeCallbackContext, resampled: bytes) -> None:
-    if ctx.vad_checked:
-        return
-
-    ctx.vad_checked = True
-    try:
-        get_speech_webrtc(resampled, WHISPER_SR, ctx.frame_duration_ms, ctx.webrtc_vad)
-    except Exception:
-        pass
-    try:
-        sil_probe = to_silero(resampled, ctx.num_of_channels, ctx.samp_width)
-        if sil_probe.numel() >= 512:
-            ctx.silero_vad(sil_probe, WHISPER_SR)
-    except Exception:
-        pass
+    streaming_module.prime_realtime_vad(
+        ctx,
+        resampled,
+        get_speech_webrtc_fn=get_speech_webrtc,
+        to_silero_fn=to_silero,
+    )
 
 
 def _detect_realtime_speech(ctx: RealtimeCallbackContext, in_data: bytes, resampled: bytes) -> tuple[bool, bytes]:
-    return streaming_module.detect_realtime_speech(ctx, in_data, resampled)
+    return streaming_module.detect_realtime_speech(
+        ctx,
+        in_data,
+        resampled,
+        prime_realtime_vad_fn=_prime_realtime_vad,
+        get_db_fn=get_db,
+        get_speech_webrtc_fn=get_speech_webrtc,
+        to_silero_fn=to_silero,
+    )
 
 
 def _update_realtime_queue_state(ctx: RealtimeCallbackContext, *, is_speech: bool, data_to_queue: bytes) -> None:
@@ -777,22 +747,17 @@ def _build_record_audio_target(
     cuda_device: str,
     sr_ori: int,
 ) -> AudioTarget:
-    if not use_temp:
-        wf = BytesIO()
-        with w_open(wf, "wb") as wav_writer:
-            wav_writer.setframerate(WHISPER_SR)
-            wav_writer.setsampwidth(samp_width)
-            wav_writer.setnchannels(num_of_channels)
-            wav_writer.writeframes(session_state.last_sample)
-        wf.seek(0)
-
-        with w_open(wf, "rb") as wav_reader:
-            audio_bytes = wav_reader.readframes(wav_reader.getnframes())
-        return _bytes_to_numpy(audio_bytes, num_of_channels, demucs_enabled, cuda_device)
-
-    audio_target = _save_to_temp(session_state.last_sample, num_of_channels, samp_width, sr_ori)
-    session_state.temp_audio_paths.append(audio_target)
-    return audio_target
+    return processing_module.build_record_audio_target(
+        session_state,
+        use_temp=use_temp,
+        num_of_channels=num_of_channels,
+        samp_width=samp_width,
+        demucs_enabled=demucs_enabled,
+        cuda_device=cuda_device,
+        sr_ori=sr_ori,
+        save_to_temp_fn=_save_to_temp,
+        bytes_to_numpy_fn=_bytes_to_numpy,
+    )
 
 
 def _execute_realtime_transcription(
@@ -810,25 +775,14 @@ def _filter_realtime_transcription_result(
     auto: bool,
     configured_language: str | None,
 ) -> TranscriptionResultLike | None:
-    if not (sj.cache["filter_rec"] and result):
-        return result
-
-    try:
-        filter_language = get_whisper_lang_name(result.language) if auto else configured_language
-        if not filter_language:
-            return result
-        return remove_segments_by_str(
-            result,
-            hallucination_filters.get(filter_language, []),
-            sj.cache["filter_rec_case_sensitive"],
-            sj.cache["filter_rec_strip"],
-            sj.cache["filter_rec_ignore_punctuations"],
-            sj.cache["filter_rec_exact_match"],
-            sj.cache["filter_rec_similarity"],
-            sj.cache["debug_realtime_record"],
-        )
-    except Exception:
-        return result
+    return processing_module.filter_realtime_transcription_result(
+        result,
+        hallucination_filters=hallucination_filters,
+        auto=auto,
+        configured_language=configured_language,
+        get_whisper_lang_name=get_whisper_lang_name,
+        remove_segments_by_str_fn=remove_segments_by_str,
+    )
 
 
 def _commit_realtime_transcription(

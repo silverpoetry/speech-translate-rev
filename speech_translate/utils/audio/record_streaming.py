@@ -98,8 +98,13 @@ def build_recording_stream_runtime(
     rec_type: str,
     config: RecordingSessionConfig,
     p,
+    get_device_details_fn=get_device_details,
+    load_recording_vad_runtime_fn=load_recording_vad_runtime,
+    initialize_callback_context_fn=initialize_callback_context,
+    audio_format=None,
+    logger_instance=logger,
 ) -> RecordingStreamRuntime:
-    success, detail = get_device_details(rec_type, sj, p)
+    success, detail = get_device_details_fn(rec_type, sj, p)
     if not success:
         raise Exception("Failed to get device details")
 
@@ -109,12 +114,13 @@ def build_recording_stream_runtime(
     chunk_size = int(detail["chunk_size"])
 
     if not sj.cache["supress_record_warning"] and sr_ori > 48000:
-        logger.warning(f"Sample rate is high ({sr_ori} Hz). May cause issues. Can be suppressed in settings.")
+        logger_instance.warning(f"Sample rate is high ({sr_ori} Hz). May cause issues. Can be suppressed in settings.")
 
-    webrtc_vad, silero_vad = load_recording_vad_runtime(rec_type=rec_type)
-    samp_width = p.get_sample_size(pyaudio.paInt16)
+    webrtc_vad, silero_vad = load_recording_vad_runtime_fn(rec_type=rec_type)
+    sample_format = pyaudio.paInt16 if audio_format is None else audio_format
+    samp_width = p.get_sample_size(sample_format)
     sr_divider = WHISPER_SR if not config.use_temp else sr_ori
-    callback_ctx = initialize_callback_context(
+    callback_ctx = initialize_callback_context_fn(
         sample_rate=sr_ori,
         chunk_size=chunk_size,
         threshold_enable=config.threshold_enable,
@@ -151,31 +157,46 @@ def open_recording_stream(*, p, stream_runtime: RecordingStreamRuntime, record_c
     )
 
 
-def prime_realtime_vad(ctx: RealtimeCallbackContext, resampled: bytes) -> None:
+def prime_realtime_vad(
+    ctx: RealtimeCallbackContext,
+    resampled: bytes,
+    *,
+    get_speech_webrtc_fn=get_speech_webrtc,
+    to_silero_fn=to_silero,
+) -> None:
     if ctx.vad_checked:
         return
 
     ctx.vad_checked = True
     try:
-        get_speech_webrtc(resampled, WHISPER_SR, ctx.frame_duration_ms, ctx.webrtc_vad)
+        get_speech_webrtc_fn(resampled, WHISPER_SR, ctx.frame_duration_ms, ctx.webrtc_vad)
     except Exception:
         pass
     try:
-        sil_probe = to_silero(resampled, ctx.num_of_channels, ctx.samp_width)
+        sil_probe = to_silero_fn(resampled, ctx.num_of_channels, ctx.samp_width)
         if sil_probe.numel() >= 512:
             ctx.silero_vad(sil_probe, WHISPER_SR)
     except Exception:
         pass
 
 
-def detect_realtime_speech(ctx: RealtimeCallbackContext, in_data: bytes, resampled: bytes) -> tuple[bool, bytes]:
+def detect_realtime_speech(
+    ctx: RealtimeCallbackContext,
+    in_data: bytes,
+    resampled: bytes,
+    *,
+    prime_realtime_vad_fn=prime_realtime_vad,
+    get_db_fn=get_db,
+    get_speech_webrtc_fn=get_speech_webrtc,
+    to_silero_fn=to_silero,
+) -> tuple[bool, bytes]:
     data_to_queue = resampled if not ctx.use_temp else in_data
-    prime_realtime_vad(ctx, resampled)
+    prime_realtime_vad_fn(ctx, resampled)
 
     if not ctx.threshold_enable:
         return True, data_to_queue
 
-    db = get_db(in_data)
+    db = get_db_fn(in_data)
     shared_state.last_db = db
     if db > ctx.max_db:
         ctx.max_db = db
@@ -185,9 +206,9 @@ def detect_realtime_speech(ctx: RealtimeCallbackContext, in_data: bytes, resampl
     is_speech = False
     if ctx.threshold_auto:
         try:
-            is_speech = bool(get_speech_webrtc(resampled, WHISPER_SR, ctx.frame_duration_ms, ctx.webrtc_vad))
+            is_speech = bool(get_speech_webrtc_fn(resampled, WHISPER_SR, ctx.frame_duration_ms, ctx.webrtc_vad))
             if is_speech and ctx.use_silero and not ctx.silero_disabled:
-                sil_data = to_silero(resampled, ctx.num_of_channels, ctx.samp_width)
+                sil_data = to_silero_fn(resampled, ctx.num_of_channels, ctx.samp_width)
                 if sil_data.numel() >= 512:
                     conf = float(ctx.silero_vad(sil_data, WHISPER_SR).item())
                     is_speech = conf >= ctx.silero_min_conf
