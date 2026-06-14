@@ -8,6 +8,7 @@ to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
 from speech_translate.utils.audio.record import (
+    BufferStateReducer,
     RecordingRuntime,
     RecordingStatusEmitter,
     RealtimeSharedState,
@@ -34,6 +35,14 @@ class FakeWebBridge:
 
     def set_recording_state(self, payload) -> None:
         self.states.append(payload)
+
+
+class FakeTranslator:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def dispatch(self, audio_target, text_snapshot: str) -> None:
+        self.calls.append((audio_target, text_snapshot))
 
 
 class AudioRecordHelpersTests(unittest.TestCase):
@@ -175,6 +184,52 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(bridge.messages, ["Recording"])
         self.assertEqual(bridge.states[-1]["status"], "Recording")
         self.assertEqual(bridge.states[-1]["timer"], "00:00:01")
+
+    def test_buffer_state_reducer_moves_previous_results_into_sentences(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        translator = FakeTranslator()
+        reducer = BufferStateReducer(
+            is_tc=True,
+            is_tl=True,
+            tl_engine_whisper=True,
+            sentence_limitless=False,
+            max_sentences=2,
+            separator="<br />",
+            translator=translator,
+        )
+
+        previous_tc_sentences = list(record_module.bc.tc_sentences)
+        previous_tl_sentences = list(record_module.bc.tl_sentences)
+        previous_prev_tc = record_module.shared_state.prev_tc_res
+        previous_prev_tl = record_module.shared_state.prev_tl_res
+        previous_update_tc = getattr(record_module.bc, "update_tc", None)
+        previous_update_tl = getattr(record_module.bc, "update_tl", None)
+
+        tc_updates = []
+        tl_updates = []
+        try:
+            record_module.bc.tc_sentences = ["old"]
+            record_module.bc.tl_sentences = []
+            record_module.shared_state.prev_tc_res = FakeResult("new")
+            record_module.shared_state.prev_tl_res = FakeResult("translated")
+            record_module.bc.update_tc = lambda result, separator: tc_updates.append((result, separator))
+            record_module.bc.update_tl = lambda result, separator: tl_updates.append((result, separator))
+
+            reducer.reduce_sentences()
+        finally:
+            record_module.bc.tc_sentences = previous_tc_sentences
+            record_module.bc.tl_sentences = previous_tl_sentences
+            record_module.shared_state.prev_tc_res = previous_prev_tc
+            record_module.shared_state.prev_tl_res = previous_prev_tl
+            if previous_update_tc is not None:
+                record_module.bc.update_tc = previous_update_tc
+            if previous_update_tl is not None:
+                record_module.bc.update_tl = previous_update_tl
+
+        self.assertEqual(tc_updates[-1][1], "<br />")
+        self.assertEqual(tl_updates[-1][1], "<br />")
+        self.assertEqual(translator.calls[-1], (None, "old\nnew"))
 
 
 if __name__ == "__main__":

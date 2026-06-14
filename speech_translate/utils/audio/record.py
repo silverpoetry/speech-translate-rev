@@ -119,6 +119,43 @@ class RecordingStatusEmitter:
             pass
 
 
+class BufferStateReducer:
+    def __init__(
+        self,
+        *,
+        is_tc: bool,
+        is_tl: bool,
+        tl_engine_whisper: bool,
+        sentence_limitless: bool,
+        max_sentences: int,
+        separator: str,
+        translator: TranslationDispatcher,
+    ):
+        self._is_tc = is_tc
+        self._is_tl = is_tl
+        self._tl_engine_whisper = tl_engine_whisper
+        self._sentence_limitless = sentence_limitless
+        self._max_sentences = max_sentences
+        self._separator = separator
+        self._translator = translator
+
+    def reduce_sentences(self) -> None:
+        if self._is_tc and shared_state.prev_tc_res:
+            bc.tc_sentences.append(shared_state.prev_tc_res)
+        bc.tc_sentences = _enforce_sentence_limits(bc.tc_sentences, self._sentence_limitless, self._max_sentences)
+        if bc.tc_sentences:
+            bc.update_tc(None, self._separator)
+        self._translator.dispatch(None, _build_full_transcribed_text(bc.tc_sentences, None))
+        shared_state.prev_tc_res = ""
+
+        if self._is_tl:
+            if shared_state.prev_tl_res and self._tl_engine_whisper:
+                bc.tl_sentences.append(shared_state.prev_tl_res)
+            bc.tl_sentences = _enforce_sentence_limits(bc.tl_sentences, self._sentence_limitless, self._max_sentences)
+            if bc.tl_sentences:
+                bc.update_tl(None, self._separator)
+            shared_state.prev_tl_res = ""
+
 shared_state = RealtimeSharedState()
 
 # =========================================================================
@@ -517,6 +554,15 @@ def record_session(
             whisper_args=whisper_args,
             record_status_updater=update_status_lbl,
         )
+        buffer_reducer = BufferStateReducer(
+            is_tc=is_tc,
+            is_tl=is_tl,
+            tl_engine_whisper=tl_engine_whisper,
+            sentence_limitless=sentence_limitless,
+            max_sentences=max_sentences,
+            separator=separator,
+            translator=translator,
+        )
 
         Thread(target=lambda: translator.close(lambda: bool(bc.recording), cleanup_translation_audio), daemon=True).start()
 
@@ -565,17 +611,7 @@ def record_session(
 
             # Fallback Logic (If split wasn't applicable or failed)
             if not preserved_tc:
-                if is_tc and shared_state.prev_tc_res: bc.tc_sentences.append(shared_state.prev_tc_res)
-                bc.tc_sentences = _enforce_sentence_limits(bc.tc_sentences, sentence_limitless, max_sentences)
-                if bc.tc_sentences: bc.update_tc(None, separator)
-                translator.dispatch(None, _build_full_transcribed_text(bc.tc_sentences, None))
-                shared_state.prev_tc_res = ""
-
-            if is_tl:
-                if shared_state.prev_tl_res and tl_engine_whisper: bc.tl_sentences.append(shared_state.prev_tl_res)
-                bc.tl_sentences = _enforce_sentence_limits(bc.tl_sentences, sentence_limitless, max_sentences)
-                if bc.tl_sentences: bc.update_tl(None, separator)
-                shared_state.prev_tl_res = ""
+                buffer_reducer.reduce_sentences()
 
             if not had_set_sample:
                 last_sample, duration_seconds = bytes(), 0
