@@ -3,37 +3,34 @@ import os
 import re
 from ast import literal_eval
 from copy import deepcopy
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
-from platform import python_version, system
+from platform import system
+from queue import Empty, Queue
 from shlex import quote
 from threading import Lock, Thread
 from time import gmtime, sleep, strftime, time
-from queue import Empty, Queue
-from wave import Wave_read, Wave_write
 from wave import open as w_open
 
 import numpy as np
-import requests
-import scipy.io.wavfile as wav
 import torch
 import torchaudio
 import webrtcvad
-from typing import Any, Protocol, cast, Tuple, List, Dict
+from typing import Any, Literal, Protocol, cast
 from whisper.tokenizer import TO_LANGUAGE_CODE
 
 from speech_translate._constants import MAX_THRESHOLD, MIN_THRESHOLD, WHISPER_SR
 from speech_translate._logging import logger
-from speech_translate._path import dir_debug, dir_silero_vad, dir_temp
+from speech_translate._path import dir_silero_vad, dir_temp
 from speech_translate.linker import bc, sj
 from speech_translate.utils.audio.audio import get_db, get_frame_duration, get_speech_webrtc, resample_sr, to_silero
 from speech_translate.utils.audio.device import get_device_details
 from speech_translate.utils.translate.language import get_whisper_lang_name, get_whisper_lang_similar, verify_language_in_key
 
-from ..helper import generate_temp_filename, get_proxies, native_notify, str_separator_to_html, unique_rec_list
+from ..helper import generate_temp_filename, get_proxies, str_separator_to_html, unique_rec_list
 from ..translate.translator import translate
-from ..whisper.helper import get_hallucination_filter, model_values, stablets_verbose_log
+from ..whisper.helper import get_hallucination_filter, model_values
 from ..whisper.load import get_model, get_model_args, get_tc_args
 from ..whisper.result import remove_segments_by_str
 
@@ -45,7 +42,6 @@ else:
 # Globals for state management across callbacks
 ERROR_CON_NOTIFIED = False
 LAST_RECORD_CB_DIAG_AT = 0.0
-LAST_DB_PRINT_AT = 0.0
 prev_tc_buffer_seconds: float = 0.0
 
 
@@ -91,6 +87,31 @@ class RecordingRuntime:
     max_sentences: int
     sentence_limitless: bool
     lang_target_display: str
+
+
+@dataclass
+class RealtimeSessionState:
+    last_sample: bytes = b""
+    duration_seconds: float = 0.0
+    next_transcribe_time: datetime | None = None
+    paused: bool = False
+    temp_audio_paths: list[str] = field(default_factory=list)
+
+    def append_audio(self, audio_bytes: bytes) -> None:
+        self.last_sample += audio_bytes
+
+    def recalculate_duration(self, *, samp_width: int, num_of_channels: int, sr_divider: int) -> float:
+        self.duration_seconds = _calculate_buffer_duration(
+            self.last_sample,
+            samp_width=samp_width,
+            num_of_channels=num_of_channels,
+            sr_divider=sr_divider,
+        )
+        return self.duration_seconds
+
+    def reset_buffer(self) -> None:
+        self.last_sample = b""
+        self.duration_seconds = 0.0
 
 
 class RecordingStatusEmitter:
@@ -292,7 +313,7 @@ class TranslationDispatcher:
                     kind="whisper",
                     audio=audio_target,
                     separator=self._separator,
-                    cleanup_audio=self._use_temp and not self._keep_temp and isinstance(audio_target, str),
+                    cleanup_audio=not self._keep_temp and isinstance(audio_target, str),
                 )
             )
             return
@@ -348,6 +369,22 @@ class TranslationDispatcher:
                     cleanup_audio_fn(task.audio)
                 self._record_status_updater()
 
+
+def _calculate_buffer_duration(
+    audio_bytes: bytes,
+    *,
+    samp_width: int,
+    num_of_channels: int,
+    sr_divider: int,
+) -> float:
+    if samp_width <= 0 or num_of_channels <= 0 or sr_divider <= 0:
+        return 0.0
+    return len(audio_bytes) / (samp_width * num_of_channels * sr_divider)
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
 def _save_to_temp(audio_bytes: bytes, channels: int, samp_width: int, sr: int) -> str:
     """将音频字节流保存为临时 WAV 文件并返回路径"""
     wf = BytesIO()
@@ -379,7 +416,10 @@ def _bytes_to_numpy(audio_bytes: bytes, channels: int, use_demucs: bool, device:
         return torch.from_numpy(audio_np).to(device)
     return audio_np
 
-def _calculate_smart_split(segments: list, half_point_time: float) -> Tuple[Optional[float], List[Dict], List[Dict]]:
+def _calculate_smart_split(
+    segments: list,
+    half_point_time: float,
+) -> tuple[float | None, list[dict[str, object]], list[dict[str, object]]]:
     """核心算法：在 Whisper 结果的后半段寻找最大的无声间隙，返回切割点时间及切割后的前后段字典"""
     word_infos = []
     for sidx, seg in enumerate(segments):
@@ -440,6 +480,102 @@ def _calculate_smart_split(segments: list, half_point_time: float) -> Tuple[Opti
                     post_segs.append(d)
 
     return split_time, pre_segs, post_segs
+
+
+def _apply_smart_split(
+    *,
+    session_state: RealtimeSessionState,
+    previous_result: object,
+    prev_buffer_seconds: float,
+    sr_divider: int,
+    samp_width: int,
+    num_of_channels: int,
+    sentence_limitless: bool,
+    max_sentences: int,
+    separator: str,
+    translator: TranslationDispatcher,
+) -> bool:
+    split_outcome = _build_smart_split_outcome(
+        previous_result,
+        session_state.last_sample,
+        prev_buffer_seconds=prev_buffer_seconds,
+        sr_divider=sr_divider,
+        samp_width=samp_width,
+        num_of_channels=num_of_channels,
+    )
+    if split_outcome is None:
+        return False
+
+    try:
+        session_state.last_sample = split_outcome.post_audio_bytes
+        pre_audio_path = _save_to_temp(
+            split_outcome.pre_audio_bytes,
+            num_of_channels,
+            samp_width,
+            sr_divider,
+        )
+
+        bc.tc_sentences.append(split_outcome.pre_result)
+        session_state.recalculate_duration(
+            samp_width=samp_width,
+            num_of_channels=num_of_channels,
+            sr_divider=sr_divider,
+        )
+        session_state.next_transcribe_time = _utc_now()
+        shared_state.prev_tc_res = split_outcome.post_result
+
+        bc.tc_sentences = _enforce_sentence_limits(bc.tc_sentences, sentence_limitless, max_sentences)
+        bc.update_tc(shared_state.prev_tc_res, separator)
+        translator.dispatch(pre_audio_path, _build_full_transcribed_text(bc.tc_sentences, shared_state.prev_tc_res))
+        return True
+    except Exception as exc:
+        logger.warning(f"Smart-Split fallback due to error: {exc}")
+        return False
+
+
+def _break_buffer_and_update_state(
+    *,
+    reason: str,
+    session_state: RealtimeSessionState,
+    is_tc: bool,
+    prev_buffer_seconds: float,
+    sr_divider: int,
+    samp_width: int,
+    num_of_channels: int,
+    sentence_limitless: bool,
+    max_sentences: int,
+    separator: str,
+    translator: TranslationDispatcher,
+    buffer_reducer: BufferStateReducer,
+) -> None:
+    logger.info(
+        f"Buffer break [{reason}] | bytes={len(session_state.last_sample)} dur={session_state.duration_seconds:.2f}s"
+    )
+
+    preserved_tc = (
+        reason == "buffer_full"
+        and is_tc
+        and bool(shared_state.prev_tc_res)
+        and hasattr(shared_state.prev_tc_res, "segments")
+        and _apply_smart_split(
+            session_state=session_state,
+            previous_result=shared_state.prev_tc_res,
+            prev_buffer_seconds=prev_buffer_seconds,
+            sr_divider=sr_divider,
+            samp_width=samp_width,
+            num_of_channels=num_of_channels,
+            sentence_limitless=sentence_limitless,
+            max_sentences=max_sentences,
+            separator=separator,
+            translator=translator,
+        )
+    )
+
+    if preserved_tc:
+        return
+
+    buffer_reducer.reduce_sentences()
+    session_state.reset_buffer()
 
 # =========================================================================
 # MAIN SESSION
@@ -529,7 +665,7 @@ def record_session(
         logger.info(f"Session starting: {taskname} | Engine: {engine} | Device: {cuda_device} | Demucs: {demucs_enabled}")
 
         # UI & State Updaters
-        t_start, duration_seconds, paused = time(), 0.0, False
+        t_start = time()
         bc.current_rec_status, bc.auto_detected_lang = "▶️ Recording (Waiting for speech)", "~"
         runtime = RecordingRuntime(
             taskname=taskname,
@@ -554,7 +690,7 @@ def record_session(
 
         def update_web_ui():
             while bc.recording:
-                if paused:
+                if session_state.paused:
                     sleep(0.1)
                     continue
                 try:
@@ -564,7 +700,7 @@ def record_session(
                     status_emitter.emit(
                         status=bc.current_rec_status,
                         timer=strftime("%H:%M:%S", gmtime(time() - t_start)),
-                        buffer_text=f"{round(duration_seconds, 2)}/{round(max_buffer_s, 2)} sec",
+                        buffer_text=f"{round(session_state.duration_seconds, 2)}/{round(max_buffer_s, 2)} sec",
                         sentences=sentence_count_text,
                     )
                     sleep(0.1)
@@ -608,85 +744,71 @@ def record_session(
         Thread(target=update_web_ui, daemon=True).start()
 
         # Audio stream setup
-        bc.tc_sentences, bc.tl_sentences, temp_list = [], [], []
-        shared_state.prev_tc_res, shared_state.prev_tl_res, next_transcribe_time = "", "", None
-        last_sample, samp_width = bytes(), p.get_sample_size(pyaudio.paInt16)
+        bc.tc_sentences, bc.tl_sentences = [], []
+        shared_state.prev_tc_res, shared_state.prev_tl_res = "", ""
+        session_state = RealtimeSessionState()
+        samp_width = p.get_sample_size(pyaudio.paInt16)
         sr_divider = WHISPER_SR if not use_temp else sr_ori
         is_silence, was_recording, t_silence, max_db, min_db = False, False, time(), MAX_THRESHOLD, MIN_THRESHOLD
         
         bc.stream = p.open(format=pyaudio.paInt16, channels=num_of_channels, rate=sr_ori, input=True, frames_per_buffer=chunk_size, input_device_index=int(device_detail["index"]), stream_callback=record_cb)
 
-        def break_buffer_store_update(reason=""):
-            nonlocal last_sample, duration_seconds, next_transcribe_time
-            logger.info(f"Buffer break [{reason}] | bytes={len(last_sample)} dur={duration_seconds:.2f}s")
-            
-            preserved_tc, had_set_sample = False, False
-
-            # Smart Split Logic
-            if reason == "buffer_full" and is_tc and shared_state.prev_tc_res and hasattr(shared_state.prev_tc_res, 'segments'):
-                split_outcome = _build_smart_split_outcome(
-                    shared_state.prev_tc_res,
-                    last_sample,
-                    prev_buffer_seconds=prev_tc_buffer_seconds,
-                    sr_divider=sr_divider,
-                    samp_width=samp_width,
-                    num_of_channels=num_of_channels,
-                )
-
-                if split_outcome is not None:
-                    try:
-                        last_sample = split_outcome.post_audio_bytes
-                        pre_audio_path = _save_to_temp(
-                            split_outcome.pre_audio_bytes,
-                            num_of_channels,
-                            samp_width,
-                            sr_divider,
-                        )
-
-                        bc.tc_sentences.append(split_outcome.pre_result)
-                        duration_seconds = len(last_sample) / (samp_width * num_of_channels * sr_divider)
-                        had_set_sample, preserved_tc, shared_state.prev_tc_res = True, True, split_outcome.post_result
-                        next_transcribe_time = datetime.utcnow()
-
-                        bc.tc_sentences = _enforce_sentence_limits(bc.tc_sentences, sentence_limitless, max_sentences)
-                        bc.update_tc(shared_state.prev_tc_res, separator)
-                        translator.dispatch(pre_audio_path, _build_full_transcribed_text(bc.tc_sentences, shared_state.prev_tc_res))
-                    except Exception as e:
-                        logger.warning(f"Smart-Split fallback due to error: {e}")
-
-            # Fallback Logic (If split wasn't applicable or failed)
-            if not preserved_tc:
-                buffer_reducer.reduce_sentences()
-
-            if not had_set_sample:
-                last_sample, duration_seconds = bytes(), 0
-
         # Main Transcribing Loop
         while bc.recording:
-            if paused: sleep(0.1); continue
+            if session_state.paused:
+                sleep(0.1)
+                continue
 
-            try: data = bc.data_queue.get(timeout=0.1)
+            try:
+                data = bc.data_queue.get(timeout=0.1)
             except Empty:
                 if auto_break_buffer and is_silence and time() - t_silence > 1:
                     is_silence = False
-                    break_buffer_store_update("silence")
+                    _break_buffer_and_update_state(
+                        reason="silence",
+                        session_state=session_state,
+                        is_tc=is_tc,
+                        prev_buffer_seconds=prev_tc_buffer_seconds,
+                        sr_divider=sr_divider,
+                        samp_width=samp_width,
+                        num_of_channels=num_of_channels,
+                        sentence_limitless=sentence_limitless,
+                        max_sentences=max_sentences,
+                        separator=separator,
+                        translator=translator,
+                        buffer_reducer=buffer_reducer,
+                    )
                     bc.current_rec_status = "▶️ Recording (Waiting for speech)"
-                if not last_sample or (next_transcribe_time and next_transcribe_time > datetime.utcnow()): continue
+                if (
+                    not session_state.last_sample
+                    or (
+                        session_state.next_transcribe_time
+                        and session_state.next_transcribe_time > _utc_now()
+                    )
+                ):
+                    continue
                 data = b""
 
-            now = datetime.utcnow()
-            if not next_transcribe_time: next_transcribe_time = now + transcribe_rate
+            now = _utc_now()
+            if not session_state.next_transcribe_time:
+                session_state.next_transcribe_time = now + transcribe_rate
 
-            last_sample += data
-            while not bc.data_queue.empty(): last_sample += bc.data_queue.get_nowait()
+            session_state.append_audio(data)
+            while not bc.data_queue.empty():
+                session_state.append_audio(bc.data_queue.get_nowait())
 
-            if next_transcribe_time > now: continue
-            next_transcribe_time = now + transcribe_rate
+            if session_state.next_transcribe_time > now:
+                continue
+            session_state.next_transcribe_time = now + transcribe_rate
 
-            duration_seconds = len(last_sample) / (samp_width * num_of_channels * sr_divider)
-            if duration_seconds < sj.cache.get(f"min_input_length_{rec_type}", 0.4): continue
+            session_state.recalculate_duration(
+                samp_width=samp_width,
+                num_of_channels=num_of_channels,
+                sr_divider=sr_divider,
+            )
+            if session_state.duration_seconds < sj.cache.get(f"min_input_length_{rec_type}", 0.4):
+                continue
 
-            # Create audio target (numpy array or temp file)
             # Create audio target (numpy array or temp file)
             audio_target = None
             if not use_temp:
@@ -695,16 +817,15 @@ def record_session(
                     wav_writer.setframerate(WHISPER_SR)
                     wav_writer.setsampwidth(samp_width)
                     wav_writer.setnchannels(num_of_channels)
-                    wav_writer.writeframes(last_sample)
+                    wav_writer.writeframes(session_state.last_sample)
                 wf.seek(0)
                 
-                # --- 修复的部分 ---
                 with w_open(wf, "rb") as wav_reader:
                     audio_bytes = wav_reader.readframes(wav_reader.getnframes())
                 audio_target = _bytes_to_numpy(audio_bytes, num_of_channels, demucs_enabled, cuda_device)
             else:
-                audio_target = _save_to_temp(last_sample, num_of_channels, samp_width, sr_ori)
-                temp_list.append(audio_target)
+                audio_target = _save_to_temp(session_state.last_sample, num_of_channels, samp_width, sr_ori)
+                session_state.temp_audio_paths.append(audio_target)
 
             # Execution logic
             if is_tl and tl_engine_whisper and not is_tc:
@@ -712,7 +833,7 @@ def record_session(
                 translator.dispatch(audio_target, "")
             else:
                 bc.current_rec_status = "▶️ Recording ⟳ Transcribing Audio"
-                prev_tc_buffer_seconds = duration_seconds
+                prev_tc_buffer_seconds = session_state.duration_seconds
                 
                 # Execute Transcribe
                 try:
@@ -748,11 +869,29 @@ def record_session(
             # Cleanup Temp Audio
             if use_temp and not sj.cache.get("keep_temp", False) and isinstance(audio_target, str):
                 if not (is_tl and tl_engine_whisper):
-                    try: os.remove(audio_target); temp_list.remove(audio_target)
-                    except Exception: pass
+                    try:
+                        os.remove(audio_target)
+                        session_state.temp_audio_paths.remove(audio_target)
+                    except Exception:
+                        pass
 
-            if duration_seconds > max_buffer_s: break_buffer_store_update("buffer_full")
-            if bc.current_rec_status == "▶️ Recording ⟳ Transcribing Audio": bc.current_rec_status = "▶️ Recording"
+            if session_state.duration_seconds > max_buffer_s:
+                _break_buffer_and_update_state(
+                    reason="buffer_full",
+                    session_state=session_state,
+                    is_tc=is_tc,
+                    prev_buffer_seconds=prev_tc_buffer_seconds,
+                    sr_divider=sr_divider,
+                    samp_width=samp_width,
+                    num_of_channels=num_of_channels,
+                    sentence_limitless=sentence_limitless,
+                    max_sentences=max_sentences,
+                    separator=separator,
+                    translator=translator,
+                    buffer_reducer=buffer_reducer,
+                )
+            if bc.current_rec_status == "▶️ Recording ⟳ Transcribing Audio":
+                bc.current_rec_status = "▶️ Recording"
 
         # ----------------- Shutdown sequence -----------------
         bc.current_rec_status = "⚠️ Stopping stream"
@@ -767,9 +906,11 @@ def record_session(
         while not bc.data_queue.empty(): bc.data_queue.get()
 
         if not sj.cache.get("keep_temp", False):
-            for audio in temp_list:
-                try: os.remove(audio)
-                except Exception: pass
+            for audio in session_state.temp_audio_paths:
+                try:
+                    os.remove(audio)
+                except Exception:
+                    pass
 
         bc.current_rec_status = "⏹️ Stopped"
         update_status_lbl()

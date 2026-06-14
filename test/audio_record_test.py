@@ -12,9 +12,13 @@ from speech_translate.utils.audio.record import (
     RecordingRuntime,
     RecordingStatusEmitter,
     RealtimeSharedState,
+    RealtimeSessionState,
     SmartSplitOutcome,
     TranslationDispatcher,
     TranslationTask,
+    _apply_smart_split,
+    _break_buffer_and_update_state,
+    _calculate_buffer_duration,
     _build_smart_split_outcome,
     _build_recording_state_payload,
     _build_full_transcribed_text,
@@ -61,6 +65,14 @@ class FakeTranslator:
         self.calls.append((audio_target, text_snapshot))
 
 
+class FakeBufferReducer:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def reduce_sentences(self) -> None:
+        self.calls += 1
+
+
 class AudioRecordHelpersTests(unittest.TestCase):
     def test_result_text_supports_result_object_and_string(self) -> None:
         self.assertEqual(_result_text(FakeResult(" hello ")), "hello")
@@ -77,6 +89,16 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(state.prev_tc_res, "")
         self.assertEqual(state.prev_tl_res, "")
         self.assertIsNone(state.last_db)
+
+    def test_session_state_tracks_buffer_and_duration(self) -> None:
+        state = RealtimeSessionState()
+        state.append_audio(b"abcd")
+        duration = state.recalculate_duration(samp_width=2, num_of_channels=1, sr_divider=2)
+        self.assertEqual(state.last_sample, b"abcd")
+        self.assertEqual(duration, 1.0)
+        state.reset_buffer()
+        self.assertEqual(state.last_sample, b"")
+        self.assertEqual(state.duration_seconds, 0.0)
 
     def test_translation_task_defaults_are_explicit(self) -> None:
         task = TranslationTask(kind="whisper", separator="<br />")
@@ -122,6 +144,12 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(payload["timer"], "00:00:10")
         self.assertEqual(payload["buffer"], "1.2/10.0 sec")
         self.assertEqual(payload["sentences"], "3/5")
+
+    def test_calculate_buffer_duration_handles_invalid_denominator(self) -> None:
+        self.assertEqual(
+            _calculate_buffer_duration(b"abcd", samp_width=0, num_of_channels=1, sr_divider=16000),
+            0.0,
+        )
 
     def test_translation_dispatcher_queues_whisper_task(self) -> None:
         updates = []
@@ -276,6 +304,88 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertIsInstance(outcome, SmartSplitOutcome)
         self.assertEqual(outcome.pre_audio_bytes, b"01234567")
         self.assertEqual(outcome.post_audio_bytes, b"89ABCDEFGHIJ")
+
+    def test_apply_smart_split_updates_session_and_dispatches(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        result = FakeSmartResult(
+            [
+                {
+                    "text": "alpha",
+                    "words": [{"word": "alpha", "start": 5.0, "end": 6.0}],
+                },
+                {
+                    "text": "beta",
+                    "words": [{"word": "beta", "start": 9.0, "end": 10.0}],
+                },
+            ]
+        )
+        session_state = RealtimeSessionState(last_sample=b"0123456789ABCDEFGHIJ", duration_seconds=20.0)
+        translator = FakeTranslator()
+
+        previous_tc_sentences = list(record_module.bc.tc_sentences)
+        previous_prev_tc = record_module.shared_state.prev_tc_res
+        previous_update_tc = getattr(record_module.bc, "update_tc", None)
+        tc_updates = []
+        try:
+            record_module.bc.tc_sentences = []
+            record_module.shared_state.prev_tc_res = result
+            record_module.bc.update_tc = lambda current, separator: tc_updates.append((current, separator))
+
+            applied = _apply_smart_split(
+                session_state=session_state,
+                previous_result=result,
+                prev_buffer_seconds=8.0,
+                sr_divider=1,
+                samp_width=1,
+                num_of_channels=1,
+                sentence_limitless=False,
+                max_sentences=5,
+                separator="<br />",
+                translator=translator,
+            )
+        finally:
+            record_module.bc.tc_sentences = previous_tc_sentences
+            record_module.shared_state.prev_tc_res = previous_prev_tc
+            if previous_update_tc is not None:
+                record_module.bc.update_tc = previous_update_tc
+
+        self.assertTrue(applied)
+        self.assertEqual(session_state.last_sample, b"89ABCDEFGHIJ")
+        self.assertEqual(session_state.duration_seconds, 12.0)
+        self.assertIsNotNone(session_state.next_transcribe_time)
+        self.assertEqual(tc_updates[-1][1], "<br />")
+        self.assertEqual(translator.calls[-1][1], "alpha\nbeta")
+
+    def test_break_buffer_falls_back_to_reducer_when_split_not_preserved(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        session_state = RealtimeSessionState(last_sample=b"1234", duration_seconds=2.0)
+        translator = FakeTranslator()
+        reducer = FakeBufferReducer()
+        previous_prev_tc = record_module.shared_state.prev_tc_res
+        try:
+            record_module.shared_state.prev_tc_res = ""
+            _break_buffer_and_update_state(
+                reason="silence",
+                session_state=session_state,
+                is_tc=True,
+                prev_buffer_seconds=2.0,
+                sr_divider=1,
+                samp_width=1,
+                num_of_channels=1,
+                sentence_limitless=False,
+                max_sentences=5,
+                separator="<br />",
+                translator=translator,
+                buffer_reducer=reducer,
+            )
+        finally:
+            record_module.shared_state.prev_tc_res = previous_prev_tc
+
+        self.assertEqual(reducer.calls, 1)
+        self.assertEqual(session_state.last_sample, b"")
+        self.assertEqual(session_state.duration_seconds, 0.0)
 
 
 if __name__ == "__main__":
