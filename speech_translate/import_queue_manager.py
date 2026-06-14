@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 from loguru import logger
 
 from speech_translate.linker import bc
+from speech_translate.ui_protocol import TASK_SOURCE_IMPORT, UI_SECTION_IMPORT
 from speech_translate.utils.whisper.helper import model_keys, model_select_dict
 
 
@@ -126,7 +127,7 @@ class ImportQueueController:
         self._update_task_projection(
             display_queue,
             f"已准备好 {len(files)} 个待处理文件 | 队列共 {total} 个",
-            source="import",
+            source=TASK_SOURCE_IMPORT,
         )
         self._emit_import_update(async_emit=True)
 
@@ -149,7 +150,7 @@ class ImportQueueController:
         if elapsed:
             message += f" | 耗时: {elapsed}"
 
-        self._update_task_projection(display_queue, message, source="import")
+        self._update_task_projection(display_queue, message, source=TASK_SOURCE_IMPORT)
         self._emit_import_update(async_emit=True)
 
     def add_files_to_import_queue(self, files: Optional[list[str]] = None) -> Dict[str, Any]:
@@ -322,7 +323,7 @@ class ImportQueueController:
             for item in self.processing_queue:
                 item["status"] = "Cancelled"
         try:
-            self.bridge.update_task_message("Cancelling file import...", source="import")
+            self.bridge.update_task_message("Cancelling file import...", source=TASK_SOURCE_IMPORT)
         except Exception:
             pass
         self._emit_import_update(async_emit=False)
@@ -354,7 +355,7 @@ class ImportQueueController:
     def _emit_import_update(self, *, async_emit: bool) -> None:
         def emit() -> None:
             try:
-                self.bridge._emit_ui_update(["import"])
+                self.bridge._emit_ui_update([UI_SECTION_IMPORT])
             except Exception:
                 pass
 

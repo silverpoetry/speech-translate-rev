@@ -16,6 +16,7 @@ from speech_translate.system_settings_controller import DEFAULT_PATH_CONFIG, Sys
 from speech_translate.web_bridge_facade import WebBridgeFacadeMixin
 from speech_translate.linker import sj
 from speech_translate.web_backend import HeadlessFileProcessDialog, WebTaskBridge, headless_mbox
+from speech_translate.ui_protocol import TASK_SOURCE_GENERAL
 from speech_translate.utils.translate.language import TL_ENGINE_SOURCE_DICT, TL_ENGINE_TARGET_DICT
 from speech_translate.utils.translate.translator import shutdown_selenium_translator
 
@@ -68,7 +69,7 @@ class WebBridge(WebBridgeFacadeMixin, WebTaskBridge):
     def get_live_state(self) -> Dict[str, Any]:
         return self.snapshot_live_state()
 
-    def update_task_message(self, message: str, source: str = "general"):
+    def update_task_message(self, message: str, source: str = TASK_SOURCE_GENERAL):
         super().update_task_message(message, source=source)
         self.model_manager_controller.handle_task_message(message, source=source)
 

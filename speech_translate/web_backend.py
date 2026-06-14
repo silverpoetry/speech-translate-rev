@@ -9,6 +9,14 @@ from typing import Any, Callable, Dict, List, Optional
 from loguru import logger
 
 from speech_translate.linker import bc, sj
+from speech_translate.ui_protocol import (
+    TASK_SOURCE_HEADLESS_LABEL,
+    TASK_SOURCE_HEADLESS_PROGRESS,
+    TASK_SOURCE_GENERAL,
+    UI_EVENT_NAME,
+    UI_SECTION_LIVE,
+    UI_SECTION_TASK,
+)
 
 
 class HeadlessRoot:
@@ -44,7 +52,7 @@ class HeadlessLabel:
     def set_text(self, text: str):
         self.text = text
         if self.bridge is not None:
-            self.bridge.update_task_message(text, source="headless-label")
+            self.bridge.update_task_message(text, source=TASK_SOURCE_HEADLESS_LABEL)
 
     def configure(self, **kwargs):
         text = kwargs.get("text")
@@ -98,7 +106,7 @@ class HeadlessProgressBar:
         if key == "value":
             self.value = value
             if self.bridge is not None:
-                self.bridge.update_task_progress(value, source="headless-progress")
+                self.bridge.update_task_progress(value, source=TASK_SOURCE_HEADLESS_PROGRESS)
 
     def __getitem__(self, key):
         if key == "value":
@@ -250,7 +258,7 @@ class WebTaskBridge:
         try:
             payload = json.dumps({"sections": sections}, ensure_ascii=False)
             window.evaluate_js(
-                f"window.dispatchEvent(new CustomEvent('speechtranslate-ui-update', {{ detail: {payload} }}));"
+                f"window.dispatchEvent(new CustomEvent('{UI_EVENT_NAME}', {{ detail: {payload} }}));"
             )
         except Exception:
             pass
@@ -269,15 +277,16 @@ class WebTaskBridge:
             self.task_state = TaskState(active=True, title=title)
             self._task_message_source = ""
             self._task_progress_source = ""
-        self._emit_ui_update(["task"])
+        self._emit_ui_update([UI_SECTION_TASK])
         return self.task_state
 
-    def update_task_message(self, message: str, source: str = "general"):
+    def update_task_message(self, message: str, source: str = TASK_SOURCE_GENERAL):
         with self._lock:
             self.task_state.message = message
-        self._emit_ui_update(["task"])
+        self._task_message_source = source
+        self._emit_ui_update([UI_SECTION_TASK])
 
-    def update_task_progress(self, progress: float, source: str = "general"):
+    def update_task_progress(self, progress: float, source: str = TASK_SOURCE_GENERAL):
         with self._lock:
             incoming = float(progress)
             if self.task_state.title == "File Import":
@@ -285,12 +294,13 @@ class WebTaskBridge:
                 self.task_state.progress = max(float(self.task_state.progress), incoming)
             else:
                 self.task_state.progress = incoming
-        self._emit_ui_update(["task"])
+            self._task_progress_source = source
+        self._emit_ui_update([UI_SECTION_TASK])
 
     def update_task_rows(self, rows):
         with self._lock:
             self.task_state.rows = list(rows)
-        self._emit_ui_update(["task"])
+        self._emit_ui_update([UI_SECTION_TASK])
 
     def update_task_error(self, error: str):
         with self._lock:
@@ -298,7 +308,7 @@ class WebTaskBridge:
             self.task_state.finished = True
             self.task_state.active = False
             self.task_state.progress = 100.0
-        self._emit_ui_update(["task"])
+        self._emit_ui_update([UI_SECTION_TASK])
 
     def finish_task(self, message: str = ""):
         with self._lock:
@@ -306,7 +316,7 @@ class WebTaskBridge:
             self.task_state.finished = True
             self.task_state.active = False
             self.task_state.progress = 100.0
-        self._emit_ui_update(["task"])
+        self._emit_ui_update([UI_SECTION_TASK])
 
     def snapshot_task_state(self):
         with self._lock:
@@ -334,7 +344,7 @@ class WebTaskBridge:
                 self.live_state[target] = html
             if text_target in self.live_state:
                 self.live_state[text_target] = self._html_to_text(html)
-        self._emit_ui_update(["live"])
+        self._emit_ui_update([UI_SECTION_LIVE])
 
     def append_live_text(self, target: str, text: str, separator: str = ""):
         key_html = target if target.endswith("_html") else f"{target}_html"
@@ -357,14 +367,14 @@ class WebTaskBridge:
                 escaped_lines.append(f"<span class='live-line'>{escaped_line}</span>")
 
             self.live_state[key_html] = "<div class='live-lines'>" + "<br />".join(escaped_lines) + "</div>"
-        self._emit_ui_update(["live"])
+        self._emit_ui_update([UI_SECTION_LIVE])
 
     def clear_live(self, prefix: str = ""):
         with self._lock:
             for key in list(self.live_state.keys()):
                 if not prefix or key.startswith(prefix):
                     self.live_state[key] = ""
-        self._emit_ui_update(["live"])
+        self._emit_ui_update([UI_SECTION_LIVE])
 
     def snapshot_live_state(self):
         with self._lock:

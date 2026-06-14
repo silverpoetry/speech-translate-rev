@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional, cast
 from loguru import logger
 
 from speech_translate.linker import bc
+from speech_translate.ui_protocol import UI_SECTION_TASK
 from speech_translate.utils.types import SettingDict
 from speech_translate.utils.whisper.helper import model_keys, model_values
 
@@ -52,7 +53,7 @@ class RecordingSessionController:
             if "active" not in payload:
                 self.recording_state["active"] = bool(bc.recording)
         self.bridge.model_manager_controller.handle_recording_status(payload)
-        self.bridge._emit_ui_update(["task"])
+        self.bridge._emit_ui_update([UI_SECTION_TASK])
         return {"ok": True}
 
     def get_recording_state(self) -> Dict[str, Any]:

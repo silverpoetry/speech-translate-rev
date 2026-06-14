@@ -8,6 +8,7 @@ to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
 from speech_translate.import_queue_manager import ImportQueueController
+from speech_translate.ui_protocol import TASK_SOURCE_IMPORT, UI_SECTION_IMPORT
 
 
 class DummyLock:
@@ -119,6 +120,7 @@ class ImportQueueControllerTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(self.controller.file_import_queue, [])
         self.assertEqual(self.controller.processing_queue, [])
+        self.assertIn(("emit", (UI_SECTION_IMPORT,)), self.bridge.updates)
 
     def test_build_import_ui_uses_available_models(self) -> None:
         payload = self.controller.build_import_ui(verify_available=True)
@@ -140,6 +142,12 @@ class ImportQueueControllerTests(unittest.TestCase):
         self.assertEqual(item_from_str.name, "a.wav")
         self.assertEqual(item_from_dict.name, "Bee")
         self.assertTrue(item_from_dict.is_completed)
+
+    def test_sync_file_status_uses_import_source_for_task_message(self) -> None:
+        self.controller.file_import_queue = [{"path": "a.wav", "name": "a.wav", "status": "Waiting", "is_completed": False}]
+        self.controller.processing_queue = [{"path": "a.wav", "name": "a.wav", "status": "Waiting", "is_completed": False}]
+        self.controller.sync_file_status(0, "Done", True)
+        self.assertTrue(any(update[0] == "message" and update[1] == TASK_SOURCE_IMPORT for update in self.bridge.updates))
 
 
 if __name__ == "__main__":

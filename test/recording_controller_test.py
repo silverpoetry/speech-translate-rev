@@ -8,6 +8,7 @@ to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
 from speech_translate.recording_controller import RecordingSessionController
+from speech_translate.ui_protocol import UI_SECTION_TASK
 
 
 class DummyLock:
@@ -76,7 +77,7 @@ class RecordingSessionControllerTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(self.controller.recording_state["status"], "Initializing recording...")
         self.assertEqual(self.bridge.model_manager_controller.payloads[-1]["status"], "Initializing recording...")
-        self.assertEqual(self.bridge.emits[-1], ("task",))
+        self.assertEqual(self.bridge.emits[-1], (UI_SECTION_TASK,))
 
     def test_get_recording_state_returns_copy(self) -> None:
         self.controller.recording_state["status"] = "Stopped"

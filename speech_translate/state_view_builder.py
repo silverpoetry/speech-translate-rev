@@ -9,6 +9,7 @@ from loguru import logger
 
 from speech_translate._constants import APP_NAME
 from speech_translate._version import __version__
+from speech_translate.ui_protocol import UI_SECTION_STATE
 from speech_translate.utils.audio.device import (
     get_default_host_api,
     get_default_input_device,
@@ -230,7 +231,7 @@ class StateViewBuilder:
             self.audio_source_cache_loading = False
             self.audio_source_cache_ready = True
             try:
-                self.bridge._emit_ui_update(["state"])
+                self.bridge._emit_ui_update([UI_SECTION_STATE])
             except Exception:
                 pass
 

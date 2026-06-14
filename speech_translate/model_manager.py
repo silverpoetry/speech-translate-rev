@@ -8,6 +8,7 @@ from urllib.request import Request, urlopen
 
 from loguru import logger
 
+from speech_translate.ui_protocol import TASK_SOURCE_MODEL_DOWNLOAD, TASK_SOURCE_MODEL_LOAD
 from speech_translate.utils.whisper.download import (
     get_default_download_root,
     verify_model_faster_whisper,
@@ -250,8 +251,8 @@ class ModelManagerController:
                 model_dir = self.resolve_model_dir()
                 os.makedirs(model_dir, exist_ok=True)
                 self.bridge.reset_task_state("Model Download")
-                self.bridge.update_task_message(f"Preparing download for {model_key} ({engine})", source="model-download")
-                self.bridge.update_task_progress(5, source="model-download")
+                self.bridge.update_task_message(f"Preparing download for {model_key} ({engine})", source=TASK_SOURCE_MODEL_DOWNLOAD)
+                self.bridge.update_task_progress(5, source=TASK_SOURCE_MODEL_DOWNLOAD)
 
                 if engine == "whisper":
                     from whisper import _MODELS
@@ -268,7 +269,7 @@ class ModelManagerController:
                         raise ValueError(f"Invalid model key: {model_key}")
                     observe_path = os.path.join(model_dir, repo_folder_name(repo_id=repo_id, repo_type="model"))
                     try:
-                        self.bridge.update_task_message(f"Fetching model info for {model_key}...", source="model-download")
+                        self.bridge.update_task_message(f"Fetching model info for {model_key}...", source=TASK_SOURCE_MODEL_DOWNLOAD)
                         import huggingface_hub
 
                         api = huggingface_hub.HfApi()
@@ -326,15 +327,15 @@ class ModelManagerController:
                     )
 
                     self.cache_model_status(engine, model_key, False, downloading=True, progress=progress, speed=speed_text)
-                    self.bridge.update_task_progress(progress, source="model-download")
-                    self.bridge.update_task_message(f"DL {model_key}: {size_text} ({speed_text})", source="model-download")
+                    self.bridge.update_task_progress(progress, source=TASK_SOURCE_MODEL_DOWNLOAD)
+                    self.bridge.update_task_message(f"DL {model_key}: {size_text} ({speed_text})", source=TASK_SOURCE_MODEL_DOWNLOAD)
                     last_bytes, last_time = current_bytes, now
 
                 download_thread.join()
                 if result_box.get("error"):
                     raise cast(Exception, result_box["error"])
 
-                self.bridge.update_task_progress(90, source="model-download")
+                self.bridge.update_task_progress(90, source=TASK_SOURCE_MODEL_DOWNLOAD)
                 downloaded = False
                 error = ""
                 for _ in range(8):
@@ -354,7 +355,7 @@ class ModelManagerController:
                 if not downloaded:
                     raise RuntimeError(error or "Verification failed")
 
-                self.bridge.update_task_progress(100, source="model-download")
+                self.bridge.update_task_progress(100, source=TASK_SOURCE_MODEL_DOWNLOAD)
                 self.bridge.finish_task(f"Model downloaded: {model_key} ({engine})")
             except Exception as exc:
                 logger.exception(exc)
@@ -383,7 +384,7 @@ class ModelManagerController:
                 engine = self.normalize_engine_name(str(settings_snapshot.get("tl_engine_mw", "Google Translate")))
 
                 self.bridge.reset_task_state("Model Load")
-                self.bridge.update_task_message(f"Loading model cache for {model_key}", source="model-load")
+                self.bridge.update_task_message(f"Loading model cache for {model_key}", source=TASK_SOURCE_MODEL_LOAD)
                 self.bridge.update_task_progress(5)
 
                 whisper_load_api.get_model(
