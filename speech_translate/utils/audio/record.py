@@ -156,6 +156,44 @@ class BufferStateReducer:
                 bc.update_tl(None, self._separator)
             shared_state.prev_tl_res = ""
 
+
+@dataclass
+class SmartSplitOutcome:
+    pre_audio_bytes: bytes
+    post_audio_bytes: bytes
+    pre_result: object
+    post_result: object
+
+
+def _build_smart_split_outcome(
+    previous_result: object,
+    last_sample: bytes,
+    *,
+    prev_buffer_seconds: float,
+    sr_divider: int,
+    samp_width: int,
+    num_of_channels: int,
+) -> SmartSplitOutcome | None:
+    if not hasattr(previous_result, "segments"):
+        return None
+
+    split_time, pre_segs, post_segs = _calculate_smart_split(
+        previous_result.segments,
+        (prev_buffer_seconds / 2.0) if prev_buffer_seconds > 0 else 0.0,
+    )
+    if split_time is None:
+        return None
+
+    pre_result = type(previous_result)(pre_segs) if pre_segs else previous_result
+    post_result = type(previous_result)(post_segs) if post_segs else previous_result
+    bytes_before = max(0, min(int(round(split_time * sr_divider)) * samp_width * num_of_channels, len(last_sample)))
+    return SmartSplitOutcome(
+        pre_audio_bytes=last_sample[:bytes_before],
+        post_audio_bytes=last_sample[bytes_before:],
+        pre_result=pre_result,
+        post_result=post_result,
+    )
+
 shared_state = RealtimeSharedState()
 
 # =========================================================================
@@ -586,21 +624,28 @@ def record_session(
 
             # Smart Split Logic
             if reason == "buffer_full" and is_tc and shared_state.prev_tc_res and hasattr(shared_state.prev_tc_res, 'segments'):
-                split_time, pre_segs, post_segs = _calculate_smart_split(shared_state.prev_tc_res.segments, (prev_tc_buffer_seconds / 2.0) if prev_tc_buffer_seconds > 0 else 0.0)
-                
-                if split_time is not None:
+                split_outcome = _build_smart_split_outcome(
+                    shared_state.prev_tc_res,
+                    last_sample,
+                    prev_buffer_seconds=prev_tc_buffer_seconds,
+                    sr_divider=sr_divider,
+                    samp_width=samp_width,
+                    num_of_channels=num_of_channels,
+                )
+
+                if split_outcome is not None:
                     try:
-                        pre_res = type(shared_state.prev_tc_res)(pre_segs) if pre_segs else shared_state.prev_tc_res
-                        post_res = type(shared_state.prev_tc_res)(post_segs) if post_segs else shared_state.prev_tc_res
+                        last_sample = split_outcome.post_audio_bytes
+                        pre_audio_path = _save_to_temp(
+                            split_outcome.pre_audio_bytes,
+                            num_of_channels,
+                            samp_width,
+                            sr_divider,
+                        )
 
-                        bytes_before = max(0, min(int(round(split_time * sr_divider)) * samp_width * num_of_channels, len(last_sample)))
-                        pre_audio_bytes, last_sample = last_sample[:bytes_before], last_sample[bytes_before:]
-                        
-                        pre_audio_path = _save_to_temp(pre_audio_bytes, num_of_channels, samp_width, sr_divider)
-
-                        bc.tc_sentences.append(pre_res)
+                        bc.tc_sentences.append(split_outcome.pre_result)
                         duration_seconds = len(last_sample) / (samp_width * num_of_channels * sr_divider)
-                        had_set_sample, preserved_tc, shared_state.prev_tc_res = True, True, post_res
+                        had_set_sample, preserved_tc, shared_state.prev_tc_res = True, True, split_outcome.post_result
                         next_transcribe_time = datetime.utcnow()
 
                         bc.tc_sentences = _enforce_sentence_limits(bc.tc_sentences, sentence_limitless, max_sentences)

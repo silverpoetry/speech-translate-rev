@@ -12,8 +12,10 @@ from speech_translate.utils.audio.record import (
     RecordingRuntime,
     RecordingStatusEmitter,
     RealtimeSharedState,
+    SmartSplitOutcome,
     TranslationDispatcher,
     TranslationTask,
+    _build_smart_split_outcome,
     _build_recording_state_payload,
     _build_full_transcribed_text,
     _result_text,
@@ -23,6 +25,20 @@ from speech_translate.utils.audio.record import (
 class FakeResult:
     def __init__(self, text: str) -> None:
         self.text = text
+
+
+class FakeSegment:
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+
+    def to_dict(self) -> dict:
+        return dict(self._payload)
+
+
+class FakeSmartResult:
+    def __init__(self, segments) -> None:
+        self.segments = [segment if isinstance(segment, FakeSegment) else FakeSegment(segment) for segment in segments]
+        self.text = " ".join(seg.to_dict().get("text", "") for seg in self.segments).strip()
 
 
 class FakeWebBridge:
@@ -230,6 +246,36 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(tc_updates[-1][1], "<br />")
         self.assertEqual(tl_updates[-1][1], "<br />")
         self.assertEqual(translator.calls[-1], (None, "old\nnew"))
+
+    def test_build_smart_split_outcome_slices_audio_and_results(self) -> None:
+        result = FakeSmartResult(
+            [
+                {
+                    "text": "alpha",
+                    "words": [
+                        {"word": "alpha", "start": 5.0, "end": 6.0},
+                    ],
+                },
+                {
+                    "text": "beta",
+                    "words": [
+                        {"word": "beta", "start": 9.0, "end": 10.0},
+                    ],
+                },
+            ]
+        )
+        audio = b"0123456789ABCDEFGHIJ"
+        outcome = _build_smart_split_outcome(
+            result,
+            audio,
+            prev_buffer_seconds=8.0,
+            sr_divider=1,
+            samp_width=1,
+            num_of_channels=1,
+        )
+        self.assertIsInstance(outcome, SmartSplitOutcome)
+        self.assertEqual(outcome.pre_audio_bytes, b"01234567")
+        self.assertEqual(outcome.post_audio_bytes, b"89ABCDEFGHIJ")
 
 
 if __name__ == "__main__":
