@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-from typing import Any
-
 from speech_translate._path import p_app_icon
 from speech_translate._version import __version__
+from speech_translate.controller_protocols import AppTrayBridge
 from speech_translate.utils.helper import open_url
 
 
 class AppTray:
     """System tray integration for the webview app."""
 
-    def __init__(self, bridge: Any):
+    def __init__(self, bridge: AppTrayBridge):
         self.bridge = bridge
         self.icon = None
         self._create_tray()
