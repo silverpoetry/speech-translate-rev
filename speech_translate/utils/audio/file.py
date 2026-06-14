@@ -1,9 +1,10 @@
 import json
+from dataclasses import dataclass
 from datetime import datetime
 from os import makedirs, path
 from threading import Thread
 from time import gmtime, sleep, strftime, time
-from typing import Any, Dict, List, Literal
+from typing import Callable, Dict, List, Literal, Mapping
 import os
 
 import stable_whisper
@@ -36,46 +37,101 @@ GLOBAL_IS_TC = False
 GLOBAL_IS_TL = False
 GLOBAL_IS_MOD = False
 
+StatusMap = Dict[int, str]
+
+
+@dataclass
+class WorkerFailure:
+    failed: bool = False
+    error: Exception | None = None
+
+    def capture(self, exc: Exception) -> None:
+        self.failed = True
+        self.error = exc
+
+    def raise_if_failed(self) -> None:
+        if self.failed:
+            raise self.error or RuntimeError("Unknown worker failure")
+
+
+def _build_combined_status(
+    index: int,
+    *,
+    is_tc: bool,
+    is_tl: bool,
+    is_mod: bool,
+    tc_status: Mapping[int, str],
+    tl_status: Mapping[int, str],
+    mod_status: Mapping[int, str],
+) -> str:
+    parts: list[str] = []
+    if is_tc:
+        current = tc_status.get(index, "Waiting")
+        if current and current != "Waiting":
+            parts.append(current)
+    if is_tl:
+        current = tl_status.get(index, "Waiting")
+        if current and current != "Waiting":
+            parts.append(current)
+    if is_mod:
+        current = mod_status.get(index, "Waiting")
+        if current and current != "Waiting":
+            parts.append(current)
+    return ", ".join(parts) if parts else "Waiting"
+
+
+def _is_file_status_completed(
+    index: int,
+    combined_status: str,
+    *,
+    is_tc: bool,
+    is_tl: bool,
+    is_mod: bool,
+    tc_status: Mapping[int, str],
+    tl_status: Mapping[int, str],
+    mod_status: Mapping[int, str],
+) -> bool:
+    lower_status = combined_status.lower()
+    if "fail" in lower_status or "error" in lower_status or "parse error" in lower_status:
+        return True
+    if is_tc and is_tl:
+        return "transcribed" in tc_status.get(index, "").lower() and "translated" in tl_status.get(index, "").lower()
+    if is_tc:
+        return "transcribed" in tc_status.get(index, "").lower()
+    if is_tl:
+        return "translated" in tl_status.get(index, "").lower()
+    if is_mod:
+        mod_value = mod_status.get(index, "").lower()
+        return "refined" in mod_value or "aligned" in mod_value or "translated" in mod_value
+    return False
+
 def _sync_ui(index: int):
     """自动判断文件是否处理完成，并把最纯粹的状态文字抛给 webview_app 去渲染"""
     if not bc.web_bridge: return
-    
-    parts = []
-    if GLOBAL_IS_TC:
-        s = status_tc.get(index, 'Waiting')
-        if s and s != 'Waiting': parts.append(s)
-    if GLOBAL_IS_TL:
-        s = status_tl.get(index, 'Waiting')
-        if s and s != 'Waiting': parts.append(s)
-    if GLOBAL_IS_MOD:
-        s = status_mod.get(index, 'Waiting')
-        if s and s != 'Waiting': parts.append(s)
-        
-    combined_status = ", ".join(parts) if parts else "Waiting"
-    
-    # 精确判断该文件是否彻底走完生命周期
-    is_completed = False
-    lower_status = combined_status.lower()
-    if "fail" in lower_status or "error" in lower_status or "parse error" in lower_status:
-        is_completed = True
-    elif GLOBAL_IS_TC and GLOBAL_IS_TL:
-        if "transcribed" in status_tc.get(index, "").lower() and "translated" in status_tl.get(index, "").lower():
-            is_completed = True
-    elif GLOBAL_IS_TC:
-        if "transcribed" in status_tc.get(index, "").lower():
-            is_completed = True
-    elif GLOBAL_IS_TL:
-        if "translated" in status_tl.get(index, "").lower():
-            is_completed = True
-    elif GLOBAL_IS_MOD:
-        mod_s = status_mod.get(index, "").lower()
-        if "refined" in mod_s or "aligned" in mod_s or "translated" in mod_s:
-            is_completed = True
+    combined_status = _build_combined_status(
+        index,
+        is_tc=GLOBAL_IS_TC,
+        is_tl=GLOBAL_IS_TL,
+        is_mod=GLOBAL_IS_MOD,
+        tc_status=status_tc,
+        tl_status=status_tl,
+        mod_status=status_mod,
+    )
+    is_completed = _is_file_status_completed(
+        index,
+        combined_status,
+        is_tc=GLOBAL_IS_TC,
+        is_tl=GLOBAL_IS_TL,
+        is_mod=GLOBAL_IS_MOD,
+        tc_status=status_tc,
+        tl_status=status_tl,
+        mod_status=status_mod,
+    )
 
     # 抛给前端桥接器去处理 UI 细节
     bc.web_bridge.sync_file_status(index, combined_status, is_completed)
 
-def _update_status(status_map: Dict[int, str], index: int, msg: str):
+def _update_status(status_map: StatusMap, index: int, msg: str):
     """修改状态并触发 UI 同步（带防崩溃保护）"""
     status_map[index] = msg
     # 🛡️ 修复点：绝对的防弹保护，永远不能让 UI 更新报错杀死转录主线程
@@ -105,7 +161,7 @@ def _generate_save_name(template: str, file_name: str, lang_src: str, lang_tgt: 
             res = res.replace(fmt, value)
     return res
 
-def _monitor_thread(thread: Thread, check_cancel: callable):
+def _monitor_thread(thread: Thread, check_cancel: Callable[[], bool]) -> None:
     while thread.is_alive():
         if not check_cancel():
             kill_thread(thread)
@@ -116,16 +172,23 @@ def _monitor_thread(thread: Thread, check_cancel: callable):
 # ATOMIC EXECUTORS
 # =========================================================================
 
-def run_whisper(func, audio: str, task: str, fail_status: List, **kwargs):
+def run_whisper(func, audio: str | None, task: str, fail_status: WorkerFailure, **kwargs) -> None:
     try:
         result = func(audio, task=task, **kwargs)
         bc.data_queue.put(result)
     except Exception as e:
-        fail_status[0], fail_status[1] = True, e
+        fail_status.capture(e)
         if "The system cannot find the file specified" in str(e) and not bc.has_ffmpeg:
-            fail_status[1] = Exception("FFmpeg not found in system path. Please install FFmpeg.")
+            fail_status.error = Exception("FFmpeg not found in system path. Please install FFmpeg.")
 
-def run_translate_api(query: stable_whisper.WhisperResult, engine: str, lang_source: str, lang_target: str, fail_status: List, **kwargs):
+def run_translate_api(
+    query: stable_whisper.WhisperResult,
+    engine: str,
+    lang_source: str,
+    lang_target: str,
+    fail_status: WorkerFailure,
+    **kwargs,
+) -> None:
     try:
         segment_texts = [segment.text for segment in query.segments]
         query.language = lang_target 
@@ -155,7 +218,7 @@ def run_translate_api(query: stable_whisper.WhisperResult, engine: str, lang_sou
                     segment.words = segment_words[:len(temp_words)]
                     segment.words[-1].end = last_end
     except Exception as e:
-        fail_status[0], fail_status[1] = True, e
+        fail_status.capture(e)
 
 # =========================================================================
 # FILE PROCESSORS
@@ -165,7 +228,7 @@ def _cancellable_tc(file_path, lang_source, lang_target, model_name, tc_func, tl
     start = time()
     try:
         _update_status(status_tc, index, "Transcribing please wait...")
-        fail_status = [False, ""]
+        fail_status = WorkerFailure()
         
         format_dict = get_task_format("transcribed", f"transcribed {lang_source}", f"transcribed with {model_name}", f"transcribed {lang_source} with {model_name}")
         format_dict.update(get_task_format("tc", f"tc {lang_source}", f"tc with {model_name}", f"tc {lang_source} with {model_name}", short_only=True))
@@ -176,7 +239,7 @@ def _cancellable_tc(file_path, lang_source, lang_target, model_name, tc_func, tl
         thread.start()
         _monitor_thread(thread, lambda: bc.transcribing_file)
 
-        if fail_status[0]: raise Exception(fail_status[1])
+        fail_status.raise_if_failed()
 
         result: stable_whisper.WhisperResult = bc.data_queue.get()
         if sj.cache["filter_file_import"]:
@@ -210,7 +273,7 @@ def _cancellable_tl(query, lang_source, lang_target, tl_func, engine, base_name,
     try:
         _update_status(status_tl, index, "Translating please wait...")
         export_dir = dir_export if sj.cache["dir_export"] == "auto" else sj.cache["dir_export"]
-        fail_status = [False, ""]
+        fail_status = WorkerFailure()
 
         format_dict = get_task_format("translated", f"translated {lang_source} to {lang_target}", f"translated with {engine}", f"translated {lang_source} to {lang_target} with {engine}")
         format_dict.update(get_task_format("tl", f"tl {lang_source} to {lang_target}", f"tl with {engine}", f"tl {lang_source} to {lang_target} with {engine}", short_only=True))
@@ -221,7 +284,7 @@ def _cancellable_tl(query, lang_source, lang_target, tl_func, engine, base_name,
             thread = Thread(target=run_whisper, args=[tl_func, query, "translate", fail_status], kwargs=kwargs, daemon=True)
             thread.start()
             _monitor_thread(thread, lambda: bc.translating_file)
-            if fail_status[0]: raise Exception(fail_status[1])
+            fail_status.raise_if_failed()
 
             result = bc.data_queue.get()
             if sj.cache["filter_file_import"]:
@@ -234,7 +297,7 @@ def _cancellable_tl(query, lang_source, lang_target, tl_func, engine, base_name,
             thread = Thread(target=run_translate_api, args=[query, engine, lang_source, lang_target, fail_status], kwargs=api_kwargs, daemon=True)
             thread.start()
             _monitor_thread(thread, lambda: bc.translating_file)
-            if fail_status[0]: raise Exception(fail_status[1])
+            fail_status.raise_if_failed()
             result = query
 
         if not getattr(result, "text", "").strip(): return _update_status(status_tl, index, "TL Fail! Empty text")
@@ -398,12 +461,12 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
                             raise Exception(f"Re-transcribe failed: {ee}")
                     else: raise e
 
-            fail_status = [False, ""]
+            fail_status = WorkerFailure()
             thread = Thread(target=lambda: run_whisper(_run_mod, None, mode, fail_status), daemon=True)
             thread.start()
             _monitor_thread(thread, lambda: bc.file_processing)
 
-            if fail_status[0]:
+            if fail_status.failed:
                 _update_status(status_mod, i, "Failed")
                 continue
 
@@ -473,13 +536,13 @@ def translate_result(data_files: List, engine: str, lang_target: str):
             for fmt, val in format_dict.items(): save_name = save_name.replace(fmt, val)
 
             _update_status(status_mod, i, "Translating please wait...")
-            fail_status = [False, ""]
+            fail_status = WorkerFailure()
             
             thread = Thread(target=run_translate_api, args=[result, engine, lang_src, lang_target, fail_status], kwargs=api_kwargs, daemon=True)
             thread.start()
             _monitor_thread(thread, lambda: bc.file_processing)
 
-            if fail_status[0]:
+            if fail_status.failed:
                 _update_status(status_mod, i, "Failed")
                 continue
 
