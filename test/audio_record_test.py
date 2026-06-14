@@ -9,6 +9,8 @@ sys.path.append(to_add)
 
 from speech_translate.utils.audio.record import (
     RealtimeSharedState,
+    TranslationTask,
+    _build_recording_state_payload,
     _build_full_transcribed_text,
     _result_text,
 )
@@ -35,6 +37,51 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(state.prev_tc_res, "")
         self.assertEqual(state.prev_tl_res, "")
         self.assertIsNone(state.last_db)
+
+    def test_translation_task_defaults_are_explicit(self) -> None:
+        task = TranslationTask(kind="whisper", separator="<br />")
+        self.assertEqual(task.kind, "whisper")
+        self.assertEqual(task.separator, "<br />")
+        self.assertIsNone(task.audio)
+        self.assertFalse(task.cleanup_audio)
+        self.assertEqual(task.text, "")
+
+    def test_build_recording_state_payload_omits_optional_fields_when_missing(self) -> None:
+        payload = _build_recording_state_payload(
+            status="Recording",
+            device="mic",
+            lang_source="English",
+            lang_target="Chinese",
+            engine="Google Translate",
+            mode="Transcribe & Translate",
+        )
+        self.assertEqual(
+            payload,
+            {
+                "status": "Recording",
+                "device": "mic",
+                "lang_source": "English",
+                "lang_target": "Chinese",
+                "engine": "Google Translate",
+                "mode": "Transcribe & Translate",
+            },
+        )
+
+    def test_build_recording_state_payload_includes_optional_fields(self) -> None:
+        payload = _build_recording_state_payload(
+            status="Recording",
+            device="speaker",
+            lang_source="English",
+            lang_target="-",
+            engine="Whisper",
+            mode="Translate",
+            timer="00:00:10",
+            buffer_text="1.2/10.0 sec",
+            sentences="3/5",
+        )
+        self.assertEqual(payload["timer"], "00:00:10")
+        self.assertEqual(payload["buffer"], "1.2/10.0 sec")
+        self.assertEqual(payload["sentences"], "3/5")
 
 
 if __name__ == "__main__":

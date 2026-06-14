@@ -63,6 +63,18 @@ class RealtimeSharedState:
     last_db: float | None = None
 
 
+@dataclass
+class TranslationTask:
+    kind: Literal["whisper", "api"]
+    separator: str
+    audio: object | None = None
+    cleanup_audio: bool = False
+    text: str = ""
+    lang_source: str = ""
+    lang_target: str = ""
+    engine: str = ""
+
+
 shared_state = RealtimeSharedState()
 
 # =========================================================================
@@ -87,6 +99,35 @@ def _build_full_transcribed_text(sentences: list[object], current_res: ResultSna
     if current_text:
         lines.append(current_text)
     return "\n".join(lines)
+
+
+def _build_recording_state_payload(
+    *,
+    status: str,
+    device: str,
+    lang_source: str,
+    lang_target: str,
+    engine: str,
+    mode: str,
+    timer: str | None = None,
+    buffer_text: str | None = None,
+    sentences: str | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "status": status,
+        "device": device,
+        "lang_source": lang_source,
+        "lang_target": lang_target,
+        "engine": engine,
+        "mode": mode,
+    }
+    if timer is not None:
+        payload["timer"] = timer
+    if buffer_text is not None:
+        payload["buffer"] = buffer_text
+    if sentences is not None:
+        payload["sentences"] = sentences
+    return payload
 
 def _save_to_temp(audio_bytes: bytes, channels: int, samp_width: int, sr: int) -> str:
     """将音频字节流保存为临时 WAV 文件并返回路径"""
@@ -269,27 +310,37 @@ def record_session(
         logger.info(f"Session starting: {taskname} | Engine: {engine} | Device: {cuda_device} | Demucs: {demucs_enabled}")
 
         # Worker Queues
-        translation_queue, translation_task_lock = Queue(), Lock()
-        latest_api_task, inflight_api_text = None, ""
+        translation_queue: Queue[TranslationTask] = Queue()
+        translation_task_lock = Lock()
+        latest_api_task: TranslationTask | None = None
+        inflight_api_text = ""
 
-        def _dispatch_translation(audio_target: Any, text_snapshot: str):
+        def _dispatch_translation(audio_target: object, text_snapshot: str) -> None:
             """统一的翻译任务分发入口"""
             if not is_tl: return
             if tl_engine_whisper:
-                translation_queue.put({
-                    "kind": "whisper", "audio": audio_target, "separator": separator, 
-                    "cleanup_audio": use_temp and not sj.cache.get("keep_temp", False) and isinstance(audio_target, str)
-                })
+                translation_queue.put(
+                    TranslationTask(
+                        kind="whisper",
+                        audio=audio_target,
+                        separator=separator,
+                        cleanup_audio=use_temp and not sj.cache.get("keep_temp", False) and isinstance(audio_target, str),
+                    )
+                )
             else:
                 text_key = text_snapshot.strip()
                 if not text_key: return
                 nonlocal latest_api_task
                 with translation_task_lock:
                     if text_key != inflight_api_text:
-                        latest_api_task = {
-                            "kind": "api", "text": text_key, "lang_source": lang_source, 
-                            "lang_target": lang_target, "engine": engine, "separator": separator
-                        }
+                        latest_api_task = TranslationTask(
+                            kind="api",
+                            text=text_key,
+                            lang_source=lang_source,
+                            lang_target=lang_target,
+                            engine=engine,
+                            separator=separator,
+                        )
 
         # Translation Worker Thread
         def run_translation_worker():
@@ -298,34 +349,34 @@ def record_session(
                 if not bc.recording:
                     while not translation_queue.empty():
                         pt = translation_queue.get_nowait()
-                        if pt.get("cleanup_audio") and isinstance(pt.get("audio"), str):
-                            try: os.remove(pt["audio"])
+                        if pt.cleanup_audio and isinstance(pt.audio, str):
+                            try: os.remove(pt.audio)
                             except Exception: pass
                     break
 
-                task = None
+                task: TranslationTask | None = None
                 try: task = translation_queue.get(timeout=0.1)
                 except Empty:
                     with translation_task_lock:
                         if latest_api_task:
                             task, latest_api_task = latest_api_task, None
-                            inflight_api_text = task["text"]
+                            inflight_api_text = task.text
 
                 if not task: continue
 
                 try:
                     update_status_lbl()
-                    if task["kind"] == "whisper":
-                        run_whisper_tl(task["audio"], stable_tl, task["separator"], hallucination_filters, **whisper_args)
+                    if task.kind == "whisper":
+                        run_whisper_tl(task.audio, stable_tl, task.separator, hallucination_filters, **whisper_args)
                     else:
-                        tl_api(task["text"], task["lang_source"], task["lang_target"], task["engine"], task["separator"])
+                        tl_api(task.text, task.lang_source, task.lang_target, task.engine, task.separator)
                 except Exception as e:
                     logger.exception(e)
                 finally:
-                    if task.get("kind") == "api":
+                    if task.kind == "api":
                         with translation_task_lock: inflight_api_text = ""
-                    if task.get("cleanup_audio") and isinstance(task.get("audio"), str):
-                        try: os.remove(task["audio"])
+                    if task.cleanup_audio and isinstance(task.audio, str):
+                        try: os.remove(task.audio)
                         except Exception: pass
                     update_status_lbl()
 
@@ -338,7 +389,17 @@ def record_session(
         def update_status_lbl():
             if bc.web_bridge:
                 bc.web_bridge.update_task_message(bc.current_rec_status)
-                try: bc.web_bridge.set_recording_state({"status": bc.current_rec_status, "device": device, "lang_source": lang_source, "lang_target": lang_target if is_tl else "-", "engine": engine, "mode": taskname})
+                try:
+                    bc.web_bridge.set_recording_state(
+                        _build_recording_state_payload(
+                            status=bc.current_rec_status,
+                            device=device,
+                            lang_source=lang_source,
+                            lang_target=lang_target if is_tl else "-",
+                            engine=engine,
+                            mode=taskname,
+                        )
+                    )
                 except Exception: pass
 
         def update_web_ui():
@@ -347,7 +408,20 @@ def record_session(
                 try:
                     s_txt = f"{len(bc.tc_sentences) or len(bc.tl_sentences) or '0'}" + (f"/{max_sentences}" if not sentence_limitless else "")
                     if bc.web_bridge:
-                        try: bc.web_bridge.set_recording_state({"status": bc.current_rec_status, "device": device, "lang_source": lang_source, "lang_target": lang_target if is_tl else "-", "engine": engine, "mode": taskname, "timer": strftime("%H:%M:%S", gmtime(time() - t_start)), "buffer": f"{round(duration_seconds, 2)}/{round(max_buffer_s, 2)} sec", "sentences": s_txt})
+                        try:
+                            bc.web_bridge.set_recording_state(
+                                _build_recording_state_payload(
+                                    status=bc.current_rec_status,
+                                    device=device,
+                                    lang_source=lang_source,
+                                    lang_target=lang_target if is_tl else "-",
+                                    engine=engine,
+                                    mode=taskname,
+                                    timer=strftime("%H:%M:%S", gmtime(time() - t_start)),
+                                    buffer_text=f"{round(duration_seconds, 2)}/{round(max_buffer_s, 2)} sec",
+                                    sentences=s_txt,
+                                )
+                            )
                         except Exception: pass
                     sleep(0.1)
                 except Exception: break
