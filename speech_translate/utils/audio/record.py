@@ -572,6 +572,86 @@ def _start_recording_status_thread(
     ).start()
 
 
+def _drain_pending_audio(session_state: RealtimeSessionState) -> None:
+    while not bc.data_queue.empty():
+        session_state.append_audio(bc.data_queue.get_nowait())
+
+
+def _consume_record_loop_input(
+    session_state: RealtimeSessionState,
+    callback_ctx: RealtimeCallbackContext,
+    *,
+    config: RecordingSessionConfig,
+    is_tc: bool,
+    sr_divider: int,
+    samp_width: int,
+    num_of_channels: int,
+    translator: TranslationDispatcher,
+    buffer_reducer: BufferStateReducer,
+) -> bytes | None:
+    try:
+        return bc.data_queue.get(timeout=0.1)
+    except Empty:
+        if (
+            config.auto_break_buffer
+            and callback_ctx.is_silence
+            and time() - callback_ctx.silence_started_at > 1
+        ):
+            callback_ctx.is_silence = False
+            _break_buffer_and_update_state(
+                reason="silence",
+                session_state=session_state,
+                is_tc=is_tc,
+                sr_divider=sr_divider,
+                samp_width=samp_width,
+                num_of_channels=num_of_channels,
+                sentence_limitless=config.sentence_limitless,
+                max_sentences=config.max_sentences,
+                separator=config.separator,
+                translator=translator,
+                buffer_reducer=buffer_reducer,
+            )
+            bc.current_rec_status = "▶️ Recording (Waiting for speech)"
+        if (
+            not session_state.last_sample
+            or (
+                session_state.next_transcribe_time
+                and session_state.next_transcribe_time > _utc_now()
+            )
+        ):
+            return None
+        return b""
+
+
+def _advance_recording_buffer(
+    session_state: RealtimeSessionState,
+    data: bytes,
+    *,
+    transcribe_rate: timedelta,
+    samp_width: int,
+    num_of_channels: int,
+    sr_divider: int,
+    min_input_length: float,
+) -> bool:
+    now = _utc_now()
+    if not session_state.next_transcribe_time:
+        session_state.next_transcribe_time = now + transcribe_rate
+
+    session_state.append_audio(data)
+    _drain_pending_audio(session_state)
+
+    if session_state.next_transcribe_time > now:
+        return False
+    session_state.next_transcribe_time = now + transcribe_rate
+
+    session_state.recalculate_duration(
+        samp_width=samp_width,
+        num_of_channels=num_of_channels,
+        sr_divider=sr_divider,
+    )
+    return session_state.duration_seconds >= min_input_length
+
+
 def _finalize_recording_session(p, session_state: RealtimeSessionState, update_status_lbl, *, keep_temp: bool) -> None:
     bc.current_rec_status = "⚠️ Stopping stream"
     update_status_lbl()
@@ -1259,57 +1339,29 @@ def record_session(
                 sleep(0.1)
                 continue
 
-            try:
-                data = bc.data_queue.get(timeout=0.1)
-            except Empty:
-                if (
-                    config.auto_break_buffer
-                    and callback_ctx.is_silence
-                    and time() - callback_ctx.silence_started_at > 1
-                ):
-                    callback_ctx.is_silence = False
-                    _break_buffer_and_update_state(
-                        reason="silence",
-                        session_state=session_state,
-                        is_tc=is_tc,
-                        sr_divider=sr_divider,
-                        samp_width=samp_width,
-                        num_of_channels=num_of_channels,
-                        sentence_limitless=config.sentence_limitless,
-                        max_sentences=config.max_sentences,
-                        separator=config.separator,
-                        translator=translator,
-                        buffer_reducer=buffer_reducer,
-                    )
-                    bc.current_rec_status = "▶️ Recording (Waiting for speech)"
-                if (
-                    not session_state.last_sample
-                    or (
-                        session_state.next_transcribe_time
-                        and session_state.next_transcribe_time > _utc_now()
-                    )
-                ):
-                    continue
-                data = b""
-
-            now = _utc_now()
-            if not session_state.next_transcribe_time:
-                session_state.next_transcribe_time = now + config.transcribe_rate
-
-            session_state.append_audio(data)
-            while not bc.data_queue.empty():
-                session_state.append_audio(bc.data_queue.get_nowait())
-
-            if session_state.next_transcribe_time > now:
+            data = _consume_record_loop_input(
+                session_state,
+                callback_ctx,
+                config=config,
+                is_tc=is_tc,
+                sr_divider=sr_divider,
+                samp_width=samp_width,
+                num_of_channels=num_of_channels,
+                translator=translator,
+                buffer_reducer=buffer_reducer,
+            )
+            if data is None:
                 continue
-            session_state.next_transcribe_time = now + config.transcribe_rate
 
-            session_state.recalculate_duration(
+            if not _advance_recording_buffer(
+                session_state,
+                data,
+                transcribe_rate=config.transcribe_rate,
                 samp_width=samp_width,
                 num_of_channels=num_of_channels,
                 sr_divider=sr_divider,
-            )
-            if session_state.duration_seconds < sj.cache.get(f"min_input_length_{rec_type}", 0.4):
+                min_input_length=sj.cache.get(f"min_input_length_{rec_type}", 0.4),
+            ):
                 continue
 
             audio_target = _build_record_audio_target(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from datetime import timedelta
 
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
@@ -19,10 +20,13 @@ from speech_translate.utils.audio.record import (
     TranslationTask,
     _apply_smart_split,
     _break_buffer_and_update_state,
+    _consume_record_loop_input,
+    _drain_pending_audio,
     _build_recording_sentence_count_text,
     _build_record_audio_target,
     _build_recording_session_config,
     _load_recording_model_runtime,
+    _advance_recording_buffer,
     _cleanup_translation_audio,
     _commit_realtime_transcription,
     _calculate_buffer_duration,
@@ -362,6 +366,35 @@ class AudioRecordHelpersTests(unittest.TestCase):
             record_module.os.remove = previous_remove
 
         self.assertEqual(removed, ["temp.wav"])
+
+    def test_drain_pending_audio_appends_all_buffered_chunks(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_queue = record_module.bc.data_queue
+        try:
+            record_module.bc.data_queue = record_module.Queue()
+            record_module.bc.data_queue.put(b"ab")
+            record_module.bc.data_queue.put(b"cd")
+            state = RealtimeSessionState(last_sample=b"")
+            _drain_pending_audio(state)
+        finally:
+            record_module.bc.data_queue = previous_queue
+
+        self.assertEqual(state.last_sample, b"abcd")
+
+    def test_advance_recording_buffer_waits_for_next_transcribe_time(self) -> None:
+        state = RealtimeSessionState(last_sample=b"", next_transcribe_time=None)
+        ready = _advance_recording_buffer(
+            state,
+            b"ab",
+            transcribe_rate=timedelta(seconds=10),
+            samp_width=1,
+            num_of_channels=1,
+            sr_divider=10,
+            min_input_length=0.1,
+        )
+        self.assertFalse(ready)
+        self.assertEqual(state.last_sample, b"ab")
 
     def test_calculate_buffer_duration_handles_invalid_denominator(self) -> None:
         self.assertEqual(
