@@ -93,6 +93,32 @@ class RecordingRuntime:
     lang_target_display: str
 
 
+class RecordingStatusEmitter:
+    def __init__(self, runtime: RecordingRuntime):
+        self._runtime = runtime
+
+    def emit(self, *, status: str, timer: str | None = None, buffer_text: str | None = None, sentences: str | None = None) -> None:
+        if not bc.web_bridge:
+            return
+        bc.web_bridge.update_task_message(status)
+        try:
+            bc.web_bridge.set_recording_state(
+                _build_recording_state_payload(
+                    status=status,
+                    device=self._runtime.device,
+                    lang_source=self._runtime.lang_source,
+                    lang_target=self._runtime.lang_target_display,
+                    engine=self._runtime.engine,
+                    mode=self._runtime.taskname,
+                    timer=timer,
+                    buffer_text=buffer_text,
+                    sentences=sentences,
+                )
+            )
+        except Exception:
+            pass
+
+
 shared_state = RealtimeSharedState()
 
 # =========================================================================
@@ -430,47 +456,6 @@ def record_session(
         # UI & State Updaters
         t_start, duration_seconds, paused = time(), 0.0, False
         bc.current_rec_status, bc.auto_detected_lang = "▶️ Recording (Waiting for speech)", "~"
-        
-        def update_status_lbl():
-            if bc.web_bridge:
-                bc.web_bridge.update_task_message(bc.current_rec_status)
-                try:
-                    bc.web_bridge.set_recording_state(
-                        _build_recording_state_payload(
-                            status=bc.current_rec_status,
-                            device=device,
-                            lang_source=lang_source,
-                            lang_target=lang_target if is_tl else "-",
-                            engine=engine,
-                            mode=taskname,
-                        )
-                    )
-                except Exception: pass
-
-        def update_web_ui():
-            while bc.recording:
-                if paused: sleep(0.1); continue
-                try:
-                    s_txt = f"{len(bc.tc_sentences) or len(bc.tl_sentences) or '0'}" + (f"/{max_sentences}" if not sentence_limitless else "")
-                    if bc.web_bridge:
-                        try:
-                            bc.web_bridge.set_recording_state(
-                                _build_recording_state_payload(
-                                    status=bc.current_rec_status,
-                                    device=device,
-                                    lang_source=lang_source,
-                                    lang_target=lang_target if is_tl else "-",
-                                    engine=engine,
-                                    mode=taskname,
-                                    timer=strftime("%H:%M:%S", gmtime(time() - t_start)),
-                                    buffer_text=f"{round(duration_seconds, 2)}/{round(max_buffer_s, 2)} sec",
-                                    sentences=s_txt,
-                                )
-                            )
-                        except Exception: pass
-                    sleep(0.1)
-                except Exception: break
-
         runtime = RecordingRuntime(
             taskname=taskname,
             device=device,
@@ -487,6 +472,29 @@ def record_session(
             sentence_limitless=sentence_limitless,
             lang_target_display=lang_target if is_tl else "-",
         )
+        status_emitter = RecordingStatusEmitter(runtime)
+
+        def update_status_lbl() -> None:
+            status_emitter.emit(status=bc.current_rec_status)
+
+        def update_web_ui():
+            while bc.recording:
+                if paused:
+                    sleep(0.1)
+                    continue
+                try:
+                    sentence_count_text = f"{len(bc.tc_sentences) or len(bc.tl_sentences) or '0'}"
+                    if not sentence_limitless:
+                        sentence_count_text += f"/{max_sentences}"
+                    status_emitter.emit(
+                        status=bc.current_rec_status,
+                        timer=strftime("%H:%M:%S", gmtime(time() - t_start)),
+                        buffer_text=f"{round(duration_seconds, 2)}/{round(max_buffer_s, 2)} sec",
+                        sentences=sentence_count_text,
+                    )
+                    sleep(0.1)
+                except Exception:
+                    break
 
         def cleanup_translation_audio(audio_target: object | None) -> None:
             if isinstance(audio_target, str):

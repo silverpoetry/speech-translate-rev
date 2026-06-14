@@ -8,6 +8,8 @@ to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
 from speech_translate.utils.audio.record import (
+    RecordingRuntime,
+    RecordingStatusEmitter,
     RealtimeSharedState,
     TranslationDispatcher,
     TranslationTask,
@@ -20,6 +22,18 @@ from speech_translate.utils.audio.record import (
 class FakeResult:
     def __init__(self, text: str) -> None:
         self.text = text
+
+
+class FakeWebBridge:
+    def __init__(self) -> None:
+        self.messages = []
+        self.states = []
+
+    def update_task_message(self, message: str) -> None:
+        self.messages.append(message)
+
+    def set_recording_state(self, payload) -> None:
+        self.states.append(payload)
 
 
 class AudioRecordHelpersTests(unittest.TestCase):
@@ -129,6 +143,38 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(dispatcher._latest_api_task.lang_target, first_task.lang_target)
         dispatcher.dispatch(None, "world")
         self.assertEqual(dispatcher._latest_api_task.text, "world")
+
+    def test_recording_status_emitter_updates_bridge(self) -> None:
+        runtime = RecordingRuntime(
+            taskname="Transcribe",
+            device="mic",
+            lang_source="English",
+            lang_target="Chinese",
+            engine="Whisper",
+            is_tl=True,
+            use_temp=False,
+            separator="<br />",
+            keep_temp=False,
+            t_start=0.0,
+            max_buffer_s=10.0,
+            max_sentences=5,
+            sentence_limitless=False,
+            lang_target_display="Chinese",
+        )
+        bridge = FakeWebBridge()
+        from speech_translate.utils.audio import record as record_module
+
+        previous_bridge = record_module.bc.web_bridge
+        try:
+            record_module.bc.web_bridge = bridge
+            emitter = RecordingStatusEmitter(runtime)
+            emitter.emit(status="Recording", timer="00:00:01", buffer_text="1.0/10.0 sec", sentences="2/5")
+        finally:
+            record_module.bc.web_bridge = previous_bridge
+
+        self.assertEqual(bridge.messages, ["Recording"])
+        self.assertEqual(bridge.states[-1]["status"], "Recording")
+        self.assertEqual(bridge.states[-1]["timer"], "00:00:01")
 
 
 if __name__ == "__main__":
