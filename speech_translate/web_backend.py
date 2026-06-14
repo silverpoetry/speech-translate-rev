@@ -4,10 +4,11 @@ from dataclasses import dataclass, field
 import json
 import re
 from threading import Lock
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, Optional, Sequence
 
 from loguru import logger
 
+from speech_translate.controller_protocols import JsonDict, TaskTable, TaskTableRow, TrayLike, WebviewWindowLike
 from speech_translate.linker import bc, sj
 from speech_translate.ui_protocol import (
     TASK_SOURCE_HEADLESS_LABEL,
@@ -20,74 +21,76 @@ from speech_translate.ui_protocol import (
 
 
 class HeadlessRoot:
-    def update(self):
+    def update(self) -> None:
         return None
 
-    def update_idletasks(self):
+    def update_idletasks(self) -> None:
         return None
 
-    def after(self, _delay: int, callback: Optional[Callable] = None, *args):
+    def after(self, _delay: int, callback: Optional[Callable[..., object]] = None, *args: object) -> object | None:
         if callback is not None:
             return callback(*args)
         return None
 
-    def winfo_exists(self):
+    def winfo_exists(self) -> bool:
         return True
 
-    def destroy(self):
+    def destroy(self) -> None:
         return None
 
-    def winfo_rootx(self):
+    def winfo_rootx(self) -> int:
         return 0
 
-    def winfo_rooty(self):
+    def winfo_rooty(self) -> int:
         return 0
 
 
 class HeadlessLabel:
-    def __init__(self, bridge=None):
+    def __init__(self, bridge: WebTaskBridge | None = None):
         self.bridge = bridge
         self.text = ""
 
-    def set_text(self, text: str):
+    def set_text(self, text: str) -> None:
         self.text = text
         if self.bridge is not None:
             self.bridge.update_task_message(text, source=TASK_SOURCE_HEADLESS_LABEL)
 
-    def configure(self, **kwargs):
+    def configure(self, **kwargs: object) -> None:
         text = kwargs.get("text")
         if text is not None:
-            self.set_text(text)
+            self.set_text(str(text))
 
 
 class HeadlessButton:
     def __init__(self):
         self.state = "normal"
-        self.command = None
+        self.command: Callable[..., object] | None = None
 
-    def configure(self, **kwargs):
+    def configure(self, **kwargs: object) -> None:
         if "state" in kwargs:
-            self.state = kwargs["state"]
+            self.state = str(kwargs["state"])
         if "command" in kwargs:
-            self.command = kwargs["command"]
+            command = kwargs["command"]
+            self.command = command if callable(command) else None
 
 
 class HeadlessCheckButton:
     def __init__(self):
         self.state = "normal"
         self.selected = False
-        self.command = None
+        self.command: Callable[..., object] | None = None
 
-    def configure(self, **kwargs):
+    def configure(self, **kwargs: object) -> None:
         if "state" in kwargs:
-            self.state = kwargs["state"]
+            self.state = str(kwargs["state"])
         if "command" in kwargs:
-            self.command = kwargs["command"]
+            command = kwargs["command"]
+            self.command = command if callable(command) else None
 
-    def instate(self, _states):
+    def instate(self, _states: Sequence[str]) -> bool:
         return self.selected
 
-    def invoke(self):
+    def invoke(self) -> bool:
         self.selected = not self.selected
         if self.command is not None:
             try:
@@ -98,32 +101,32 @@ class HeadlessCheckButton:
 
 
 class HeadlessProgressBar:
-    def __init__(self, bridge=None):
+    def __init__(self, bridge: WebTaskBridge | None = None):
         self.bridge = bridge
-        self.value = 0
+        self.value = 0.0
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: object) -> None:
         if key == "value":
-            self.value = value
+            self.value = float(value)
             if self.bridge is not None:
-                self.bridge.update_task_progress(value, source=TASK_SOURCE_HEADLESS_PROGRESS)
+                self.bridge.update_task_progress(self.value, source=TASK_SOURCE_HEADLESS_PROGRESS)
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> float:
         if key == "value":
             return self.value
         raise KeyError(key)
 
-    def configure(self, **kwargs):
+    def configure(self, **kwargs: object) -> None:
         return None
 
 
 class HeadlessQueueWindow:
-    def __init__(self, bridge=None):
+    def __init__(self, bridge: WebTaskBridge | None = None):
         self.bridge = bridge
-        self.rows: List[List[str]] = []
+        self.rows: TaskTable = []
 
-    def update_sheet(self, rows):
-        self.rows = list(rows)
+    def update_sheet(self, rows: Sequence[Sequence[object]]) -> None:
+        self.rows = [list(row) for row in rows]
         if self.bridge is not None:
             self.bridge.update_task_rows(self.rows)
 
@@ -134,13 +137,15 @@ class TaskState:
     title: str = ""
     message: str = ""
     progress: float = 0.0
-    rows: List[List[Any]] = field(default_factory=list)
+    rows: TaskTable = field(default_factory=list)
     error: str = ""
     finished: bool = False
+    message_source: str = ""
+    progress_source: str = ""
 
 
 class HeadlessFileProcessDialog:
-    def __init__(self, master, title: str, mode: str, headers: List[str], bridge=None):
+    def __init__(self, master: object, title: str, mode: str, headers: list[str], bridge: WebTaskBridge | None = None):
         self.bridge = bridge
         self.mode = mode
         self.headers = headers
@@ -156,11 +161,11 @@ class HeadlessFileProcessDialog:
         self.queue_window = HeadlessQueueWindow(bridge)
         self.task_title = title
 
-    def destroy(self):
+    def destroy(self) -> None:
         return None
 
 
-def headless_mbox(title: str, text: str, style: int = 0, parent=None):
+def headless_mbox(title: str, text: str, style: int = 0, parent: object | None = None) -> bool:
     """Headless replacement for tkinter message boxes used in backend flows."""
     _ = parent
     if style in (2,):
@@ -173,34 +178,35 @@ def headless_mbox(title: str, text: str, style: int = 0, parent=None):
 
 
 class HeadlessMainWindow:
-    def __init__(self, bridge=None):
+    def __init__(self, bridge: WebTaskBridge | None = None):
         self.bridge = bridge
         self.root = HeadlessRoot()
 
-    def disable_interactions(self):
+    def disable_interactions(self) -> None:
         return None
 
-    def enable_interactions(self):
+    def enable_interactions(self) -> None:
         return None
 
-    def tb_clear(self):
+    def tb_clear(self) -> None:
         return None
 
-    def start_lb(self, *_args, **_kwargs):
+    def start_lb(self, *_args: object, **_kwargs: object) -> None:
         if self.bridge is not None:
             self.bridge.task_state.active = True
 
-    def stop_lb(self, *_args, **_kwargs):
+    def stop_lb(self, *_args: object, **_kwargs: object) -> None:
         if self.bridge is not None:
             self.bridge.task_state.active = False
 
-    def from_file_stop(self, prompt=False, notify=True, master=None):
+    def from_file_stop(self, prompt: bool = False, notify: bool = True, master: object | None = None) -> None:
+        _ = (prompt, notify, master)
         return None
 
-    def rec_stop(self):
+    def rec_stop(self) -> None:
         return None
 
-    def after_rec_stop(self):
+    def after_rec_stop(self) -> None:
         return None
 
     def error_notif(self, msg: str, **_kwargs):
@@ -208,13 +214,13 @@ class HeadlessMainWindow:
         if self.bridge is not None:
             self.bridge.update_task_error(msg)
 
-    def show(self):
+    def show(self) -> None:
         return None
 
-    def bring_to_front(self):
+    def bring_to_front(self) -> None:
         return None
 
-    def quit_app(self):
+    def quit_app(self) -> None:
         if self.bridge is not None:
             self.bridge.quit_app()
 
@@ -222,7 +228,7 @@ class HeadlessMainWindow:
 class WebTaskBridge:
     def __init__(self):
         self.task_state = TaskState()
-        self.live_state = {
+        self.live_state: JsonDict = {
             "main_transcribed_html": "",
             "main_translated_html": "",
             "detached_transcribed_html": "",
@@ -233,25 +239,23 @@ class WebTaskBridge:
             "detached_translated_text": "",
         }
         self._lock = Lock()
-        self._task_message_source = ""
-        self._task_progress_source = ""
-        self._window = None
-        self._tray = None
+        self._window: WebviewWindowLike | None = None
+        self._tray: TrayLike | None = None
         self._main_window = HeadlessMainWindow(self)
 
-    def bind_window(self, window):
+    def bind_window(self, window: WebviewWindowLike) -> None:
         self._window = window
 
-    def bind_tray(self, tray):
+    def bind_tray(self, tray: TrayLike) -> None:
         self._tray = tray
 
-    def get_window(self):
+    def get_window(self) -> WebviewWindowLike | None:
         return self._window
 
-    def get_tray(self):
+    def get_tray(self) -> TrayLike | None:
         return self._tray
 
-    def _emit_ui_update(self, sections: List[str]):
+    def _emit_ui_update(self, sections: list[str]) -> None:
         window = self._window
         if window is None or not sections:
             return
@@ -263,7 +267,7 @@ class WebTaskBridge:
         except Exception:
             pass
 
-    def bind_headless_main_window(self):
+    def bind_headless_main_window(self) -> HeadlessMainWindow:
         setattr(bc, "mw", self._main_window)
         setattr(bc, "sw", None)
         setattr(bc, "lw", None)
@@ -272,21 +276,19 @@ class WebTaskBridge:
         setattr(bc, "ex_tlw", None)
         return self._main_window
 
-    def reset_task_state(self, title: str = ""):
+    def reset_task_state(self, title: str = "") -> TaskState:
         with self._lock:
             self.task_state = TaskState(active=True, title=title)
-            self._task_message_source = ""
-            self._task_progress_source = ""
         self._emit_ui_update([UI_SECTION_TASK])
         return self.task_state
 
-    def update_task_message(self, message: str, source: str = TASK_SOURCE_GENERAL):
+    def update_task_message(self, message: str, source: str = TASK_SOURCE_GENERAL) -> None:
         with self._lock:
             self.task_state.message = message
-        self._task_message_source = source
+            self.task_state.message_source = source
         self._emit_ui_update([UI_SECTION_TASK])
 
-    def update_task_progress(self, progress: float, source: str = TASK_SOURCE_GENERAL):
+    def update_task_progress(self, progress: float, source: str = TASK_SOURCE_GENERAL) -> None:
         with self._lock:
             incoming = float(progress)
             if self.task_state.title == "File Import":
@@ -294,15 +296,15 @@ class WebTaskBridge:
                 self.task_state.progress = max(float(self.task_state.progress), incoming)
             else:
                 self.task_state.progress = incoming
-            self._task_progress_source = source
+            self.task_state.progress_source = source
         self._emit_ui_update([UI_SECTION_TASK])
 
-    def update_task_rows(self, rows):
+    def update_task_rows(self, rows: Sequence[Sequence[object]]) -> None:
         with self._lock:
-            self.task_state.rows = list(rows)
+            self.task_state.rows = self._normalize_task_rows(rows)
         self._emit_ui_update([UI_SECTION_TASK])
 
-    def update_task_error(self, error: str):
+    def update_task_error(self, error: str) -> None:
         with self._lock:
             self.task_state.error = error
             self.task_state.finished = True
@@ -310,7 +312,7 @@ class WebTaskBridge:
             self.task_state.progress = 100.0
         self._emit_ui_update([UI_SECTION_TASK])
 
-    def finish_task(self, message: str = ""):
+    def finish_task(self, message: str = "") -> None:
         with self._lock:
             self.task_state.message = message
             self.task_state.finished = True
@@ -318,17 +320,25 @@ class WebTaskBridge:
             self.task_state.progress = 100.0
         self._emit_ui_update([UI_SECTION_TASK])
 
-    def snapshot_task_state(self):
+    def snapshot_task_state(self) -> JsonDict:
         with self._lock:
             return {
                 "active": self.task_state.active,
                 "title": self.task_state.title,
                 "message": self.task_state.message,
                 "progress": self.task_state.progress,
-                "rows": self.task_state.rows,
+                "rows": [list(row) for row in self.task_state.rows],
                 "error": self.task_state.error,
                 "finished": self.task_state.finished,
+                "message_source": self.task_state.message_source,
+                "progress_source": self.task_state.progress_source,
             }
+
+    def _normalize_task_rows(self, rows: Sequence[Sequence[object]]) -> TaskTable:
+        normalized: TaskTable = []
+        for row in rows:
+            normalized.append([cell for cell in row])
+        return normalized
 
     def _html_to_text(self, html: str) -> str:
         text = html.replace("<br />", "\n").replace("<br/>", "\n").replace("<br>", "\n")
@@ -337,7 +347,7 @@ class WebTaskBridge:
         text = re.sub(r"\n{2,}", "\n", text)
         return text.strip()
 
-    def update_live_html(self, target: str, html: str):
+    def update_live_html(self, target: str, html: str) -> None:
         text_target = target.replace("_html", "_text")
         with self._lock:
             if target in self.live_state:
@@ -346,7 +356,7 @@ class WebTaskBridge:
                 self.live_state[text_target] = self._html_to_text(html)
         self._emit_ui_update([UI_SECTION_LIVE])
 
-    def append_live_text(self, target: str, text: str, separator: str = ""):
+    def append_live_text(self, target: str, text: str, separator: str = "") -> None:
         key_html = target if target.endswith("_html") else f"{target}_html"
         key_text = key_html.replace("_html", "_text")
         with self._lock:
@@ -369,16 +379,16 @@ class WebTaskBridge:
             self.live_state[key_html] = "<div class='live-lines'>" + "<br />".join(escaped_lines) + "</div>"
         self._emit_ui_update([UI_SECTION_LIVE])
 
-    def clear_live(self, prefix: str = ""):
+    def clear_live(self, prefix: str = "") -> None:
         with self._lock:
             for key in list(self.live_state.keys()):
                 if not prefix or key.startswith(prefix):
                     self.live_state[key] = ""
         self._emit_ui_update([UI_SECTION_LIVE])
 
-    def snapshot_live_state(self):
+    def snapshot_live_state(self) -> JsonDict:
         with self._lock:
             return dict(self.live_state)
 
-    def get_settings_snapshot(self):
+    def get_settings_snapshot(self) -> JsonDict:
         return dict(sj.cache)

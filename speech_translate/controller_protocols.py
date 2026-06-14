@@ -5,6 +5,8 @@ from typing import Callable, Mapping, MutableMapping, Protocol, Sequence
 
 
 JsonDict = dict[str, object]
+TaskTableRow = list[object]
+TaskTable = list[TaskTableRow]
 
 
 class SettingsStore(Protocol):
