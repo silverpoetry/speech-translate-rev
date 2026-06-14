@@ -3,6 +3,7 @@ import os
 import re
 from ast import literal_eval
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from io import BytesIO
 from platform import python_version, system
@@ -19,7 +20,7 @@ import scipy.io.wavfile as wav
 import torch
 import torchaudio
 import webrtcvad
-from typing import Any, cast, Tuple, List, Dict
+from typing import Any, Protocol, cast, Tuple, List, Dict
 from whisper.tokenizer import TO_LANGUAGE_CODE
 
 from speech_translate._constants import MAX_THRESHOLD, MIN_THRESHOLD, WHISPER_SR
@@ -45,10 +46,24 @@ else:
 ERROR_CON_NOTIFIED = False
 LAST_RECORD_CB_DIAG_AT = 0.0
 LAST_DB_PRINT_AT = 0.0
-prev_tc_res: Any = ""
-prev_tl_res: Any = ""
 prev_tc_buffer_seconds: float = 0.0
-last_db: Any = None
+
+
+class ResultLike(Protocol):
+    text: str
+
+
+ResultSnapshot = ResultLike | str
+
+
+@dataclass
+class RealtimeSharedState:
+    prev_tc_res: ResultSnapshot = ""
+    prev_tl_res: ResultSnapshot = ""
+    last_db: float | None = None
+
+
+shared_state = RealtimeSharedState()
 
 # =========================================================================
 # HELPER FUNCTIONS
@@ -60,6 +75,18 @@ def _enforce_sentence_limits(sentences: list, is_limitless: bool, max_sentences:
     if not is_limitless and len(sentences) > max_sentences:
         return sentences[-max_sentences:]
     return sentences
+
+
+def _result_text(value: ResultSnapshot | None) -> str:
+    return str(getattr(value, "text", value or "")).strip()
+
+
+def _build_full_transcribed_text(sentences: list[object], current_res: ResultSnapshot | None) -> str:
+    lines = [_result_text(item) for item in sentences if _result_text(item)]
+    current_text = _result_text(current_res)
+    if current_text:
+        lines.append(current_text)
+    return "\n".join(lines)
 
 def _save_to_temp(audio_bytes: bytes, channels: int, samp_width: int, sr: int) -> str:
     """将音频字节流保存为临时 WAV 文件并返回路径"""
@@ -166,9 +193,9 @@ def record_session(
 
     try:
         global sr_ori, frame_duration_ms, threshold_enable, threshold_db, threshold_auto, use_silero, \
-            silero_min_conf, vad_checked, num_of_channels, prev_tc_res, prev_tl_res, prev_tc_buffer_seconds, max_db, min_db, \
+            silero_min_conf, vad_checked, num_of_channels, prev_tc_buffer_seconds, max_db, min_db, \
             is_silence, was_recording, t_silence, samp_width, webrtc_vad, silero_vad, use_temp, \
-            silero_disabled, ERROR_CON_NOTIFIED, LAST_RECORD_CB_DIAG_AT, last_db
+            silero_disabled, ERROR_CON_NOTIFIED, LAST_RECORD_CB_DIAG_AT
         
         ERROR_CON_NOTIFIED = False
         LAST_RECORD_CB_DIAG_AT = 0.0
@@ -244,12 +271,6 @@ def record_session(
         # Worker Queues
         translation_queue, translation_task_lock = Queue(), Lock()
         latest_api_task, inflight_api_text = None, ""
-
-        def build_full_transcribed_text(current_res: Any) -> str:
-            lines = [str(getattr(item, "text", item)).strip() for item in bc.tc_sentences if str(getattr(item, "text", item)).strip()]
-            if current_res and str(getattr(current_res, "text", current_res)).strip():
-                lines.append(str(getattr(current_res, "text", current_res)).strip())
-            return "\n".join(lines)
 
         def _dispatch_translation(audio_target: Any, text_snapshot: str):
             """统一的翻译任务分发入口"""
@@ -336,7 +357,7 @@ def record_session(
 
         # Audio stream setup
         bc.tc_sentences, bc.tl_sentences, temp_list = [], [], []
-        prev_tc_res, prev_tl_res, next_transcribe_time = "", "", None
+        shared_state.prev_tc_res, shared_state.prev_tl_res, next_transcribe_time = "", "", None
         last_sample, samp_width = bytes(), p.get_sample_size(pyaudio.paInt16)
         sr_divider = WHISPER_SR if not use_temp else sr_ori
         is_silence, was_recording, t_silence, max_db, min_db = False, False, time(), MAX_THRESHOLD, MIN_THRESHOLD
@@ -345,19 +366,18 @@ def record_session(
 
         def break_buffer_store_update(reason=""):
             nonlocal last_sample, duration_seconds, next_transcribe_time
-            global prev_tc_res, prev_tl_res
             logger.info(f"Buffer break [{reason}] | bytes={len(last_sample)} dur={duration_seconds:.2f}s")
             
             preserved_tc, had_set_sample = False, False
 
             # Smart Split Logic
-            if reason == "buffer_full" and is_tc and prev_tc_res and hasattr(prev_tc_res, 'segments'):
-                split_time, pre_segs, post_segs = _calculate_smart_split(prev_tc_res.segments, (prev_tc_buffer_seconds / 2.0) if prev_tc_buffer_seconds > 0 else 0.0)
+            if reason == "buffer_full" and is_tc and shared_state.prev_tc_res and hasattr(shared_state.prev_tc_res, 'segments'):
+                split_time, pre_segs, post_segs = _calculate_smart_split(shared_state.prev_tc_res.segments, (prev_tc_buffer_seconds / 2.0) if prev_tc_buffer_seconds > 0 else 0.0)
                 
                 if split_time is not None:
                     try:
-                        pre_res = type(prev_tc_res)(pre_segs) if pre_segs else prev_tc_res
-                        post_res = type(prev_tc_res)(post_segs) if post_segs else prev_tc_res
+                        pre_res = type(shared_state.prev_tc_res)(pre_segs) if pre_segs else shared_state.prev_tc_res
+                        post_res = type(shared_state.prev_tc_res)(post_segs) if post_segs else shared_state.prev_tc_res
 
                         bytes_before = max(0, min(int(round(split_time * sr_divider)) * samp_width * num_of_channels, len(last_sample)))
                         pre_audio_bytes, last_sample = last_sample[:bytes_before], last_sample[bytes_before:]
@@ -366,28 +386,28 @@ def record_session(
 
                         bc.tc_sentences.append(pre_res)
                         duration_seconds = len(last_sample) / (samp_width * num_of_channels * sr_divider)
-                        had_set_sample, preserved_tc, prev_tc_res = True, True, post_res
+                        had_set_sample, preserved_tc, shared_state.prev_tc_res = True, True, post_res
                         next_transcribe_time = datetime.utcnow()
 
                         bc.tc_sentences = _enforce_sentence_limits(bc.tc_sentences, sentence_limitless, max_sentences)
-                        bc.update_tc(prev_tc_res, separator)
-                        _dispatch_translation(pre_audio_path, build_full_transcribed_text(prev_tc_res))
+                        bc.update_tc(shared_state.prev_tc_res, separator)
+                        _dispatch_translation(pre_audio_path, _build_full_transcribed_text(bc.tc_sentences, shared_state.prev_tc_res))
                     except Exception as e:
                         logger.warning(f"Smart-Split fallback due to error: {e}")
 
             # Fallback Logic (If split wasn't applicable or failed)
             if not preserved_tc:
-                if is_tc and prev_tc_res: bc.tc_sentences.append(prev_tc_res)
+                if is_tc and shared_state.prev_tc_res: bc.tc_sentences.append(shared_state.prev_tc_res)
                 bc.tc_sentences = _enforce_sentence_limits(bc.tc_sentences, sentence_limitless, max_sentences)
                 if bc.tc_sentences: bc.update_tc(None, separator)
-                _dispatch_translation(None, build_full_transcribed_text(None))
-                prev_tc_res = ""
+                _dispatch_translation(None, _build_full_transcribed_text(bc.tc_sentences, None))
+                shared_state.prev_tc_res = ""
 
             if is_tl:
-                if prev_tl_res and tl_engine_whisper: bc.tl_sentences.append(prev_tl_res)
+                if shared_state.prev_tl_res and tl_engine_whisper: bc.tl_sentences.append(shared_state.prev_tl_res)
                 bc.tl_sentences = _enforce_sentence_limits(bc.tl_sentences, sentence_limitless, max_sentences)
                 if bc.tl_sentences: bc.update_tl(None, separator)
-                prev_tl_res = ""
+                shared_state.prev_tl_res = ""
 
             if not had_set_sample:
                 last_sample, duration_seconds = bytes(), 0
@@ -469,10 +489,10 @@ def record_session(
                 bc.auto_detected_lang = result.language if result else "~"
 
                 if text:
-                    prev_tc_res = result
+                    shared_state.prev_tc_res = result
                     bc.update_tc(result, separator)
                     bc.current_rec_status = "▶️ Recording ⟳ Translating text" if is_tl else "▶️ Recording"
-                    _dispatch_translation(audio_target, build_full_transcribed_text(result))
+                    _dispatch_translation(audio_target, _build_full_transcribed_text(bc.tc_sentences, result))
                 else:
                     bc.current_rec_status = "▶️ Recording"
 
@@ -514,7 +534,7 @@ def record_session(
 
 def record_cb(in_data, _frame_count, _time_info, _status):
     """Audio stream callback for PyAudio"""
-    global frame_duration_ms, max_db, min_db, is_silence, t_silence, was_recording, vad_checked, LAST_RECORD_CB_DIAG_AT, last_db, threshold_auto, silero_disabled
+    global frame_duration_ms, max_db, min_db, is_silence, t_silence, was_recording, vad_checked, LAST_RECORD_CB_DIAG_AT, threshold_auto, silero_disabled
 
     try:
         resampled = resample_sr(in_data, sr_ori, WHISPER_SR)
@@ -536,7 +556,7 @@ def record_cb(in_data, _frame_count, _time_info, _status):
 
         # Threshold logic
         db = get_db(in_data)
-        last_db = db
+        shared_state.last_db = db
         if db > max_db: max_db = db
         elif db < min_db: min_db = db
 
@@ -580,7 +600,6 @@ def record_cb(in_data, _frame_count, _time_info, _status):
 
 def run_whisper_tl(audio, stable_tl, separator: str, hallucination_filters, **whisper_args):
     """Run Whisper translation task"""
-    global prev_tl_res
     try:
         result = stable_tl(audio, task="translate", **whisper_args)
         if sj.cache["filter_rec"]:
@@ -592,14 +611,13 @@ def run_whisper_tl(audio, stable_tl, separator: str, hallucination_filters, **wh
         text = result.text.strip()
         bc.auto_detected_lang = result.language or "~"
         if text:
-            prev_tl_res = result
+            shared_state.prev_tl_res = result
             bc.update_tl(result, separator)
     except Exception as e:
         logger.error(f"Whisper TL Error: {e}")
 
 def tl_api(text: str, lang_source: str, lang_target: str, engine: str, separator: str):
     """Run Network API translation task"""
-    global prev_tl_res
     try:
         source_units = [line.strip() for line in text.splitlines() if line.strip()]
         if not source_units: return
@@ -623,7 +641,7 @@ def tl_api(text: str, lang_source: str, lang_target: str, engine: str, separator
         if not aligned_units: return
 
         if engine == "Selenium Chrome Translate":
-            bc.tl_sentences, prev_tl_res = aligned_units, ""
+            bc.tl_sentences, shared_state.prev_tl_res = aligned_units, ""
             bc.update_tl(None, separator)
             return
 
@@ -642,7 +660,7 @@ def tl_api(text: str, lang_source: str, lang_target: str, engine: str, separator
             else:
                 merged_units.append(curr)
 
-        bc.tl_sentences, prev_tl_res = merged_units or aligned_units, ""
+        bc.tl_sentences, shared_state.prev_tl_res = merged_units or aligned_units, ""
         bc.update_tl(None, separator)
     except Exception as e:
         logger.error(f"API Translation ({engine}) failed: {str(e)}")
