@@ -1,0 +1,198 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from types import TracebackType
+from typing import Literal, Protocol
+
+import numpy as np
+import torch
+import webrtcvad
+
+from speech_translate._constants import MAX_THRESHOLD, MIN_THRESHOLD
+
+
+class ResultLike(Protocol):
+    text: str
+
+
+class SegmentLike(Protocol):
+    def to_dict(self) -> dict[str, object]:
+        ...
+
+
+class TranscriptionResultLike(ResultLike, Protocol):
+    language: str
+    segments: list[SegmentLike]
+
+
+class LockLike(Protocol):
+    def __enter__(self) -> object:
+        ...
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool | None:
+        ...
+
+
+class WhisperCallable(Protocol):
+    def __call__(self, audio: "AudioTarget", *, task: str, **kwargs: object) -> TranscriptionResultLike:
+        ...
+
+
+class SileroVadLike(Protocol):
+    def __call__(self, audio, sample_rate: int):
+        ...
+
+    def reset_states(self) -> None:
+        ...
+
+
+ResultSnapshot = ResultLike | str
+AudioTarget = str | np.ndarray | torch.Tensor
+TranslationApiResult = str | list[str]
+HallucinationFilters = dict[str, object]
+
+
+@dataclass
+class RealtimeSharedState:
+    prev_tc_res: ResultSnapshot = ""
+    prev_tl_res: ResultSnapshot = ""
+    last_db: float | None = None
+
+
+@dataclass
+class TranslationTask:
+    kind: Literal["whisper", "api"]
+    separator: str
+    audio: AudioTarget | None = None
+    cleanup_audio: bool = False
+    text: str = ""
+    lang_source: str = ""
+    lang_target: str = ""
+    engine: str = ""
+
+
+@dataclass
+class RecordingRuntime:
+    taskname: str
+    device: str
+    lang_source: str
+    lang_target: str
+    engine: str
+    is_tl: bool
+    use_temp: bool
+    separator: str
+    keep_temp: bool
+    t_start: float
+    max_buffer_s: float
+    max_sentences: int
+    sentence_limitless: bool
+    lang_target_display: str
+
+
+@dataclass
+class RecordingSessionConfig:
+    rec_type: str
+    transcribe_rate: timedelta
+    max_buffer_s: int
+    max_sentences: int
+    sentence_limitless: bool
+    tl_engine_whisper: bool
+    taskname: str
+    auto: bool
+    threshold_enable: bool
+    threshold_db: float
+    threshold_auto: bool
+    use_silero: bool
+    silero_min_conf: float
+    auto_break_buffer: bool
+    use_temp: bool
+    separator: str
+
+
+@dataclass
+class RecordingModelRuntime:
+    stable_tc: WhisperCallable | None
+    stable_tl: WhisperCallable | None
+    whisper_args: dict[str, object]
+    configured_whisper_language: str | None
+    demucs_enabled: bool
+    hallucination_filters: HallucinationFilters
+    cuda_device: str
+    use_temp: bool
+
+
+@dataclass
+class RecordingStreamRuntime:
+    input_device_index: int
+    sr_ori: int
+    num_of_channels: int
+    chunk_size: int
+    samp_width: int
+    sr_divider: int
+    callback_ctx: "RealtimeCallbackContext"
+
+
+@dataclass
+class RecordingSessionServices:
+    runtime: RecordingRuntime
+    status_emitter: "RecordingStatusEmitter"
+    translator: "TranslationDispatcher"
+    buffer_reducer: "BufferStateReducer"
+
+
+@dataclass
+class RecordingSessionLifecycle:
+    session_state: "RealtimeSessionState"
+    services: RecordingSessionServices
+    callback_ctx: "RealtimeCallbackContext"
+    sr_ori: int
+    num_of_channels: int
+    samp_width: int
+    sr_divider: int
+
+
+@dataclass
+class SmartSplitOutcome:
+    pre_audio_bytes: bytes
+    post_audio_bytes: bytes
+    pre_result: TranscriptionResultLike
+    post_result: TranscriptionResultLike
+
+
+@dataclass
+class RealtimeSessionState:
+    last_sample: bytes = b""
+    duration_seconds: float = 0.0
+    prev_tc_buffer_seconds: float = 0.0
+    next_transcribe_time: datetime | None = None
+    paused: bool = False
+    temp_audio_paths: list[str] = field(default_factory=list)
+
+
+@dataclass
+class RealtimeCallbackContext:
+    sample_rate: int
+    frame_duration_ms: int
+    threshold_enable: bool
+    threshold_db: float
+    threshold_auto: bool
+    use_silero: bool
+    silero_min_conf: float
+    vad_checked: bool
+    num_of_channels: int
+    samp_width: int
+    use_temp: bool
+    max_db: float = MAX_THRESHOLD
+    min_db: float = MIN_THRESHOLD
+    is_silence: bool = False
+    was_recording: bool = False
+    silence_started_at: float = 0.0
+    silero_disabled: bool = False
+    webrtc_vad: webrtcvad.Vad | None = None
+    silero_vad: SileroVadLike | None = None

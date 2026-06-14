@@ -2,7 +2,6 @@ import os
 import re
 from ast import literal_eval
 from copy import deepcopy
-from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from platform import system
@@ -10,22 +9,43 @@ from queue import Empty, Queue
 from shlex import quote
 from threading import Lock, Thread
 from time import gmtime, sleep, strftime, time
-from types import TracebackType
 from wave import open as w_open
 
 import numpy as np
 import torch
 import torchaudio
 import webrtcvad
-from typing import Callable, Literal, Protocol, cast
+from typing import Callable, cast
 from whisper.tokenizer import TO_LANGUAGE_CODE
 
-from speech_translate._constants import MAX_THRESHOLD, MIN_THRESHOLD, WHISPER_SR
+from speech_translate._constants import WHISPER_SR
 from speech_translate._logging import logger
 from speech_translate._path import dir_silero_vad, dir_temp
 from speech_translate.linker import bc, sj
 from speech_translate.utils.audio.audio import get_db, get_frame_duration, get_speech_webrtc, resample_sr, to_silero
 from speech_translate.utils.audio.device import get_device_details
+from speech_translate.utils.audio.record_types import (
+    AudioTarget,
+    HallucinationFilters,
+    LockLike,
+    RecordingModelRuntime,
+    RecordingRuntime,
+    RecordingSessionConfig,
+    RecordingSessionLifecycle,
+    RecordingSessionServices,
+    RecordingStreamRuntime,
+    RealtimeCallbackContext,
+    RealtimeSessionState,
+    RealtimeSharedState,
+    ResultSnapshot,
+    SegmentLike,
+    SileroVadLike,
+    SmartSplitOutcome,
+    TranscriptionResultLike,
+    TranslationApiResult,
+    TranslationTask,
+    WhisperCallable,
+)
 from speech_translate.utils.translate.language import get_whisper_lang_name, get_whisper_lang_similar, verify_language_in_key
 
 from ..helper import generate_temp_filename, get_proxies, str_separator_to_html, unique_rec_list
@@ -38,204 +58,6 @@ if system() == "Windows":
     import pyaudiowpatch as pyaudio
 else:
     import pyaudio
-
-
-class ResultLike(Protocol):
-    text: str
-
-
-class SegmentLike(Protocol):
-    def to_dict(self) -> dict[str, object]:
-        ...
-
-
-class TranscriptionResultLike(ResultLike, Protocol):
-    language: str
-    segments: list[SegmentLike]
-
-
-class LockLike(Protocol):
-    def __enter__(self) -> object:
-        ...
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        tb: TracebackType | None,
-    ) -> bool | None:
-        ...
-
-
-class WhisperCallable(Protocol):
-    def __call__(self, audio: "AudioTarget", *, task: str, **kwargs: object) -> TranscriptionResultLike:
-        ...
-
-
-class SileroVadLike(Protocol):
-    def __call__(self, audio, sample_rate: int):
-        ...
-
-    def reset_states(self) -> None:
-        ...
-
-
-ResultSnapshot = ResultLike | str
-AudioTarget = str | np.ndarray | torch.Tensor
-TranslationApiResult = str | list[str]
-HallucinationFilters = dict[str, object]
-
-
-@dataclass
-class RealtimeSharedState:
-    prev_tc_res: ResultSnapshot = ""
-    prev_tl_res: ResultSnapshot = ""
-    last_db: float | None = None
-
-
-@dataclass
-class TranslationTask:
-    kind: Literal["whisper", "api"]
-    separator: str
-    audio: AudioTarget | None = None
-    cleanup_audio: bool = False
-    text: str = ""
-    lang_source: str = ""
-    lang_target: str = ""
-    engine: str = ""
-
-
-@dataclass
-class RecordingRuntime:
-    taskname: str
-    device: str
-    lang_source: str
-    lang_target: str
-    engine: str
-    is_tl: bool
-    use_temp: bool
-    separator: str
-    keep_temp: bool
-    t_start: float
-    max_buffer_s: float
-    max_sentences: int
-    sentence_limitless: bool
-    lang_target_display: str
-
-
-@dataclass
-class RecordingSessionConfig:
-    rec_type: str
-    transcribe_rate: timedelta
-    max_buffer_s: int
-    max_sentences: int
-    sentence_limitless: bool
-    tl_engine_whisper: bool
-    taskname: str
-    auto: bool
-    threshold_enable: bool
-    threshold_db: float
-    threshold_auto: bool
-    use_silero: bool
-    silero_min_conf: float
-    auto_break_buffer: bool
-    use_temp: bool
-    separator: str
-
-
-@dataclass
-class RecordingModelRuntime:
-    stable_tc: WhisperCallable | None
-    stable_tl: WhisperCallable | None
-    whisper_args: dict[str, object]
-    configured_whisper_language: str | None
-    demucs_enabled: bool
-    hallucination_filters: HallucinationFilters
-    cuda_device: str
-    use_temp: bool
-
-
-@dataclass
-class RecordingStreamRuntime:
-    input_device_index: int
-    sr_ori: int
-    num_of_channels: int
-    chunk_size: int
-    samp_width: int
-    sr_divider: int
-    callback_ctx: "RealtimeCallbackContext"
-
-
-@dataclass
-class RecordingSessionServices:
-    runtime: RecordingRuntime
-    status_emitter: "RecordingStatusEmitter"
-    translator: "TranslationDispatcher"
-    buffer_reducer: "BufferStateReducer"
-
-    def update_status(self) -> None:
-        self.status_emitter.emit(status=bc.current_rec_status)
-
-
-@dataclass
-class RecordingSessionLifecycle:
-    session_state: "RealtimeSessionState"
-    services: RecordingSessionServices
-    callback_ctx: "RealtimeCallbackContext"
-    sr_ori: int
-    num_of_channels: int
-    samp_width: int
-    sr_divider: int
-
-
-@dataclass
-class RealtimeSessionState:
-    last_sample: bytes = b""
-    duration_seconds: float = 0.0
-    prev_tc_buffer_seconds: float = 0.0
-    next_transcribe_time: datetime | None = None
-    paused: bool = False
-    temp_audio_paths: list[str] = field(default_factory=list)
-
-    def append_audio(self, audio_bytes: bytes) -> None:
-        self.last_sample += audio_bytes
-
-    def recalculate_duration(self, *, samp_width: int, num_of_channels: int, sr_divider: int) -> float:
-        self.duration_seconds = _calculate_buffer_duration(
-            self.last_sample,
-            samp_width=samp_width,
-            num_of_channels=num_of_channels,
-            sr_divider=sr_divider,
-        )
-        return self.duration_seconds
-
-    def reset_buffer(self) -> None:
-        self.last_sample = b""
-        self.duration_seconds = 0.0
-        self.prev_tc_buffer_seconds = 0.0
-
-
-@dataclass
-class RealtimeCallbackContext:
-    sample_rate: int
-    frame_duration_ms: int
-    threshold_enable: bool
-    threshold_db: float
-    threshold_auto: bool
-    use_silero: bool
-    silero_min_conf: float
-    vad_checked: bool
-    num_of_channels: int
-    samp_width: int
-    use_temp: bool
-    max_db: float = MAX_THRESHOLD
-    min_db: float = MIN_THRESHOLD
-    is_silence: bool = False
-    was_recording: bool = False
-    silence_started_at: float = 0.0
-    silero_disabled: bool = False
-    webrtc_vad: webrtcvad.Vad | None = None
-    silero_vad: SileroVadLike | None = None
 
 
 callback_context: RealtimeCallbackContext | None = None
@@ -265,6 +87,42 @@ class RecordingStatusEmitter:
             )
         except Exception:
             pass
+
+
+def _recording_session_services_update_status(self: RecordingSessionServices) -> None:
+    self.status_emitter.emit(status=bc.current_rec_status)
+
+
+def _realtime_session_state_append_audio(self: RealtimeSessionState, audio_bytes: bytes) -> None:
+    self.last_sample += audio_bytes
+
+
+def _realtime_session_state_recalculate_duration(
+    self: RealtimeSessionState,
+    *,
+    samp_width: int,
+    num_of_channels: int,
+    sr_divider: int,
+) -> float:
+    self.duration_seconds = _calculate_buffer_duration(
+        self.last_sample,
+        samp_width=samp_width,
+        num_of_channels=num_of_channels,
+        sr_divider=sr_divider,
+    )
+    return self.duration_seconds
+
+
+def _realtime_session_state_reset_buffer(self: RealtimeSessionState) -> None:
+    self.last_sample = b""
+    self.duration_seconds = 0.0
+    self.prev_tc_buffer_seconds = 0.0
+
+
+RecordingSessionServices.update_status = _recording_session_services_update_status
+RealtimeSessionState.append_audio = _realtime_session_state_append_audio
+RealtimeSessionState.recalculate_duration = _realtime_session_state_recalculate_duration
+RealtimeSessionState.reset_buffer = _realtime_session_state_reset_buffer
 
 
 class BufferStateReducer:
@@ -303,15 +161,6 @@ class BufferStateReducer:
             if bc.tl_sentences:
                 bc.update_tl(None, self._separator)
             shared_state.prev_tl_res = ""
-
-
-@dataclass
-class SmartSplitOutcome:
-    pre_audio_bytes: bytes
-    post_audio_bytes: bytes
-    pre_result: TranscriptionResultLike
-    post_result: TranscriptionResultLike
-
 
 def _build_smart_split_outcome(
     previous_result: TranscriptionResultLike,
