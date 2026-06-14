@@ -46,6 +46,10 @@ class DummyController:
         self.calls.append(("get_detached_config", mode))
         return {"mode": mode}
 
+    def open_directory(self, name):
+        self.calls.append(("open_directory", name))
+        return {"name": name}
+
 
 class DummyBridge(WebBridgeFacadeMixin):
     def __init__(self) -> None:
@@ -89,6 +93,11 @@ class WebBridgeFacadeMixinTests(unittest.TestCase):
         result = self.bridge.get_detached_config("tc")
         self.assertEqual(result, {"mode": "tc"})
         self.assertIn(("get_detached_config", "tc"), self.bridge.detached_window_controller.calls)
+
+    def test_open_directory_forwards_to_system_settings_controller(self) -> None:
+        result = self.bridge.open_directory("export")
+        self.assertEqual(result, {"name": "export"})
+        self.assertIn(("open_directory", "export"), self.bridge.system_settings_controller.calls)
 
 
 if __name__ == "__main__":
