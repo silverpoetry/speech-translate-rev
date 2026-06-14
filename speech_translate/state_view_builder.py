@@ -48,54 +48,65 @@ class StateViewBuilder:
     def __init__(self, bridge: StateViewBridge, settings: SettingsStore):
         self.bridge = bridge
         self.settings = settings
-        self.audio_source_cache: JsonDict = {
-            "host_api_options": [],
-            "mic_options_by_host": {},
-            "speaker_options_by_host": {},
-            "mic_options_all": [],
-            "speaker_options_all": [],
-        }
+        self.audio_source_cache: JsonDict = self._empty_audio_source_cache()
         self.audio_source_cache_ready = False
         self.audio_source_cache_loading = True
 
     def start_audio_source_scan(self) -> None:
         Thread(target=self.prime_audio_source_cache, daemon=True).start()
 
-    def build_state(self) -> JsonDict:
-        settings_snapshot = dict(self.settings.cache)
-        compact_settings = self._build_compact_settings(settings_snapshot)
+    def _empty_audio_source_cache(self) -> JsonDict:
+        return {
+            "host_api_options": [],
+            "mic_options_by_host": {},
+            "speaker_options_by_host": {},
+            "mic_options_all": [],
+            "speaker_options_all": [],
+            "default_host_api": "",
+            "default_mic": "",
+            "default_speaker": "",
+        }
 
-        result = asdict(
-            AppState(
-                app_name=APP_NAME,
-                version=__version__,
-                os_name=system(),
-                os_release=release(),
-                os_version=version(),
-                cpu=processor(),
-                settings=compact_settings,
-                import_ui=self.bridge._build_import_ui(verify_available=False),
-                main_ui=self.build_main_ui(),
-                record_ui=self.build_record_ui(),
-                runtime_model=self.bridge._build_runtime_model_state(),
-                live_ui=self.bridge.snapshot_live_state(),
-                about=self.build_about(),
-                log_level=settings_snapshot.get("log_level", "DEBUG"),
-                current_log=self.bridge.get_log_file_name(),
-                log_content=self.bridge.get_log_content(),
-            )
+    def _settings_snapshot(self) -> dict[str, object]:
+        return dict(self.settings.cache)
+
+    def _build_system_state(self) -> AppState:
+        settings_snapshot = self._settings_snapshot()
+        return AppState(
+            app_name=APP_NAME,
+            version=__version__,
+            os_name=system(),
+            os_release=release(),
+            os_version=version(),
+            cpu=processor(),
+            settings=self._build_compact_settings(settings_snapshot),
+            import_ui=self.bridge._build_import_ui(verify_available=False),
+            main_ui=self.build_main_ui(),
+            record_ui=self.build_record_ui(),
+            runtime_model=self.bridge._build_runtime_model_state(),
+            live_ui=self.bridge.snapshot_live_state(),
+            about=self.build_about(),
+            log_level=settings_snapshot.get("log_level", "DEBUG"),
+            current_log=self.bridge.get_log_file_name(),
+            log_content=self.bridge.get_log_content(),
         )
-        result["detached_config"] = {
+
+    def _build_detached_config(self) -> JsonDict:
+        return {
             "tc": self.bridge.get_detached_config("tc"),
             "tl": self.bridge.get_detached_config("tl"),
         }
+
+    def build_state(self) -> JsonDict:
+        result = asdict(self._build_system_state())
+        result["detached_config"] = self._build_detached_config()
         return result
 
     def reload_state(self) -> JsonDict:
         return self.build_state()
 
     def build_main_ui(self) -> JsonDict:
-        settings_snapshot = dict(self.settings.cache)
+        settings_snapshot = self._settings_snapshot()
         return {
             "input_options": ["mic", "speaker"],
             "source_options": WHISPER_LANG_LIST,
@@ -117,7 +128,7 @@ class StateViewBuilder:
         }
 
     def build_record_device_ui(self, device: str) -> JsonDict:
-        settings_snapshot = dict(self.settings.cache)
+        settings_snapshot = self._settings_snapshot()
         return {
             "sample_rate": settings_snapshot.get(f"sample_rate_{device}"),
             "chunk_size": settings_snapshot.get(f"chunk_size_{device}"),
@@ -138,7 +149,7 @@ class StateViewBuilder:
         }
 
     def build_record_ui(self) -> JsonDict:
-        settings_snapshot = dict(self.settings.cache)
+        settings_snapshot = self._settings_snapshot()
         audio_sources = self.build_audio_source_options()
         return {
             "input": settings_snapshot.get("input"),
@@ -172,61 +183,55 @@ class StateViewBuilder:
             "export_dir": self.bridge._resolve_export_dir(),
         }
 
+    def _find_default_device(self, device_info: object, all_options: list[object]) -> str:
+        if not device_info or not isinstance(device_info, dict):
+            return ""
+        name = str(device_info.get("name", ""))
+        if not name:
+            return ""
+        return next(
+            (
+                str(item)
+                for item in all_options
+                if isinstance(item, str) and "[ID:" in item and name.lower() in item.lower()
+            ),
+            "",
+        )
+
+    def _build_audio_source_cache(self) -> JsonDict:
+        host_api_options = get_host_apis()
+        mic_options_all = get_input_devices("")
+        speaker_options_all = get_output_devices("")
+        ok_host, host_info = get_default_host_api()
+        default_host_api = str(host_info.get("name", "")) if ok_host and isinstance(host_info, dict) else ""
+
+        mic_options_by_host: dict[str, object] = {}
+        speaker_options_by_host: dict[str, object] = {}
+        for host_api in host_api_options:
+            if isinstance(host_api, str) and not host_api.startswith("["):
+                mic_options_by_host[host_api] = get_input_devices(str(host_api))
+                speaker_options_by_host[host_api] = get_output_devices(str(host_api))
+
+        return {
+            "host_api_options": host_api_options,
+            "mic_options_by_host": mic_options_by_host,
+            "speaker_options_by_host": speaker_options_by_host,
+            "mic_options_all": mic_options_all,
+            "speaker_options_all": speaker_options_all,
+            "default_host_api": default_host_api,
+            "default_mic": self._find_default_device(get_default_input_device()[1], mic_options_all),
+            "default_speaker": self._find_default_device(get_default_output_device()[1], speaker_options_all),
+        }
+
     def prime_audio_source_cache(self) -> None:
         try:
-            host_api_options = get_host_apis()
-            mic_options_all = get_input_devices("")
-            speaker_options_all = get_output_devices("")
-
-            ok_host, host_info = get_default_host_api()
-            default_host_api = str(host_info.get("name", "")) if ok_host and isinstance(host_info, dict) else ""
-
-            def find_default(device_info: object, all_options: list[object]) -> str:
-                if not device_info or not isinstance(device_info, dict):
-                    return ""
-                name = str(device_info.get("name", ""))
-                if not name:
-                    return ""
-                return next(
-                    (
-                        str(item)
-                        for item in all_options
-                        if isinstance(item, str) and "[ID:" in item and name.lower() in item.lower()
-                    ),
-                    "",
-                )
-
-            default_mic = find_default(get_default_input_device()[1], mic_options_all)
-            default_speaker = find_default(get_default_output_device()[1], speaker_options_all)
-
-            mic_options_by_host: dict[str, object] = {}
-            speaker_options_by_host: dict[str, object] = {}
-            for host_api in host_api_options:
-                if isinstance(host_api, str) and not host_api.startswith("["):
-                    mic_options_by_host[host_api] = get_input_devices(str(host_api))
-                    speaker_options_by_host[host_api] = get_output_devices(str(host_api))
-
-            self.audio_source_cache = {
-                "host_api_options": host_api_options,
-                "mic_options_by_host": mic_options_by_host,
-                "speaker_options_by_host": speaker_options_by_host,
-                "mic_options_all": mic_options_all,
-                "speaker_options_all": speaker_options_all,
-                "default_host_api": default_host_api,
-                "default_mic": default_mic,
-                "default_speaker": default_speaker,
-            }
+            self.audio_source_cache = self._build_audio_source_cache()
         except Exception as exc:
             logger.exception(exc)
             self.audio_source_cache = {
-                "host_api_options": [],
-                "mic_options_by_host": {},
-                "speaker_options_by_host": {},
+                **self._empty_audio_source_cache(),
                 "mic_options_all": ["[ERROR] Failed to load input devices"],
                 "speaker_options_all": ["[ERROR] Failed to load output devices"],
-                "default_host_api": "",
-                "default_mic": "",
-                "default_speaker": "",
             }
         finally:
             self.audio_source_cache_loading = False
@@ -237,7 +242,7 @@ class StateViewBuilder:
                 pass
 
     def build_audio_source_options(self, selected_host_api: Optional[str] = None, host_api: Optional[str] = None) -> JsonDict:
-        settings_snapshot = dict(self.settings.cache)
+        settings_snapshot = self._settings_snapshot()
         resolved_host_api = selected_host_api if selected_host_api is not None else host_api
         current_host_api = str(resolved_host_api if resolved_host_api is not None else settings_snapshot.get("hostAPI", ""))
         host_api_options = self.audio_source_cache.get("host_api_options", [])

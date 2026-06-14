@@ -3,11 +3,13 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
 from speech_translate.state_view_builder import StateViewBuilder
+from speech_translate.ui_protocol import UI_SECTION_STATE
 
 
 class FakeSettings:
@@ -172,6 +174,16 @@ class StateViewBuilderTests(unittest.TestCase):
         self.assertEqual(state["import_ui"]["verify_available"], False)
         self.assertEqual(state["detached_config"]["tc"]["mode"], "tc")
         self.assertEqual(state["about"]["model_dir"], "D:/models")
+
+    def test_prime_audio_source_cache_falls_back_to_error_entries_on_failure(self) -> None:
+        with patch("speech_translate.state_view_builder.get_host_apis", side_effect=RuntimeError("boom")):
+            self.builder.prime_audio_source_cache()
+
+        self.assertTrue(self.builder.audio_source_cache_ready)
+        self.assertFalse(self.builder.audio_source_cache_loading)
+        self.assertEqual(self.builder.audio_source_cache["mic_options_all"], ["[ERROR] Failed to load input devices"])
+        self.assertEqual(self.builder.audio_source_cache["speaker_options_all"], ["[ERROR] Failed to load output devices"])
+        self.assertIn((UI_SECTION_STATE,), self.bridge.emits)
 
 
 if __name__ == "__main__":
