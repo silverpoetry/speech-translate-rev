@@ -89,42 +89,6 @@ class RecordingStatusEmitter:
             pass
 
 
-def _recording_session_services_update_status(self: RecordingSessionServices) -> None:
-    self.status_emitter.emit(status=bc.current_rec_status)
-
-
-def _realtime_session_state_append_audio(self: RealtimeSessionState, audio_bytes: bytes) -> None:
-    self.last_sample += audio_bytes
-
-
-def _realtime_session_state_recalculate_duration(
-    self: RealtimeSessionState,
-    *,
-    samp_width: int,
-    num_of_channels: int,
-    sr_divider: int,
-) -> float:
-    self.duration_seconds = _calculate_buffer_duration(
-        self.last_sample,
-        samp_width=samp_width,
-        num_of_channels=num_of_channels,
-        sr_divider=sr_divider,
-    )
-    return self.duration_seconds
-
-
-def _realtime_session_state_reset_buffer(self: RealtimeSessionState) -> None:
-    self.last_sample = b""
-    self.duration_seconds = 0.0
-    self.prev_tc_buffer_seconds = 0.0
-
-
-RecordingSessionServices.update_status = _recording_session_services_update_status
-RealtimeSessionState.append_audio = _realtime_session_state_append_audio
-RealtimeSessionState.recalculate_duration = _realtime_session_state_recalculate_duration
-RealtimeSessionState.reset_buffer = _realtime_session_state_reset_buffer
-
-
 class BufferStateReducer:
     def __init__(
         self,

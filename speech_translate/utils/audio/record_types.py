@@ -10,6 +10,7 @@ import torch
 import webrtcvad
 
 from speech_translate._constants import MAX_THRESHOLD, MIN_THRESHOLD
+from speech_translate.linker import bc
 
 
 class ResultLike(Protocol):
@@ -145,6 +146,9 @@ class RecordingSessionServices:
     translator: "TranslationDispatcher"
     buffer_reducer: "BufferStateReducer"
 
+    def update_status(self) -> None:
+        self.status_emitter.emit(status=bc.current_rec_status)
+
 
 @dataclass
 class RecordingSessionLifecycle:
@@ -173,6 +177,21 @@ class RealtimeSessionState:
     next_transcribe_time: datetime | None = None
     paused: bool = False
     temp_audio_paths: list[str] = field(default_factory=list)
+
+    def append_audio(self, audio_bytes: bytes) -> None:
+        self.last_sample += audio_bytes
+
+    def recalculate_duration(self, *, samp_width: int, num_of_channels: int, sr_divider: int) -> float:
+        if samp_width <= 0 or num_of_channels <= 0 or sr_divider <= 0:
+            self.duration_seconds = 0.0
+            return self.duration_seconds
+        self.duration_seconds = len(self.last_sample) / (samp_width * num_of_channels * sr_divider)
+        return self.duration_seconds
+
+    def reset_buffer(self) -> None:
+        self.last_sample = b""
+        self.duration_seconds = 0.0
+        self.prev_tc_buffer_seconds = 0.0
 
 
 @dataclass
