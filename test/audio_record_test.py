@@ -27,8 +27,10 @@ from speech_translate.utils.audio.record import (
     _build_recording_session_config,
     _load_recording_model_runtime,
     _advance_recording_buffer,
+    _cleanup_processed_audio_target,
     _cleanup_translation_audio,
     _commit_realtime_transcription,
+    _execute_recording_iteration,
     _calculate_buffer_duration,
     _execute_realtime_transcription,
     _filter_realtime_transcription_result,
@@ -395,6 +397,59 @@ class AudioRecordHelpersTests(unittest.TestCase):
         )
         self.assertFalse(ready)
         self.assertEqual(state.last_sample, b"ab")
+
+    def test_cleanup_processed_audio_target_removes_non_whisper_temp_file(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_remove = record_module.os.remove
+        removed = []
+        state = RealtimeSessionState(temp_audio_paths=["temp.wav"])
+        try:
+            record_module.os.remove = lambda path: removed.append(path)
+            _cleanup_processed_audio_target(
+                "temp.wav",
+                use_temp=True,
+                keep_temp=False,
+                is_tl=False,
+                tl_engine_whisper=False,
+                session_state=state,
+            )
+        finally:
+            record_module.os.remove = previous_remove
+
+        self.assertEqual(removed, ["temp.wav"])
+        self.assertEqual(state.temp_audio_paths, [])
+
+    def test_execute_recording_iteration_dispatches_whisper_translation_only(self) -> None:
+        translator = FakeTranslator()
+        state = RealtimeSessionState(duration_seconds=1.2)
+        config = _build_recording_session_config(
+            rec_type="mic",
+            lang_source="English",
+            engine="Whisper",
+            is_tc=False,
+            is_tl=True,
+        )
+        config.tl_engine_whisper = True
+
+        class RuntimeStub:
+            stable_tc = None
+            whisper_args = {}
+            hallucination_filters = {}
+            configured_whisper_language = None
+
+        executed = _execute_recording_iteration(
+            audio_target="temp.wav",
+            session_state=state,
+            is_tc=False,
+            is_tl=True,
+            config=config,
+            model_runtime=RuntimeStub(),
+            translator=translator,
+        )
+
+        self.assertTrue(executed)
+        self.assertEqual(translator.calls[-1], ("temp.wav", ""))
 
     def test_calculate_buffer_duration_handles_invalid_denominator(self) -> None:
         self.assertEqual(

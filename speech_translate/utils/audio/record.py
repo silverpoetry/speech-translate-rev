@@ -572,6 +572,67 @@ def _start_recording_status_thread(
     ).start()
 
 
+def _cleanup_processed_audio_target(
+    audio_target: AudioTarget,
+    *,
+    use_temp: bool,
+    keep_temp: bool,
+    is_tl: bool,
+    tl_engine_whisper: bool,
+    session_state: RealtimeSessionState,
+) -> None:
+    if not use_temp or keep_temp or not isinstance(audio_target, str):
+        return
+    if is_tl and tl_engine_whisper:
+        return
+    try:
+        os.remove(audio_target)
+        session_state.temp_audio_paths.remove(audio_target)
+    except Exception:
+        pass
+
+
+def _execute_recording_iteration(
+    *,
+    audio_target: AudioTarget,
+    session_state: RealtimeSessionState,
+    is_tc: bool,
+    is_tl: bool,
+    config: RecordingSessionConfig,
+    model_runtime: RecordingModelRuntime,
+    translator: TranslationDispatcher,
+) -> bool:
+    if is_tl and config.tl_engine_whisper and not is_tc:
+        bc.current_rec_status = "▶️ Recording ⟳ Translating Audio"
+        translator.dispatch(audio_target, "")
+        return True
+
+    bc.current_rec_status = "▶️ Recording ⟳ Transcribing Audio"
+    session_state.prev_tc_buffer_seconds = session_state.duration_seconds
+
+    if model_runtime.stable_tc is None:
+        return False
+
+    result = _execute_realtime_transcription(audio_target, model_runtime.stable_tc, model_runtime.whisper_args)
+    if result is None:
+        return False
+
+    result = _filter_realtime_transcription_result(
+        result,
+        hallucination_filters=model_runtime.hallucination_filters,
+        auto=config.auto,
+        configured_language=model_runtime.configured_whisper_language,
+    )
+    _commit_realtime_transcription(
+        result,
+        audio_target=audio_target,
+        is_tl=is_tl,
+        separator=config.separator,
+        translator=translator,
+    )
+    return True
+
+
 def _drain_pending_audio(session_state: RealtimeSessionState) -> None:
     while not bc.data_queue.empty():
         session_state.append_audio(bc.data_queue.get_nowait())
@@ -1374,40 +1435,25 @@ def record_session(
                 sr_ori=sr_ori,
             )
 
-            # Execution logic
-            if is_tl and config.tl_engine_whisper and not is_tc:
-                bc.current_rec_status = "▶️ Recording ⟳ Translating Audio"
-                translator.dispatch(audio_target, "")
-            else:
-                bc.current_rec_status = "▶️ Recording ⟳ Transcribing Audio"
-                session_state.prev_tc_buffer_seconds = session_state.duration_seconds
+            if not _execute_recording_iteration(
+                audio_target=audio_target,
+                session_state=session_state,
+                is_tc=is_tc,
+                is_tl=is_tl,
+                config=config,
+                model_runtime=model_runtime,
+                translator=translator,
+            ):
+                continue
 
-                result = _execute_realtime_transcription(audio_target, cast(WhisperCallable, model_runtime.stable_tc), model_runtime.whisper_args)
-                if result is None:
-                    continue
-
-                result = _filter_realtime_transcription_result(
-                    result,
-                    hallucination_filters=model_runtime.hallucination_filters,
-                    auto=config.auto,
-                    configured_language=model_runtime.configured_whisper_language,
-                )
-                _commit_realtime_transcription(
-                    result,
-                    audio_target=audio_target,
-                    is_tl=is_tl,
-                    separator=config.separator,
-                    translator=translator,
-                )
-
-            # Cleanup Temp Audio
-            if config.use_temp and not sj.cache.get("keep_temp", False) and isinstance(audio_target, str):
-                if not (is_tl and config.tl_engine_whisper):
-                    try:
-                        os.remove(audio_target)
-                        session_state.temp_audio_paths.remove(audio_target)
-                    except Exception:
-                        pass
+            _cleanup_processed_audio_target(
+                audio_target,
+                use_temp=config.use_temp,
+                keep_temp=runtime.keep_temp,
+                is_tl=is_tl,
+                tl_engine_whisper=config.tl_engine_whisper,
+                session_state=session_state,
+            )
 
             if session_state.duration_seconds > config.max_buffer_s:
                 _break_buffer_and_update_state(
