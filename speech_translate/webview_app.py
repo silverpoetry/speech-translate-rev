@@ -1,21 +1,14 @@
 import os
 import subprocess
 import sys
-from importlib import import_module
-from pathlib import Path
-from platform import processor, release, system, version
-from signal import SIGINT, signal
 from threading import Thread
 from typing import Any, Dict, Optional, List
-from time import strftime, time
 
 from loguru import logger
 
-from speech_translate._constants import APP_NAME
 from speech_translate._logging import init_logging
 from speech_translate._path import dir_debug
-from speech_translate._version import __version__
-from speech_translate.app_tray import AppTray
+from speech_translate.app_startup_controller import AppStartupController
 from speech_translate.detached_windows import DetachedWindowManager
 from speech_translate.detached_window_controller import DetachedWindowController
 from speech_translate.import_queue_manager import ImportQueueController
@@ -24,8 +17,7 @@ from speech_translate.model_manager import ModelManagerController
 from speech_translate.recording_controller import RecordingSessionController
 from speech_translate.state_view_builder import StateViewBuilder
 from speech_translate.system_settings_controller import DEFAULT_PATH_CONFIG, SystemSettingsController
-from speech_translate.linker import bc, sj
-from speech_translate.window_geometry import resolve_window_placement
+from speech_translate.linker import sj
 from speech_translate.web_backend import HeadlessFileProcessDialog, WebTaskBridge, headless_mbox
 from speech_translate.utils.translate.language import TL_ENGINE_SOURCE_DICT, TL_ENGINE_TARGET_DICT
 from speech_translate.utils.translate.translator import shutdown_selenium_translator
@@ -466,81 +458,6 @@ class WebBridge(WebTaskBridge):
     def update_detached_config(self, mode: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         return self.detached_window_controller.update_detached_config(mode, config)
 
-def _install_signal_handler():
-    def signal_handler(_sig, _frame):
-        logger.info("Received Ctrl+C, exiting...")
-        bridge = getattr(bc, "web_bridge", None)
-        if bridge is not None:
-            bridge.quit_app()
-
-    signal(SIGINT, signal_handler)
-
-
-def _build_html_path() -> str:
-    return str(Path(__file__).with_name("web") / "index.html")
-
-
 def main(with_log_init: bool = True):
-    startup_t0 = time()
-    if with_log_init:
-        init_logging(sj.cache["log_level"])
-
-    logger.info(f"App Version: {__version__} - TIME: {strftime('%Y-%m-%d %H:%M:%S')}")
-    logger.info(f"OS: {system()} {release()} {version()} | CPU: {processor()}")
-    logger.debug(f"Sys args: {sys.argv}")
-    logger.debug("Loading Web UI...")
-
-    _install_signal_handler()
-    logger.debug("[Startup] before_add_ffmpeg")
-    add_ffmpeg_to_path(weak=True)
-    logger.debug("[Startup] after_add_ffmpeg")
-    logger.debug("[Startup] before_import_webview")
-    webview = import_module("webview")
-    logger.debug("[Startup] after_import_webview")
-
-    logger.debug("[Startup] before_bridge_init")
-    bridge = WebBridge()
-    logger.debug("[Startup] after_bridge_init")
-    bridge.set_startup_t0(startup_t0)
-    setattr(bc, "web_bridge", bridge)
-
-    tray_enabled = "--no-tray" not in sys.argv
-
-    raw_main_size = str(sj.cache.get("mw_size", "980x620") or "980x620").strip()
-    if raw_main_size == "1140x680":
-        # One-time migration from legacy default to the new smaller default.
-        sj.save_key("mw_size", "980x620")
-        raw_main_size = "980x620"
-
-    main_placement = resolve_window_placement(raw_main_size, 980, 620)
-
-    bridge._log_startup_marker("before_create_main_window")
-    window = webview.create_window(
-        APP_NAME,
-        _build_html_path(),
-        js_api=bridge,
-        width=main_placement.width,
-        height=main_placement.height,
-        x=main_placement.x,
-        y=main_placement.y,
-        min_size=(880, 560),
-        hidden=True,
-    )
-    bridge._log_startup_marker("after_create_main_window")
-    bridge.bind_window(window)
-
-    debug_enabled = "--debug-webview" in sys.argv or "--debug" in sys.argv
-    bridge._log_startup_marker("before_webview_start")
-
-    def _on_webview_ready():
-        bridge._log_startup_marker("webview_ready_callback")
-        if tray_enabled and bridge.get_tray() is None:
-            try:
-                bridge._log_startup_marker("before_tray_init")
-                tray = AppTray(bridge)
-                bridge.bind_tray(tray)
-                bridge._log_startup_marker("after_tray_init")
-            except Exception as exc:
-                logger.exception(exc)
-
-    webview.start(_on_webview_ready, debug=debug_enabled)
+    startup_controller = AppStartupController(WebBridge, add_ffmpeg_to_path)
+    startup_controller.start(with_log_init=with_log_init, log_initializer=init_logging)
