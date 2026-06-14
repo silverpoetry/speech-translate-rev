@@ -777,6 +777,93 @@ def _finalize_recording_session(
         update_status_lbl()
 
 
+def _run_recording_session_loop(
+    *,
+    lifecycle: RecordingSessionLifecycle,
+    config: RecordingSessionConfig,
+    model_runtime: RecordingModelRuntime,
+    is_tc: bool,
+    is_tl: bool,
+    rec_type: str,
+) -> None:
+    while bc.recording:
+        if lifecycle.session_state.paused:
+            sleep(0.1)
+            continue
+
+        data = _consume_record_loop_input(
+            lifecycle.session_state,
+            lifecycle.callback_ctx,
+            config=config,
+            is_tc=is_tc,
+            sr_divider=lifecycle.sr_divider,
+            samp_width=lifecycle.samp_width,
+            num_of_channels=lifecycle.num_of_channels,
+            translator=lifecycle.services.translator,
+            buffer_reducer=lifecycle.services.buffer_reducer,
+        )
+        if data is None:
+            continue
+
+        if not _advance_recording_buffer(
+            lifecycle.session_state,
+            data,
+            transcribe_rate=config.transcribe_rate,
+            samp_width=lifecycle.samp_width,
+            num_of_channels=lifecycle.num_of_channels,
+            sr_divider=lifecycle.sr_divider,
+            min_input_length=sj.cache.get(f"min_input_length_{rec_type}", 0.4),
+        ):
+            continue
+
+        audio_target = _build_record_audio_target(
+            lifecycle.session_state,
+            use_temp=config.use_temp,
+            num_of_channels=lifecycle.num_of_channels,
+            samp_width=lifecycle.samp_width,
+            demucs_enabled=model_runtime.demucs_enabled,
+            cuda_device=model_runtime.cuda_device,
+            sr_ori=lifecycle.sr_ori,
+        )
+
+        if not _execute_recording_iteration(
+            audio_target=audio_target,
+            session_state=lifecycle.session_state,
+            is_tc=is_tc,
+            is_tl=is_tl,
+            config=config,
+            model_runtime=model_runtime,
+            translator=lifecycle.services.translator,
+        ):
+            continue
+
+        _cleanup_processed_audio_target(
+            audio_target,
+            use_temp=config.use_temp,
+            keep_temp=lifecycle.services.runtime.keep_temp,
+            is_tl=is_tl,
+            tl_engine_whisper=config.tl_engine_whisper,
+            session_state=lifecycle.session_state,
+        )
+
+        if lifecycle.session_state.duration_seconds > config.max_buffer_s:
+            _break_buffer_and_update_state(
+                reason="buffer_full",
+                session_state=lifecycle.session_state,
+                is_tc=is_tc,
+                sr_divider=lifecycle.sr_divider,
+                samp_width=lifecycle.samp_width,
+                num_of_channels=lifecycle.num_of_channels,
+                sentence_limitless=config.sentence_limitless,
+                max_sentences=config.max_sentences,
+                separator=config.separator,
+                translator=lifecycle.services.translator,
+                buffer_reducer=lifecycle.services.buffer_reducer,
+            )
+        if bc.current_rec_status == "▶️ Recording ⟳ Transcribing Audio":
+            bc.current_rec_status = "▶️ Recording"
+
+
 class TranslationDispatcher:
     def __init__(
         self,
@@ -1553,82 +1640,14 @@ def record_session(
         _open_recording_stream(p=p, stream_runtime=stream_runtime)
 
         # Main Transcribing Loop
-        while bc.recording:
-            if lifecycle.session_state.paused:
-                sleep(0.1)
-                continue
-
-            data = _consume_record_loop_input(
-                lifecycle.session_state,
-                lifecycle.callback_ctx,
-                config=config,
-                is_tc=is_tc,
-                sr_divider=lifecycle.sr_divider,
-                samp_width=lifecycle.samp_width,
-                num_of_channels=lifecycle.num_of_channels,
-                translator=lifecycle.services.translator,
-                buffer_reducer=lifecycle.services.buffer_reducer,
-            )
-            if data is None:
-                continue
-
-            if not _advance_recording_buffer(
-                lifecycle.session_state,
-                data,
-                transcribe_rate=config.transcribe_rate,
-                samp_width=lifecycle.samp_width,
-                num_of_channels=lifecycle.num_of_channels,
-                sr_divider=lifecycle.sr_divider,
-                min_input_length=sj.cache.get(f"min_input_length_{rec_type}", 0.4),
-            ):
-                continue
-
-            audio_target = _build_record_audio_target(
-                lifecycle.session_state,
-                use_temp=config.use_temp,
-                num_of_channels=lifecycle.num_of_channels,
-                samp_width=lifecycle.samp_width,
-                demucs_enabled=model_runtime.demucs_enabled,
-                cuda_device=model_runtime.cuda_device,
-                sr_ori=lifecycle.sr_ori,
-            )
-
-            if not _execute_recording_iteration(
-                audio_target=audio_target,
-                session_state=lifecycle.session_state,
-                is_tc=is_tc,
-                is_tl=is_tl,
-                config=config,
-                model_runtime=model_runtime,
-                translator=lifecycle.services.translator,
-            ):
-                continue
-
-            _cleanup_processed_audio_target(
-                audio_target,
-                use_temp=config.use_temp,
-                keep_temp=lifecycle.services.runtime.keep_temp,
-                is_tl=is_tl,
-                tl_engine_whisper=config.tl_engine_whisper,
-                session_state=lifecycle.session_state,
-            )
-
-            if lifecycle.session_state.duration_seconds > config.max_buffer_s:
-                _break_buffer_and_update_state(
-                    reason="buffer_full",
-                    session_state=lifecycle.session_state,
-                    is_tc=is_tc,
-                    sr_divider=lifecycle.sr_divider,
-                    samp_width=lifecycle.samp_width,
-                    num_of_channels=lifecycle.num_of_channels,
-                    sentence_limitless=config.sentence_limitless,
-                    max_sentences=config.max_sentences,
-                    separator=config.separator,
-                    translator=lifecycle.services.translator,
-                    buffer_reducer=lifecycle.services.buffer_reducer,
-                )
-            if bc.current_rec_status == "▶️ Recording ⟳ Transcribing Audio":
-                bc.current_rec_status = "▶️ Recording"
+        _run_recording_session_loop(
+            lifecycle=lifecycle,
+            config=config,
+            model_runtime=model_runtime,
+            is_tc=is_tc,
+            is_tl=is_tl,
+            rec_type=rec_type,
+        )
     except Exception as e:
         logger.error(f"Error in record session: {str(e)}")
     finally:

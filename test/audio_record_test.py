@@ -42,6 +42,7 @@ from speech_translate.utils.audio.record import (
     _filter_realtime_transcription_result,
     _handle_record_callback_error,
     _initialize_callback_context,
+    _run_recording_session_loop,
     _merge_translation_units,
     _normalize_translation_result_units,
     _open_recording_stream,
@@ -935,6 +936,110 @@ class AudioRecordHelpersTests(unittest.TestCase):
 
         self.assertTrue(executed)
         self.assertEqual(translator.calls[-1], ("temp.wav", ""))
+
+    def test_run_recording_session_loop_executes_iteration_and_resets_transcribing_status(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_consume = record_module._consume_record_loop_input
+        previous_advance = record_module._advance_recording_buffer
+        previous_build_target = record_module._build_record_audio_target
+        previous_execute = record_module._execute_recording_iteration
+        previous_cleanup = record_module._cleanup_processed_audio_target
+        previous_break = record_module._break_buffer_and_update_state
+        previous_recording = record_module.bc.recording
+        previous_status = record_module.bc.current_rec_status
+        calls = []
+        try:
+            record_module._consume_record_loop_input = lambda *args, **kwargs: b"abc"
+            record_module._advance_recording_buffer = lambda session_state, data, **kwargs: True
+            record_module._build_record_audio_target = lambda *args, **kwargs: "temp.wav"
+
+            def fake_execute(**kwargs):
+                record_module.bc.current_rec_status = "▶️ Recording ⟳ Transcribing Audio"
+                kwargs["session_state"].duration_seconds = 1.0
+                record_module.bc.recording = False
+                return True
+
+            record_module._execute_recording_iteration = fake_execute
+            record_module._cleanup_processed_audio_target = lambda *args, **kwargs: calls.append(("cleanup", args[0]))
+            record_module._break_buffer_and_update_state = lambda **kwargs: calls.append(("break", kwargs["reason"]))
+            record_module.bc.recording = True
+            record_module.bc.current_rec_status = "busy"
+
+            lifecycle = RecordingSessionLifecycle(
+                session_state=RealtimeSessionState(),
+                services=RecordingSessionServices(
+                    runtime=RecordingRuntime(
+                        taskname="Transcribe",
+                        device="mic",
+                        lang_source="English",
+                        lang_target="-",
+                        engine="Whisper",
+                        is_tl=False,
+                        use_temp=True,
+                        separator="<br />",
+                        keep_temp=False,
+                        t_start=0.0,
+                        max_buffer_s=10.0,
+                        max_sentences=5,
+                        sentence_limitless=False,
+                        lang_target_display="-",
+                    ),
+                    status_emitter=object(),
+                    translator=FakeTranslator(),
+                    buffer_reducer=FakeBufferReducer(),
+                ),
+                callback_ctx=RealtimeCallbackContext(
+                    sample_rate=16000,
+                    frame_duration_ms=20,
+                    threshold_enable=True,
+                    threshold_db=-20.0,
+                    threshold_auto=True,
+                    use_silero=True,
+                    silero_min_conf=0.75,
+                    vad_checked=False,
+                    num_of_channels=1,
+                    samp_width=2,
+                    use_temp=True,
+                ),
+                sr_ori=16000,
+                num_of_channels=1,
+                samp_width=2,
+                sr_divider=16000,
+            )
+            config = _build_recording_session_config(
+                rec_type="mic",
+                lang_source="English",
+                engine="Whisper",
+                is_tc=True,
+                is_tl=False,
+            )
+
+            class RuntimeStub:
+                demucs_enabled = False
+                cuda_device = "cpu"
+
+            _run_recording_session_loop(
+                lifecycle=lifecycle,
+                config=config,
+                model_runtime=RuntimeStub(),
+                is_tc=True,
+                is_tl=False,
+                rec_type="mic",
+            )
+            observed_status = record_module.bc.current_rec_status
+        finally:
+            record_module._consume_record_loop_input = previous_consume
+            record_module._advance_recording_buffer = previous_advance
+            record_module._build_record_audio_target = previous_build_target
+            record_module._execute_recording_iteration = previous_execute
+            record_module._cleanup_processed_audio_target = previous_cleanup
+            record_module._break_buffer_and_update_state = previous_break
+            record_module.bc.recording = previous_recording
+            record_module.bc.current_rec_status = previous_status
+
+        self.assertEqual(calls, [("cleanup", "temp.wav")])
+        self.assertEqual(observed_status, "▶️ Recording")
 
     def test_calculate_buffer_duration_handles_invalid_denominator(self) -> None:
         self.assertEqual(
