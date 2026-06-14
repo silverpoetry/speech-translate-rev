@@ -12,6 +12,7 @@ from speech_translate.utils.audio.record import (
     BufferStateReducer,
     RealtimeCallbackContext,
     RecordingRuntime,
+    RecordingSessionServices,
     RecordingStreamRuntime,
     RecordingStatusEmitter,
     RealtimeSharedState,
@@ -31,6 +32,7 @@ from speech_translate.utils.audio.record import (
     _cleanup_processed_audio_target,
     _cleanup_translation_audio,
     _commit_realtime_transcription,
+    _build_recording_session_services,
     _build_recording_stream_runtime,
     _execute_recording_iteration,
     _calculate_buffer_duration,
@@ -43,6 +45,7 @@ from speech_translate.utils.audio.record import (
     _open_recording_stream,
     _reset_callback_context,
     _resolve_live_input_source_language,
+    _start_recording_session_support_threads,
     _prime_realtime_vad,
     _detect_realtime_speech,
     _update_realtime_queue_state,
@@ -428,6 +431,116 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(owner.calls[0]["rate"], 44100)
         self.assertEqual(owner.calls[0]["input_device_index"], 5)
         self.assertEqual(owner.calls[0]["stream_callback"](), "cb")
+
+    def test_build_recording_session_services_wires_runtime_translator_and_reducer(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_cache = dict(record_module.sj.cache)
+        previous_dispatcher = record_module.TranslationDispatcher
+        try:
+            record_module.sj.cache["keep_temp"] = True
+
+            class DispatcherSpy:
+                def __init__(self, **kwargs) -> None:
+                    self.kwargs = kwargs
+
+            record_module.TranslationDispatcher = DispatcherSpy
+            config = _build_recording_session_config(
+                rec_type="mic",
+                lang_source="English",
+                engine="Whisper",
+                is_tc=True,
+                is_tl=True,
+            )
+
+            class RuntimeStub:
+                hallucination_filters = {"english": ["x"]}
+                stable_tl = object()
+                whisper_args = {"foo": "bar"}
+                use_temp = False
+
+            services = _build_recording_session_services(
+                config=config,
+                model_runtime=RuntimeStub(),
+                device="mic",
+                lang_source="English",
+                lang_target="Chinese",
+                engine="Whisper",
+                is_tc=True,
+                is_tl=True,
+                t_start=12.0,
+            )
+        finally:
+            record_module.sj.cache.clear()
+            record_module.sj.cache.update(previous_cache)
+            record_module.TranslationDispatcher = previous_dispatcher
+
+        self.assertIsInstance(services, RecordingSessionServices)
+        self.assertEqual(services.runtime.device, "mic")
+        self.assertTrue(services.runtime.keep_temp)
+        self.assertIsInstance(services.status_emitter, RecordingStatusEmitter)
+        self.assertIsInstance(services.buffer_reducer, BufferStateReducer)
+        self.assertEqual(services.translator.kwargs["lang_target"], "Chinese")
+        self.assertEqual(services.translator.kwargs["hallucination_filters"], {"english": ["x"]})
+
+    def test_start_recording_session_support_threads_starts_workers_and_updates_status(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        calls = []
+        previous_start_translation = record_module._start_translation_dispatcher_thread
+        previous_start_status = record_module._start_recording_status_thread
+        previous_status = record_module.bc.current_rec_status
+        try:
+            record_module._start_translation_dispatcher_thread = lambda translator: calls.append(("translation", translator))
+            record_module._start_recording_status_thread = lambda *args, **kwargs: calls.append(("status", kwargs))
+            record_module.bc.current_rec_status = "Recording"
+
+            runtime = RecordingRuntime(
+                taskname="Transcribe",
+                device="mic",
+                lang_source="English",
+                lang_target="Chinese",
+                engine="Whisper",
+                is_tl=True,
+                use_temp=False,
+                separator="<br />",
+                keep_temp=False,
+                t_start=0.0,
+                max_buffer_s=10.0,
+                max_sentences=5,
+                sentence_limitless=False,
+                lang_target_display="Chinese",
+            )
+            bridge = FakeWebBridge()
+            emitter = RecordingStatusEmitter(runtime)
+            previous_bridge = record_module.bc.web_bridge
+            record_module.bc.web_bridge = bridge
+            services = RecordingSessionServices(
+                runtime=runtime,
+                status_emitter=emitter,
+                translator=object(),
+                buffer_reducer=object(),
+            )
+            state = RealtimeSessionState()
+
+            _start_recording_session_support_threads(
+                services=services,
+                session_state=state,
+                t_start=5.0,
+                max_buffer_s=10,
+                max_sentences=4,
+                sentence_limitless=False,
+            )
+        finally:
+            record_module._start_translation_dispatcher_thread = previous_start_translation
+            record_module._start_recording_status_thread = previous_start_status
+            record_module.bc.current_rec_status = previous_status
+            record_module.bc.web_bridge = previous_bridge
+
+        self.assertEqual(bridge.messages, ["Recording"])
+        self.assertEqual(calls[0][0], "translation")
+        self.assertEqual(calls[1][0], "status")
+        self.assertEqual(calls[1][1]["max_sentences"], 4)
 
     def test_resolve_live_input_source_language_prefers_detected_supported_language(self) -> None:
         from speech_translate.utils.audio import record as record_module

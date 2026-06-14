@@ -167,6 +167,17 @@ class RecordingStreamRuntime:
 
 
 @dataclass
+class RecordingSessionServices:
+    runtime: RecordingRuntime
+    status_emitter: "RecordingStatusEmitter"
+    translator: "TranslationDispatcher"
+    buffer_reducer: "BufferStateReducer"
+
+    def update_status(self) -> None:
+        self.status_emitter.emit(status=bc.current_rec_status)
+
+
+@dataclass
 class RealtimeSessionState:
     last_sample: bytes = b""
     duration_seconds: float = 0.0
@@ -980,6 +991,87 @@ def _open_recording_stream(*, p, stream_runtime: RecordingStreamRuntime) -> None
     )
 
 
+def _build_recording_session_services(
+    *,
+    config: RecordingSessionConfig,
+    model_runtime: RecordingModelRuntime,
+    device: str,
+    lang_source: str,
+    lang_target: str,
+    engine: str,
+    is_tc: bool,
+    is_tl: bool,
+    t_start: float,
+) -> RecordingSessionServices:
+    runtime = RecordingRuntime(
+        taskname=config.taskname,
+        device=device,
+        lang_source=lang_source,
+        lang_target=lang_target,
+        engine=engine,
+        is_tl=is_tl,
+        use_temp=config.use_temp,
+        separator=config.separator,
+        keep_temp=bool(sj.cache.get("keep_temp", False)),
+        t_start=t_start,
+        max_buffer_s=config.max_buffer_s,
+        max_sentences=config.max_sentences,
+        sentence_limitless=config.sentence_limitless,
+        lang_target_display=lang_target if is_tl else "-",
+    )
+    status_emitter = RecordingStatusEmitter(runtime)
+    translator = TranslationDispatcher(
+        is_tl=is_tl,
+        tl_engine_whisper=config.tl_engine_whisper,
+        use_temp=config.use_temp,
+        keep_temp=runtime.keep_temp,
+        separator=config.separator,
+        lang_source=lang_source,
+        lang_target=lang_target,
+        engine=engine,
+        hallucination_filters=model_runtime.hallucination_filters,
+        stable_tl=model_runtime.stable_tl,
+        whisper_args=model_runtime.whisper_args,
+        record_status_updater=lambda: status_emitter.emit(status=bc.current_rec_status),
+    )
+    buffer_reducer = BufferStateReducer(
+        is_tc=is_tc,
+        is_tl=is_tl,
+        tl_engine_whisper=config.tl_engine_whisper,
+        sentence_limitless=config.sentence_limitless,
+        max_sentences=config.max_sentences,
+        separator=config.separator,
+        translator=translator,
+    )
+    return RecordingSessionServices(
+        runtime=runtime,
+        status_emitter=status_emitter,
+        translator=translator,
+        buffer_reducer=buffer_reducer,
+    )
+
+
+def _start_recording_session_support_threads(
+    *,
+    services: RecordingSessionServices,
+    session_state: RealtimeSessionState,
+    t_start: float,
+    max_buffer_s: int,
+    max_sentences: int,
+    sentence_limitless: bool,
+) -> None:
+    _start_translation_dispatcher_thread(services.translator)
+    services.update_status()
+    _start_recording_status_thread(
+        session_state,
+        services.status_emitter,
+        t_start=t_start,
+        max_buffer_s=max_buffer_s,
+        max_sentences=max_sentences,
+        sentence_limitless=sentence_limitless,
+    )
+
+
 def _prime_realtime_vad(ctx: RealtimeCallbackContext, resampled: bytes) -> None:
     if ctx.vad_checked:
         return
@@ -1375,60 +1467,23 @@ def record_session(
             f"Session starting: {config.taskname} | Engine: {engine} | Device: {model_runtime.cuda_device} | Demucs: {model_runtime.demucs_enabled}"
         )
 
-        # UI & State Updaters
         t_start = time()
         session_state = RealtimeSessionState()
         bc.current_rec_status, bc.auto_detected_lang = "▶️ Recording (Waiting for speech)", "~"
-        runtime = RecordingRuntime(
-            taskname=config.taskname,
+        services = _build_recording_session_services(
+            config=config,
+            model_runtime=model_runtime,
             device=device,
             lang_source=lang_source,
             lang_target=lang_target,
             engine=engine,
-            is_tl=is_tl,
-            use_temp=config.use_temp,
-            separator=config.separator,
-            keep_temp=bool(sj.cache.get("keep_temp", False)),
-            t_start=t_start,
-            max_buffer_s=config.max_buffer_s,
-            max_sentences=config.max_sentences,
-            sentence_limitless=config.sentence_limitless,
-            lang_target_display=lang_target if is_tl else "-",
-        )
-        status_emitter = RecordingStatusEmitter(runtime)
-
-        def update_status_lbl() -> None:
-            status_emitter.emit(status=bc.current_rec_status)
-
-        translator = TranslationDispatcher(
-            is_tl=is_tl,
-            tl_engine_whisper=config.tl_engine_whisper,
-            use_temp=config.use_temp,
-            keep_temp=runtime.keep_temp,
-            separator=config.separator,
-            lang_source=lang_source,
-            lang_target=lang_target,
-            engine=engine,
-            hallucination_filters=model_runtime.hallucination_filters,
-            stable_tl=model_runtime.stable_tl,
-            whisper_args=model_runtime.whisper_args,
-            record_status_updater=update_status_lbl,
-        )
-        buffer_reducer = BufferStateReducer(
             is_tc=is_tc,
             is_tl=is_tl,
-            tl_engine_whisper=config.tl_engine_whisper,
-            sentence_limitless=config.sentence_limitless,
-            max_sentences=config.max_sentences,
-            separator=config.separator,
-            translator=translator,
+            t_start=t_start,
         )
-
-        _start_translation_dispatcher_thread(translator)
-        update_status_lbl()
-        _start_recording_status_thread(
-            session_state,
-            status_emitter,
+        _start_recording_session_support_threads(
+            services=services,
+            session_state=session_state,
             t_start=t_start,
             max_buffer_s=config.max_buffer_s,
             max_sentences=config.max_sentences,
@@ -1459,8 +1514,8 @@ def record_session(
                 sr_divider=sr_divider,
                 samp_width=samp_width,
                 num_of_channels=num_of_channels,
-                translator=translator,
-                buffer_reducer=buffer_reducer,
+                translator=services.translator,
+                buffer_reducer=services.buffer_reducer,
             )
             if data is None:
                 continue
@@ -1493,7 +1548,7 @@ def record_session(
                 is_tl=is_tl,
                 config=config,
                 model_runtime=model_runtime,
-                translator=translator,
+                translator=services.translator,
             ):
                 continue
 
@@ -1517,13 +1572,13 @@ def record_session(
                     sentence_limitless=config.sentence_limitless,
                     max_sentences=config.max_sentences,
                     separator=config.separator,
-                    translator=translator,
-                    buffer_reducer=buffer_reducer,
+                    translator=services.translator,
+                    buffer_reducer=services.buffer_reducer,
                 )
             if bc.current_rec_status == "▶️ Recording ⟳ Transcribing Audio":
                 bc.current_rec_status = "▶️ Recording"
 
-        _finalize_recording_session(p, session_state, update_status_lbl, keep_temp=runtime.keep_temp)
+        _finalize_recording_session(p, session_state, services.update_status, keep_temp=services.runtime.keep_temp)
 
     except Exception as e:
         logger.error(f"Error in record session: {str(e)}")
