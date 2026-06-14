@@ -2,13 +2,12 @@ import os
 import subprocess
 import sys
 from importlib import import_module
-from dataclasses import asdict, dataclass
 from pathlib import Path
 from platform import processor, release, system, version
 from signal import SIGINT, signal
 from threading import Thread
-from typing import Any, Dict, Optional, List, cast
-from time import sleep, strftime, time
+from typing import Any, Dict, Optional, List
+from time import strftime, time
 
 from loguru import logger
 
@@ -28,21 +27,13 @@ from speech_translate.import_queue_manager import ImportQueueController
 from speech_translate.main_window_controller import MainWindowController
 from speech_translate.model_manager import ModelManagerController
 from speech_translate.recording_controller import RecordingSessionController
+from speech_translate.state_view_builder import StateViewBuilder
 from speech_translate.linker import bc, sj
 from speech_translate.window_geometry import resolve_window_placement
 from speech_translate.web_backend import HeadlessFileProcessDialog, WebTaskBridge, headless_mbox
-from speech_translate.utils.audio.device import (
-    get_default_host_api,
-    get_default_input_device,
-    get_default_output_device,
-    get_host_apis,
-    get_input_devices,
-    get_output_devices,
-)
-from speech_translate.utils.helper import native_notify, open_folder, open_url
-from speech_translate.utils.whisper.helper import model_keys, model_select_dict, model_values
-from speech_translate.utils.types import SettingDict
-from speech_translate.utils.translate.language import TL_ENGINE_SOURCE_DICT, TL_ENGINE_TARGET_DICT, WHISPER_LANG_LIST
+from speech_translate.utils.helper import open_folder, open_url
+from speech_translate.utils.whisper.helper import model_select_dict
+from speech_translate.utils.translate.language import TL_ENGINE_SOURCE_DICT, TL_ENGINE_TARGET_DICT
 from speech_translate.utils.translate.translator import shutdown_selenium_translator
 
 
@@ -92,32 +83,14 @@ def add_ffmpeg_to_path(weak: bool = False) -> bool:
     return _add_paths.add_paths()
 
 
-@dataclass
-
-class AppState:
-    app_name: str
-    version: str
-    os_name: str
-    os_release: str
-    os_version: str
-    cpu: str
-    settings: Dict[str, Any]
-    import_ui: Dict[str, Any]
-    main_ui: Dict[str, Any]
-    record_ui: Dict[str, Any]
-    runtime_model: Dict[str, Any]
-    live_ui: Dict[str, Any]
-    about: Dict[str, Any]
-    log_level: str
-    current_log: str
-    log_content: str
-
-
 class WebBridge(WebTaskBridge):
     """
     Bridge exposed to the pywebview frontend.
     Handles all communication between the Web UI and the Python backend.
     """
+
+    TL_ENGINE_SOURCE_DICT_REF = TL_ENGINE_SOURCE_DICT
+    TL_ENGINE_TARGET_DICT_REF = TL_ENGINE_TARGET_DICT
 
     def __init__(self):
         super().__init__()
@@ -126,18 +99,11 @@ class WebBridge(WebTaskBridge):
         self.model_manager_controller = ModelManagerController(self, sj, _get_whisper_load_api)
         self.import_queue_controller = ImportQueueController(self, sj, HeadlessFileProcessDialog, headless_mbox, shutdown_selenium_translator)
         self.recording_controller = RecordingSessionController(self, _get_whisper_load_api, shutdown_selenium_translator)
+        self.state_view_builder = StateViewBuilder(self, sj)
         
         # --- Detached Windows ---
         self.detached_window_manager = DetachedWindowManager(self, sj)
-        
-        # --- Audio Devices ---
-        self._audio_source_cache: Dict[str, Any] = {
-            "host_api_options": [], "mic_options_by_host": {}, "speaker_options_by_host": {},
-            "mic_options_all": [], "speaker_options_all": [],
-        }
-        self._audio_source_cache_ready = False
-        self._audio_source_cache_loading = True
-        Thread(target=self._prime_audio_source_cache, daemon=True).start()
+        self.state_view_builder.start_audio_source_scan()
 
     @property
     def _model_status_cache(self) -> Dict[str, Dict[str, Any]]:
@@ -420,54 +386,14 @@ class WebBridge(WebTaskBridge):
         return self.refresh_log()
 
     def get_state(self) -> Dict[str, Any]:
-        state_t0 = time()
-        settings = dict(sj.cache)
-        t_settings = time()
-        
-        compact_settings = {
-            "theme": settings.get("theme"), "log_level": settings.get("log_level"), "dir_export": settings.get("dir_export"),
-            "dir_model": settings.get("dir_model"), "export_to": settings.get("export_to"), "source_lang_mw": settings.get("source_lang_mw"),
-            "target_lang_mw": settings.get("target_lang_mw"), "input": settings.get("input"), "tl_engine_mw": settings.get("tl_engine_mw"),
-            "transcribe_mw": settings.get("transcribe_mw", True), "translate_mw": settings.get("translate_mw", True),
-            "auto_scroll_log": settings.get("auto_scroll_log"), "auto_refresh_log": settings.get("auto_refresh_log"),
-            "source_lang_f_import": settings.get("source_lang_f_import"), "target_lang_f_import": settings.get("target_lang_f_import"),
-            "transcribe_f_import": settings.get("transcribe_f_import"), "translate_f_import": settings.get("translate_f_import"),
-            "tl_engine_f_import": settings.get("tl_engine_f_import"), "model_f_import": settings.get("model_f_import"),
-            "selenium_compact_level": settings.get("selenium_compact_level", 2), "selenium_z_order_mode": settings.get("selenium_z_order_mode", "behind-main"),
-            "selenium_auto_close_on_task_done": settings.get("selenium_auto_close_on_task_done", True), "selenium_chrome_user_data_dir": settings.get("selenium_chrome_user_data_dir", ""),
-            "enable_initial_prompt": settings.get("enable_initial_prompt", False), "initial_prompts_map": settings.get("initial_prompts_map", {}),
-            "condition_on_previous_text": settings.get("condition_on_previous_text", True),
-            "filter_rec": settings.get("filter_rec", True), "filter_rec_case_sensitive": settings.get("filter_rec_case_sensitive", False),
-            "filter_rec_strip": settings.get("filter_rec_strip", True), "filter_rec_ignore_punctuations": settings.get("filter_rec_ignore_punctuations", "\"',.?!"),
-            "filter_rec_exact_match": settings.get("filter_rec_exact_match", False), "filter_rec_similarity": settings.get("filter_rec_similarity", 0.75),
-            "filter_file_import": settings.get("filter_file_import", True), "filter_file_import_case_sensitive": settings.get("filter_file_import_case_sensitive", False),
-            "filter_file_import_strip": settings.get("filter_file_import_strip", True), "filter_file_import_ignore_punctuations": settings.get("filter_file_import_ignore_punctuations", "\"',.?!"),
-            "filter_file_import_exact_match": settings.get("filter_file_import_exact_match", False), "filter_file_import_similarity": settings.get("filter_file_import_similarity", 0.75),
-        }
-
-        import_ui, t_import = self._build_import_ui(verify_available=False), time()
-        main_ui, t_main = self._build_main_ui(), time()
-        record_ui, t_record = self._build_record_ui(), time()
-        runtime_model, t_runtime = self._build_runtime_model_state(), time()
-        live_ui, t_live = self.snapshot_live_state(), time()
-        about, t_about = self._build_about(), time()
-        current_log, log_content, t_log = self.get_log_file_name(), self.get_log_content(), time()
-
-        result = asdict(AppState(
-            app_name=APP_NAME, version=__version__, os_name=system(), os_release=release(),
-            os_version=version(), cpu=processor(), settings=compact_settings, import_ui=import_ui,
-            main_ui=main_ui, record_ui=record_ui, runtime_model=runtime_model, live_ui=live_ui,
-            about=about, log_level=sj.cache.get("log_level", "DEBUG"), current_log=current_log, log_content=log_content,
-        ))
-        result["detached_config"] = {"tc": self.get_detached_config("tc"), "tl": self.get_detached_config("tl")}
-
+        result = self.state_view_builder.build_state()
         if not self.main_window_controller.first_state_logged:
             self.main_window_controller.first_state_logged = True
             self._log_startup_marker("first_get_state")
         return result
 
     def reload_state(self) -> Dict[str, Any]:
-        return self.get_state()
+        return self.state_view_builder.reload_state()
 
     def get_task_state(self) -> Dict[str, Any]:
         return self.snapshot_task_state()
@@ -476,121 +402,22 @@ class WebBridge(WebTaskBridge):
         return self.snapshot_live_state()
 
     def _build_main_ui(self) -> Dict[str, Any]:
-        s = dict(sj.cache)
-        return {
-            "input_options": ["mic", "speaker"], "source_options": WHISPER_LANG_LIST, "target_options": WHISPER_LANG_LIST,
-            "engine_options": ["Selenium Chrome Translate", "Google Translate", "MyMemoryTranslator", "LibreTranslate"],
-            "selected_input": s.get("input"), "selected_source": s.get("source_lang_mw"), "selected_target": s.get("target_lang_mw"),
-            "selected_engine": s.get("tl_engine_mw"), "transcribe": s.get("transcribe_mw", True), "translate": s.get("translate_mw", True),
-            "auto_scroll_log": s.get("auto_scroll_log"), "auto_refresh_log": s.get("auto_refresh_log"),
-        }
+        return self.state_view_builder.build_main_ui()
 
     def _build_record_device_ui(self, device: str) -> Dict[str, Any]:
-        s = dict(sj.cache)
-        return {
-            "sample_rate": s.get(f"sample_rate_{device}"), "chunk_size": s.get(f"chunk_size_{device}"), "channels": s.get(f"channels_{device}"),
-            "auto_sample_rate": s.get(f"auto_sample_rate_{device}"), "auto_channels": s.get(f"auto_channels_{device}"),
-            "min_input": s.get(f"min_input_length_{device}"), "max_buffer": s.get(f"max_buffer_{device}"), "max_sentences": s.get(f"max_sentences_{device}"),
-            "no_limit": s.get(f"{device}_no_limit"), "threshold_enable": s.get(f"threshold_enable_{device}"), "threshold_auto": s.get(f"threshold_auto_{device}"),
-            "auto_break_buffer": s.get(f"auto_break_buffer_{device}"), "threshold_auto_level": s.get(f"threshold_auto_level_{device}"),
-            "threshold_auto_silero": s.get(f"threshold_auto_silero_{device}"), "threshold_silero_min": s.get(f"threshold_silero_{device}_min"),
-            "threshold_db": s.get(f"threshold_db_{device}"),
-        }
+        return self.state_view_builder.build_record_device_ui(device)
 
     def _build_record_ui(self) -> Dict[str, Any]:
-        s = dict(sj.cache)
-        audio_sources = self._build_audio_source_options()
-        return {
-            "input": s.get("input"), "host_api": s.get("hostAPI"), "mic": s.get("mic"), "speaker": s.get("speaker"),
-            "host_api_options": audio_sources.get("host_api_options", []), "mic_options": audio_sources.get("mic_options", []),
-            "speaker_options": audio_sources.get("speaker_options", []), "verbose_record": s.get("verbose_record"),
-            "transcribe_rate": s.get("transcribe_rate"), "model_device_preference": s.get("model_device_preference", "auto"),
-            "model_device_options": ["auto", "cpu", "cuda"], "separate_with": s.get("separate_with"),
-            "use_temp": s.get("use_temp"), "keep_temp": s.get("keep_temp"), "file_use_official_whisper": s.get("file_use_official_whisper", False),
-            "show_audio_visualizer_in_setting": s.get("show_audio_visualizer_in_setting"),
-            "mic_device": self._build_record_device_ui("mic"), "speaker_device": self._build_record_device_ui("speaker"),
-        }
+        return self.state_view_builder.build_record_ui()
 
     def _build_about(self) -> Dict[str, Any]:
-        return {
-            "name": APP_NAME, "version": __version__, "os": f"{system()} {release()} {version()}", "cpu": processor(),
-            "log_file": self.get_log_file_name(), "model_dir": self._resolve_model_dir(), "export_dir": self._resolve_export_dir(),
-        }
-
-    # =========================================================================
-    # SECTION 3: AUDIO DEVICE SCANNING
-    # =========================================================================
-
-    def _prime_audio_source_cache(self) -> None:
-        try:
-            host_api_options = get_host_apis()
-            mic_options_all = get_input_devices("")
-            speaker_options_all = get_output_devices("")
-
-            ok_host, host_info = get_default_host_api()
-            default_host_api = str(host_info.get("name", "")) if ok_host and isinstance(host_info, dict) else ""
-
-            def find_default(device_info, all_options):
-                if not device_info or not isinstance(device_info, dict): return ""
-                name = str(device_info.get("name", ""))
-                return next((str(item) for item in all_options if isinstance(item, str) and "[ID:" in item and name.lower() in item.lower()), "") if name else ""
-
-            default_mic = find_default(get_default_input_device()[1], mic_options_all)
-            default_speaker = find_default(get_default_output_device()[1], speaker_options_all)
-
-            mic_options_by_host, speaker_options_by_host = {}, {}
-            for host_api in host_api_options:
-                if isinstance(host_api, str) and not host_api.startswith("["):
-                    mic_options_by_host[host_api] = get_input_devices(str(host_api))
-                    speaker_options_by_host[host_api] = get_output_devices(str(host_api))
-
-            self._audio_source_cache = {
-                "host_api_options": host_api_options, "mic_options_by_host": mic_options_by_host,
-                "speaker_options_by_host": speaker_options_by_host, "mic_options_all": mic_options_all,
-                "speaker_options_all": speaker_options_all, "default_host_api": default_host_api,
-                "default_mic": default_mic, "default_speaker": default_speaker,
-            }
-        except Exception as exc:
-            logger.exception(exc)
-            self._audio_source_cache = {
-                "host_api_options": [], "mic_options_by_host": {}, "speaker_options_by_host": {},
-                "mic_options_all": ["[ERROR] Failed to load input devices"], "speaker_options_all": ["[ERROR] Failed to load output devices"],
-                "default_host_api": "", "default_mic": "", "default_speaker": "",
-            }
-        finally:
-            self._audio_source_cache_loading = False
-            self._audio_source_cache_ready = True
-            try: self._emit_ui_update(["state"])
-            except Exception: pass
+        return self.state_view_builder.build_about()
 
     def _build_audio_source_options(self, selected_host_api: Optional[str] = None) -> Dict[str, Any]:
-        s = dict(sj.cache)
-        host_api = str(selected_host_api if selected_host_api is not None else s.get("hostAPI", ""))
-        host_api_options = self._audio_source_cache.get("host_api_options", [])
-        
-        if not host_api or host_api not in host_api_options:
-            host_api = str(self._audio_source_cache.get("default_host_api", "")) or str(next((x for x in host_api_options if isinstance(x, str) and not x.startswith("[")), ""))
-
-        if host_api:
-            mic_options = self._audio_source_cache.get("mic_options_by_host", {}).get(host_api) or []
-            speaker_options = self._audio_source_cache.get("speaker_options_by_host", {}).get(host_api) or []
-        else:
-            mic_options = self._audio_source_cache.get("mic_options_all", [])
-            speaker_options = self._audio_source_cache.get("speaker_options_all", [])
-
-        selected_mic, selected_speaker = s.get("mic"), s.get("speaker")
-        if selected_mic not in mic_options:
-            selected_mic = self._audio_source_cache.get("default_mic", "") if self._audio_source_cache.get("default_mic", "") in mic_options else (mic_options[0] if mic_options else "")
-        if selected_speaker not in speaker_options:
-            selected_speaker = self._audio_source_cache.get("default_speaker", "") if self._audio_source_cache.get("default_speaker", "") in speaker_options else (speaker_options[0] if speaker_options else "")
-
-        return {
-            "host_api_options": host_api_options, "mic_options": mic_options, "speaker_options": speaker_options,
-            "selected_host_api": host_api, "selected_mic": selected_mic, "selected_speaker": selected_speaker,
-        }
+        return self.state_view_builder.build_audio_source_options(selected_host_api)
 
     def get_audio_source_options(self, host_api: Optional[str] = None) -> Dict[str, Any]:
-        return self._build_audio_source_options(host_api)
+        return self.state_view_builder.get_audio_source_options(host_api)
 
     # =========================================================================
     # SECTION 4: MODEL MANAGEMENT
