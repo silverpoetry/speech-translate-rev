@@ -100,6 +100,12 @@ class SystemSettingsControllerTests(unittest.TestCase):
         result = self.controller.set_record_setting("model_device_preference", "cuda")
         self.assertEqual(result["value"], "cuda")
 
+    def test_set_setting_normalizes_individual_selenium_values(self) -> None:
+        compact = self.controller.set_setting("selenium_compact_level", 99)
+        chrome_dir = self.controller.set_setting("selenium_chrome_user_data_dir", " D:\\chrome-profile ")
+        self.assertEqual(compact["value"], 3)
+        self.assertEqual(chrome_dir["value"], "D:\\chrome-profile")
+
     def test_select_directory_updates_setting_and_clears_model_cache(self) -> None:
         self.bridge.window = FakeWindow()
         fake_webview = type("FakeWebview", (), {"FOLDER_DIALOG": "folder", "FileDialog": type("FD", (), {"FOLDER": "folder"})})()

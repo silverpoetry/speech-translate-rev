@@ -25,25 +25,58 @@ class SystemSettingsController:
         self.dir_log = path_config["dir_log"]
         self.dir_user = path_config["dir_user"]
 
-    def open_directory(self, name: str) -> Dict[str, str]:
-        mapping = {
+    def _settings_value(self, key: str, default: object = None) -> object:
+        return self.settings.cache.get(key, default)
+
+    def _directory_mapping(self) -> Dict[str, str]:
+        return {
             "export": self.resolve_export_dir(),
             "log": self.resolve_log_dir(),
             "debug": self.dir_debug,
             "model": self.bridge._resolve_model_dir(),
         }
-        target = mapping.get(name)
+
+    def _directory_selection_targets(self) -> Dict[str, tuple[str, str]]:
+        return {
+            "export": ("dir_export", self.resolve_export_dir()),
+            "model": ("dir_model", self.bridge._resolve_model_dir()),
+            "selenium_chrome": ("selenium_chrome_user_data_dir", self.resolve_selenium_chrome_user_data_dir()),
+        }
+
+    def _normalize_selenium_settings_payload(self, payload: object) -> Dict[str, object]:
+        data = payload if isinstance(payload, dict) else {}
+        compact = max(0, min(3, int(data.get("compact_level", 2))))
+        z_order_raw = str(data.get("z_order_mode", "behind-main")).strip().lower()
+        z_order = z_order_raw if z_order_raw in {"normal", "behind-main", "bottom"} else "behind-main"
+        auto_close = bool(data.get("auto_close_on_task_done", True))
+        chrome_user_data_dir = str(data.get("chrome_user_data_dir", "")).strip()
+        return {
+            "selenium_compact_level": compact,
+            "selenium_z_order_mode": z_order,
+            "selenium_auto_close_on_task_done": auto_close,
+            "selenium_chrome_user_data_dir": chrome_user_data_dir,
+        }
+
+    def _normalize_setting_value(self, key: str, value: object) -> object:
+        if key == "selenium_compact_level":
+            return max(0, min(3, int(value)))
+        if key == "selenium_z_order_mode":
+            as_text = str(value).strip().lower()
+            return as_text if as_text in {"normal", "behind-main", "bottom"} else "behind-main"
+        if key == "selenium_auto_close_on_task_done":
+            return bool(value)
+        if key == "selenium_chrome_user_data_dir":
+            return str(value or "").strip()
+        return value
+
+    def open_directory(self, name: str) -> Dict[str, str]:
+        target = self._directory_mapping().get(name)
         if target:
             open_folder(target)
         return {"target": target or ""}
 
     def select_directory(self, name: str) -> Dict[str, object]:
-        target_map = {
-            "export": ("dir_export", self.resolve_export_dir()),
-            "model": ("dir_model", self.bridge._resolve_model_dir()),
-            "selenium_chrome": ("selenium_chrome_user_data_dir", self.resolve_selenium_chrome_user_data_dir()),
-        }
-        setting_info = target_map.get(str(name or "").strip().lower())
+        setting_info = self._directory_selection_targets().get(str(name or "").strip().lower())
         if not setting_info:
             return {"ok": False, "message": "Unsupported directory target", "path": ""}
 
@@ -104,56 +137,32 @@ class SystemSettingsController:
         return {"title": title, "message": message}
 
     def resolve_export_dir(self) -> str:
-        configured = self.settings.cache.get("dir_export", "auto")
+        configured = self._settings_value("dir_export", "auto")
         return configured if configured != "auto" else self.dir_export
 
     def resolve_log_dir(self) -> str:
-        configured = self.settings.cache.get("dir_log", "auto")
+        configured = self._settings_value("dir_log", "auto")
         return configured if configured != "auto" else self.dir_log
 
     def resolve_selenium_chrome_user_data_dir(self) -> str:
-        configured = str(self.settings.cache.get("selenium_chrome_user_data_dir", "") or "").strip()
+        configured = str(self._settings_value("selenium_chrome_user_data_dir", "") or "").strip()
         return configured if configured else str(Path(self.dir_user) / "selenium_chrome_profile")
 
     def get_setting(self, key: str) -> object | None:
-        return self.settings.cache.get(key)
+        return self._settings_value(key)
 
     def set_setting(self, key: str, value: object) -> Dict[str, object]:
         if key == "selenium_settings":
-            payload = value if isinstance(value, dict) else {}
-            compact = max(0, min(3, int(payload.get("compact_level", 2))))
-            z_order_raw = str(payload.get("z_order_mode", "behind-main")).strip().lower()
-            z_order = z_order_raw if z_order_raw in {"normal", "behind-main", "bottom"} else "behind-main"
-            auto_close = bool(payload.get("auto_close_on_task_done", True))
-            chrome_user_data_dir = str(payload.get("chrome_user_data_dir", "")).strip()
-
-            self.settings.save_key("selenium_compact_level", compact)
-            self.settings.save_key("selenium_z_order_mode", z_order)
-            self.settings.save_key("selenium_auto_close_on_task_done", auto_close)
-            self.settings.save_key("selenium_chrome_user_data_dir", chrome_user_data_dir)
+            normalized = self._normalize_selenium_settings_payload(value)
+            for setting_key, setting_value in normalized.items():
+                self.settings.save_key(setting_key, setting_value)
 
             return {
                 "key": key,
-                "value": {
-                    "selenium_compact_level": self.settings.cache.get("selenium_compact_level", compact),
-                    "selenium_z_order_mode": self.settings.cache.get("selenium_z_order_mode", z_order),
-                    "selenium_auto_close_on_task_done": self.settings.cache.get("selenium_auto_close_on_task_done", auto_close),
-                    "selenium_chrome_user_data_dir": self.settings.cache.get(
-                        "selenium_chrome_user_data_dir", chrome_user_data_dir
-                    ),
-                },
+                "value": {setting_key: self.settings.cache.get(setting_key, setting_value) for setting_key, setting_value in normalized.items()},
             }
 
-        if key == "selenium_compact_level":
-            value = max(0, min(3, int(value)))
-        elif key == "selenium_z_order_mode":
-            as_text = str(value).strip().lower()
-            value = as_text if as_text in {"normal", "behind-main", "bottom"} else "behind-main"
-        elif key == "selenium_auto_close_on_task_done":
-            value = bool(value)
-        elif key == "selenium_chrome_user_data_dir":
-            value = str(value or "").strip()
-
+        value = self._normalize_setting_value(key, value)
         self.settings.save_key(key, value)
         if key == "log_level":
             from speech_translate._logging import change_log_level
