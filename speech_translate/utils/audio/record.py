@@ -156,6 +156,17 @@ class RecordingModelRuntime:
 
 
 @dataclass
+class RecordingStreamRuntime:
+    input_device_index: int
+    sr_ori: int
+    num_of_channels: int
+    chunk_size: int
+    samp_width: int
+    sr_divider: int
+    callback_ctx: "RealtimeCallbackContext"
+
+
+@dataclass
 class RealtimeSessionState:
     last_sample: bytes = b""
     duration_seconds: float = 0.0
@@ -896,6 +907,79 @@ def _initialize_callback_context(
     return callback_context
 
 
+def _load_recording_vad_runtime(*, rec_type: str) -> tuple[webrtcvad.Vad, SileroVadLike]:
+    webrtc_vad = webrtcvad.Vad(sj.cache.get(f"threshold_auto_mode_{rec_type}", 3))
+
+    if callable(getattr(torchaudio, "set_audio_backend", None)):
+        try:
+            torchaudio.set_audio_backend("soundfile")  # type: ignore
+        except Exception:
+            pass
+
+    silero_model = torch.hub.load(repo_or_dir=dir_silero_vad, source="local", model="silero_vad", onnx=True)
+    silero_vad = cast(SileroVadLike, silero_model[0] if isinstance(silero_model, tuple) else silero_model)
+    silero_vad.reset_states()
+    return webrtc_vad, silero_vad
+
+
+def _build_recording_stream_runtime(
+    *,
+    rec_type: str,
+    config: RecordingSessionConfig,
+    p,
+) -> RecordingStreamRuntime:
+    success, detail = get_device_details(rec_type, sj, p)
+    if not success:
+        raise Exception("Failed to get device details")
+
+    device_detail = cast(dict[str, object], detail["device_detail"])
+    sr_ori = int(detail["sample_rate"])
+    num_of_channels = int(detail["num_of_channels"])
+    chunk_size = int(detail["chunk_size"])
+
+    if not sj.cache["supress_record_warning"] and sr_ori > 48000:
+        logger.warning(f"Sample rate is high ({sr_ori} Hz). May cause issues. Can be suppressed in settings.")
+
+    webrtc_vad, silero_vad = _load_recording_vad_runtime(rec_type=rec_type)
+    samp_width = p.get_sample_size(pyaudio.paInt16)
+    sr_divider = WHISPER_SR if not config.use_temp else sr_ori
+    callback_ctx = _initialize_callback_context(
+        sample_rate=sr_ori,
+        chunk_size=chunk_size,
+        threshold_enable=config.threshold_enable,
+        threshold_db=config.threshold_db,
+        threshold_auto=config.threshold_auto,
+        use_silero=config.use_silero,
+        silero_min_conf=config.silero_min_conf,
+        num_of_channels=num_of_channels,
+        samp_width=samp_width,
+        use_temp=config.use_temp,
+        webrtc_vad=webrtc_vad,
+        silero_vad=silero_vad,
+    )
+    return RecordingStreamRuntime(
+        input_device_index=int(device_detail["index"]),
+        sr_ori=sr_ori,
+        num_of_channels=num_of_channels,
+        chunk_size=chunk_size,
+        samp_width=samp_width,
+        sr_divider=sr_divider,
+        callback_ctx=callback_ctx,
+    )
+
+
+def _open_recording_stream(*, p, stream_runtime: RecordingStreamRuntime) -> None:
+    bc.stream = p.open(
+        format=pyaudio.paInt16,
+        channels=stream_runtime.num_of_channels,
+        rate=stream_runtime.sr_ori,
+        input=True,
+        frames_per_buffer=stream_runtime.chunk_size,
+        input_device_index=stream_runtime.input_device_index,
+        stream_callback=record_cb,
+    )
+
+
 def _prime_realtime_vad(ctx: RealtimeCallbackContext, resampled: bytes) -> None:
     if ctx.vad_checked:
         return
@@ -1273,28 +1357,7 @@ def record_session(
             is_tl=is_tl,
         )
         p = pyaudio.PyAudio()
-        success, detail = get_device_details(rec_type, sj, p)
-        if not success:
-            raise Exception("Failed to get device details")
-
-        device_detail = detail["device_detail"]
-        sr_ori, num_of_channels, chunk_size = detail["sample_rate"], detail["num_of_channels"], detail["chunk_size"]
-
-        if not sj.cache["supress_record_warning"] and sr_ori > 48000:
-            logger.warning(f"Sample rate is high ({sr_ori} Hz). May cause issues. Can be suppressed in settings.")
-        # if is_tl and not tl_engine_whisper:
-        #     try: requests.get("https://www.google.com/", timeout=5)
-        #     except Exception: logger.warning("No internet connection detected. API Translation might fail.")
-
-        webrtc_vad = webrtcvad.Vad(sj.cache.get(f"threshold_auto_mode_{rec_type}", 3))
-        
-        if callable(getattr(torchaudio, "set_audio_backend", None)):
-            try: torchaudio.set_audio_backend("soundfile") # type: ignore
-            except Exception: pass
-                
-        silero_model = torch.hub.load(repo_or_dir=dir_silero_vad, source="local", model="silero_vad", onnx=True)
-        silero_vad = cast(SileroVadLike, silero_model[0] if isinstance(silero_model, tuple) else silero_model)
-        silero_vad.reset_states()
+        stream_runtime = _build_recording_stream_runtime(rec_type=rec_type, config=config, p=p)
 
         bc.tc_lock = Lock() if (is_tc and is_tl and config.tl_engine_whisper) else None
 
@@ -1375,24 +1438,12 @@ def record_session(
         # Audio stream setup
         bc.tc_sentences, bc.tl_sentences = [], []
         shared_state.prev_tc_res, shared_state.prev_tl_res = "", ""
-        samp_width = p.get_sample_size(pyaudio.paInt16)
-        sr_divider = WHISPER_SR if not config.use_temp else sr_ori
-        callback_ctx = _initialize_callback_context(
-            sample_rate=sr_ori,
-            chunk_size=chunk_size,
-            threshold_enable=config.threshold_enable,
-            threshold_db=config.threshold_db,
-            threshold_auto=config.threshold_auto,
-            use_silero=config.use_silero,
-            silero_min_conf=config.silero_min_conf,
-            num_of_channels=num_of_channels,
-            samp_width=samp_width,
-            use_temp=config.use_temp,
-            webrtc_vad=webrtc_vad,
-            silero_vad=silero_vad,
-        )
-        
-        bc.stream = p.open(format=pyaudio.paInt16, channels=num_of_channels, rate=sr_ori, input=True, frames_per_buffer=chunk_size, input_device_index=int(device_detail["index"]), stream_callback=record_cb)
+        callback_ctx = stream_runtime.callback_ctx
+        sr_ori = stream_runtime.sr_ori
+        num_of_channels = stream_runtime.num_of_channels
+        samp_width = stream_runtime.samp_width
+        sr_divider = stream_runtime.sr_divider
+        _open_recording_stream(p=p, stream_runtime=stream_runtime)
 
         # Main Transcribing Loop
         while bc.recording:

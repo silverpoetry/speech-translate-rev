@@ -12,6 +12,7 @@ from speech_translate.utils.audio.record import (
     BufferStateReducer,
     RealtimeCallbackContext,
     RecordingRuntime,
+    RecordingStreamRuntime,
     RecordingStatusEmitter,
     RealtimeSharedState,
     RealtimeSessionState,
@@ -30,6 +31,7 @@ from speech_translate.utils.audio.record import (
     _cleanup_processed_audio_target,
     _cleanup_translation_audio,
     _commit_realtime_transcription,
+    _build_recording_stream_runtime,
     _execute_recording_iteration,
     _calculate_buffer_duration,
     _execute_realtime_transcription,
@@ -38,6 +40,7 @@ from speech_translate.utils.audio.record import (
     _initialize_callback_context,
     _merge_translation_units,
     _normalize_translation_result_units,
+    _open_recording_stream,
     _reset_callback_context,
     _resolve_live_input_source_language,
     _prime_realtime_vad,
@@ -320,6 +323,111 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(runtime.cuda_device, "cpu")
         self.assertEqual(runtime.hallucination_filters, {"english": ["x"]})
         self.assertEqual(runtime.whisper_args["language"], "en")
+
+    def test_build_recording_stream_runtime_uses_device_and_vad_bootstrap(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_get_device_details = record_module.get_device_details
+        previous_load_vad = record_module._load_recording_vad_runtime
+        previous_init_ctx = record_module._initialize_callback_context
+        try:
+            record_module.get_device_details = lambda rec_type, sj, p: (
+                True,
+                {
+                    "device_detail": {"index": 7},
+                    "sample_rate": 48000,
+                    "num_of_channels": 2,
+                    "chunk_size": 960,
+                },
+            )
+            record_module._load_recording_vad_runtime = lambda rec_type: ("webrtc", "silero")
+            record_module._initialize_callback_context = lambda **kwargs: RealtimeCallbackContext(
+                sample_rate=kwargs["sample_rate"],
+                frame_duration_ms=10,
+                threshold_enable=kwargs["threshold_enable"],
+                threshold_db=kwargs["threshold_db"],
+                threshold_auto=kwargs["threshold_auto"],
+                use_silero=kwargs["use_silero"],
+                silero_min_conf=kwargs["silero_min_conf"],
+                vad_checked=False,
+                num_of_channels=kwargs["num_of_channels"],
+                samp_width=kwargs["samp_width"],
+                use_temp=kwargs["use_temp"],
+                webrtc_vad=kwargs["webrtc_vad"],
+                silero_vad=kwargs["silero_vad"],
+                silence_started_at=0.0,
+            )
+
+            config = _build_recording_session_config(
+                rec_type="mic",
+                lang_source="English",
+                engine="Whisper",
+                is_tc=True,
+                is_tl=True,
+            )
+            runtime = _build_recording_stream_runtime(rec_type="mic", config=config, p=type("P", (), {"get_sample_size": lambda self, fmt: 2})())
+        finally:
+            record_module.get_device_details = previous_get_device_details
+            record_module._load_recording_vad_runtime = previous_load_vad
+            record_module._initialize_callback_context = previous_init_ctx
+
+        self.assertIsInstance(runtime, RecordingStreamRuntime)
+        self.assertEqual(runtime.input_device_index, 7)
+        self.assertEqual(runtime.sr_ori, 48000)
+        self.assertEqual(runtime.num_of_channels, 2)
+        self.assertEqual(runtime.chunk_size, 960)
+        self.assertEqual(runtime.samp_width, 2)
+        self.assertEqual(runtime.sr_divider, 16000)
+        self.assertEqual(runtime.callback_ctx.webrtc_vad, "webrtc")
+        self.assertEqual(runtime.callback_ctx.silero_vad, "silero")
+
+    def test_open_recording_stream_passes_bootstrap_values_to_pyaudio(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        class FakeStreamOwner:
+            def __init__(self) -> None:
+                self.calls = []
+
+            def open(self, **kwargs):
+                self.calls.append(kwargs)
+                return "stream"
+
+        owner = FakeStreamOwner()
+        runtime = RecordingStreamRuntime(
+            input_device_index=5,
+            sr_ori=44100,
+            num_of_channels=1,
+            chunk_size=512,
+            samp_width=2,
+            sr_divider=44100,
+            callback_ctx=RealtimeCallbackContext(
+                sample_rate=44100,
+                frame_duration_ms=10,
+                threshold_enable=True,
+                threshold_db=-20.0,
+                threshold_auto=True,
+                use_silero=True,
+                silero_min_conf=0.75,
+                vad_checked=False,
+                num_of_channels=1,
+                samp_width=2,
+                use_temp=False,
+            ),
+        )
+
+        previous_stream = record_module.bc.stream
+        previous_record_cb = record_module.record_cb
+        try:
+            record_module.record_cb = lambda *args, **kwargs: "cb"
+            _open_recording_stream(p=owner, stream_runtime=runtime)
+        finally:
+            record_module.bc.stream = previous_stream
+            record_module.record_cb = previous_record_cb
+
+        self.assertEqual(owner.calls[0]["channels"], 1)
+        self.assertEqual(owner.calls[0]["rate"], 44100)
+        self.assertEqual(owner.calls[0]["input_device_index"], 5)
+        self.assertEqual(owner.calls[0]["stream_callback"](), "cb")
 
     def test_resolve_live_input_source_language_prefers_detected_supported_language(self) -> None:
         from speech_translate.utils.audio import record as record_module
