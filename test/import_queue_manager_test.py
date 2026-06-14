@@ -37,6 +37,16 @@ class FakeBridge:
     TL_ENGINE_TARGET_DICT_REF = {"Google Translate": ["Chinese"]}
 
     def __init__(self) -> None:
+        self.model_manager_controller = type(
+            "ModelManagerController",
+            (),
+            {
+                "pending_calls": [],
+                "ready_calls": [],
+                "mark_runtime_model_pending": lambda self_, model_key, loaded=False, message=None: self_.pending_calls.append((model_key, loaded, message)),
+                "mark_runtime_model_ready": lambda self_, model_key=None, message=None: self_.ready_calls.append((model_key, message)),
+            },
+        )()
         self._lock = DummyLock()
         self._model_load_running = False
         self._runtime_model_loaded = False
@@ -45,6 +55,10 @@ class FakeBridge:
         self.task_state = type("TaskState", (), {"title": ""})()
         self.updates = []
         self.window = None
+        self.bound_headless = 0
+        self.finished = []
+        self.errors = []
+        self.settings_snapshot = dict(FakeSettings().cache)
 
     def _normalize_engine_name(self, value: str) -> str:
         return value
@@ -83,22 +97,23 @@ class FakeBridge:
         self.task_state.title = title
 
     def bind_headless_main_window(self):
-        return None
+        self.bound_headless += 1
 
     def finish_task(self, message: str):
-        self.updates.append(("finish", message))
+        self.finished.append(message)
 
     def update_task_error(self, message: str):
-        self.updates.append(("error", message))
+        self.errors.append(message)
 
     def get_settings_snapshot(self):
-        return dict(FakeSettings().cache)
+        return dict(self.settings_snapshot)
 
 
 class ImportQueueControllerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.bridge = FakeBridge()
         self.settings = FakeSettings()
+        self.bridge.settings_snapshot = self.settings.cache
         self.controller = ImportQueueController(self.bridge, self.settings, object, lambda *args, **kwargs: True, lambda: None)
 
     def test_get_full_display_queue_merges_processing_status(self) -> None:
@@ -148,6 +163,58 @@ class ImportQueueControllerTests(unittest.TestCase):
         self.controller.processing_queue = [{"path": "a.wav", "name": "a.wav", "status": "Waiting", "is_completed": False}]
         self.controller.sync_file_status(0, "Done", True)
         self.assertTrue(any(update[0] == "message" and update[1] == TASK_SOURCE_IMPORT for update in self.bridge.updates))
+
+    def test_start_import_queue_uses_engine_name_and_prepares_runtime_model(self) -> None:
+        previous_runtime_loaded = self.bridge._runtime_model_loaded
+        previous_runtime_key = self.bridge._runtime_model_key
+        previous_model_load_running = self.bridge._model_load_running
+        previous_start_worker = self.controller._start_import_worker
+        captured = {}
+        try:
+            self.bridge._runtime_model_loaded = True
+            self.bridge._runtime_model_key = "small"
+            self.bridge._model_load_running = False
+            self.controller.file_import_queue = [{"path": "a.wav", "name": "a.wav", "status": "Waiting", "is_completed": False}]
+            self.controller._start_import_worker = lambda *, context, audio_file_module: captured.update(
+                {"engine": context.engine, "model": context.model_name_tc, "prepare": context.should_prepare_runtime_model}
+            )
+            self.settings.cache["tl_engine_f_import"] = "Selenium Chrome Translate"
+            self.settings.cache["model_f_import"] = "small"
+            result = self.controller.start_import_queue()
+        finally:
+            self.bridge._runtime_model_loaded = previous_runtime_loaded
+            self.bridge._runtime_model_key = previous_runtime_key
+            self.bridge._model_load_running = previous_model_load_running
+            self.controller._start_import_worker = previous_start_worker
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(captured["engine"], "Selenium Chrome Translate")
+        self.assertEqual(captured["model"], "small")
+        self.assertTrue(captured["prepare"])
+        self.assertEqual(self.bridge.bound_headless, 1)
+        self.assertEqual(self.bridge.model_manager_controller.ready_calls[-1][0], "small")
+
+    def test_start_import_queue_closes_selenium_when_configured(self) -> None:
+        previous_shutdown = self.controller.shutdown_selenium_fn
+        previous_start_worker = self.controller._start_import_worker
+        shutdown_calls = []
+        try:
+            self.controller.shutdown_selenium_fn = lambda: shutdown_calls.append("shutdown")
+            self.controller.file_import_queue = [{"path": "a.wav", "name": "a.wav", "status": "Waiting", "is_completed": False}]
+
+            def fake_start_worker(*, context, audio_file_module):
+                self.controller._finish_import_run(context=context)
+
+            self.controller._start_import_worker = fake_start_worker
+            self.settings.cache["tl_engine_f_import"] = "Selenium Chrome Translate"
+            self.settings.cache["selenium_auto_close_on_task_done"] = True
+            result = self.controller.start_import_queue()
+        finally:
+            self.controller.shutdown_selenium_fn = previous_shutdown
+            self.controller._start_import_worker = previous_start_worker
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(shutdown_calls, ["shutdown"])
 
 
 if __name__ == "__main__":

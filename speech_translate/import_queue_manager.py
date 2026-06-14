@@ -44,6 +44,24 @@ class QueueItem:
         }
 
 
+@dataclass(frozen=True)
+class ImportStartContext:
+    settings_snapshot: JsonDict
+    engine: str
+    model_name_tc: str
+    is_tc: bool
+    is_tl: bool
+    files_to_process: list[str]
+
+    @property
+    def should_prepare_runtime_model(self) -> bool:
+        return self.is_tc or (self.is_tl and self.engine in model_keys)
+
+    @property
+    def should_auto_close_selenium(self) -> bool:
+        return self.is_tl and self.engine == "Selenium Chrome Translate"
+
+
 class ImportQueueController:
     """Owns import queue state, UI projections, and file import task orchestration."""
 
@@ -255,6 +273,90 @@ class ImportQueueController:
                     files_to_process.append(normalized.path)
         return files_to_process
 
+    def _build_import_start_context(self) -> ImportStartContext:
+        settings_snapshot = self.bridge.get_settings_snapshot()
+        return ImportStartContext(
+            settings_snapshot=settings_snapshot,
+            engine=self.bridge._normalize_engine_name(str(settings_snapshot.get("tl_engine_f_import", "Google Translate"))),
+            model_name_tc=self.bridge._normalize_model_key(str(settings_snapshot.get("model_f_import", ""))),
+            is_tc=bool(settings_snapshot.get("transcribe_f_import", True)),
+            is_tl=bool(settings_snapshot.get("translate_f_import", True)),
+            files_to_process=self._extract_files_to_process(),
+        )
+
+    def _prepare_runtime_model_for_import(self, context: ImportStartContext) -> None:
+        if not context.should_prepare_runtime_model:
+            return
+        if bool(self.bridge._runtime_model_loaded) and self.bridge._runtime_model_key == context.model_name_tc:
+            self.bridge.model_manager_controller.mark_runtime_model_ready(context.model_name_tc)
+        else:
+            self.bridge.model_manager_controller.mark_runtime_model_pending(context.model_name_tc)
+
+    def _configure_audio_file_runtime(self) -> object:
+        from speech_translate.utils.audio import file as audio_file_module
+
+        audio_file_module.FileProcessDialog = lambda master, title, mode, headers: self.headless_dialog_cls(
+            master,
+            title,
+            mode,
+            headers,
+            bridge=self.bridge,
+        )
+        audio_file_module.mbox = self.headless_mbox_fn
+        return audio_file_module
+
+    def _finalize_processing_queue(self) -> None:
+        with self.bridge._lock:
+            processing_map = {item.get("path"): item for item in self.processing_queue}
+            for index, entry in enumerate(self.file_import_queue):
+                path = self._normalize_queue_item(entry).path
+                if path in processing_map:
+                    processing_item = processing_map[path]
+                    self.file_import_queue[index] = QueueItem(
+                        path=path,
+                        name=processing_item.get("name", os.path.basename(path)),
+                        status=processing_item.get("status", ""),
+                        is_completed=bool(processing_item.get("is_completed", False)),
+                    ).to_dict()
+            self.processing_queue = []
+
+    def _finish_import_run(self, *, context: ImportStartContext) -> None:
+        self._finalize_processing_queue()
+        bc.disable_file_process()
+        self.bridge._model_load_running = False
+        self._emit_import_update(async_emit=False)
+        if context.should_auto_close_selenium and bool(context.settings_snapshot.get("selenium_auto_close_on_task_done", True)):
+            self.shutdown_selenium_fn()
+
+    def _build_import_summary(self, *, is_tc: bool, is_tl: bool) -> str:
+        return ", ".join([f"{bc.file_tced_counter} transcribed"] * is_tc + [f"{bc.file_tled_counter} translated"] * is_tl) or "no output generated"
+
+    def _start_import_worker(self, *, context: ImportStartContext, audio_file_module: object) -> None:
+        def worker() -> None:
+            try:
+                bc.enable_file_process()
+                audio_file_module.process_file(
+                    context.files_to_process,
+                    context.model_name_tc,
+                    str(context.settings_snapshot.get("source_lang_f_import", "English")),
+                    str(context.settings_snapshot.get("target_lang_f_import", "Indonesian")),
+                    context.is_tc,
+                    context.is_tl,
+                    context.engine,
+                )
+                self.bridge.finish_task(
+                    f"File import finished: {self._build_import_summary(is_tc=context.is_tc, is_tl=context.is_tl)}"
+                )
+                if self.bridge._model_load_running:
+                    self.bridge.model_manager_controller.mark_runtime_model_ready(context.model_name_tc)
+            except Exception as exc:
+                logger.exception(exc)
+                self.bridge.update_task_error(str(exc))
+            finally:
+                self._finish_import_run(context=context)
+
+        Thread(target=worker, daemon=True).start()
+
     def start_import_queue(self) -> JsonDict:
         if not self.file_import_queue:
             return {"ok": False, "message": "No files in queue"}
@@ -263,71 +365,15 @@ class ImportQueueController:
         if self.bridge._model_load_running:
             return {"ok": False, "message": "Model loading is still in progress."}
 
-        settings_snapshot = self.bridge.get_settings_snapshot()
-        engine = self.bridge._normalize_model_key(str(settings_snapshot.get("tl_engine_f_import", "Google Translate")))
-        model_name_tc = self.bridge._normalize_model_key(str(settings_snapshot.get("model_f_import", "")))
-        is_tc = bool(settings_snapshot.get("transcribe_f_import", True))
-        is_tl = bool(settings_snapshot.get("translate_f_import", True))
-
-        if is_tc or (is_tl and engine in model_keys):
-            if bool(self.bridge._runtime_model_loaded) and self.bridge._runtime_model_key == model_name_tc:
-                self.bridge.model_manager_controller.mark_runtime_model_ready(model_name_tc)
-            else:
-                self.bridge.model_manager_controller.mark_runtime_model_pending(model_name_tc)
-
-        files_to_process = self._extract_files_to_process()
-        if not files_to_process:
+        context = self._build_import_start_context()
+        if not context.files_to_process:
             return {"ok": False, "message": "All items are already completed"}
 
+        self._prepare_runtime_model_for_import(context)
         self.bridge.reset_task_state("File Import")
         self.bridge.bind_headless_main_window()
-
-        from speech_translate.utils.audio import file as audio_file_module
-
-        audio_file_module.FileProcessDialog = lambda master, title, mode, headers: self.headless_dialog_cls(master, title, mode, headers, bridge=self.bridge)
-        audio_file_module.mbox = self.headless_mbox_fn
-
-        def worker():
-            try:
-                bc.enable_file_process()
-                audio_file_module.process_file(
-                    files_to_process,
-                    model_name_tc,
-                    str(settings_snapshot.get("source_lang_f_import", "English")),
-                    str(settings_snapshot.get("target_lang_f_import", "Indonesian")),
-                    is_tc,
-                    is_tl,
-                    engine,
-                )
-                summary = ", ".join([f"{bc.file_tced_counter} transcribed"] * is_tc + [f"{bc.file_tled_counter} translated"] * is_tl) or "no output generated"
-                self.bridge.finish_task(f"File import finished: {summary}")
-                if self.bridge._model_load_running:
-                    self.bridge.model_manager_controller.mark_runtime_model_ready(model_name_tc)
-            except Exception as exc:
-                logger.exception(exc)
-                self.bridge.update_task_error(str(exc))
-            finally:
-                with self.bridge._lock:
-                    processing_map = {item.get("path"): item for item in self.processing_queue}
-                    for index, entry in enumerate(self.file_import_queue):
-                        path = self._normalize_queue_item(entry).path
-                        if path in processing_map:
-                            processing_item = processing_map[path]
-                            self.file_import_queue[index] = QueueItem(
-                                path=path,
-                                name=processing_item.get("name", os.path.basename(path)),
-                                status=processing_item.get("status", ""),
-                                is_completed=bool(processing_item.get("is_completed", False)),
-                            ).to_dict()
-                    self.processing_queue = []
-                bc.disable_file_process()
-                self.bridge._model_load_running = False
-                self._emit_import_update(async_emit=False)
-                if bool(settings_snapshot.get("selenium_auto_close_on_task_done", True)) and is_tl and engine == "Selenium Chrome Translate":
-                    self.shutdown_selenium_fn()
-
-        Thread(target=worker, daemon=True).start()
-        return {"ok": True, "count": len(files_to_process), "message": "File import started"}
+        self._start_import_worker(context=context, audio_file_module=self._configure_audio_file_runtime())
+        return {"ok": True, "count": len(context.files_to_process), "message": "File import started"}
 
     def stop_import_queue(self) -> JsonDict:
         with self.bridge._lock:
