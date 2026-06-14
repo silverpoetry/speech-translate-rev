@@ -125,6 +125,22 @@ class ImportQueueControllerTests(unittest.TestCase):
         self.assertEqual(payload["selected_model"], "")
         self.assertIn("small", payload["selected_model_key"] or "small")
 
+    def test_extract_files_to_process_skips_completed_entries(self) -> None:
+        self.controller.file_import_queue = [
+            {"path": "a.wav", "name": "a.wav", "status": "Done", "is_completed": True},
+            {"path": "b.wav", "name": "b.wav", "status": "Waiting", "is_completed": False},
+            "c.wav",
+        ]
+        self.assertEqual(self.controller._extract_files_to_process(), ["b.wav", "c.wav"])
+
+    def test_normalize_queue_item_supports_str_and_dict(self) -> None:
+        item_from_str = self.controller._normalize_queue_item("a.wav")
+        item_from_dict = self.controller._normalize_queue_item({"path": "b.wav", "name": "Bee", "status": "Queued", "is_completed": True})
+        self.assertEqual(item_from_str.path, "a.wav")
+        self.assertEqual(item_from_str.name, "a.wav")
+        self.assertEqual(item_from_dict.name, "Bee")
+        self.assertTrue(item_from_dict.is_completed)
+
 
 if __name__ == "__main__":
     unittest.main()

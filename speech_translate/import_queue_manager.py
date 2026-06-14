@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from importlib import import_module
 from threading import Thread
 from time import gmtime, sleep, strftime, time
@@ -16,6 +17,22 @@ MEDIA_FILE_TYPES = [
     "Media Files (*.wav;*.mp3;*.ogg;*.flac;*.aac;*.wma;*.m4a;*.mp4;*.mkv;*.avi;*.mov;*.webm)",
     "All Files (*.*)",
 ]
+
+
+@dataclass
+class QueueItem:
+    path: str
+    name: str
+    status: str = ""
+    is_completed: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "path": self.path,
+            "name": self.name,
+            "status": self.status,
+            "is_completed": self.is_completed,
+        }
 
 
 class ImportQueueController:
@@ -76,25 +93,7 @@ class ImportQueueController:
 
     def get_full_display_queue(self) -> List[Dict[str, Any]]:
         with self.bridge._lock:
-            display_list = []
-            for entry in self.file_import_queue:
-                if isinstance(entry, str):
-                    display_list.append({"path": entry, "name": os.path.basename(entry), "status": "", "is_completed": False})
-                elif isinstance(entry, dict):
-                    display_list.append(
-                        {
-                            "path": entry.get("path", ""),
-                            "name": entry.get("name", os.path.basename(entry.get("path", ""))),
-                            "status": entry.get("status", ""),
-                            "is_completed": bool(entry.get("is_completed", False)),
-                        }
-                    )
-                else:
-                    try:
-                        text = str(entry)
-                        display_list.append({"path": text, "name": os.path.basename(text), "status": "", "is_completed": False})
-                    except Exception:
-                        pass
+            display_list = [self._normalize_queue_item(entry).to_dict() for entry in self.file_import_queue]
 
             if self.processing_queue:
                 processing_map = {item.get("path"): item for item in self.processing_queue if item.get("path")}
@@ -120,32 +119,16 @@ class ImportQueueController:
         self.batch_start_time = time()
         with self.bridge._lock:
             self.bridge.task_state.title = task_name
-            self.processing_queue = []
-            for file_path in files:
-                self.processing_queue.append(
-                    {
-                        "path": str(file_path),
-                        "name": os.path.basename(str(file_path)),
-                        "status": "Waiting",
-                        "is_completed": False,
-                    }
-                )
+            self.processing_queue = [self._make_queue_item(file_path, status="Waiting").to_dict() for file_path in files]
 
         display_queue = self.get_full_display_queue()
         total = len(display_queue)
-        completed_count = sum(1 for item in display_queue if item.get("is_completed", False))
-
-        self.bridge.update_task_message(f"已准备好 {len(files)} 个待处理文件 | 队列共 {total} 个")
-        self.bridge.update_task_progress(float((completed_count / total * 100) if total > 0 else 0))
-        self.bridge.update_task_rows([[item.get("name", ""), item.get("status", "")] for item in display_queue])
-
-        def _async_emit():
-            try:
-                self.bridge._emit_ui_update(["import"])
-            except Exception:
-                pass
-
-        Thread(target=_async_emit, daemon=True).start()
+        self._update_task_projection(
+            display_queue,
+            f"已准备好 {len(files)} 个待处理文件 | 队列共 {total} 个",
+            source="import",
+        )
+        self._emit_import_update(async_emit=True)
 
     def sync_file_status(self, index: int, combined_status: str, is_completed: bool) -> None:
         with self.bridge._lock:
@@ -166,17 +149,8 @@ class ImportQueueController:
         if elapsed:
             message += f" | 耗时: {elapsed}"
 
-        self.bridge.update_task_progress(float((completed_count / total * 100) if total > 0 else 0))
-        self.bridge.update_task_message(message)
-        self.bridge.update_task_rows([[item.get("name", ""), item.get("status", "")] for item in display_queue])
-
-        def _async_emit():
-            try:
-                self.bridge._emit_ui_update(["import"])
-            except Exception:
-                pass
-
-        Thread(target=_async_emit, daemon=True).start()
+        self._update_task_projection(display_queue, message, source="import")
+        self._emit_import_update(async_emit=True)
 
     def add_files_to_import_queue(self, files: Optional[list[str]] = None) -> Dict[str, Any]:
         if not self.bridge._wait_recording_idle(timeout_s=12.0):
@@ -202,12 +176,8 @@ class ImportQueueController:
         added = 0
         with self.bridge._lock:
             for file_path in files:
-                if not any(
-                    (isinstance(queue_item, str) and queue_item == file_path)
-                    or (isinstance(queue_item, dict) and queue_item.get("path") == file_path)
-                    for queue_item in self.file_import_queue
-                ):
-                    self.file_import_queue.append({"path": file_path, "name": os.path.basename(file_path), "status": "Waiting", "is_completed": False})
+                if not any(self._normalize_queue_item(queue_item).path == file_path for queue_item in self.file_import_queue):
+                    self.file_import_queue.append(self._make_queue_item(file_path, status="Waiting").to_dict())
                     added += 1
         return {"ok": True, "count": len(self.file_import_queue), "added": added, "files": list(self.file_import_queue)}
 
@@ -224,9 +194,7 @@ class ImportQueueController:
                 removed = self.processing_queue.pop(idx)
                 path_to_remove = removed.get("path")
                 for queue_index, queue_item in enumerate(list(self.file_import_queue)):
-                    if (isinstance(queue_item, str) and queue_item == path_to_remove) or (
-                        isinstance(queue_item, dict) and queue_item.get("path") == path_to_remove
-                    ):
+                    if self._normalize_queue_item(queue_item).path == path_to_remove:
                         self.file_import_queue.pop(queue_index)
                         break
             else:
@@ -234,20 +202,14 @@ class ImportQueueController:
                     return {"ok": False, "message": "索引超出范围"}
                 removed = self.file_import_queue.pop(idx)
 
-        try:
-            self.bridge._emit_ui_update(["import"])
-        except Exception:
-            pass
+        self._emit_import_update(async_emit=False)
         return {"ok": True, "files": list(self.file_import_queue), "removed": removed}
 
     def clear_import_queue(self) -> Dict[str, Any]:
         with self.bridge._lock:
             self.file_import_queue = []
             self.processing_queue = []
-        try:
-            self.bridge._emit_ui_update(["import"])
-        except Exception:
-            pass
+        self._emit_import_update(async_emit=False)
         return {"ok": True, "files": []}
 
     def import_files(self, files: Optional[list[str]] = None) -> Dict[str, Any]:
@@ -272,11 +234,9 @@ class ImportQueueController:
         files_to_process = []
         with self.bridge._lock:
             for entry in self.file_import_queue:
-                if isinstance(entry, dict):
-                    if not entry.get("is_completed", False):
-                        files_to_process.append(entry.get("path", ""))
-                elif isinstance(entry, str):
-                    files_to_process.append(entry)
+                normalized = self._normalize_queue_item(entry)
+                if not normalized.is_completed and normalized.path:
+                    files_to_process.append(normalized.path)
         return files_to_process
 
     def start_import_queue(self) -> Dict[str, Any]:
@@ -339,22 +299,19 @@ class ImportQueueController:
                 with self.bridge._lock:
                     processing_map = {item.get("path"): item for item in self.processing_queue}
                     for index, entry in enumerate(self.file_import_queue):
-                        path = entry if isinstance(entry, str) else entry.get("path", "")
+                        path = self._normalize_queue_item(entry).path
                         if path in processing_map:
                             processing_item = processing_map[path]
-                            self.file_import_queue[index] = {
-                                "path": path,
-                                "name": processing_item.get("name", os.path.basename(path)),
-                                "status": processing_item.get("status", ""),
-                                "is_completed": bool(processing_item.get("is_completed", False)),
-                            }
+                            self.file_import_queue[index] = QueueItem(
+                                path=path,
+                                name=processing_item.get("name", os.path.basename(path)),
+                                status=processing_item.get("status", ""),
+                                is_completed=bool(processing_item.get("is_completed", False)),
+                            ).to_dict()
                     self.processing_queue = []
                 bc.disable_file_process()
                 self.bridge._model_load_running = False
-                try:
-                    self.bridge._emit_ui_update(["import"])
-                except Exception:
-                    pass
+                self._emit_import_update(async_emit=False)
                 if bool(settings_snapshot.get("selenium_auto_close_on_task_done", True)) and is_tl and engine == "Selenium Chrome Translate":
                     self.shutdown_selenium_fn()
 
@@ -373,8 +330,48 @@ class ImportQueueController:
             self.bridge.update_task_message("Cancelling file import...", source="import")
         except Exception:
             pass
-        try:
-            self.bridge._emit_ui_update(["import"])
-        except Exception:
-            pass
+        self._emit_import_update(async_emit=False)
         return {"ok": True, "message": "Cancel requested"}
+
+    def _make_queue_item(self, file_path: str, *, status: str = "", is_completed: bool = False) -> QueueItem:
+        normalized_path = str(file_path)
+        return QueueItem(
+            path=normalized_path,
+            name=os.path.basename(normalized_path),
+            status=status,
+            is_completed=is_completed,
+        )
+
+    def _normalize_queue_item(self, entry: Any) -> QueueItem:
+        if isinstance(entry, QueueItem):
+            return entry
+        if isinstance(entry, dict):
+            path = str(entry.get("path", ""))
+            return QueueItem(
+                path=path,
+                name=str(entry.get("name", os.path.basename(path))),
+                status=str(entry.get("status", "")),
+                is_completed=bool(entry.get("is_completed", False)),
+            )
+        text = str(entry)
+        return QueueItem(path=text, name=os.path.basename(text))
+
+    def _emit_import_update(self, *, async_emit: bool) -> None:
+        def emit() -> None:
+            try:
+                self.bridge._emit_ui_update(["import"])
+            except Exception:
+                pass
+
+        if async_emit:
+            Thread(target=emit, daemon=True).start()
+        else:
+            emit()
+
+    def _update_task_projection(self, display_queue: List[Dict[str, Any]], message: str, *, source: str = "general") -> None:
+        total = len(display_queue)
+        completed_count = sum(1 for item in display_queue if item.get("is_completed", False))
+        progress = float((completed_count / total * 100) if total > 0 else 0)
+        self.bridge.update_task_progress(progress, source=source)
+        self.bridge.update_task_message(message, source=source)
+        self.bridge.update_task_rows([[item.get("name", ""), item.get("status", "")] for item in display_queue])
