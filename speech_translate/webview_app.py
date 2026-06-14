@@ -1,9 +1,10 @@
 from threading import Thread
-from typing import Any, Dict, Optional, List
+from typing import Optional
 
 from speech_translate._logging import init_logging
 from speech_translate._path import dir_debug
 from speech_translate.app_startup_controller import AppStartupController
+from speech_translate.controller_protocols import JsonDict, TrayLike, WebviewWindowLike
 from speech_translate.detached_windows import DetachedWindowManager
 from speech_translate.detached_window_controller import DetachedWindowController
 from speech_translate.import_queue_manager import ImportQueueController
@@ -49,30 +50,30 @@ class WebBridge(WebBridgeFacadeMixin, WebTaskBridge):
         self.detached_window_controller = DetachedWindowController(self, sj, self.detached_window_manager)
         self.state_view_builder.start_audio_source_scan()
 
-    def bind_window(self, window):
+    def bind_window(self, window: WebviewWindowLike) -> None:
         super().bind_window(window)
         self.main_window_controller.bind_window(window)
 
-    def bind_tray(self, tray):
+    def bind_tray(self, tray: TrayLike) -> None:
         super().bind_tray(tray)
 
-    def get_state(self) -> Dict[str, Any]:
+    def get_state(self) -> JsonDict:
         result = self.state_view_builder.build_state()
         if not self.main_window_controller.first_state_logged:
             self.main_window_controller.first_state_logged = True
             self._log_startup_marker("first_get_state")
         return result
 
-    def get_task_state(self) -> Dict[str, Any]:
+    def get_task_state(self) -> JsonDict:
         return self.snapshot_task_state()
 
-    def get_live_state(self) -> Dict[str, Any]:
+    def get_live_state(self) -> JsonDict:
         return self.snapshot_live_state()
 
-    def update_task_message(self, message: str, source: str = TASK_SOURCE_GENERAL):
+    def update_task_message(self, message: str, source: str = TASK_SOURCE_GENERAL) -> None:
         super().update_task_message(message, source=source)
         self.model_manager_controller.handle_task_message(message, source=source)
 
-def main(with_log_init: bool = True):
+def main(with_log_init: bool = True) -> None:
     startup_controller = AppStartupController(WebBridge, add_ffmpeg_to_path)
     startup_controller.start(with_log_init=with_log_init, log_initializer=init_logging)

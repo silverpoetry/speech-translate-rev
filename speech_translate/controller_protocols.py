@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from threading import Thread
-from typing import Callable, MutableMapping, Protocol, Sequence
+from typing import Callable, Mapping, MutableMapping, Protocol, Sequence
 
 
 JsonDict = dict[str, object]
@@ -36,6 +36,31 @@ class FolderDialogWindow(Protocol):
         ...
 
 
+class WebviewWindowLike(Protocol):
+    width: int
+    height: int
+    native: object | None
+    events: object
+
+    def show(self) -> None:
+        ...
+
+    def bring_to_front(self) -> None:
+        ...
+
+    def hide(self) -> None:
+        ...
+
+    def destroy(self) -> None:
+        ...
+
+    def evaluate_js(self, script: str) -> object:
+        ...
+
+    def move(self, x: int, y: int) -> None:
+        ...
+
+
 class TrayLike(Protocol):
     def stop(self) -> None:
         ...
@@ -47,7 +72,7 @@ class DetachedWindowManagerLike(Protocol):
 
 
 class DetachedWindowManagerApi(Protocol):
-    windows: MutableMapping[str, object]
+    windows: MutableMapping[str, WebviewWindowLike]
 
     def create_window(self, mode: str, x: int, y: int, width: int, height: int) -> None:
         ...
@@ -252,6 +277,19 @@ class MainWindowBridge(Protocol):
 
 class DetachedWindowBridge(Protocol):
     def snapshot_live_state(self) -> JsonDict:
+        ...
+
+
+class DetachedWindowManagerBridge(Protocol):
+    def get_detached_config(self, mode: str) -> JsonDict:
+        ...
+
+    def get_recording_state(self) -> JsonDict:
+        ...
+
+
+class RecordingStateProvider(Protocol):
+    def __call__(self) -> JsonDict:
         ...
 
 

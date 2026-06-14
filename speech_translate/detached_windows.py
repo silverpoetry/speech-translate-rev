@@ -7,10 +7,17 @@ from pathlib import Path
 from platform import system
 from threading import Lock
 from time import time
-from typing import Any, Dict, Optional
+from typing import Mapping, Optional
 
 from loguru import logger
 
+from speech_translate.controller_protocols import (
+    DetachedWindowManagerBridge,
+    JsonDict,
+    RecordingStateProvider,
+    SettingsStore,
+    WebviewWindowLike,
+)
 from speech_translate.window_geometry import center_window_pos, ensure_visible_or_center, parse_window_size
 
 
@@ -18,12 +25,12 @@ DETACHED_WINDOW_MODES = {"tc", "tl"}
 DETACHED_WINDOW_DEFAULT_MODE = "tl"
 
 
-def normalize_detached_mode(mode: Any) -> str:
+def normalize_detached_mode(mode: object) -> str:
     normalized = str(mode).lower()
     return normalized if normalized in DETACHED_WINDOW_MODES else DETACHED_WINDOW_DEFAULT_MODE
 
 
-def build_detached_config(settings_cache: Dict[str, Any], mode: Any) -> Dict[str, Any]:
+def build_detached_config(settings_cache: Mapping[str, object], mode: object) -> JsonDict:
     normalized_mode = normalize_detached_mode(mode)
     return {
         "font": settings_cache.get(f"tb_ex_{normalized_mode}_font", "Arial"),
@@ -38,14 +45,14 @@ def build_detached_config(settings_cache: Dict[str, Any], mode: Any) -> Dict[str
     }
 
 
-def detached_setting_key(mode: Any, key: str) -> str:
+def detached_setting_key(mode: object, key: str) -> str:
     normalized_mode = normalize_detached_mode(mode)
     if key in ("always_on_top", "no_title_bar", "opacity", "click_through"):
         return f"ex_{normalized_mode}_{key}"
     return f"tb_ex_{normalized_mode}_{key}"
 
 
-def get_detached_live_content(mode: Any, live_state: Dict[str, Any]) -> Optional[str]:
+def get_detached_live_content(mode: object, live_state: Mapping[str, object]) -> Optional[str]:
     normalized_mode = normalize_detached_mode(mode)
     content_key = "transcribed" if normalized_mode == "tc" else "translated"
     html = live_state.get(f"detached_{content_key}_html")
@@ -75,21 +82,21 @@ class DetachedWindowManager:
     _SWP_SHOWWINDOW = 0x0040
     _LWA_ALPHA = 0x00000002
 
-    def __init__(self, bridge: Any = None, settings: Any = None):
+    def __init__(self, bridge: DetachedWindowManagerBridge | None = None, settings: SettingsStore | None = None):
         self.bridge = bridge
         self.settings = settings
-        self.windows = {}
-        self.pending_updates = {}
-        self.pending_configs = {}
-        self._window_loaded = {}
-        self._window_content_ready = {}
-        self._last_content_payload = {}
-        self._last_config_payload = {}
-        self._window_style_cache = {}
-        self._content_sender_busy = {}
+        self.windows: dict[str, WebviewWindowLike] = {}
+        self.pending_updates: dict[str, str] = {}
+        self.pending_configs: dict[str, JsonDict] = {}
+        self._window_loaded: dict[str, bool] = {}
+        self._window_content_ready: dict[str, bool] = {}
+        self._last_content_payload: dict[str, str] = {}
+        self._last_config_payload: dict[str, str] = {}
+        self._window_style_cache: dict[str, tuple[int, int]] = {}
+        self._content_sender_busy: dict[str, bool] = {}
         self._content_sender_lock = Lock()
-        self.recording_window = None
-        self.pending_recording_payload = None
+        self.recording_window: WebviewWindowLike | None = None
+        self.pending_recording_payload: JsonDict | None = None
 
     def _get_window_hwnd(self, mode: str) -> Optional[int]:
         window = self.windows.get(mode)
@@ -123,7 +130,7 @@ class DetachedWindowManager:
         except Exception:
             pass
 
-    def _apply_native_window_settings(self, mode: str, config: Optional[Dict[str, Any]] = None) -> None:
+    def _apply_native_window_settings(self, mode: str, config: Optional[JsonDict] = None) -> None:
         if system() != "Windows":
             return
 
@@ -347,7 +354,7 @@ class DetachedWindowManager:
         self._persist_window_geometry(mode)
         self._drop_window_ref(mode)
 
-    def _attach_window_events(self, mode: str, window) -> None:
+    def _attach_window_events(self, mode: str, window: WebviewWindowLike) -> None:
         try:
             if hasattr(window, "events") and hasattr(window.events, "closed"):
                 window.events.closed += lambda *_: self._on_window_closed(mode)
@@ -528,7 +535,7 @@ class DetachedWindowManager:
                 f"loaded={self._window_loaded.get(mode)} ready={self._window_content_ready.get(mode)}"
             )
 
-    def update_window_config(self, mode: str, config: Dict[str, Any]):
+    def update_window_config(self, mode: str, config: JsonDict) -> None:
         mode = normalize_detached_mode(mode)
         self.pending_configs[mode] = config
         if mode in self.windows and self._window_loaded.get(mode):
@@ -600,7 +607,7 @@ class DetachedWindowManager:
             finally:
                 self.recording_window = None
 
-    def update_recording_status(self, payload: Dict[str, Any]):
+    def update_recording_status(self, payload: JsonDict) -> None:
         self.pending_recording_payload = payload
 
 
@@ -612,7 +619,7 @@ class DetachedWindowApi:
     def __init__(self, manager: DetachedWindowManager):
         self._manager = manager
 
-    def move_detached_window(self, mode: str, x: Any, y: Any) -> Dict[str, Any]:
+    def move_detached_window(self, mode: str, x: object, y: object) -> JsonDict:
         mode = normalize_detached_mode(mode)
         window = self._manager.windows.get(mode)
         if window is None or not hasattr(window, "move"):
@@ -631,7 +638,7 @@ class DetachedWindowApi:
             logger.error(f"Failed to move detached window {mode}: {exc}")
             return {"status": "error", "mode": mode, "error": str(exc)}
 
-    def detached_window_ready(self, mode: str) -> Dict[str, Any]:
+    def detached_window_ready(self, mode: str) -> JsonDict:
         mode = normalize_detached_mode(mode)
         self._manager.mark_window_content_ready(mode)
         return {"status": "ready", "mode": mode}
@@ -642,8 +649,8 @@ class RecordingWindowApi:
 
     __slots__ = ("_get_recording_state",)
 
-    def __init__(self, get_recording_state):
+    def __init__(self, get_recording_state: RecordingStateProvider):
         self._get_recording_state = get_recording_state
 
-    def get_recording_state(self) -> Dict[str, Any]:
+    def get_recording_state(self) -> JsonDict:
         return self._get_recording_state()

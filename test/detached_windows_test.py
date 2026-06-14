@@ -8,6 +8,8 @@ to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
 from speech_translate.detached_windows import (
+    DetachedWindowApi,
+    RecordingWindowApi,
     build_detached_config,
     detached_setting_key,
     get_detached_live_content,
@@ -61,6 +63,39 @@ class DetachedWindowHelpersTests(unittest.TestCase):
         self.assertEqual(get_detached_live_content("tc", live_state), "<b>hello</b>")
         self.assertEqual(get_detached_live_content("tl", live_state), "world")
         self.assertIsNone(get_detached_live_content("invalid", {}))
+
+    def test_detached_window_api_moves_window_with_numeric_payload(self) -> None:
+        class FakeWindow:
+            def __init__(self) -> None:
+                self.moves = []
+
+            def move(self, x: int, y: int) -> None:
+                self.moves.append((x, y))
+
+        manager = type("Manager", (), {"windows": {"tc": FakeWindow()}, "mark_window_content_ready": lambda self, mode: None})()
+        api = DetachedWindowApi(manager)
+        result = api.move_detached_window("tc", "10.4", 20)
+        self.assertEqual(result, {"status": "moved", "mode": "tc", "x": 10, "y": 20})
+        self.assertEqual(manager.windows["tc"].moves, [(10, 20)])
+
+    def test_detached_window_api_reports_ready(self) -> None:
+        class FakeManager:
+            def __init__(self) -> None:
+                self.windows = {"tc": object()}
+                self.ready_modes = []
+
+            def mark_window_content_ready(self, mode: str) -> None:
+                self.ready_modes.append(mode)
+
+        manager = FakeManager()
+        api = DetachedWindowApi(manager)
+        result = api.detached_window_ready("TC")
+        self.assertEqual(result, {"status": "ready", "mode": "tc"})
+        self.assertEqual(manager.ready_modes, ["tc"])
+
+    def test_recording_window_api_returns_provider_snapshot(self) -> None:
+        api = RecordingWindowApi(lambda: {"status": "Recording", "active": True})
+        self.assertEqual(api.get_recording_state(), {"status": "Recording", "active": True})
 
 
 if __name__ == "__main__":
