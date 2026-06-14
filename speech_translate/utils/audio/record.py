@@ -17,7 +17,7 @@ import numpy as np
 import torch
 import torchaudio
 import webrtcvad
-from typing import Literal, Protocol, cast
+from typing import Callable, Literal, Protocol, cast
 from whisper.tokenizer import TO_LANGUAGE_CODE
 
 from speech_translate._constants import MAX_THRESHOLD, MIN_THRESHOLD, WHISPER_SR
@@ -746,26 +746,35 @@ def _advance_recording_buffer(
     return session_state.duration_seconds >= min_input_length
 
 
-def _finalize_recording_session(p, session_state: RealtimeSessionState, update_status_lbl, *, keep_temp: bool) -> None:
-    bc.current_rec_status = "⚠️ Stopping stream"
-    update_status_lbl()
+def _finalize_recording_session(
+    p,
+    session_state: RealtimeSessionState | None,
+    update_status_lbl: Callable[[], None] | None,
+    *,
+    keep_temp: bool,
+) -> None:
+    if update_status_lbl is not None:
+        bc.current_rec_status = "⚠️ Stopping stream"
+        update_status_lbl()
     if bc.stream:
         bc.stream.stop_stream()
         bc.stream.close()
         bc.stream = None
     bc.rec_tc_thread = bc.rec_tl_thread = None
 
-    bc.current_rec_status = "⚠️ Terminating pyaudio"
-    update_status_lbl()
+    if update_status_lbl is not None:
+        bc.current_rec_status = "⚠️ Terminating pyaudio"
+        update_status_lbl()
     p.terminate()
 
     _drain_audio_queue()
-    if not keep_temp:
+    if session_state is not None and not keep_temp:
         _cleanup_temp_audio_paths(session_state.temp_audio_paths)
 
     _reset_callback_context()
     bc.current_rec_status = "⏹️ Stopped"
-    update_status_lbl()
+    if update_status_lbl is not None:
+        update_status_lbl()
 
 
 class TranslationDispatcher:
@@ -1491,6 +1500,8 @@ def record_session(
 ) -> None:
     """实时录音、语音识别与翻译核心总管"""
     rec_type = "speaker" if speaker else "mic"
+    p = None
+    lifecycle: RecordingSessionLifecycle | None = None
 
     try:
         config = _build_recording_session_config(
@@ -1618,12 +1629,19 @@ def record_session(
                 )
             if bc.current_rec_status == "▶️ Recording ⟳ Transcribing Audio":
                 bc.current_rec_status = "▶️ Recording"
-
-        _finalize_recording_session(p, lifecycle.session_state, lifecycle.services.update_status, keep_temp=lifecycle.services.runtime.keep_temp)
-
     except Exception as e:
         logger.error(f"Error in record session: {str(e)}")
     finally:
+        if p is not None:
+            try:
+                _finalize_recording_session(
+                    p,
+                    lifecycle.session_state if lifecycle is not None else None,
+                    lifecycle.services.update_status if lifecycle is not None else None,
+                    keep_temp=lifecycle.services.runtime.keep_temp if lifecycle is not None else True,
+                )
+            except Exception as finalize_exc:
+                logger.error(f"Error finalizing record session: {finalize_exc}")
         torch.cuda.empty_cache()
         logger.info("Record session ended")
 

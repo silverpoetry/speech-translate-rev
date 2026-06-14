@@ -763,6 +763,49 @@ class AudioRecordHelpersTests(unittest.TestCase):
 
         self.assertTrue(observed["use_temp_seen"])
 
+    def test_record_session_finalizes_when_failure_happens_after_pyaudio_bootstrap(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_build_config = record_module._build_recording_session_config
+        previous_pyaudio = record_module.pyaudio.PyAudio
+        previous_load_runtime = record_module._load_recording_model_runtime
+        previous_build_stream = record_module._build_recording_stream_runtime
+        previous_finalize = record_module._finalize_recording_session
+        previous_empty_cache = record_module.torch.cuda.empty_cache
+        previous_recording = record_module.bc.recording
+        finalized = []
+        try:
+            class ConfigStub:
+                use_temp = False
+
+            py_audio = object()
+            record_module._build_recording_session_config = lambda **kwargs: ConfigStub()
+            record_module.pyaudio.PyAudio = lambda: py_audio
+            record_module._load_recording_model_runtime = lambda **kwargs: type(
+                "ModelRuntime",
+                (),
+                {"use_temp": False, "cuda_device": "cpu", "demucs_enabled": False},
+            )()
+            record_module._build_recording_stream_runtime = lambda **kwargs: (_ for _ in ()).throw(RuntimeError("boom"))
+            record_module._finalize_recording_session = lambda *args, **kwargs: finalized.append((args, kwargs))
+            record_module.torch.cuda.empty_cache = lambda: None
+            record_module.bc.recording = False
+
+            record_session("English", "Chinese", "Whisper", "base", "mic", True, False)
+        finally:
+            record_module._build_recording_session_config = previous_build_config
+            record_module.pyaudio.PyAudio = previous_pyaudio
+            record_module._load_recording_model_runtime = previous_load_runtime
+            record_module._build_recording_stream_runtime = previous_build_stream
+            record_module._finalize_recording_session = previous_finalize
+            record_module.torch.cuda.empty_cache = previous_empty_cache
+            record_module.bc.recording = previous_recording
+
+        self.assertEqual(finalized[0][0][0], py_audio)
+        self.assertIsNone(finalized[0][0][1])
+        self.assertIsNone(finalized[0][0][2])
+        self.assertTrue(finalized[0][1]["keep_temp"])
+
     def test_resolve_live_input_source_language_prefers_detected_supported_language(self) -> None:
         from speech_translate.utils.audio import record as record_module
 
