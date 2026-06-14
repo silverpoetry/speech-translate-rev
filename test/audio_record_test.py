@@ -128,9 +128,11 @@ class AudioRecordHelpersTests(unittest.TestCase):
         duration = state.recalculate_duration(samp_width=2, num_of_channels=1, sr_divider=2)
         self.assertEqual(state.last_sample, b"abcd")
         self.assertEqual(duration, 1.0)
+        state.prev_tc_buffer_seconds = 3.0
         state.reset_buffer()
         self.assertEqual(state.last_sample, b"")
         self.assertEqual(state.duration_seconds, 0.0)
+        self.assertEqual(state.prev_tc_buffer_seconds, 0.0)
 
     def test_initialize_callback_context_captures_runtime_settings(self) -> None:
         ctx = _initialize_callback_context(
@@ -640,11 +642,11 @@ class AudioRecordHelpersTests(unittest.TestCase):
             record_module.bc.tc_sentences = []
             record_module.shared_state.prev_tc_res = result
             record_module.bc.update_tc = lambda current, separator: tc_updates.append((current, separator))
+            session_state.prev_tc_buffer_seconds = 8.0
 
             applied = _apply_smart_split(
                 session_state=session_state,
                 previous_result=result,
-                prev_buffer_seconds=8.0,
                 sr_divider=1,
                 samp_width=1,
                 num_of_channels=1,
@@ -679,7 +681,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 reason="silence",
                 session_state=session_state,
                 is_tc=True,
-                prev_buffer_seconds=2.0,
                 sr_divider=1,
                 samp_width=1,
                 num_of_channels=1,

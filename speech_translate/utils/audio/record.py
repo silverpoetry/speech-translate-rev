@@ -38,14 +38,13 @@ if system() == "Windows":
 else:
     import pyaudio
 
-prev_tc_buffer_seconds: float = 0.0
-
 
 class ResultLike(Protocol):
     text: str
 
 
 ResultSnapshot = ResultLike | str
+AudioTarget = str | np.ndarray | torch.Tensor
 
 
 @dataclass
@@ -59,7 +58,7 @@ class RealtimeSharedState:
 class TranslationTask:
     kind: Literal["whisper", "api"]
     separator: str
-    audio: object | None = None
+    audio: AudioTarget | None = None
     cleanup_audio: bool = False
     text: str = ""
     lang_source: str = ""
@@ -89,6 +88,7 @@ class RecordingRuntime:
 class RealtimeSessionState:
     last_sample: bytes = b""
     duration_seconds: float = 0.0
+    prev_tc_buffer_seconds: float = 0.0
     next_transcribe_time: datetime | None = None
     paused: bool = False
     temp_audio_paths: list[str] = field(default_factory=list)
@@ -108,6 +108,7 @@ class RealtimeSessionState:
     def reset_buffer(self) -> None:
         self.last_sample = b""
         self.duration_seconds = 0.0
+        self.prev_tc_buffer_seconds = 0.0
 
 
 @dataclass
@@ -326,7 +327,7 @@ class TranslationDispatcher:
         self._latest_api_task: TranslationTask | None = None
         self._inflight_api_text = ""
 
-    def dispatch(self, audio_target: object, text_snapshot: str) -> None:
+    def dispatch(self, audio_target: AudioTarget | None, text_snapshot: str) -> None:
         if not self._is_tl:
             return
         if self._tl_engine_whisper:
@@ -539,7 +540,7 @@ def _build_record_audio_target(
     demucs_enabled: bool,
     cuda_device: str,
     sr_ori: int,
-) -> object:
+) -> AudioTarget:
     if not use_temp:
         wf = BytesIO()
         with w_open(wf, "wb") as wav_writer:
@@ -558,7 +559,7 @@ def _build_record_audio_target(
     return audio_target
 
 
-def _execute_realtime_transcription(audio_target: object, stable_tc, whisper_args: dict[str, object]) -> object | None:
+def _execute_realtime_transcription(audio_target: AudioTarget, stable_tc, whisper_args: dict[str, object]) -> object | None:
     try:
         if bc.tc_lock:
             with bc.tc_lock:
@@ -600,7 +601,7 @@ def _filter_realtime_transcription_result(
 def _commit_realtime_transcription(
     result: object | None,
     *,
-    audio_target: object,
+    audio_target: AudioTarget,
     is_tl: bool,
     separator: str,
     translator: TranslationDispatcher,
@@ -632,7 +633,7 @@ def _save_to_temp(audio_bytes: bytes, channels: int, samp_width: int, sr: int) -
         f.write(wf.getvalue())
     return path
 
-def _bytes_to_numpy(audio_bytes: bytes, channels: int, use_demucs: bool, device: str) -> Any:
+def _bytes_to_numpy(audio_bytes: bytes, channels: int, use_demucs: bool, device: str) -> np.ndarray | torch.Tensor:
     """将 PCM 字节流转换为 Whisper/Demucs 需要的 Numpy 数组或 Tensor"""
     audio_as_np_int16 = np.frombuffer(audio_bytes, dtype=np.int16).flatten()
     audio_as_np_float32 = audio_as_np_int16.astype(np.float32)
@@ -719,7 +720,6 @@ def _apply_smart_split(
     *,
     session_state: RealtimeSessionState,
     previous_result: object,
-    prev_buffer_seconds: float,
     sr_divider: int,
     samp_width: int,
     num_of_channels: int,
@@ -731,7 +731,7 @@ def _apply_smart_split(
     split_outcome = _build_smart_split_outcome(
         previous_result,
         session_state.last_sample,
-        prev_buffer_seconds=prev_buffer_seconds,
+        prev_buffer_seconds=session_state.prev_tc_buffer_seconds,
         sr_divider=sr_divider,
         samp_width=samp_width,
         num_of_channels=num_of_channels,
@@ -771,7 +771,6 @@ def _break_buffer_and_update_state(
     reason: str,
     session_state: RealtimeSessionState,
     is_tc: bool,
-    prev_buffer_seconds: float,
     sr_divider: int,
     samp_width: int,
     num_of_channels: int,
@@ -793,7 +792,6 @@ def _break_buffer_and_update_state(
         and _apply_smart_split(
             session_state=session_state,
             previous_result=shared_state.prev_tc_res,
-            prev_buffer_seconds=prev_buffer_seconds,
             sr_divider=sr_divider,
             samp_width=samp_width,
             num_of_channels=num_of_channels,
@@ -821,7 +819,6 @@ def record_session(
     rec_type = "speaker" if speaker else "mic"
 
     try:
-        global prev_tc_buffer_seconds
         p = pyaudio.PyAudio()
         success, detail = get_device_details(rec_type, sj, p)
         if not success:
@@ -934,7 +931,7 @@ def record_session(
                 except Exception:
                     break
 
-        def cleanup_translation_audio(audio_target: object | None) -> None:
+        def cleanup_translation_audio(audio_target: AudioTarget | None) -> None:
             if isinstance(audio_target, str):
                 try:
                     os.remove(audio_target)
@@ -1011,7 +1008,6 @@ def record_session(
                         reason="silence",
                         session_state=session_state,
                         is_tc=is_tc,
-                        prev_buffer_seconds=prev_tc_buffer_seconds,
                         sr_divider=sr_divider,
                         samp_width=samp_width,
                         num_of_channels=num_of_channels,
@@ -1068,7 +1064,7 @@ def record_session(
                 translator.dispatch(audio_target, "")
             else:
                 bc.current_rec_status = "▶️ Recording ⟳ Transcribing Audio"
-                prev_tc_buffer_seconds = session_state.duration_seconds
+                session_state.prev_tc_buffer_seconds = session_state.duration_seconds
 
                 result = _execute_realtime_transcription(audio_target, stable_tc, whisper_args)
                 if result is None:
@@ -1102,7 +1098,6 @@ def record_session(
                     reason="buffer_full",
                     session_state=session_state,
                     is_tc=is_tc,
-                    prev_buffer_seconds=prev_tc_buffer_seconds,
                     sr_divider=sr_divider,
                     samp_width=samp_width,
                     num_of_channels=num_of_channels,
@@ -1135,7 +1130,6 @@ def record_session(
                     pass
 
         _reset_callback_context()
-        prev_tc_buffer_seconds = 0.0
 
         bc.current_rec_status = "⏹️ Stopped"
         update_status_lbl()
