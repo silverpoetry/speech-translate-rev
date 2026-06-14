@@ -19,9 +19,11 @@ from speech_translate.utils.audio.record import (
     TranslationTask,
     _apply_smart_split,
     _break_buffer_and_update_state,
+    _build_recording_sentence_count_text,
     _build_record_audio_target,
     _build_recording_session_config,
     _load_recording_model_runtime,
+    _cleanup_translation_audio,
     _commit_realtime_transcription,
     _calculate_buffer_duration,
     _execute_realtime_transcription,
@@ -332,6 +334,34 @@ class AudioRecordHelpersTests(unittest.TestCase):
     def test_merge_translation_units_preserves_sentence_spacing_rules(self) -> None:
         merged = _merge_translation_units(["hello", "world", "!"])
         self.assertEqual(merged, ["hello world", "!"])
+
+    def test_build_recording_sentence_count_text_includes_limit_when_enabled(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_tc = list(record_module.bc.tc_sentences)
+        previous_tl = list(record_module.bc.tl_sentences)
+        try:
+            record_module.bc.tc_sentences = ["a", "b"]
+            record_module.bc.tl_sentences = []
+            count_text = _build_recording_sentence_count_text(sentence_limitless=False, max_sentences=5)
+        finally:
+            record_module.bc.tc_sentences = previous_tc
+            record_module.bc.tl_sentences = previous_tl
+
+        self.assertEqual(count_text, "2/5")
+
+    def test_cleanup_translation_audio_removes_temp_file(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_remove = record_module.os.remove
+        removed = []
+        try:
+            record_module.os.remove = lambda path: removed.append(path)
+            _cleanup_translation_audio("temp.wav")
+        finally:
+            record_module.os.remove = previous_remove
+
+        self.assertEqual(removed, ["temp.wav"])
 
     def test_calculate_buffer_duration_handles_invalid_denominator(self) -> None:
         self.assertEqual(

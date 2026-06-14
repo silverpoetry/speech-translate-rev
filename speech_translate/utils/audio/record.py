@@ -500,6 +500,78 @@ def _cleanup_temp_audio_paths(temp_audio_paths: list[str]) -> None:
             pass
 
 
+def _cleanup_translation_audio(audio_target: AudioTarget | None) -> None:
+    if isinstance(audio_target, str):
+        try:
+            os.remove(audio_target)
+        except Exception:
+            pass
+
+
+def _build_recording_sentence_count_text(*, sentence_limitless: bool, max_sentences: int) -> str:
+    sentence_count_text = f"{len(bc.tc_sentences) or len(bc.tl_sentences) or '0'}"
+    if not sentence_limitless:
+        sentence_count_text += f"/{max_sentences}"
+    return sentence_count_text
+
+
+def _run_recording_status_loop(
+    session_state: RealtimeSessionState,
+    status_emitter: RecordingStatusEmitter,
+    *,
+    t_start: float,
+    max_buffer_s: int,
+    max_sentences: int,
+    sentence_limitless: bool,
+) -> None:
+    while bc.recording:
+        if session_state.paused:
+            sleep(0.1)
+            continue
+        try:
+            status_emitter.emit(
+                status=bc.current_rec_status,
+                timer=strftime("%H:%M:%S", gmtime(time() - t_start)),
+                buffer_text=f"{round(session_state.duration_seconds, 2)}/{round(max_buffer_s, 2)} sec",
+                sentences=_build_recording_sentence_count_text(
+                    sentence_limitless=sentence_limitless,
+                    max_sentences=max_sentences,
+                ),
+            )
+            sleep(0.1)
+        except Exception:
+            break
+
+
+def _start_translation_dispatcher_thread(translator: TranslationDispatcher) -> None:
+    Thread(
+        target=lambda: translator.close(lambda: bool(bc.recording), _cleanup_translation_audio),
+        daemon=True,
+    ).start()
+
+
+def _start_recording_status_thread(
+    session_state: RealtimeSessionState,
+    status_emitter: RecordingStatusEmitter,
+    *,
+    t_start: float,
+    max_buffer_s: int,
+    max_sentences: int,
+    sentence_limitless: bool,
+) -> None:
+    Thread(
+        target=lambda: _run_recording_status_loop(
+            session_state,
+            status_emitter,
+            t_start=t_start,
+            max_buffer_s=max_buffer_s,
+            max_sentences=max_sentences,
+            sentence_limitless=sentence_limitless,
+        ),
+        daemon=True,
+    ).start()
+
+
 def _finalize_recording_session(p, session_state: RealtimeSessionState, update_status_lbl, *, keep_temp: bool) -> None:
     bc.current_rec_status = "⚠️ Stopping stream"
     update_status_lbl()
@@ -1124,32 +1196,6 @@ def record_session(
         def update_status_lbl() -> None:
             status_emitter.emit(status=bc.current_rec_status)
 
-        def update_web_ui():
-            while bc.recording:
-                if session_state.paused:
-                    sleep(0.1)
-                    continue
-                try:
-                    sentence_count_text = f"{len(bc.tc_sentences) or len(bc.tl_sentences) or '0'}"
-                    if not config.sentence_limitless:
-                        sentence_count_text += f"/{config.max_sentences}"
-                    status_emitter.emit(
-                        status=bc.current_rec_status,
-                        timer=strftime("%H:%M:%S", gmtime(time() - t_start)),
-                        buffer_text=f"{round(session_state.duration_seconds, 2)}/{round(config.max_buffer_s, 2)} sec",
-                        sentences=sentence_count_text,
-                    )
-                    sleep(0.1)
-                except Exception:
-                    break
-
-        def cleanup_translation_audio(audio_target: AudioTarget | None) -> None:
-            if isinstance(audio_target, str):
-                try:
-                    os.remove(audio_target)
-                except Exception:
-                    pass
-
         translator = TranslationDispatcher(
             is_tl=is_tl,
             tl_engine_whisper=config.tl_engine_whisper,
@@ -1174,10 +1220,16 @@ def record_session(
             translator=translator,
         )
 
-        Thread(target=lambda: translator.close(lambda: bool(bc.recording), cleanup_translation_audio), daemon=True).start()
-
+        _start_translation_dispatcher_thread(translator)
         update_status_lbl()
-        Thread(target=update_web_ui, daemon=True).start()
+        _start_recording_status_thread(
+            session_state,
+            status_emitter,
+            t_start=t_start,
+            max_buffer_s=config.max_buffer_s,
+            max_sentences=config.max_sentences,
+            sentence_limitless=config.sentence_limitless,
+        )
 
         # Audio stream setup
         bc.tc_sentences, bc.tl_sentences = [], []
