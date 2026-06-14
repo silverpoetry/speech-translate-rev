@@ -4,11 +4,12 @@ import os
 import sys
 from importlib import import_module
 from pathlib import Path
-from typing import Any, Dict
+from typing import Dict
 
 from loguru import logger
 
 from speech_translate._path import dir_export, dir_log, dir_user
+from speech_translate.controller_protocols import SettingsStore, SystemSettingsBridge
 from speech_translate.utils.helper import open_folder, open_url
 from speech_translate.utils.whisper.helper import model_select_dict
 
@@ -16,7 +17,7 @@ from speech_translate.utils.whisper.helper import model_select_dict
 class SystemSettingsController:
     """Owns settings persistence, directory helpers, log access, and external-open actions."""
 
-    def __init__(self, bridge: Any, settings: Any, path_config: Dict[str, str]):
+    def __init__(self, bridge: SystemSettingsBridge, settings: SettingsStore, path_config: Dict[str, str]):
         self.bridge = bridge
         self.settings = settings
         self.dir_debug = path_config["dir_debug"]
@@ -36,7 +37,7 @@ class SystemSettingsController:
             open_folder(target)
         return {"target": target or ""}
 
-    def select_directory(self, name: str) -> Dict[str, Any]:
+    def select_directory(self, name: str) -> Dict[str, object]:
         target_map = {
             "export": ("dir_export", self.resolve_export_dir()),
             "model": ("dir_model", self.bridge._resolve_model_dir()),
@@ -74,7 +75,7 @@ class SystemSettingsController:
         open_url(url)
         return {"url": url}
 
-    def open_hallucination_filter(self, target: str) -> Dict[str, Any]:
+    def open_hallucination_filter(self, target: str) -> Dict[str, object]:
         try:
             from speech_translate._path import p_filter_file_import, p_filter_rec
             from speech_translate.utils.whisper.helper import create_hallucination_filter
@@ -114,10 +115,10 @@ class SystemSettingsController:
         configured = str(self.settings.cache.get("selenium_chrome_user_data_dir", "") or "").strip()
         return configured if configured else str(Path(self.dir_user) / "selenium_chrome_profile")
 
-    def get_setting(self, key: str) -> Any:
+    def get_setting(self, key: str) -> object | None:
         return self.settings.cache.get(key)
 
-    def set_setting(self, key: str, value: Any) -> Dict[str, Any]:
+    def set_setting(self, key: str, value: object) -> Dict[str, object]:
         if key == "selenium_settings":
             payload = value if isinstance(value, dict) else {}
             compact = max(0, min(3, int(payload.get("compact_level", 2))))
@@ -160,13 +161,13 @@ class SystemSettingsController:
             change_log_level(str(value))
         return {"key": key, "value": self.settings.cache.get(key)}
 
-    def set_import_setting(self, key: str, value: Any) -> Dict[str, Any]:
+    def set_import_setting(self, key: str, value: object) -> Dict[str, object]:
         if key in {"model_f_import", "model_mw"}:
             value = value if value in model_select_dict else value
         self.settings.save_key(key, value)
         return {"key": key, "value": self.settings.cache.get(key)}
 
-    def set_record_setting(self, key: str, value: Any) -> Dict[str, Any]:
+    def set_record_setting(self, key: str, value: object) -> Dict[str, object]:
         if key == "model_device_preference":
             normalized = str(value or "auto").strip().lower()
             value = normalized if normalized in {"auto", "cpu", "cuda"} else "auto"

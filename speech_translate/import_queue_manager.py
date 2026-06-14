@@ -5,10 +5,18 @@ from dataclasses import dataclass
 from importlib import import_module
 from threading import Thread
 from time import gmtime, sleep, strftime, time
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from loguru import logger
 
+from speech_translate.controller_protocols import (
+    HeadlessDialogFactory,
+    HeadlessMboxFn,
+    ImportQueueBridge,
+    JsonDict,
+    SettingsStore,
+    ShutdownSeleniumFn,
+)
 from speech_translate.linker import bc
 from speech_translate.ui_protocol import TASK_SOURCE_IMPORT, UI_SECTION_IMPORT
 from speech_translate.utils.whisper.helper import model_keys, model_select_dict
@@ -27,7 +35,7 @@ class QueueItem:
     status: str = ""
     is_completed: bool = False
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> JsonDict:
         return {
             "path": self.path,
             "name": self.name,
@@ -39,17 +47,24 @@ class QueueItem:
 class ImportQueueController:
     """Owns import queue state, UI projections, and file import task orchestration."""
 
-    def __init__(self, bridge: Any, settings: Any, headless_dialog_cls: Any, headless_mbox_fn: Any, shutdown_selenium_fn: Any):
+    def __init__(
+        self,
+        bridge: ImportQueueBridge,
+        settings: SettingsStore,
+        headless_dialog_cls: HeadlessDialogFactory,
+        headless_mbox_fn: HeadlessMboxFn,
+        shutdown_selenium_fn: ShutdownSeleniumFn,
+    ):
         self.bridge = bridge
         self.settings = settings
         self.headless_dialog_cls = headless_dialog_cls
         self.headless_mbox_fn = headless_mbox_fn
         self.shutdown_selenium_fn = shutdown_selenium_fn
-        self.file_import_queue: List[Any] = []
-        self.processing_queue: List[Dict[str, Any]] = []
+        self.file_import_queue: List[object] = []
+        self.processing_queue: List[JsonDict] = []
         self.batch_start_time: Optional[float] = None
 
-    def build_import_ui(self, verify_available: bool = True) -> Dict[str, Any]:
+    def build_import_ui(self, verify_available: bool = True) -> JsonDict:
         settings_snapshot = dict(self.settings.cache)
         engine = self.bridge._normalize_engine_name(str(settings_snapshot.get("tl_engine_f_import", "Selenium Chrome Translate")))
         selected_model_display = str(settings_snapshot.get("model_f_import", "")).strip()
@@ -89,10 +104,10 @@ class ImportQueueController:
             "queued_files": self.get_full_display_queue(),
         }
 
-    def get_import_ui_details(self) -> Dict[str, Any]:
+    def get_import_ui_details(self) -> JsonDict:
         return self.build_import_ui(verify_available=True)
 
-    def get_full_display_queue(self) -> List[Dict[str, Any]]:
+    def get_full_display_queue(self) -> List[JsonDict]:
         with self.bridge._lock:
             display_list = [self._normalize_queue_item(entry).to_dict() for entry in self.file_import_queue]
 
@@ -106,7 +121,7 @@ class ImportQueueController:
                         item["is_completed"] = bool(processing_item.get("is_completed", item.get("is_completed", False)))
             return display_list
 
-    def get_file_processing_state(self) -> Dict[str, Any]:
+    def get_file_processing_state(self) -> JsonDict:
         display_queue = self.get_full_display_queue()
         return {
             "ok": True,
@@ -153,7 +168,7 @@ class ImportQueueController:
         self._update_task_projection(display_queue, message, source=TASK_SOURCE_IMPORT)
         self._emit_import_update(async_emit=True)
 
-    def add_files_to_import_queue(self, files: Optional[list[str]] = None) -> Dict[str, Any]:
+    def add_files_to_import_queue(self, files: Optional[list[str]] = None) -> JsonDict:
         if not self.bridge._wait_recording_idle(timeout_s=12.0):
             return {"ok": False, "message": "Recording is still cleaning up."}
         if self.bridge._model_load_running:
@@ -182,7 +197,7 @@ class ImportQueueController:
                     added += 1
         return {"ok": True, "count": len(self.file_import_queue), "added": added, "files": list(self.file_import_queue)}
 
-    def remove_file_from_import_queue(self, index: Optional[int] = None) -> Dict[str, Any]:
+    def remove_file_from_import_queue(self, index: Optional[int] = None) -> JsonDict:
         with self.bridge._lock:
             if index is None:
                 return {"ok": False, "message": "缺少索引"}
@@ -206,14 +221,14 @@ class ImportQueueController:
         self._emit_import_update(async_emit=False)
         return {"ok": True, "files": list(self.file_import_queue), "removed": removed}
 
-    def clear_import_queue(self) -> Dict[str, Any]:
+    def clear_import_queue(self) -> JsonDict:
         with self.bridge._lock:
             self.file_import_queue = []
             self.processing_queue = []
         self._emit_import_update(async_emit=False)
         return {"ok": True, "files": []}
 
-    def import_files(self, files: Optional[list[str]] = None) -> Dict[str, Any]:
+    def import_files(self, files: Optional[list[str]] = None) -> JsonDict:
         if not files:
             if not (window := self.bridge.get_window()):
                 return {"ok": False, "message": "Window not ready"}
@@ -240,7 +255,7 @@ class ImportQueueController:
                     files_to_process.append(normalized.path)
         return files_to_process
 
-    def start_import_queue(self) -> Dict[str, Any]:
+    def start_import_queue(self) -> JsonDict:
         if not self.file_import_queue:
             return {"ok": False, "message": "No files in queue"}
         if not self.bridge._wait_recording_idle(timeout_s=12.0):
@@ -314,7 +329,7 @@ class ImportQueueController:
         Thread(target=worker, daemon=True).start()
         return {"ok": True, "count": len(files_to_process), "message": "File import started"}
 
-    def stop_import_queue(self) -> Dict[str, Any]:
+    def stop_import_queue(self) -> JsonDict:
         with self.bridge._lock:
             if not (bool(self.processing_queue) and len(self.processing_queue) > 0):
                 return {"ok": False, "message": "No import is running"}
@@ -338,7 +353,7 @@ class ImportQueueController:
             is_completed=is_completed,
         )
 
-    def _normalize_queue_item(self, entry: Any) -> QueueItem:
+    def _normalize_queue_item(self, entry: object) -> QueueItem:
         if isinstance(entry, QueueItem):
             return entry
         if isinstance(entry, dict):
@@ -364,7 +379,7 @@ class ImportQueueController:
         else:
             emit()
 
-    def _update_task_projection(self, display_queue: List[Dict[str, Any]], message: str, *, source: str = "general") -> None:
+    def _update_task_projection(self, display_queue: List[JsonDict], message: str, *, source: str = "general") -> None:
         total = len(display_queue)
         completed_count = sum(1 for item in display_queue if item.get("is_completed", False))
         progress = float((completed_count / total * 100) if total > 0 else 0)

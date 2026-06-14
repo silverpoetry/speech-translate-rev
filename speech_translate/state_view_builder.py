@@ -3,12 +3,13 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from platform import processor, release, system, version
 from threading import Thread
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 from loguru import logger
 
 from speech_translate._constants import APP_NAME
 from speech_translate._version import __version__
+from speech_translate.controller_protocols import JsonDict, SettingsStore, StateViewBridge
 from speech_translate.ui_protocol import UI_SECTION_STATE
 from speech_translate.utils.audio.device import (
     get_default_host_api,
@@ -29,13 +30,13 @@ class AppState:
     os_release: str
     os_version: str
     cpu: str
-    settings: Dict[str, Any]
-    import_ui: Dict[str, Any]
-    main_ui: Dict[str, Any]
-    record_ui: Dict[str, Any]
-    runtime_model: Dict[str, Any]
-    live_ui: Dict[str, Any]
-    about: Dict[str, Any]
+    settings: JsonDict
+    import_ui: JsonDict
+    main_ui: JsonDict
+    record_ui: JsonDict
+    runtime_model: JsonDict
+    live_ui: JsonDict
+    about: JsonDict
     log_level: str
     current_log: str
     log_content: str
@@ -44,10 +45,10 @@ class AppState:
 class StateViewBuilder:
     """Builds UI-facing state snapshots and manages audio source discovery cache."""
 
-    def __init__(self, bridge: Any, settings: Any):
+    def __init__(self, bridge: StateViewBridge, settings: SettingsStore):
         self.bridge = bridge
         self.settings = settings
-        self.audio_source_cache: Dict[str, Any] = {
+        self.audio_source_cache: JsonDict = {
             "host_api_options": [],
             "mic_options_by_host": {},
             "speaker_options_by_host": {},
@@ -60,7 +61,7 @@ class StateViewBuilder:
     def start_audio_source_scan(self) -> None:
         Thread(target=self.prime_audio_source_cache, daemon=True).start()
 
-    def build_state(self) -> Dict[str, Any]:
+    def build_state(self) -> JsonDict:
         settings_snapshot = dict(self.settings.cache)
         compact_settings = self._build_compact_settings(settings_snapshot)
 
@@ -90,10 +91,10 @@ class StateViewBuilder:
         }
         return result
 
-    def reload_state(self) -> Dict[str, Any]:
+    def reload_state(self) -> JsonDict:
         return self.build_state()
 
-    def build_main_ui(self) -> Dict[str, Any]:
+    def build_main_ui(self) -> JsonDict:
         settings_snapshot = dict(self.settings.cache)
         return {
             "input_options": ["mic", "speaker"],
@@ -115,7 +116,7 @@ class StateViewBuilder:
             "auto_refresh_log": settings_snapshot.get("auto_refresh_log"),
         }
 
-    def build_record_device_ui(self, device: str) -> Dict[str, Any]:
+    def build_record_device_ui(self, device: str) -> JsonDict:
         settings_snapshot = dict(self.settings.cache)
         return {
             "sample_rate": settings_snapshot.get(f"sample_rate_{device}"),
@@ -136,7 +137,7 @@ class StateViewBuilder:
             "threshold_db": settings_snapshot.get(f"threshold_db_{device}"),
         }
 
-    def build_record_ui(self) -> Dict[str, Any]:
+    def build_record_ui(self) -> JsonDict:
         settings_snapshot = dict(self.settings.cache)
         audio_sources = self.build_audio_source_options()
         return {
@@ -160,7 +161,7 @@ class StateViewBuilder:
             "speaker_device": self.build_record_device_ui("speaker"),
         }
 
-    def build_about(self) -> Dict[str, Any]:
+    def build_about(self) -> JsonDict:
         return {
             "name": APP_NAME,
             "version": __version__,
@@ -180,7 +181,7 @@ class StateViewBuilder:
             ok_host, host_info = get_default_host_api()
             default_host_api = str(host_info.get("name", "")) if ok_host and isinstance(host_info, dict) else ""
 
-            def find_default(device_info: Any, all_options: list[Any]) -> str:
+            def find_default(device_info: object, all_options: list[object]) -> str:
                 if not device_info or not isinstance(device_info, dict):
                     return ""
                 name = str(device_info.get("name", ""))
@@ -198,8 +199,8 @@ class StateViewBuilder:
             default_mic = find_default(get_default_input_device()[1], mic_options_all)
             default_speaker = find_default(get_default_output_device()[1], speaker_options_all)
 
-            mic_options_by_host: Dict[str, Any] = {}
-            speaker_options_by_host: Dict[str, Any] = {}
+            mic_options_by_host: dict[str, object] = {}
+            speaker_options_by_host: dict[str, object] = {}
             for host_api in host_api_options:
                 if isinstance(host_api, str) and not host_api.startswith("["):
                     mic_options_by_host[host_api] = get_input_devices(str(host_api))
@@ -235,7 +236,7 @@ class StateViewBuilder:
             except Exception:
                 pass
 
-    def build_audio_source_options(self, selected_host_api: Optional[str] = None, host_api: Optional[str] = None) -> Dict[str, Any]:
+    def build_audio_source_options(self, selected_host_api: Optional[str] = None, host_api: Optional[str] = None) -> JsonDict:
         settings_snapshot = dict(self.settings.cache)
         resolved_host_api = selected_host_api if selected_host_api is not None else host_api
         current_host_api = str(resolved_host_api if resolved_host_api is not None else settings_snapshot.get("hostAPI", ""))
@@ -271,10 +272,10 @@ class StateViewBuilder:
             "selected_speaker": selected_speaker,
         }
 
-    def get_audio_source_options(self, host_api: Optional[str] = None) -> Dict[str, Any]:
+    def get_audio_source_options(self, host_api: Optional[str] = None) -> JsonDict:
         return self.build_audio_source_options(host_api)
 
-    def _build_compact_settings(self, settings_snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_compact_settings(self, settings_snapshot: Dict[str, object]) -> JsonDict:
         return {
             "theme": settings_snapshot.get("theme"),
             "log_level": settings_snapshot.get("log_level"),
