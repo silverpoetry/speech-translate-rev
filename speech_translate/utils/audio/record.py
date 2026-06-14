@@ -385,6 +385,95 @@ def _calculate_buffer_duration(
 def _utc_now() -> datetime:
     return datetime.now(UTC)
 
+
+def _build_record_audio_target(
+    session_state: RealtimeSessionState,
+    *,
+    use_temp: bool,
+    num_of_channels: int,
+    samp_width: int,
+    demucs_enabled: bool,
+    cuda_device: str,
+    sr_ori: int,
+) -> object:
+    if not use_temp:
+        wf = BytesIO()
+        with w_open(wf, "wb") as wav_writer:
+            wav_writer.setframerate(WHISPER_SR)
+            wav_writer.setsampwidth(samp_width)
+            wav_writer.setnchannels(num_of_channels)
+            wav_writer.writeframes(session_state.last_sample)
+        wf.seek(0)
+
+        with w_open(wf, "rb") as wav_reader:
+            audio_bytes = wav_reader.readframes(wav_reader.getnframes())
+        return _bytes_to_numpy(audio_bytes, num_of_channels, demucs_enabled, cuda_device)
+
+    audio_target = _save_to_temp(session_state.last_sample, num_of_channels, samp_width, sr_ori)
+    session_state.temp_audio_paths.append(audio_target)
+    return audio_target
+
+
+def _execute_realtime_transcription(audio_target: object, stable_tc, whisper_args: dict[str, object]) -> object | None:
+    try:
+        if bc.tc_lock:
+            with bc.tc_lock:
+                return cast(Any, stable_tc(audio_target, task="transcribe", **whisper_args))
+        return cast(Any, stable_tc(audio_target, task="transcribe", **whisper_args))
+    except Exception as exc:
+        logger.warning(f"Transcribing error: {exc}")
+        return None
+
+
+def _filter_realtime_transcription_result(
+    result: object | None,
+    *,
+    hallucination_filters: dict[str, object],
+    auto: bool,
+    configured_language: str | None,
+) -> object | None:
+    if not (sj.cache["filter_rec"] and result):
+        return result
+
+    try:
+        filter_language = get_whisper_lang_name(result.language) if auto else configured_language
+        if not filter_language:
+            return result
+        return remove_segments_by_str(
+            result,
+            hallucination_filters.get(filter_language, []),
+            sj.cache["filter_rec_case_sensitive"],
+            sj.cache["filter_rec_strip"],
+            sj.cache["filter_rec_ignore_punctuations"],
+            sj.cache["filter_rec_exact_match"],
+            sj.cache["filter_rec_similarity"],
+            sj.cache["debug_realtime_record"],
+        )
+    except Exception:
+        return result
+
+
+def _commit_realtime_transcription(
+    result: object | None,
+    *,
+    audio_target: object,
+    is_tl: bool,
+    separator: str,
+    translator: TranslationDispatcher,
+) -> None:
+    text = result.text.strip() if result else ""
+    bc.auto_detected_lang = result.language if result else "~"
+
+    if not text:
+        bc.current_rec_status = "▶️ Recording"
+        return
+
+    shared_state.prev_tc_res = result
+    bc.update_tc(result, separator)
+    bc.current_rec_status = "▶️ Recording ⟳ Translating text" if is_tl else "▶️ Recording"
+    translator.dispatch(audio_target, _build_full_transcribed_text(bc.tc_sentences, result))
+
+
 def _save_to_temp(audio_bytes: bytes, channels: int, samp_width: int, sr: int) -> str:
     """将音频字节流保存为临时 WAV 文件并返回路径"""
     wf = BytesIO()
@@ -645,7 +734,8 @@ def record_session(
         _, _, stable_tc, stable_tl, to_args = get_model(is_tc, is_tl, tl_engine_whisper, model_name_tc, engine, sj.cache, **model_args)
         whisper_args = get_tc_args(to_args, sj.cache)
         whisper_args["verbose"] = None
-        whisper_args["language"] = TO_LANGUAGE_CODE.get(get_whisper_lang_similar(lang_source)) if not auto else None
+        configured_whisper_language = get_whisper_lang_similar(lang_source) if not auto else None
+        whisper_args["language"] = TO_LANGUAGE_CODE.get(configured_whisper_language) if configured_whisper_language else None
 
         if sj.cache.get("enable_initial_prompt", False):
             from ..whisper.prompts import pick_initial_prompt
@@ -666,6 +756,7 @@ def record_session(
 
         # UI & State Updaters
         t_start = time()
+        session_state = RealtimeSessionState()
         bc.current_rec_status, bc.auto_detected_lang = "▶️ Recording (Waiting for speech)", "~"
         runtime = RecordingRuntime(
             taskname=taskname,
@@ -746,7 +837,6 @@ def record_session(
         # Audio stream setup
         bc.tc_sentences, bc.tl_sentences = [], []
         shared_state.prev_tc_res, shared_state.prev_tl_res = "", ""
-        session_state = RealtimeSessionState()
         samp_width = p.get_sample_size(pyaudio.paInt16)
         sr_divider = WHISPER_SR if not use_temp else sr_ori
         is_silence, was_recording, t_silence, max_db, min_db = False, False, time(), MAX_THRESHOLD, MIN_THRESHOLD
@@ -809,23 +899,15 @@ def record_session(
             if session_state.duration_seconds < sj.cache.get(f"min_input_length_{rec_type}", 0.4):
                 continue
 
-            # Create audio target (numpy array or temp file)
-            audio_target = None
-            if not use_temp:
-                wf = BytesIO()
-                with w_open(wf, "wb") as wav_writer:
-                    wav_writer.setframerate(WHISPER_SR)
-                    wav_writer.setsampwidth(samp_width)
-                    wav_writer.setnchannels(num_of_channels)
-                    wav_writer.writeframes(session_state.last_sample)
-                wf.seek(0)
-                
-                with w_open(wf, "rb") as wav_reader:
-                    audio_bytes = wav_reader.readframes(wav_reader.getnframes())
-                audio_target = _bytes_to_numpy(audio_bytes, num_of_channels, demucs_enabled, cuda_device)
-            else:
-                audio_target = _save_to_temp(session_state.last_sample, num_of_channels, samp_width, sr_ori)
-                session_state.temp_audio_paths.append(audio_target)
+            audio_target = _build_record_audio_target(
+                session_state,
+                use_temp=use_temp,
+                num_of_channels=num_of_channels,
+                samp_width=samp_width,
+                demucs_enabled=demucs_enabled,
+                cuda_device=cuda_device,
+                sr_ori=sr_ori,
+            )
 
             # Execution logic
             if is_tl and tl_engine_whisper and not is_tc:
@@ -834,37 +916,24 @@ def record_session(
             else:
                 bc.current_rec_status = "▶️ Recording ⟳ Transcribing Audio"
                 prev_tc_buffer_seconds = session_state.duration_seconds
-                
-                # Execute Transcribe
-                try:
-                    if bc.tc_lock:
-                        with bc.tc_lock: result = cast(Any, stable_tc(audio_target, task="transcribe", **whisper_args))
-                    else:
-                        result = cast(Any, stable_tc(audio_target, task="transcribe", **whisper_args))
-                except Exception as e:
-                    logger.warning(f"Transcribing error: {e}")
+
+                result = _execute_realtime_transcription(audio_target, stable_tc, whisper_args)
+                if result is None:
                     continue
 
-                if sj.cache["filter_rec"] and result:
-                    try:
-                        result = remove_segments_by_str(
-                            result, hallucination_filters[get_whisper_lang_name(result.language) if auto else whisper_lang],
-                            sj.cache["filter_rec_case_sensitive"], sj.cache["filter_rec_strip"],
-                            sj.cache["filter_rec_ignore_punctuations"], sj.cache["filter_rec_exact_match"],
-                            sj.cache["filter_rec_similarity"], sj.cache["debug_realtime_record"]
-                        )
-                    except Exception: pass
-
-                text = result.text.strip() if result else ""
-                bc.auto_detected_lang = result.language if result else "~"
-
-                if text:
-                    shared_state.prev_tc_res = result
-                    bc.update_tc(result, separator)
-                    bc.current_rec_status = "▶️ Recording ⟳ Translating text" if is_tl else "▶️ Recording"
-                    translator.dispatch(audio_target, _build_full_transcribed_text(bc.tc_sentences, result))
-                else:
-                    bc.current_rec_status = "▶️ Recording"
+                result = _filter_realtime_transcription_result(
+                    result,
+                    hallucination_filters=hallucination_filters,
+                    auto=auto,
+                    configured_language=configured_whisper_language,
+                )
+                _commit_realtime_transcription(
+                    result,
+                    audio_target=audio_target,
+                    is_tl=is_tl,
+                    separator=separator,
+                    translator=translator,
+                )
 
             # Cleanup Temp Audio
             if use_temp and not sj.cache.get("keep_temp", False) and isinstance(audio_target, str):

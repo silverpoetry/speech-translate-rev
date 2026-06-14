@@ -18,7 +18,11 @@ from speech_translate.utils.audio.record import (
     TranslationTask,
     _apply_smart_split,
     _break_buffer_and_update_state,
+    _build_record_audio_target,
+    _commit_realtime_transcription,
     _calculate_buffer_duration,
+    _execute_realtime_transcription,
+    _filter_realtime_transcription_result,
     _build_smart_split_outcome,
     _build_recording_state_payload,
     _build_full_transcribed_text,
@@ -27,8 +31,9 @@ from speech_translate.utils.audio.record import (
 
 
 class FakeResult:
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, language: str = "en") -> None:
         self.text = text
+        self.language = language
 
 
 class FakeSegment:
@@ -71,6 +76,14 @@ class FakeBufferReducer:
 
     def reduce_sentences(self) -> None:
         self.calls += 1
+
+
+class FakeLock:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
 
 
 class AudioRecordHelpersTests(unittest.TestCase):
@@ -150,6 +163,136 @@ class AudioRecordHelpersTests(unittest.TestCase):
             _calculate_buffer_duration(b"abcd", samp_width=0, num_of_channels=1, sr_divider=16000),
             0.0,
         )
+
+    def test_execute_realtime_transcription_uses_lock_when_present(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_lock = record_module.bc.tc_lock
+        calls = []
+
+        def stable_tc(audio_target, **kwargs):
+            calls.append((audio_target, kwargs["task"]))
+            return FakeResult("ok")
+
+        try:
+            record_module.bc.tc_lock = FakeLock()
+            result = _execute_realtime_transcription("audio", stable_tc, {"beam_size": 5})
+        finally:
+            record_module.bc.tc_lock = previous_lock
+
+        self.assertEqual(result.text, "ok")
+        self.assertEqual(calls, [("audio", "transcribe")])
+
+    def test_filter_realtime_transcription_result_uses_configured_language(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_remove = record_module.remove_segments_by_str
+        previous_filter_rec = record_module.sj.cache["filter_rec"]
+        captured = {}
+
+        def fake_remove(result, filters, *args):
+            captured["filters"] = filters
+            return result
+
+        try:
+            record_module.sj.cache["filter_rec"] = True
+            record_module.remove_segments_by_str = fake_remove
+            filtered = _filter_realtime_transcription_result(
+                FakeResult("hello", language="en"),
+                hallucination_filters={"english": ["x"]},
+                auto=False,
+                configured_language="english",
+            )
+        finally:
+            record_module.remove_segments_by_str = previous_remove
+            record_module.sj.cache["filter_rec"] = previous_filter_rec
+
+        self.assertIsNotNone(filtered)
+        self.assertEqual(captured["filters"], ["x"])
+
+    def test_filter_realtime_transcription_result_uses_detected_language_when_auto(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_remove = record_module.remove_segments_by_str
+        previous_filter_rec = record_module.sj.cache["filter_rec"]
+        captured = {}
+
+        def fake_remove(result, filters, *args):
+            captured["filters"] = filters
+            return result
+
+        try:
+            record_module.sj.cache["filter_rec"] = True
+            record_module.remove_segments_by_str = fake_remove
+            filtered = _filter_realtime_transcription_result(
+                FakeResult("hello", language="en"),
+                hallucination_filters={"english": ["y"]},
+                auto=True,
+                configured_language=None,
+            )
+        finally:
+            record_module.remove_segments_by_str = previous_remove
+            record_module.sj.cache["filter_rec"] = previous_filter_rec
+
+        self.assertIsNotNone(filtered)
+        self.assertEqual(captured["filters"], ["y"])
+
+    def test_commit_realtime_transcription_updates_state_and_dispatches(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        translator = FakeTranslator()
+        previous_prev_tc = record_module.shared_state.prev_tc_res
+        previous_auto_lang = record_module.bc.auto_detected_lang
+        previous_tc_sentences = list(record_module.bc.tc_sentences)
+        previous_update_tc = getattr(record_module.bc, "update_tc", None)
+        previous_status = record_module.bc.current_rec_status
+        tc_updates = []
+        try:
+            record_module.shared_state.prev_tc_res = ""
+            record_module.bc.auto_detected_lang = "~"
+            record_module.bc.tc_sentences = []
+            record_module.bc.current_rec_status = "busy"
+            record_module.bc.update_tc = lambda result, separator: tc_updates.append((result, separator))
+
+            _commit_realtime_transcription(
+                FakeResult("hello", language="en"),
+                audio_target="audio",
+                is_tl=True,
+                separator="<br />",
+                translator=translator,
+            )
+        finally:
+            record_module.shared_state.prev_tc_res = previous_prev_tc
+            record_module.bc.auto_detected_lang = previous_auto_lang
+            record_module.bc.tc_sentences = previous_tc_sentences
+            record_module.bc.current_rec_status = previous_status
+            if previous_update_tc is not None:
+                record_module.bc.update_tc = previous_update_tc
+
+        self.assertEqual(tc_updates[-1][1], "<br />")
+        self.assertEqual(translator.calls[-1], ("audio", "hello"))
+
+    def test_build_record_audio_target_tracks_temp_file(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_save = record_module._save_to_temp
+        session_state = RealtimeSessionState(last_sample=b"abc")
+        try:
+            record_module._save_to_temp = lambda *args, **kwargs: "temp.wav"
+            audio_target = _build_record_audio_target(
+                session_state,
+                use_temp=True,
+                num_of_channels=1,
+                samp_width=2,
+                demucs_enabled=False,
+                cuda_device="cpu",
+                sr_ori=16000,
+            )
+        finally:
+            record_module._save_to_temp = previous_save
+
+        self.assertEqual(audio_target, "temp.wav")
+        self.assertEqual(session_state.temp_audio_paths, ["temp.wav"])
 
     def test_translation_dispatcher_queues_whisper_task(self) -> None:
         updates = []
