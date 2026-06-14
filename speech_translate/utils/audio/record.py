@@ -38,6 +38,7 @@ from speech_translate.utils.audio.record_runtime import (
     shared_state,
     tl_api,
 )
+from speech_translate.utils.audio import record_streaming as streaming_module
 from speech_translate.utils.audio.record_types import (
     AudioTarget,
     HallucinationFilters,
@@ -546,12 +547,13 @@ def _utc_now() -> datetime:
 
 
 def _get_callback_context() -> RealtimeCallbackContext | None:
-    return callback_context
+    return streaming_module.get_callback_context()
 
 
 def _reset_callback_context() -> None:
     global callback_context
-    callback_context = None
+    streaming_module.reset_callback_context()
+    callback_context = streaming_module.callback_context
 
 
 def _initialize_callback_context(
@@ -570,20 +572,17 @@ def _initialize_callback_context(
     silero_vad: SileroVadLike,
 ) -> RealtimeCallbackContext:
     global callback_context
-
-    callback_context = RealtimeCallbackContext(
+    callback_context = streaming_module.initialize_callback_context(
         sample_rate=sample_rate,
-        frame_duration_ms=get_frame_duration(sample_rate, chunk_size),
+        chunk_size=chunk_size,
         threshold_enable=threshold_enable,
         threshold_db=threshold_db,
         threshold_auto=threshold_auto,
         use_silero=use_silero,
         silero_min_conf=silero_min_conf,
-        vad_checked=False,
         num_of_channels=num_of_channels,
         samp_width=samp_width,
         use_temp=use_temp,
-        silence_started_at=time(),
         webrtc_vad=webrtc_vad,
         silero_vad=silero_vad,
     )
@@ -591,18 +590,7 @@ def _initialize_callback_context(
 
 
 def _load_recording_vad_runtime(*, rec_type: str) -> tuple[webrtcvad.Vad, SileroVadLike]:
-    webrtc_vad = webrtcvad.Vad(sj.cache.get(f"threshold_auto_mode_{rec_type}", 3))
-
-    if callable(getattr(torchaudio, "set_audio_backend", None)):
-        try:
-            torchaudio.set_audio_backend("soundfile")  # type: ignore
-        except Exception:
-            pass
-
-    silero_model = torch.hub.load(repo_or_dir=dir_silero_vad, source="local", model="silero_vad", onnx=True)
-    silero_vad = cast(SileroVadLike, silero_model[0] if isinstance(silero_model, tuple) else silero_model)
-    silero_vad.reset_states()
-    return webrtc_vad, silero_vad
+    return streaming_module.load_recording_vad_runtime(rec_type=rec_type)
 
 
 def _build_recording_stream_runtime(
@@ -652,15 +640,7 @@ def _build_recording_stream_runtime(
 
 
 def _open_recording_stream(*, p, stream_runtime: RecordingStreamRuntime) -> None:
-    bc.stream = p.open(
-        format=pyaudio.paInt16,
-        channels=stream_runtime.num_of_channels,
-        rate=stream_runtime.sr_ori,
-        input=True,
-        frames_per_buffer=stream_runtime.chunk_size,
-        input_device_index=stream_runtime.input_device_index,
-        stream_callback=record_cb,
-    )
+    streaming_module.open_recording_stream(p=p, stream_runtime=stream_runtime, record_cb=record_cb)
 
 
 def _build_recording_session_services(
@@ -803,63 +783,15 @@ def _prime_realtime_vad(ctx: RealtimeCallbackContext, resampled: bytes) -> None:
 
 
 def _detect_realtime_speech(ctx: RealtimeCallbackContext, in_data: bytes, resampled: bytes) -> tuple[bool, bytes]:
-    data_to_queue = resampled if not ctx.use_temp else in_data
-    _prime_realtime_vad(ctx, resampled)
-
-    if not ctx.threshold_enable:
-        return True, data_to_queue
-
-    db = get_db(in_data)
-    shared_state.last_db = db
-    if db > ctx.max_db:
-        ctx.max_db = db
-    elif db < ctx.min_db:
-        ctx.min_db = db
-
-    is_speech = False
-    if ctx.threshold_auto:
-        try:
-            is_speech = bool(get_speech_webrtc(resampled, WHISPER_SR, ctx.frame_duration_ms, ctx.webrtc_vad))
-            if is_speech and ctx.use_silero and not ctx.silero_disabled:
-                sil_data = to_silero(resampled, ctx.num_of_channels, ctx.samp_width)
-                if sil_data.numel() >= 512:
-                    conf = float(ctx.silero_vad(sil_data, WHISPER_SR).item())
-                    is_speech = conf >= ctx.silero_min_conf
-        except Exception:
-            pass
-    else:
-        is_speech = db > ctx.threshold_db
-
-    return is_speech, data_to_queue
+    return streaming_module.detect_realtime_speech(ctx, in_data, resampled)
 
 
 def _update_realtime_queue_state(ctx: RealtimeCallbackContext, *, is_speech: bool, data_to_queue: bytes) -> None:
-    if is_speech:
-        bc.data_queue.put(data_to_queue)
-        ctx.was_recording = True
-        if ctx.is_silence:
-            ctx.is_silence = False
-            ctx.silence_started_at = 0.0
-        return
-
-    bc.current_rec_status = "▶️ Recording (Waiting for speech)"
-    if ctx.was_recording:
-        ctx.was_recording = False
-        if not ctx.is_silence:
-            ctx.is_silence = True
-            ctx.silence_started_at = time()
+    streaming_module.update_realtime_queue_state(ctx, is_speech=is_speech, data_to_queue=data_to_queue)
 
 
 def _handle_record_callback_error(ctx: RealtimeCallbackContext | None, exc: Exception) -> None:
-    message = str(exc)
-    if "Input audio chunk is too short" not in message:
-        logger.error(f"record_cb error: {message}")
-    if ctx and "Error while processing frame" in message:
-        if ctx.frame_duration_ms >= 20:
-            ctx.frame_duration_ms -= 10
-            ctx.vad_checked = False
-        else:
-            ctx.threshold_auto = False
+    streaming_module.handle_record_callback_error(ctx, exc)
 
 
 def _build_record_audio_target(
