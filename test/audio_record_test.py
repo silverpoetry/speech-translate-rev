@@ -9,6 +9,7 @@ sys.path.append(to_add)
 
 from speech_translate.utils.audio.record import (
     BufferStateReducer,
+    RealtimeCallbackContext,
     RecordingRuntime,
     RecordingStatusEmitter,
     RealtimeSharedState,
@@ -23,6 +24,11 @@ from speech_translate.utils.audio.record import (
     _calculate_buffer_duration,
     _execute_realtime_transcription,
     _filter_realtime_transcription_result,
+    _handle_record_callback_error,
+    _initialize_callback_context,
+    _prime_realtime_vad,
+    _detect_realtime_speech,
+    _update_realtime_queue_state,
     _build_smart_split_outcome,
     _build_recording_state_payload,
     _build_full_transcribed_text,
@@ -86,6 +92,18 @@ class FakeLock:
         return False
 
 
+class FakeTensor:
+    def __init__(self, value: float = 0.9, size: int = 1024) -> None:
+        self._value = value
+        self._size = size
+
+    def numel(self) -> int:
+        return self._size
+
+    def item(self) -> float:
+        return self._value
+
+
 class AudioRecordHelpersTests(unittest.TestCase):
     def test_result_text_supports_result_object_and_string(self) -> None:
         self.assertEqual(_result_text(FakeResult(" hello ")), "hello")
@@ -112,6 +130,26 @@ class AudioRecordHelpersTests(unittest.TestCase):
         state.reset_buffer()
         self.assertEqual(state.last_sample, b"")
         self.assertEqual(state.duration_seconds, 0.0)
+
+    def test_initialize_callback_context_captures_runtime_settings(self) -> None:
+        ctx = _initialize_callback_context(
+            sample_rate=48000,
+            chunk_size=960,
+            threshold_enable=True,
+            threshold_db=-20.0,
+            threshold_auto=True,
+            use_silero=True,
+            silero_min_conf=0.75,
+            num_of_channels=2,
+            samp_width=2,
+            use_temp=False,
+            webrtc_vad=object(),
+            silero_vad=object(),
+        )
+        self.assertIsInstance(ctx, RealtimeCallbackContext)
+        self.assertEqual(ctx.sample_rate, 48000)
+        self.assertEqual(ctx.num_of_channels, 2)
+        self.assertGreater(ctx.frame_duration_ms, 0)
 
     def test_translation_task_defaults_are_explicit(self) -> None:
         task = TranslationTask(kind="whisper", separator="<br />")
@@ -293,6 +331,113 @@ class AudioRecordHelpersTests(unittest.TestCase):
 
         self.assertEqual(audio_target, "temp.wav")
         self.assertEqual(session_state.temp_audio_paths, ["temp.wav"])
+
+    def test_prime_realtime_vad_marks_context_checked(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_get_speech = record_module.get_speech_webrtc
+        previous_to_silero = record_module.to_silero
+        calls = []
+        ctx = RealtimeCallbackContext(
+            sample_rate=16000,
+            frame_duration_ms=30,
+            threshold_enable=True,
+            threshold_db=-20.0,
+            threshold_auto=True,
+            use_silero=True,
+            silero_min_conf=0.75,
+            vad_checked=False,
+            num_of_channels=1,
+            samp_width=2,
+            use_temp=False,
+            webrtc_vad=object(),
+            silero_vad=lambda *args: calls.append("silero"),
+        )
+        try:
+            record_module.get_speech_webrtc = lambda *args, **kwargs: calls.append("webrtc")
+            record_module.to_silero = lambda *args, **kwargs: FakeTensor()
+            _prime_realtime_vad(ctx, b"abcd")
+        finally:
+            record_module.get_speech_webrtc = previous_get_speech
+            record_module.to_silero = previous_to_silero
+
+        self.assertTrue(ctx.vad_checked)
+        self.assertEqual(calls, ["webrtc", "silero"])
+
+    def test_detect_realtime_speech_uses_manual_threshold(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_get_db = record_module.get_db
+        ctx = RealtimeCallbackContext(
+            sample_rate=16000,
+            frame_duration_ms=30,
+            threshold_enable=True,
+            threshold_db=-30.0,
+            threshold_auto=False,
+            use_silero=False,
+            silero_min_conf=0.75,
+            vad_checked=True,
+            num_of_channels=1,
+            samp_width=2,
+            use_temp=False,
+        )
+        try:
+            record_module.get_db = lambda _: -10.0
+            is_speech, payload = _detect_realtime_speech(ctx, b"orig", b"resampled")
+        finally:
+            record_module.get_db = previous_get_db
+
+        self.assertTrue(is_speech)
+        self.assertEqual(payload, b"resampled")
+
+    def test_update_realtime_queue_state_tracks_silence_edges(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_queue = record_module.bc.data_queue
+        previous_status = record_module.bc.current_rec_status
+        try:
+            record_module.bc.data_queue = record_module.Queue()
+            record_module.bc.current_rec_status = "busy"
+            ctx = RealtimeCallbackContext(
+                sample_rate=16000,
+                frame_duration_ms=30,
+                threshold_enable=True,
+                threshold_db=-20.0,
+                threshold_auto=False,
+                use_silero=False,
+                silero_min_conf=0.75,
+                vad_checked=True,
+                num_of_channels=1,
+                samp_width=2,
+                use_temp=False,
+            )
+            _update_realtime_queue_state(ctx, is_speech=True, data_to_queue=b"abc")
+            queued = record_module.bc.data_queue.get_nowait()
+            _update_realtime_queue_state(ctx, is_speech=False, data_to_queue=b"")
+        finally:
+            record_module.bc.data_queue = previous_queue
+            record_module.bc.current_rec_status = previous_status
+
+        self.assertEqual(queued, b"abc")
+        self.assertTrue(ctx.is_silence)
+
+    def test_handle_record_callback_error_downgrades_auto_threshold(self) -> None:
+        ctx = RealtimeCallbackContext(
+            sample_rate=16000,
+            frame_duration_ms=20,
+            threshold_enable=True,
+            threshold_db=-20.0,
+            threshold_auto=True,
+            use_silero=False,
+            silero_min_conf=0.75,
+            vad_checked=True,
+            num_of_channels=1,
+            samp_width=2,
+            use_temp=False,
+        )
+        _handle_record_callback_error(ctx, Exception("Error while processing frame"))
+        self.assertEqual(ctx.frame_duration_ms, 10)
+        self.assertFalse(ctx.vad_checked)
 
     def test_translation_dispatcher_queues_whisper_task(self) -> None:
         updates = []

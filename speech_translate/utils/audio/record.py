@@ -1,4 +1,3 @@
-# pylint: disable=global-variable-undefined
 import os
 import re
 from ast import literal_eval
@@ -39,9 +38,6 @@ if system() == "Windows":
 else:
     import pyaudio
 
-# Globals for state management across callbacks
-ERROR_CON_NOTIFIED = False
-LAST_RECORD_CB_DIAG_AT = 0.0
 prev_tc_buffer_seconds: float = 0.0
 
 
@@ -112,6 +108,32 @@ class RealtimeSessionState:
     def reset_buffer(self) -> None:
         self.last_sample = b""
         self.duration_seconds = 0.0
+
+
+@dataclass
+class RealtimeCallbackContext:
+    sample_rate: int
+    frame_duration_ms: int
+    threshold_enable: bool
+    threshold_db: float
+    threshold_auto: bool
+    use_silero: bool
+    silero_min_conf: float
+    vad_checked: bool
+    num_of_channels: int
+    samp_width: int
+    use_temp: bool
+    max_db: float = MAX_THRESHOLD
+    min_db: float = MIN_THRESHOLD
+    is_silence: bool = False
+    was_recording: bool = False
+    silence_started_at: float = 0.0
+    silero_disabled: bool = False
+    webrtc_vad: object | None = None
+    silero_vad: object | None = None
+
+
+callback_context: RealtimeCallbackContext | None = None
 
 
 class RecordingStatusEmitter:
@@ -384,6 +406,123 @@ def _calculate_buffer_duration(
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def _get_callback_context() -> RealtimeCallbackContext | None:
+    return callback_context
+
+
+def _initialize_callback_context(
+    *,
+    sample_rate: int,
+    chunk_size: int,
+    threshold_enable: bool,
+    threshold_db: float,
+    threshold_auto: bool,
+    use_silero: bool,
+    silero_min_conf: float,
+    num_of_channels: int,
+    samp_width: int,
+    use_temp: bool,
+    webrtc_vad: object,
+    silero_vad: object,
+) -> RealtimeCallbackContext:
+    global callback_context
+
+    callback_context = RealtimeCallbackContext(
+        sample_rate=sample_rate,
+        frame_duration_ms=get_frame_duration(sample_rate, chunk_size),
+        threshold_enable=threshold_enable,
+        threshold_db=threshold_db,
+        threshold_auto=threshold_auto,
+        use_silero=use_silero,
+        silero_min_conf=silero_min_conf,
+        vad_checked=False,
+        num_of_channels=num_of_channels,
+        samp_width=samp_width,
+        use_temp=use_temp,
+        silence_started_at=time(),
+        webrtc_vad=webrtc_vad,
+        silero_vad=silero_vad,
+    )
+    return callback_context
+
+
+def _prime_realtime_vad(ctx: RealtimeCallbackContext, resampled: bytes) -> None:
+    if ctx.vad_checked:
+        return
+
+    ctx.vad_checked = True
+    try:
+        get_speech_webrtc(resampled, WHISPER_SR, ctx.frame_duration_ms, ctx.webrtc_vad)
+    except Exception:
+        pass
+    try:
+        sil_probe = to_silero(resampled, ctx.num_of_channels, ctx.samp_width)
+        if sil_probe.numel() >= 512:
+            ctx.silero_vad(sil_probe, WHISPER_SR)
+    except Exception:
+        pass
+
+
+def _detect_realtime_speech(ctx: RealtimeCallbackContext, in_data: bytes, resampled: bytes) -> tuple[bool, bytes]:
+    data_to_queue = resampled if not ctx.use_temp else in_data
+    _prime_realtime_vad(ctx, resampled)
+
+    if not ctx.threshold_enable:
+        return True, data_to_queue
+
+    db = get_db(in_data)
+    shared_state.last_db = db
+    if db > ctx.max_db:
+        ctx.max_db = db
+    elif db < ctx.min_db:
+        ctx.min_db = db
+
+    is_speech = False
+    if ctx.threshold_auto:
+        try:
+            is_speech = bool(get_speech_webrtc(resampled, WHISPER_SR, ctx.frame_duration_ms, ctx.webrtc_vad))
+            if is_speech and ctx.use_silero and not ctx.silero_disabled:
+                sil_data = to_silero(resampled, ctx.num_of_channels, ctx.samp_width)
+                if sil_data.numel() >= 512:
+                    conf = float(ctx.silero_vad(sil_data, WHISPER_SR).item())
+                    is_speech = conf >= ctx.silero_min_conf
+        except Exception:
+            pass
+    else:
+        is_speech = db > ctx.threshold_db
+
+    return is_speech, data_to_queue
+
+
+def _update_realtime_queue_state(ctx: RealtimeCallbackContext, *, is_speech: bool, data_to_queue: bytes) -> None:
+    if is_speech:
+        bc.data_queue.put(data_to_queue)
+        ctx.was_recording = True
+        if ctx.is_silence:
+            ctx.is_silence = False
+            ctx.silence_started_at = 0.0
+        return
+
+    bc.current_rec_status = "▶️ Recording (Waiting for speech)"
+    if ctx.was_recording:
+        ctx.was_recording = False
+        if not ctx.is_silence:
+            ctx.is_silence = True
+            ctx.silence_started_at = time()
+
+
+def _handle_record_callback_error(ctx: RealtimeCallbackContext | None, exc: Exception) -> None:
+    message = str(exc)
+    if "Input audio chunk is too short" not in message:
+        logger.error(f"record_cb error: {message}")
+    if ctx and "Error while processing frame" in message:
+        if ctx.frame_duration_ms >= 20:
+            ctx.frame_duration_ms -= 10
+            ctx.vad_checked = False
+        else:
+            ctx.threshold_auto = False
 
 
 def _build_record_audio_target(
@@ -677,13 +816,7 @@ def record_session(
     rec_type = "speaker" if speaker else "mic"
 
     try:
-        global sr_ori, frame_duration_ms, threshold_enable, threshold_db, threshold_auto, use_silero, \
-            silero_min_conf, vad_checked, num_of_channels, prev_tc_buffer_seconds, max_db, min_db, \
-            is_silence, was_recording, t_silence, samp_width, webrtc_vad, silero_vad, use_temp, \
-            silero_disabled, ERROR_CON_NOTIFIED, LAST_RECORD_CB_DIAG_AT
-        
-        ERROR_CON_NOTIFIED = False
-        LAST_RECORD_CB_DIAG_AT = 0.0
+        global prev_tc_buffer_seconds
         p = pyaudio.PyAudio()
         success, detail = get_device_details(rec_type, sj, p)
         if not success:
@@ -706,8 +839,6 @@ def record_session(
         #     try: requests.get("https://www.google.com/", timeout=5)
         #     except Exception: logger.warning("No internet connection detected. API Translation might fail.")
 
-        vad_checked, silero_disabled = False, False
-        frame_duration_ms = get_frame_duration(sr_ori, chunk_size)
         threshold_enable = sj.cache.get(f"threshold_enable_{rec_type}", True)
         threshold_db = sj.cache.get(f"threshold_db_{rec_type}", -20)
         threshold_auto = sj.cache.get(f"threshold_auto_{rec_type}", True)
@@ -839,7 +970,20 @@ def record_session(
         shared_state.prev_tc_res, shared_state.prev_tl_res = "", ""
         samp_width = p.get_sample_size(pyaudio.paInt16)
         sr_divider = WHISPER_SR if not use_temp else sr_ori
-        is_silence, was_recording, t_silence, max_db, min_db = False, False, time(), MAX_THRESHOLD, MIN_THRESHOLD
+        callback_ctx = _initialize_callback_context(
+            sample_rate=sr_ori,
+            chunk_size=chunk_size,
+            threshold_enable=threshold_enable,
+            threshold_db=threshold_db,
+            threshold_auto=threshold_auto,
+            use_silero=use_silero,
+            silero_min_conf=silero_min_conf,
+            num_of_channels=num_of_channels,
+            samp_width=samp_width,
+            use_temp=use_temp,
+            webrtc_vad=webrtc_vad,
+            silero_vad=silero_vad,
+        )
         
         bc.stream = p.open(format=pyaudio.paInt16, channels=num_of_channels, rate=sr_ori, input=True, frames_per_buffer=chunk_size, input_device_index=int(device_detail["index"]), stream_callback=record_cb)
 
@@ -852,8 +996,12 @@ def record_session(
             try:
                 data = bc.data_queue.get(timeout=0.1)
             except Empty:
-                if auto_break_buffer and is_silence and time() - t_silence > 1:
-                    is_silence = False
+                if (
+                    auto_break_buffer
+                    and callback_ctx.is_silence
+                    and time() - callback_ctx.silence_started_at > 1
+                ):
+                    callback_ctx.is_silence = False
                     _break_buffer_and_update_state(
                         reason="silence",
                         session_state=session_state,
@@ -993,64 +1141,18 @@ def record_session(
 
 def record_cb(in_data, _frame_count, _time_info, _status):
     """Audio stream callback for PyAudio"""
-    global frame_duration_ms, max_db, min_db, is_silence, t_silence, was_recording, vad_checked, LAST_RECORD_CB_DIAG_AT, threshold_auto, silero_disabled
-
+    ctx = _get_callback_context()
     try:
-        resampled = resample_sr(in_data, sr_ori, WHISPER_SR)
-        data_to_queue = resampled if not use_temp else in_data
-
-        if not vad_checked:
-            vad_checked = True
-            # Silent probe checks to ensure models don't crash hard on first run
-            try: get_speech_webrtc(resampled, WHISPER_SR, frame_duration_ms, webrtc_vad)
-            except Exception: pass
-            try: 
-                sil_probe = to_silero(resampled, num_of_channels, samp_width)
-                if sil_probe.numel() >= 512: silero_vad(sil_probe, WHISPER_SR)
-            except Exception: pass
-
-        if not threshold_enable:
-            bc.data_queue.put(data_to_queue)
+        if ctx is None:
             return (in_data, pyaudio.paContinue)
 
-        # Threshold logic
-        db = get_db(in_data)
-        shared_state.last_db = db
-        if db > max_db: max_db = db
-        elif db < min_db: min_db = db
-
-        is_speech = False
-        if threshold_auto:
-            try:
-                is_speech = bool(get_speech_webrtc(resampled, WHISPER_SR, frame_duration_ms, webrtc_vad))
-                if is_speech and use_silero and not silero_disabled:
-                    sil_data = to_silero(resampled, num_of_channels, samp_width)
-                    if sil_data.numel() >= 512:
-                        conf = float(silero_vad(sil_data, WHISPER_SR).item())
-                        is_speech = conf >= silero_min_conf
-            except Exception: 
-                pass # Silently ignore short chunk errors
-        else:
-            is_speech = db > threshold_db
-
-        # Queue management
-        if is_speech:
-            bc.data_queue.put(data_to_queue)
-            was_recording = True
-            if is_silence: is_silence, t_silence = False, 0.0
-        else:
-            bc.current_rec_status = "▶️ Recording (Waiting for speech)"
-            if was_recording:
-                was_recording = False
-                if not is_silence: is_silence, t_silence = True, time()
+        resampled = resample_sr(in_data, ctx.sample_rate, WHISPER_SR)
+        is_speech, data_to_queue = _detect_realtime_speech(ctx, in_data, resampled)
+        _update_realtime_queue_state(ctx, is_speech=is_speech, data_to_queue=data_to_queue)
 
         return (in_data, pyaudio.paContinue)
-    except Exception as e:
-        if "Input audio chunk is too short" not in str(e):
-            logger.error(f"record_cb error: {str(e)}")
-        if "Error while processing frame" in str(e):
-            if frame_duration_ms >= 20: frame_duration_ms -= 10; vad_checked = False
-            else: threshold_auto = False
+    except Exception as exc:
+        _handle_record_callback_error(ctx, exc)
         return (in_data, pyaudio.paContinue)
 
 # =========================================================================
