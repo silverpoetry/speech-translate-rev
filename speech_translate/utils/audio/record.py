@@ -1,18 +1,14 @@
 import os
 from ast import literal_eval
-from copy import deepcopy
 from datetime import UTC, datetime, timedelta
-from io import BytesIO
 from platform import system
 from queue import Empty, Queue
 from shlex import quote
 from threading import Lock, Thread
 from time import gmtime, sleep, strftime, time
-from wave import open as w_open
 
 import numpy as np
 import torch
-import torchaudio
 import webrtcvad
 from typing import Callable, cast
 from whisper.tokenizer import TO_LANGUAGE_CODE
@@ -23,6 +19,7 @@ from speech_translate._path import dir_silero_vad, dir_temp
 from speech_translate.linker import bc, sj
 from speech_translate.utils.audio.audio import get_db, get_frame_duration, get_speech_webrtc, resample_sr, to_silero
 from speech_translate.utils.audio.device import get_device_details
+from speech_translate.utils.audio import record_processing as processing_module
 from speech_translate.utils.audio.record_runtime import (
     BufferStateReducer,
     RecordingStatusEmitter,
@@ -61,13 +58,12 @@ from speech_translate.utils.audio.record_types import (
     TranslationTask,
     WhisperCallable,
 )
-from speech_translate.utils.translate.language import get_whisper_lang_name, get_whisper_lang_similar, verify_language_in_key
+from speech_translate.utils.translate.language import get_whisper_lang_name, get_whisper_lang_similar
 
-from ..helper import generate_temp_filename, str_separator_to_html
+from ..helper import str_separator_to_html
 from ..whisper.helper import get_hallucination_filter, model_values
 from ..whisper.load import get_model, get_model_args, get_tc_args
 from ..whisper.result import remove_segments_by_str
-
 if system() == "Windows":
     import pyaudiowpatch as pyaudio
 else:
@@ -76,30 +72,7 @@ else:
 
 callback_context: RealtimeCallbackContext | None = None
 
-def _build_smart_split_outcome(
-    previous_result: TranscriptionResultLike,
-    last_sample: bytes,
-    *,
-    prev_buffer_seconds: float,
-    sr_divider: int,
-    samp_width: int,
-    num_of_channels: int,
-) -> SmartSplitOutcome | None:
-    if not hasattr(previous_result, "segments"):
-        return None
-
-    split_time, pre_segs, post_segs = _calculate_smart_split(
-        previous_result.segments,
-        (prev_buffer_seconds / 2.0) if prev_buffer_seconds > 0 else 0.0,
-    )
-    if split_time is None:
-        return None
-
-    pre_result = type(previous_result)(pre_segs) if pre_segs else previous_result
-    post_result = type(previous_result)(post_segs) if post_segs else previous_result
-    bytes_before = max(0, min(int(round(split_time * sr_divider)) * samp_width * num_of_channels, len(last_sample)))
-    return SmartSplitOutcome(pre_audio_bytes=last_sample[:bytes_before], post_audio_bytes=last_sample[bytes_before:], pre_result=pre_result, post_result=post_result)
-
+_build_smart_split_outcome = processing_module.build_smart_split_outcome
 # =========================================================================
 # HELPER FUNCTIONS
 # =========================================================================
@@ -827,14 +800,7 @@ def _execute_realtime_transcription(
     stable_tc: WhisperCallable,
     whisper_args: dict[str, object],
 ) -> TranscriptionResultLike | None:
-    try:
-        if bc.tc_lock:
-            with cast(LockLike, bc.tc_lock):
-                return stable_tc(audio_target, task="transcribe", **whisper_args)
-        return stable_tc(audio_target, task="transcribe", **whisper_args)
-    except Exception as exc:
-        logger.warning(f"Transcribing error: {exc}")
-        return None
+    return processing_module.execute_realtime_transcription(audio_target, stable_tc, whisper_args)
 
 
 def _filter_realtime_transcription_result(
@@ -873,114 +839,26 @@ def _commit_realtime_transcription(
     separator: str,
     translator: TranslationDispatcher,
 ) -> None:
-    text = result.text.strip() if result else ""
-    bc.auto_detected_lang = result.language if result else "~"
-
-    if not text:
-        bc.current_rec_status = "▶️ Recording"
-        return
-
-    shared_state.prev_tc_res = result
-    bc.update_tc(result, separator)
-    bc.current_rec_status = "▶️ Recording ⟳ Translating text" if is_tl else "▶️ Recording"
-    translator.dispatch(audio_target, _build_full_transcribed_text(bc.tc_sentences, result))
+    processing_module.commit_realtime_transcription(
+        result,
+        audio_target=audio_target,
+        is_tl=is_tl,
+        separator=separator,
+        translator=translator,
+    )
 
 
 def _save_to_temp(audio_bytes: bytes, channels: int, samp_width: int, sr: int) -> str:
-    """将音频字节流保存为临时 WAV 文件并返回路径"""
-    wf = BytesIO()
-    with w_open(wf, 'wb') as wav_writer:
-        wav_writer.setframerate(sr)
-        wav_writer.setsampwidth(samp_width)
-        wav_writer.setnchannels(channels)
-        wav_writer.writeframes(audio_bytes)
-    
-    path = generate_temp_filename(dir_temp)
-    with open(path, 'wb') as f:
-        f.write(wf.getvalue())
-    return path
+    return processing_module.save_to_temp(audio_bytes, channels, samp_width, sr)
 
 def _bytes_to_numpy(audio_bytes: bytes, channels: int, use_demucs: bool, device: str) -> np.ndarray | torch.Tensor:
-    """将 PCM 字节流转换为 Whisper/Demucs 需要的 Numpy 数组或 Tensor"""
-    audio_as_np_int16 = np.frombuffer(audio_bytes, dtype=np.int16).flatten()
-    audio_as_np_float32 = audio_as_np_int16.astype(np.float32)
-    max_int16 = 32768.0
-    
-    if channels == 1:
-        audio_np = audio_as_np_float32 / max_int16
-    else:
-        chunk_length = len(audio_as_np_float32) // channels
-        audio_reshaped = np.reshape(audio_as_np_float32, (chunk_length, channels))
-        audio_np = audio_reshaped[:, 0] / max_int16  # 取左声道
-        
-    if use_demucs:
-        return torch.from_numpy(audio_np).to(device)
-    return audio_np
+    return processing_module.bytes_to_numpy(audio_bytes, channels, use_demucs, device)
 
 def _calculate_smart_split(
     segments: list,
     half_point_time: float,
 ) -> tuple[float | None, list[dict[str, object]], list[dict[str, object]]]:
-    """核心算法：在 Whisper 结果的后半段寻找最大的无声间隙，返回切割点时间及切割后的前后段字典"""
-    word_infos = []
-    for sidx, seg in enumerate(segments):
-        for widx, w in enumerate(seg.to_dict().get('words', [])):
-            text_w = str(w.get('word', w.get('text', ''))).strip()
-            if not text_w: 
-                continue
-            try:
-                start = float(w.get('start', w.get('end', 0.0)))
-                end = float(w.get('end', start))
-            except Exception:
-                continue
-            word_infos.append((sidx, widx, text_w, (start + end) / 2.0, start, end))
-
-    filtered_words = [wi for wi in word_infos if wi[3] >= half_point_time]
-    
-    max_gap, max_idx = -1.0, None
-    for i in range(len(filtered_words) - 1):
-        gap = filtered_words[i + 1][4] - filtered_words[i][5]
-        if gap > max_gap:
-            max_gap = gap
-            max_idx = i
-
-    if max_idx is None or max_gap <= 0:
-        return None, [], []
-
-    left_word, right_word = filtered_words[max_idx], filtered_words[max_idx + 1]
-    seg_l, seg_r = left_word[0], right_word[0]
-    split_time = (left_word[5] + right_word[4]) / 2.0
-
-    pre_segs, post_segs = [], []
-    if seg_l != seg_r:
-        pre_segs = [s.to_dict() for s in segments[:seg_l + 1]]
-        post_segs = [s.to_dict() for s in segments[seg_l + 1:]]
-    else:
-        for i, seg in enumerate(segments):
-            seg_d = seg.to_dict()
-            if i < seg_l:
-                pre_segs.append(seg_d)
-            elif i > seg_l:
-                post_segs.append(seg_d)
-            else:
-                words = seg_d.get('words', [])
-                pre_w = [w for w in words if (float(w.get('start', 0.0)) + float(w.get('end', 0.0))) / 2.0 < split_time]
-                post_w = [w for w in words if (float(w.get('start', 0.0)) + float(w.get('end', 0.0))) / 2.0 >= split_time]
-                
-                if pre_w:
-                    d = deepcopy(seg_d)
-                    d['words'], d['text'] = pre_w, " ".join([w.get('word', w.get('text', '')).strip() for w in pre_w]).strip()
-                    d['start'], d['end'] = seg_d.get('start', pre_w[0].get('start', 0.0)), pre_w[-1].get('end', split_time)
-                    if d['start'] > d['end']: d['start'] = d['end']
-                    pre_segs.append(d)
-                if post_w:
-                    d = deepcopy(seg_d)
-                    d['words'], d['text'] = post_w, " ".join([w.get('word', w.get('text', '')).strip() for w in post_w]).strip()
-                    d['start'], d['end'] = post_w[0].get('start', split_time), seg_d.get('end', post_w[-1].get('end', split_time))
-                    if d['start'] > d['end']: d['start'] = d['end']
-                    post_segs.append(d)
-
-    return split_time, pre_segs, post_segs
+    return processing_module.calculate_smart_split(segments, half_point_time)
 
 
 def _apply_smart_split(
@@ -995,42 +873,18 @@ def _apply_smart_split(
     separator: str,
     translator: TranslationDispatcher,
 ) -> bool:
-    split_outcome = _build_smart_split_outcome(
-        previous_result,
-        session_state.last_sample,
-        prev_buffer_seconds=session_state.prev_tc_buffer_seconds,
+    return processing_module.apply_smart_split(
+        session_state=session_state,
+        previous_result=previous_result,
         sr_divider=sr_divider,
         samp_width=samp_width,
         num_of_channels=num_of_channels,
+        sentence_limitless=sentence_limitless,
+        max_sentences=max_sentences,
+        separator=separator,
+        translator=translator,
+        utc_now=_utc_now,
     )
-    if split_outcome is None:
-        return False
-
-    try:
-        session_state.last_sample = split_outcome.post_audio_bytes
-        pre_audio_path = _save_to_temp(
-            split_outcome.pre_audio_bytes,
-            num_of_channels,
-            samp_width,
-            sr_divider,
-        )
-
-        bc.tc_sentences.append(split_outcome.pre_result)
-        session_state.recalculate_duration(
-            samp_width=samp_width,
-            num_of_channels=num_of_channels,
-            sr_divider=sr_divider,
-        )
-        session_state.next_transcribe_time = _utc_now()
-        shared_state.prev_tc_res = split_outcome.post_result
-
-        bc.tc_sentences = _enforce_sentence_limits(bc.tc_sentences, sentence_limitless, max_sentences)
-        bc.update_tc(shared_state.prev_tc_res, separator)
-        translator.dispatch(pre_audio_path, _build_full_transcribed_text(bc.tc_sentences, shared_state.prev_tc_res))
-        return True
-    except Exception as exc:
-        logger.warning(f"Smart-Split fallback due to error: {exc}")
-        return False
 
 
 def _break_buffer_and_update_state(
@@ -1047,33 +901,20 @@ def _break_buffer_and_update_state(
     translator: TranslationDispatcher,
     buffer_reducer: BufferStateReducer,
 ) -> None:
-    logger.info(
-        f"Buffer break [{reason}] | bytes={len(session_state.last_sample)} dur={session_state.duration_seconds:.2f}s"
+    processing_module.break_buffer_and_update_state(
+        reason=reason,
+        session_state=session_state,
+        is_tc=is_tc,
+        sr_divider=sr_divider,
+        samp_width=samp_width,
+        num_of_channels=num_of_channels,
+        sentence_limitless=sentence_limitless,
+        max_sentences=max_sentences,
+        separator=separator,
+        translator=translator,
+        buffer_reducer=buffer_reducer,
+        utc_now=_utc_now,
     )
-
-    preserved_tc = (
-        reason == "buffer_full"
-        and is_tc
-        and bool(shared_state.prev_tc_res)
-        and hasattr(shared_state.prev_tc_res, "segments")
-        and _apply_smart_split(
-            session_state=session_state,
-            previous_result=shared_state.prev_tc_res,
-            sr_divider=sr_divider,
-            samp_width=samp_width,
-            num_of_channels=num_of_channels,
-            sentence_limitless=sentence_limitless,
-            max_sentences=max_sentences,
-            separator=separator,
-            translator=translator,
-        )
-    )
-
-    if preserved_tc:
-        return
-
-    buffer_reducer.reduce_sentences()
-    session_state.reset_buffer()
 
 # =========================================================================
 # MAIN SESSION
