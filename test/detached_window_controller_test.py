@@ -99,6 +99,14 @@ class DetachedWindowControllerTests(unittest.TestCase):
         result = self.controller.update_detached_content("tc", "hello")
         self.assertEqual(result, {"status": "missing", "mode": "tc"})
 
+    def test_create_detached_window_normalizes_invalid_mode_to_default(self) -> None:
+        self.bridge.live_state = {"detached_translated_html": "<i>world</i>"}
+        result = self.controller.create_detached_window("invalid", x=5, y=6)
+        self.assertEqual(result, {"status": "created", "mode": "tl"})
+        self.assertEqual(self.window_manager.created[0][0], "tl")
+        self.assertEqual(self.window_manager.updated_content[-1], ("tl", "<i>world</i>"))
+        self.assertEqual(self.window_manager.updated_config[-1][0], "tl")
+
 
 if __name__ == "__main__":
     unittest.main()
