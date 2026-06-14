@@ -10,13 +10,14 @@ from queue import Empty, Queue
 from shlex import quote
 from threading import Lock, Thread
 from time import gmtime, sleep, strftime, time
+from types import TracebackType
 from wave import open as w_open
 
 import numpy as np
 import torch
 import torchaudio
 import webrtcvad
-from typing import Any, Literal, Protocol, cast
+from typing import Literal, Protocol, cast
 from whisper.tokenizer import TO_LANGUAGE_CODE
 
 from speech_translate._constants import MAX_THRESHOLD, MIN_THRESHOLD, WHISPER_SR
@@ -41,6 +42,42 @@ else:
 
 class ResultLike(Protocol):
     text: str
+
+
+class SegmentLike(Protocol):
+    def to_dict(self) -> dict[str, object]:
+        ...
+
+
+class TranscriptionResultLike(ResultLike, Protocol):
+    language: str
+    segments: list[SegmentLike]
+
+
+class LockLike(Protocol):
+    def __enter__(self) -> object:
+        ...
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool | None:
+        ...
+
+
+class WhisperCallable(Protocol):
+    def __call__(self, audio: "AudioTarget", *, task: str, **kwargs: object) -> TranscriptionResultLike:
+        ...
+
+
+class SileroVadLike(Protocol):
+    def __call__(self, audio, sample_rate: int):
+        ...
+
+    def reset_states(self) -> None:
+        ...
 
 
 ResultSnapshot = ResultLike | str
@@ -130,8 +167,8 @@ class RealtimeCallbackContext:
     was_recording: bool = False
     silence_started_at: float = 0.0
     silero_disabled: bool = False
-    webrtc_vad: object | None = None
-    silero_vad: object | None = None
+    webrtc_vad: webrtcvad.Vad | None = None
+    silero_vad: SileroVadLike | None = None
 
 
 callback_context: RealtimeCallbackContext | None = None
@@ -205,12 +242,12 @@ class BufferStateReducer:
 class SmartSplitOutcome:
     pre_audio_bytes: bytes
     post_audio_bytes: bytes
-    pre_result: object
-    post_result: object
+    pre_result: TranscriptionResultLike
+    post_result: TranscriptionResultLike
 
 
 def _build_smart_split_outcome(
-    previous_result: object,
+    previous_result: TranscriptionResultLike,
     last_sample: bytes,
     *,
     prev_buffer_seconds: float,
@@ -430,8 +467,8 @@ def _initialize_callback_context(
     num_of_channels: int,
     samp_width: int,
     use_temp: bool,
-    webrtc_vad: object,
-    silero_vad: object,
+    webrtc_vad: webrtcvad.Vad,
+    silero_vad: SileroVadLike,
 ) -> RealtimeCallbackContext:
     global callback_context
 
@@ -559,24 +596,28 @@ def _build_record_audio_target(
     return audio_target
 
 
-def _execute_realtime_transcription(audio_target: AudioTarget, stable_tc, whisper_args: dict[str, object]) -> object | None:
+def _execute_realtime_transcription(
+    audio_target: AudioTarget,
+    stable_tc: WhisperCallable,
+    whisper_args: dict[str, object],
+) -> TranscriptionResultLike | None:
     try:
         if bc.tc_lock:
-            with bc.tc_lock:
-                return cast(Any, stable_tc(audio_target, task="transcribe", **whisper_args))
-        return cast(Any, stable_tc(audio_target, task="transcribe", **whisper_args))
+            with cast(LockLike, bc.tc_lock):
+                return stable_tc(audio_target, task="transcribe", **whisper_args)
+        return stable_tc(audio_target, task="transcribe", **whisper_args)
     except Exception as exc:
         logger.warning(f"Transcribing error: {exc}")
         return None
 
 
 def _filter_realtime_transcription_result(
-    result: object | None,
+    result: TranscriptionResultLike | None,
     *,
     hallucination_filters: dict[str, object],
     auto: bool,
     configured_language: str | None,
-) -> object | None:
+) -> TranscriptionResultLike | None:
     if not (sj.cache["filter_rec"] and result):
         return result
 
@@ -599,7 +640,7 @@ def _filter_realtime_transcription_result(
 
 
 def _commit_realtime_transcription(
-    result: object | None,
+    result: TranscriptionResultLike | None,
     *,
     audio_target: AudioTarget,
     is_tl: bool,
@@ -719,7 +760,7 @@ def _calculate_smart_split(
 def _apply_smart_split(
     *,
     session_state: RealtimeSessionState,
-    previous_result: object,
+    previous_result: TranscriptionResultLike,
     sr_divider: int,
     samp_width: int,
     num_of_channels: int,
@@ -857,7 +898,7 @@ def record_session(
             except Exception: pass
                 
         silero_model = torch.hub.load(repo_or_dir=dir_silero_vad, source="local", model="silero_vad", onnx=True)
-        silero_vad = cast(Any, silero_model[0] if isinstance(silero_model, tuple) else silero_model)
+        silero_vad = cast(SileroVadLike, silero_model[0] if isinstance(silero_model, tuple) else silero_model)
         silero_vad.reset_states()
 
         bc.tc_lock = Lock() if (is_tc and is_tl and tl_engine_whisper) else None
@@ -1161,7 +1202,13 @@ def record_cb(in_data, _frame_count, _time_info, _status):
 # API / WORKER EXECUTORS
 # =========================================================================
 
-def run_whisper_tl(audio, stable_tl, separator: str, hallucination_filters, **whisper_args):
+def run_whisper_tl(
+    audio: AudioTarget | None,
+    stable_tl: WhisperCallable,
+    separator: str,
+    hallucination_filters: dict[str, object],
+    **whisper_args,
+):
     """Run Whisper translation task"""
     try:
         result = stable_tl(audio, task="translate", **whisper_args)
