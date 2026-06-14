@@ -13,7 +13,7 @@ from loguru import logger
 
 from speech_translate._constants import APP_NAME
 from speech_translate._logging import init_logging
-from speech_translate._path import dir_debug, dir_export, dir_log, dir_user
+from speech_translate._path import dir_debug
 from speech_translate._version import __version__
 from speech_translate.app_tray import AppTray
 from speech_translate.detached_windows import (
@@ -28,11 +28,10 @@ from speech_translate.main_window_controller import MainWindowController
 from speech_translate.model_manager import ModelManagerController
 from speech_translate.recording_controller import RecordingSessionController
 from speech_translate.state_view_builder import StateViewBuilder
+from speech_translate.system_settings_controller import DEFAULT_PATH_CONFIG, SystemSettingsController
 from speech_translate.linker import bc, sj
 from speech_translate.window_geometry import resolve_window_placement
 from speech_translate.web_backend import HeadlessFileProcessDialog, WebTaskBridge, headless_mbox
-from speech_translate.utils.helper import open_folder, open_url
-from speech_translate.utils.whisper.helper import model_select_dict
 from speech_translate.utils.translate.language import TL_ENGINE_SOURCE_DICT, TL_ENGINE_TARGET_DICT
 from speech_translate.utils.translate.translator import shutdown_selenium_translator
 
@@ -100,6 +99,9 @@ class WebBridge(WebTaskBridge):
         self.import_queue_controller = ImportQueueController(self, sj, HeadlessFileProcessDialog, headless_mbox, shutdown_selenium_translator)
         self.recording_controller = RecordingSessionController(self, _get_whisper_load_api, shutdown_selenium_translator)
         self.state_view_builder = StateViewBuilder(self, sj)
+        path_config = dict(DEFAULT_PATH_CONFIG)
+        path_config["dir_debug"] = dir_debug
+        self.system_settings_controller = SystemSettingsController(self, sj, path_config)
         
         # --- Detached Windows ---
         self.detached_window_manager = DetachedWindowManager(self, sj)
@@ -231,159 +233,56 @@ class WebBridge(WebTaskBridge):
         self.main_window_controller.quit_app()
 
     def open_directory(self, name: str) -> Dict[str, str]:
-        mapping = {"export": self._resolve_export_dir(), "log": self._resolve_log_dir(), "debug": dir_debug, "model": self._resolve_model_dir()}
-        if target := mapping.get(name): open_folder(target)
-        return {"target": target or ""}
+        return self.system_settings_controller.open_directory(name)
 
     def select_directory(self, name: str) -> Dict[str, Any]:
-        target_map = {
-            "export": ("dir_export", self._resolve_export_dir()),
-            "model": ("dir_model", self._resolve_model_dir()),
-            "selenium_chrome": ("selenium_chrome_user_data_dir", self._resolve_selenium_chrome_user_data_dir()),
-        }
-        setting_info = target_map.get(str(name or "").strip().lower())
-        if not setting_info: return {"ok": False, "message": "Unsupported directory target", "path": ""}
-        
-        setting_key, default_dir = setting_info
-        if not (window := self.get_window()): return {"ok": False, "message": "Window not ready", "path": ""}
-
-        try:
-            webview = import_module("webview")
-            file_dialog = getattr(getattr(webview, "FileDialog", object), "FOLDER", webview.FOLDER_DIALOG)
-            selected = window.create_file_dialog(file_dialog, directory=default_dir)
-        except Exception as exc:
-            logger.exception(exc)
-            return {"ok": False, "message": str(exc), "path": ""}
-
-        if not selected: return {"ok": False, "message": "No folder selected", "path": default_dir}
-        selected_path = str(selected[0] if isinstance(selected, (list, tuple)) else selected).strip()
-        if not selected_path: return {"ok": False, "message": "No folder selected", "path": default_dir}
-
-        sj.save_key(setting_key, selected_path)
-        if setting_key == "dir_model": self.model_manager_controller.clear_model_status_cache()
-        return {"ok": True, "message": "Directory selected", "path": selected_path, "setting": setting_key}
+        return self.system_settings_controller.select_directory(name)
 
     def open_link(self, url: str) -> Dict[str, str]:
-        open_url(url)
-        return {"url": url}
+        return self.system_settings_controller.open_link(url)
 
     def open_hallucination_filter(self, target: str) -> Dict[str, str]:
-        try:
-            from speech_translate._path import p_filter_rec, p_filter_file_import
-            from speech_translate.utils.whisper.helper import create_hallucination_filter
-            path = p_filter_rec if target == "rec" else p_filter_file_import
-            if not os.path.exists(path):
-                create_hallucination_filter('rec' if target == "rec" else 'file')
-            
-            if sys.platform == "win32":
-                os.startfile(path)
-            elif sys.platform == "darwin":
-                import subprocess
-                subprocess.Popen(["open", path])
-            else:
-                import subprocess
-                subprocess.Popen(["xdg-open", path])
-            return {"ok": True}
-        except Exception as e:
-            logger.exception(e)
-            return {"ok": False, "message": str(e)}
+        return self.system_settings_controller.open_hallucination_filter(target)
 
     def notify(self, title: str, message: str) -> Dict[str, str]:
-        logger.info(f"{title}: {message}")
-        return {"title": title, "message": message}
+        return self.system_settings_controller.notify(title, message)
 
     # =========================================================================
     # SECTION 2: SYSTEM & SETTINGS STATE GENERATION
     # =========================================================================
 
     def _resolve_export_dir(self) -> str:
-        configured = sj.cache.get("dir_export", "auto")
-        return configured if configured != "auto" else dir_export
+        return self.system_settings_controller.resolve_export_dir()
 
     def _resolve_log_dir(self) -> str:
-        configured = sj.cache.get("dir_log", "auto")
-        return configured if configured != "auto" else dir_log
+        return self.system_settings_controller.resolve_log_dir()
 
     def _resolve_selenium_chrome_user_data_dir(self) -> str:
-        configured = str(sj.cache.get("selenium_chrome_user_data_dir", "") or "").strip()
-        return configured if configured else str(Path(dir_user) / "selenium_chrome_profile")
+        return self.system_settings_controller.resolve_selenium_chrome_user_data_dir()
 
     def get_setting(self, key: str) -> Any:
-        return sj.cache.get(key)
+        return self.system_settings_controller.get_setting(key)
 
     def set_setting(self, key: str, value: Any) -> Dict[str, Any]:
-        if key == "selenium_settings":
-            payload = value if isinstance(value, dict) else {}
-            compact = max(0, min(3, int(payload.get("compact_level", 2))))
-            z_order_raw = str(payload.get("z_order_mode", "behind-main")).strip().lower()
-            z_order = z_order_raw if z_order_raw in {"normal", "behind-main", "bottom"} else "behind-main"
-            auto_close = bool(payload.get("auto_close_on_task_done", True))
-            chrome_user_data_dir = str(payload.get("chrome_user_data_dir", "")).strip()
-
-            sj.save_key("selenium_compact_level", compact)
-            sj.save_key("selenium_z_order_mode", z_order)
-            sj.save_key("selenium_auto_close_on_task_done", auto_close)
-            sj.save_key("selenium_chrome_user_data_dir", chrome_user_data_dir)
-
-            return {"key": key, "value": {
-                "selenium_compact_level": sj.cache.get("selenium_compact_level", compact),
-                "selenium_z_order_mode": sj.cache.get("selenium_z_order_mode", z_order),
-                "selenium_auto_close_on_task_done": sj.cache.get("selenium_auto_close_on_task_done", auto_close),
-                "selenium_chrome_user_data_dir": sj.cache.get("selenium_chrome_user_data_dir", chrome_user_data_dir),
-            }}
-
-        if key == "selenium_compact_level":
-            value = max(0, min(3, int(value)))
-        elif key == "selenium_z_order_mode":
-            as_text = str(value).strip().lower()
-            value = as_text if as_text in {"normal", "behind-main", "bottom"} else "behind-main"
-        elif key == "selenium_auto_close_on_task_done":
-            value = bool(value)
-        elif key == "selenium_chrome_user_data_dir":
-            value = str(value or "").strip()
-
-        sj.save_key(key, value)
-        if key == "log_level":
-            from speech_translate._logging import change_log_level
-            change_log_level(str(value))
-        return {"key": key, "value": sj.cache.get(key)}
+        return self.system_settings_controller.set_setting(key, value)
 
     def set_import_setting(self, key: str, value: Any) -> Dict[str, Any]:
-        if key in {"model_f_import", "model_mw"}:
-            value = value if value in model_select_dict else value
-        sj.save_key(key, value)
-        return {"key": key, "value": sj.cache.get(key)}
+        return self.system_settings_controller.set_import_setting(key, value)
 
     def set_record_setting(self, key: str, value: Any) -> Dict[str, Any]:
-        if key == "model_device_preference":
-            normalized = str(value or "auto").strip().lower()
-            value = normalized if value in {"auto", "cpu", "cuda"} else "auto"
-        sj.save_key(key, value)
-        return {"key": key, "value": sj.cache.get(key)}
+        return self.system_settings_controller.set_record_setting(key, value)
 
     def get_log_file_name(self) -> str:
-        from speech_translate._logging import current_log
-        return current_log
+        return self.system_settings_controller.get_log_file_name()
 
     def get_log_content(self) -> str:
-        from speech_translate._logging import current_log
-        log_path = Path(dir_log) / current_log
-        try: content = log_path.read_text(encoding="utf-8")
-        except FileNotFoundError: return f"Log file not found: {log_path}"
-        except Exception as exc:
-            logger.exception(exc)
-            return f"Failed to read log file: {exc}"
-
-        return content[-200000:] if len(content) > 200000 else content
+        return self.system_settings_controller.get_log_content()
 
     def refresh_log(self) -> Dict[str, str]:
-        return {"content": self.get_log_content(), "file": self.get_log_file_name()}
+        return self.system_settings_controller.refresh_log()
 
     def clear_log(self) -> Dict[str, str]:
-        from speech_translate._logging import clear_current_log_file
-        clear_current_log_file()
-        logger.info("Log cleared from web UI")
-        return self.refresh_log()
+        return self.system_settings_controller.clear_log()
 
     def get_state(self) -> Dict[str, Any]:
         result = self.state_view_builder.build_state()
