@@ -144,6 +144,18 @@ class RecordingSessionConfig:
 
 
 @dataclass
+class RecordingModelRuntime:
+    stable_tc: WhisperCallable | None
+    stable_tl: WhisperCallable | None
+    whisper_args: dict[str, object]
+    configured_whisper_language: str | None
+    demucs_enabled: bool
+    hallucination_filters: HallucinationFilters
+    cuda_device: str
+    use_temp: bool
+
+
+@dataclass
 class RealtimeSessionState:
     last_sample: bytes = b""
     duration_seconds: float = 0.0
@@ -377,6 +389,62 @@ def _build_recording_session_config(
         auto_break_buffer=bool(sj.cache.get(f"auto_break_buffer_{rec_type}", True)),
         use_temp=bool(sj.cache["use_temp"]),
         separator=str_separator_to_html(literal_eval(quote(sj.cache["separate_with"]))),
+    )
+
+
+def _load_recording_model_runtime(
+    *,
+    config: RecordingSessionConfig,
+    lang_source: str,
+    model_name_tc: str,
+    engine: str,
+    is_tc: bool,
+    is_tl: bool,
+) -> RecordingModelRuntime:
+    model_args = get_model_args(sj.cache)
+    _, _, stable_tc, stable_tl, to_args = get_model(
+        is_tc,
+        is_tl,
+        config.tl_engine_whisper,
+        model_name_tc,
+        engine,
+        sj.cache,
+        **model_args,
+    )
+    whisper_args = get_tc_args(to_args, sj.cache)
+    whisper_args["verbose"] = None
+    configured_whisper_language = get_whisper_lang_similar(lang_source) if not config.auto else None
+    whisper_args["language"] = TO_LANGUAGE_CODE.get(configured_whisper_language) if configured_whisper_language else None
+
+    if sj.cache.get("enable_initial_prompt", False):
+        from ..whisper.prompts import pick_initial_prompt
+
+        prompt = pick_initial_prompt(whisper_args.get("language"), True, sj.cache.get("initial_prompts_map", {}), None)
+        if prompt:
+            whisper_args["initial_prompt"] = prompt
+        else:
+            whisper_args.pop("initial_prompt", None)
+    else:
+        whisper_args.pop("initial_prompt", None)
+
+    demucs_enabled = bool(whisper_args.get("demucs", False))
+    vad_enabled = bool(whisper_args.get("vad", False))
+    use_temp = config.use_temp
+    if sj.cache["use_faster_whisper"] and not use_temp:
+        whisper_args["input_sr"] = WHISPER_SR
+    if demucs_enabled and vad_enabled:
+        use_temp = True
+
+    hallucination_filters = get_hallucination_filter('rec', sj.cache["path_filter_rec"]) if sj.cache["filter_rec"] else {}
+    return RecordingModelRuntime(
+        stable_tc=cast(WhisperCallable | None, stable_tc),
+        stable_tl=cast(WhisperCallable | None, stable_tl),
+        whisper_args=whisper_args,
+        configured_whisper_language=configured_whisper_language,
+        demucs_enabled=demucs_enabled,
+        hallucination_filters=hallucination_filters,
+        cuda_device=str(model_args["device"]),
+        use_temp=use_temp,
     )
 
 
@@ -1017,31 +1085,19 @@ def record_session(
 
         bc.tc_lock = Lock() if (is_tc and is_tl and config.tl_engine_whisper) else None
 
-        # Load models
-        model_args = get_model_args(sj.cache)
-        _, _, stable_tc, stable_tl, to_args = get_model(is_tc, is_tl, config.tl_engine_whisper, model_name_tc, engine, sj.cache, **model_args)
-        whisper_args = get_tc_args(to_args, sj.cache)
-        whisper_args["verbose"] = None
-        configured_whisper_language = get_whisper_lang_similar(lang_source) if not config.auto else None
-        whisper_args["language"] = TO_LANGUAGE_CODE.get(configured_whisper_language) if configured_whisper_language else None
+        model_runtime = _load_recording_model_runtime(
+            config=config,
+            lang_source=lang_source,
+            model_name_tc=model_name_tc,
+            engine=engine,
+            is_tc=is_tc,
+            is_tl=is_tl,
+        )
+        config.use_temp = model_runtime.use_temp
 
-        if sj.cache.get("enable_initial_prompt", False):
-            from ..whisper.prompts import pick_initial_prompt
-            prompt = pick_initial_prompt(whisper_args.get("language"), True, sj.cache.get("initial_prompts_map", {}), None)
-            if prompt: whisper_args["initial_prompt"] = prompt
-            else: whisper_args.pop("initial_prompt", None)
-        else:
-            whisper_args.pop("initial_prompt", None)
-
-        demucs_enabled, vad_enabled = bool(whisper_args.get("demucs", False)), bool(whisper_args.get("vad", False))
-        if sj.cache["use_faster_whisper"] and not config.use_temp: whisper_args["input_sr"] = WHISPER_SR
-        if demucs_enabled and vad_enabled:
-            config.use_temp = True  # Force temp file
-        
-        hallucination_filters = get_hallucination_filter('rec', sj.cache["path_filter_rec"]) if sj.cache["filter_rec"] else {}
-        cuda_device = model_args["device"]
-
-        logger.info(f"Session starting: {config.taskname} | Engine: {engine} | Device: {cuda_device} | Demucs: {demucs_enabled}")
+        logger.info(
+            f"Session starting: {config.taskname} | Engine: {engine} | Device: {model_runtime.cuda_device} | Demucs: {model_runtime.demucs_enabled}"
+        )
 
         # UI & State Updaters
         t_start = time()
@@ -1103,9 +1159,9 @@ def record_session(
             lang_source=lang_source,
             lang_target=lang_target,
             engine=engine,
-            hallucination_filters=hallucination_filters,
-            stable_tl=stable_tl,
-            whisper_args=whisper_args,
+            hallucination_filters=model_runtime.hallucination_filters,
+            stable_tl=model_runtime.stable_tl,
+            whisper_args=model_runtime.whisper_args,
             record_status_updater=update_status_lbl,
         )
         buffer_reducer = BufferStateReducer(
@@ -1209,8 +1265,8 @@ def record_session(
                 use_temp=config.use_temp,
                 num_of_channels=num_of_channels,
                 samp_width=samp_width,
-                demucs_enabled=demucs_enabled,
-                cuda_device=cuda_device,
+                demucs_enabled=model_runtime.demucs_enabled,
+                cuda_device=model_runtime.cuda_device,
                 sr_ori=sr_ori,
             )
 
@@ -1222,15 +1278,15 @@ def record_session(
                 bc.current_rec_status = "▶️ Recording ⟳ Transcribing Audio"
                 session_state.prev_tc_buffer_seconds = session_state.duration_seconds
 
-                result = _execute_realtime_transcription(audio_target, stable_tc, whisper_args)
+                result = _execute_realtime_transcription(audio_target, cast(WhisperCallable, model_runtime.stable_tc), model_runtime.whisper_args)
                 if result is None:
                     continue
 
                 result = _filter_realtime_transcription_result(
                     result,
-                    hallucination_filters=hallucination_filters,
+                    hallucination_filters=model_runtime.hallucination_filters,
                     auto=config.auto,
-                    configured_language=configured_whisper_language,
+                    configured_language=model_runtime.configured_whisper_language,
                 )
                 _commit_realtime_transcription(
                     result,

@@ -21,6 +21,7 @@ from speech_translate.utils.audio.record import (
     _break_buffer_and_update_state,
     _build_record_audio_target,
     _build_recording_session_config,
+    _load_recording_model_runtime,
     _commit_realtime_transcription,
     _calculate_buffer_duration,
     _execute_realtime_transcription,
@@ -263,6 +264,54 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertFalse(config.auto_break_buffer)
         self.assertTrue(config.use_temp)
         self.assertEqual(config.taskname, "Transcribe & Translate")
+
+    def test_load_recording_model_runtime_builds_whisper_runtime(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_get_model_args = record_module.get_model_args
+        previous_get_model = record_module.get_model
+        previous_get_tc_args = record_module.get_tc_args
+        previous_get_filter = record_module.get_hallucination_filter
+        previous_cache = dict(record_module.sj.cache)
+        try:
+            record_module.sj.cache["enable_initial_prompt"] = False
+            record_module.sj.cache["use_faster_whisper"] = True
+            record_module.sj.cache["filter_rec"] = True
+            record_module.sj.cache["path_filter_rec"] = "filters.txt"
+
+            record_module.get_model_args = lambda cache: {"device": "cpu"}
+            record_module.get_model = lambda *args, **kwargs: (None, None, lambda *a, **k: FakeResult("tc"), lambda *a, **k: FakeResult("tl"), {"foo": "bar"})
+            record_module.get_tc_args = lambda to_args, cache: {"demucs": True, "vad": True}
+            record_module.get_hallucination_filter = lambda *args, **kwargs: {"english": ["x"]}
+
+            config = _build_recording_session_config(
+                rec_type="mic",
+                lang_source="English",
+                engine="Whisper",
+                is_tc=True,
+                is_tl=True,
+            )
+            runtime = _load_recording_model_runtime(
+                config=config,
+                lang_source="English",
+                model_name_tc="base",
+                engine="Whisper",
+                is_tc=True,
+                is_tl=True,
+            )
+        finally:
+            record_module.get_model_args = previous_get_model_args
+            record_module.get_model = previous_get_model
+            record_module.get_tc_args = previous_get_tc_args
+            record_module.get_hallucination_filter = previous_get_filter
+            record_module.sj.cache.clear()
+            record_module.sj.cache.update(previous_cache)
+
+        self.assertTrue(runtime.use_temp)
+        self.assertTrue(runtime.demucs_enabled)
+        self.assertEqual(runtime.cuda_device, "cpu")
+        self.assertEqual(runtime.hallucination_filters, {"english": ["x"]})
+        self.assertEqual(runtime.whisper_args["language"], "en")
 
     def test_resolve_live_input_source_language_prefers_detected_supported_language(self) -> None:
         from speech_translate.utils.audio import record as record_module
