@@ -1449,7 +1449,6 @@ def record_session(
             is_tl=is_tl,
         )
         p = pyaudio.PyAudio()
-        stream_runtime = _build_recording_stream_runtime(rec_type=rec_type, config=config, p=p)
 
         bc.tc_lock = Lock() if (is_tc and is_tl and config.tl_engine_whisper) else None
 
@@ -1462,6 +1461,7 @@ def record_session(
             is_tl=is_tl,
         )
         config.use_temp = model_runtime.use_temp
+        stream_runtime = _build_recording_stream_runtime(rec_type=rec_type, config=config, p=p)
 
         logger.info(
             f"Session starting: {config.taskname} | Engine: {engine} | Device: {model_runtime.cuda_device} | Demucs: {model_runtime.demucs_enabled}"
@@ -1555,7 +1555,7 @@ def record_session(
             _cleanup_processed_audio_target(
                 audio_target,
                 use_temp=config.use_temp,
-                keep_temp=runtime.keep_temp,
+                keep_temp=services.runtime.keep_temp,
                 is_tl=is_tl,
                 tl_engine_whisper=config.tl_engine_whisper,
                 session_state=session_state,
