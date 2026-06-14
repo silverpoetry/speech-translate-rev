@@ -16,13 +16,8 @@ from speech_translate._logging import init_logging
 from speech_translate._path import dir_debug
 from speech_translate._version import __version__
 from speech_translate.app_tray import AppTray
-from speech_translate.detached_windows import (
-    DetachedWindowManager,
-    build_detached_config,
-    detached_setting_key,
-    get_detached_live_content,
-    normalize_detached_mode,
-)
+from speech_translate.detached_windows import DetachedWindowManager
+from speech_translate.detached_window_controller import DetachedWindowController
 from speech_translate.import_queue_manager import ImportQueueController
 from speech_translate.main_window_controller import MainWindowController
 from speech_translate.model_manager import ModelManagerController
@@ -105,6 +100,7 @@ class WebBridge(WebTaskBridge):
         
         # --- Detached Windows ---
         self.detached_window_manager = DetachedWindowManager(self, sj)
+        self.detached_window_controller = DetachedWindowController(self, sj, self.detached_window_manager)
         self.state_view_builder.start_audio_source_scan()
 
     @property
@@ -444,62 +440,31 @@ class WebBridge(WebTaskBridge):
     # =========================================================================
 
     def get_detached_config(self, mode: str) -> Dict[str, Any]:
-        return build_detached_config(sj.cache, mode)
+        return self.detached_window_controller.get_detached_config(mode)
 
     def set_detached_config(self, mode: str, key: str, value: Any) -> Dict[str, Any]:
-        normalized_mode = normalize_detached_mode(mode)
-        setting_key = detached_setting_key(normalized_mode, key)
-        sj.save_key(setting_key, value)
-        return {"key": setting_key, "value": sj.cache.get(setting_key)}
+        return self.detached_window_controller.set_detached_config(mode, key, value)
 
     def create_detached_window(self, mode: str = "tc", x: Optional[int] = None, y: Optional[int] = None) -> Dict[str, Any]:
-        mode = normalize_detached_mode(mode)
-        placement = resolve_window_placement(
-            sj.cache.get(f"ex_{mode}_geometry", "900x240"),
-            900,
-            240,
-            x=x,
-            y=y,
-        )
-        self.detached_window_manager.create_window(mode, placement.x, placement.y, placement.width, placement.height)
-        self.update_detached_config(mode)
-
-        if html := get_detached_live_content(mode, self.snapshot_live_state()):
-            self.update_detached_content(mode, html)
-        return {"status": "created", "mode": mode}
+        return self.detached_window_controller.create_detached_window(mode, x, y)
 
     def toggle_detached_window(self, mode: str = "tc", x: Optional[int] = None, y: Optional[int] = None) -> Dict[str, Any]:
-        mode = normalize_detached_mode(mode)
-        if mode in self.detached_window_manager.windows:
-            self.detached_window_manager.close_window(mode)
-            return {"status": "closed", "mode": mode}
-        return self.create_detached_window(mode, x, y)
+        return self.detached_window_controller.toggle_detached_window(mode, x, y)
 
     def show_detached_window(self, mode: str = "tc") -> Dict[str, Any]:
-        mode = normalize_detached_mode(mode)
-        self.detached_window_manager.show_window(mode)
-        return {"status": "shown", "mode": mode}
+        return self.detached_window_controller.show_detached_window(mode)
 
     def hide_detached_window(self, mode: str = "tc") -> Dict[str, Any]:
-        mode = normalize_detached_mode(mode)
-        self.detached_window_manager.hide_window(mode)
-        return {"status": "hidden", "mode": mode}
+        return self.detached_window_controller.hide_detached_window(mode)
 
     def close_detached_window(self, mode: str = "tc") -> Dict[str, Any]:
-        mode = normalize_detached_mode(mode)
-        self.detached_window_manager.close_window(mode)
-        return {"status": "closed", "mode": mode}
+        return self.detached_window_controller.close_detached_window(mode)
 
     def update_detached_content(self, mode: str, html_content: str) -> Dict[str, Any]:
-        mode = normalize_detached_mode(mode)
-        if mode not in self.detached_window_manager.windows: return {"status": "missing", "mode": mode}
-        self.detached_window_manager.update_window_content(mode, html_content)
-        return {"status": "updated", "mode": mode}
+        return self.detached_window_controller.update_detached_content(mode, html_content)
 
     def update_detached_config(self, mode: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        mode = normalize_detached_mode(mode)
-        self.detached_window_manager.update_window_config(mode, config or self.get_detached_config(mode))
-        return {"status": "config_updated", "mode": mode}
+        return self.detached_window_controller.update_detached_config(mode, config)
 
 def _install_signal_handler():
     def signal_handler(_sig, _frame):
