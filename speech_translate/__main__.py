@@ -9,9 +9,41 @@ if __package__ in (None, ""):
     project_root = Path(__file__).resolve().parent.parent
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
-    from speech_translate._constants import LOG_FORMAT
+    from speech_translate._constants import APP_USER_MODEL_ID, LOG_FORMAT
 else:
-    from ._constants import LOG_FORMAT
+    from ._constants import APP_USER_MODEL_ID, LOG_FORMAT
+
+
+_NULL_STREAMS = []
+
+
+def _ensure_standard_streams():
+    """Make pythonw launches safe for libraries expecting stdio streams."""
+    import os
+
+    for stream_name in ("stdin", "stdout", "stderr"):
+        if getattr(sys, stream_name, None) is None:
+            mode = "r" if stream_name == "stdin" else "w"
+            handle = open(os.devnull, mode, encoding="utf-8", buffering=1)
+            setattr(sys, stream_name, handle)
+            _NULL_STREAMS.append(handle)
+
+
+def _set_windows_app_user_model_id():
+    """Assign a dedicated taskbar identity for source-based pythonw launches."""
+    if sys.platform != "win32":
+        return
+
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+    except Exception:
+        pass
+
+
+_ensure_standard_streams()
+_set_windows_app_user_model_id()
 
 # override loguru default format so we dont need to do logger.remove on the logger init
 environ["LOGURU_FORMAT"] = LOG_FORMAT
@@ -30,7 +62,8 @@ if __package__ in (None, ""):
 else:
     from .webview_app import main  # pylint: disable=wrong-import-position
 _bootstrap_import_ms = int((perf_counter() - _bootstrap_t0) * 1000)
-sys.stderr.write(f"[Bootstrap] import webview_app took {_bootstrap_import_ms}ms\n")
+if sys.stderr is not None:
+    sys.stderr.write(f"[Bootstrap] import webview_app took {_bootstrap_import_ms}ms\n")
 
 if __name__ == "__main__":
     main()

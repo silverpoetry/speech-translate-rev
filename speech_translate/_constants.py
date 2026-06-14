@@ -1,4 +1,5 @@
 APP_NAME = "Speech Translate"
+APP_USER_MODEL_ID = "Dadangdut33.SpeechTranslate.WebviewUI"
 SUBTITLE_PLACEHOLDER = " " * 100
 PREVIEW_WORDS = "1234567 Preview Hello مرحبًا プレビュー こんにちは 预习 你好 привет"
 WHISPER_SR = 16_000
