@@ -130,6 +130,21 @@ class ModelManagerControllerTests(unittest.TestCase):
         self.assertFalse(self.controller.runtime_model_loaded)
         self.assertEqual(self.controller.runtime_model_message, "Model load failed: boom")
 
+    def test_check_model_normalizes_display_name_before_verification(self) -> None:
+        previous_verify = self.controller.verify_model_status
+        captured = {}
+        try:
+            self.controller.verify_model_status = lambda engine, model_key, model_dir: captured.update(
+                {"engine": engine, "model_key": model_key, "model_dir": model_dir}
+            ) or (True, "")
+            self.controller.check_model("⚡ Tiny [1GB VRAM] (Fastest)", engine="Whisper")
+        finally:
+            self.controller.verify_model_status = previous_verify
+
+        self.assertEqual(captured["engine"], "whisper")
+        self.assertEqual(captured["model_key"], "tiny")
+        self.assertEqual(self.controller.model_manager_model, "tiny")
+
 
 if __name__ == "__main__":
     unittest.main()

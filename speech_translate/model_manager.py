@@ -100,6 +100,32 @@ class ModelManagerController:
     def clear_model_status_cache(self) -> None:
         self.model_status_cache.clear()
 
+    def _normalize_engine_scope(self, engine: Optional[str]) -> str:
+        engine_name = str(engine or self.model_manager_engine or "whisper").strip().lower()
+        return engine_name if engine_name in {"whisper", "faster-whisper"} else "whisper"
+
+    def _normalize_model_scope(self, model_key: Optional[str]) -> str:
+        normalized = self.normalize_model_key(str(model_key or self.model_manager_model or "small"))
+        return normalized if normalized in self.get_model_manager_keys() else "small"
+
+    def _build_model_rows(self, engines: list[str], models: list[str]) -> list[JsonDict]:
+        rows: list[JsonDict] = []
+        for row_engine in engines:
+            for model_key in models:
+                cached = self.model_status_cache.get(f"{row_engine}:{model_key}")
+                rows.append(
+                    {
+                        "model": model_key,
+                        "engine": row_engine,
+                        "downloaded": cached.get("downloaded") if cached else None,
+                        "downloading": cached.get("downloading", False) if cached else False,
+                        "progress": float(cached.get("progress", 0.0)) if cached else 0.0,
+                        "speed": str(cached.get("speed", "")) if cached else "",
+                        "error": cached.get("error", "") if cached else "",
+                    }
+                )
+        return rows
+
     @staticmethod
     def path_size(path: str) -> int:
         if not path:
@@ -132,30 +158,10 @@ class ModelManagerController:
         return 0
 
     def build_model_manager_state(self, engine_hint: Optional[str] = None, include_both: bool = False) -> JsonDict:
-        self.model_manager_engine = str(engine_hint or self.model_manager_engine or "whisper")
-        if self.model_manager_engine not in {"whisper", "faster-whisper"}:
-            self.model_manager_engine = "whisper"
-
+        self.model_manager_engine = self._normalize_engine_scope(engine_hint)
         models = self.get_model_manager_keys()
-        self.model_manager_model = str(self.model_manager_model or "small")
-        if self.model_manager_model not in models:
-            self.model_manager_model = "small"
-
-        rows = []
-        for row_engine in (["whisper", "faster-whisper"] if include_both else [self.model_manager_engine]):
-            for model_key in models:
-                cached = self.model_status_cache.get(f"{row_engine}:{model_key}")
-                rows.append(
-                    {
-                        "model": model_key,
-                        "engine": row_engine,
-                        "downloaded": cached.get("downloaded") if cached else None,
-                        "downloading": cached.get("downloading", False) if cached else False,
-                        "progress": float(cached.get("progress", 0.0)) if cached else 0.0,
-                        "speed": str(cached.get("speed", "")) if cached else "",
-                        "error": cached.get("error", "") if cached else "",
-                    }
-                )
+        self.model_manager_model = self._normalize_model_scope(self.model_manager_model)
+        rows = self._build_model_rows(["whisper", "faster-whisper"] if include_both else [self.model_manager_engine], models)
 
         return {
             "engine_options": ["whisper", "faster-whisper"],
@@ -207,15 +213,14 @@ class ModelManagerController:
         self.runtime_model_message = str(message)
 
     def check_model(self, model_key: str, engine: str = "whisper") -> JsonDict:
-        engine = engine.strip().lower()
-        self.model_manager_engine = engine if engine in {"whisper", "faster-whisper"} else "whisper"
-        self.model_manager_model = model_key
+        self.model_manager_engine = self._normalize_engine_scope(engine)
+        self.model_manager_model = self._normalize_model_scope(model_key)
 
-        downloaded, error = self.verify_model_status(self.model_manager_engine, model_key, self.resolve_model_dir())
-        self.cache_model_status(self.model_manager_engine, model_key, downloaded, error, downloading=False)
+        downloaded, error = self.verify_model_status(self.model_manager_engine, self.model_manager_model, self.resolve_model_dir())
+        self.cache_model_status(self.model_manager_engine, self.model_manager_model, downloaded, error, downloading=False)
         state = self.build_model_manager_state(self.model_manager_engine)
         state["checked"] = {
-            "model": model_key,
+            "model": self.model_manager_model,
             "engine": self.model_manager_engine,
             "downloaded": downloaded,
             "error": error,
@@ -223,11 +228,10 @@ class ModelManagerController:
         return state
 
     def check_all_models(self, engine: str = "whisper") -> JsonDict:
-        engine = engine.strip().lower()
-        if engine not in {"whisper", "faster-whisper", "both"}:
-            engine = "whisper"
+        engine = str(engine or "whisper").strip().lower()
+        engine = engine if engine in {"whisper", "faster-whisper", "both"} else "whisper"
         if engine != "both":
-            self.model_manager_engine = engine
+            self.model_manager_engine = self._normalize_engine_scope(engine)
 
         model_dir = self.resolve_model_dir()
         for target_engine in (["whisper", "faster-whisper"] if engine == "both" else [engine]):
@@ -238,13 +242,12 @@ class ModelManagerController:
         return self.build_model_manager_state(self.model_manager_engine, include_both=(engine == "both"))
 
     def download_model(self, model_key: str, engine: str = "whisper") -> JsonDict:
-        engine = engine.strip().lower()
-        engine = engine if engine in {"whisper", "faster-whisper"} else "whisper"
+        engine = self._normalize_engine_scope(engine)
         if self.model_download_running:
             return {"ok": False, "message": "Another download is running"}
 
         self.model_manager_engine = engine
-        self.model_manager_model = model_key
+        self.model_manager_model = self._normalize_model_scope(model_key)
 
         def worker():
             self.model_download_running = True
@@ -252,25 +255,25 @@ class ModelManagerController:
                 model_dir = self.resolve_model_dir()
                 os.makedirs(model_dir, exist_ok=True)
                 self.bridge.reset_task_state("Model Download")
-                self.bridge.update_task_message(f"Preparing download for {model_key} ({engine})", source=TASK_SOURCE_MODEL_DOWNLOAD)
+                self.bridge.update_task_message(f"Preparing download for {self.model_manager_model} ({engine})", source=TASK_SOURCE_MODEL_DOWNLOAD)
                 self.bridge.update_task_progress(5, source=TASK_SOURCE_MODEL_DOWNLOAD)
 
                 if engine == "whisper":
                     from whisper import _MODELS
 
-                    if not (url := _MODELS.get(model_key)):
-                        raise ValueError(f"Invalid model key: {model_key}")
+                    if not (url := _MODELS.get(self.model_manager_model)):
+                        raise ValueError(f"Invalid model key: {self.model_manager_model}")
                     observe_path = os.path.join(model_dir, os.path.basename(url))
-                    total_bytes = self.estimate_total_whisper_bytes(model_key)
+                    total_bytes = self.estimate_total_whisper_bytes(self.model_manager_model)
                 else:
                     from faster_whisper.utils import _MODELS as fw_models
                     from huggingface_hub.file_download import repo_folder_name
 
-                    if not (repo_id := fw_models.get(model_key)):
-                        raise ValueError(f"Invalid model key: {model_key}")
+                    if not (repo_id := fw_models.get(self.model_manager_model)):
+                        raise ValueError(f"Invalid model key: {self.model_manager_model}")
                     observe_path = os.path.join(model_dir, repo_folder_name(repo_id=repo_id, repo_type="model"))
                     try:
-                        self.bridge.update_task_message(f"Fetching model info for {model_key}...", source=TASK_SOURCE_MODEL_DOWNLOAD)
+                        self.bridge.update_task_message(f"Fetching model info for {self.model_manager_model}...", source=TASK_SOURCE_MODEL_DOWNLOAD)
                         import huggingface_hub
 
                         api = huggingface_hub.HfApi()
@@ -291,7 +294,7 @@ class ModelManagerController:
                         logger.warning(f"Failed to fetch total size: {exc}")
                         total_bytes = 0
 
-                self.cache_model_status(engine, model_key, False, downloading=True, progress=5, speed="-")
+                self.cache_model_status(engine, self.model_manager_model, False, downloading=True, progress=5, speed="-")
                 result_box = {"ok": False, "error": None}
 
                 def _do_download():
@@ -299,11 +302,11 @@ class ModelManagerController:
                         if engine == "whisper":
                             from whisper import _MODELS, _download
 
-                            _download(_MODELS.get(model_key), model_dir, False)
+                            _download(_MODELS.get(self.model_manager_model), model_dir, False)
                         else:
                             from faster_whisper.utils import download_model as fw_download_model
 
-                            fw_download_model(model_key, cache_dir=model_dir)
+                            fw_download_model(self.model_manager_model, cache_dir=model_dir)
                         result_box["ok"] = True
                     except Exception as exc:
                         result_box["error"] = exc
@@ -327,9 +330,9 @@ class ModelManagerController:
                         else self.format_bytes(current_bytes)
                     )
 
-                    self.cache_model_status(engine, model_key, False, downloading=True, progress=progress, speed=speed_text)
+                    self.cache_model_status(engine, self.model_manager_model, False, downloading=True, progress=progress, speed=speed_text)
                     self.bridge.update_task_progress(progress, source=TASK_SOURCE_MODEL_DOWNLOAD)
-                    self.bridge.update_task_message(f"DL {model_key}: {size_text} ({speed_text})", source=TASK_SOURCE_MODEL_DOWNLOAD)
+                    self.bridge.update_task_message(f"DL {self.model_manager_model}: {size_text} ({speed_text})", source=TASK_SOURCE_MODEL_DOWNLOAD)
                     last_bytes, last_time = current_bytes, now
 
                 download_thread.join()
@@ -340,13 +343,13 @@ class ModelManagerController:
                 downloaded = False
                 error = ""
                 for _ in range(8):
-                    if downloaded := self.verify_model_status(engine, model_key, model_dir)[0]:
+                    if downloaded := self.verify_model_status(engine, self.model_manager_model, model_dir)[0]:
                         break
                     sleep(0.5)
 
                 self.cache_model_status(
                     engine,
-                    model_key,
+                    self.model_manager_model,
                     downloaded,
                     error,
                     downloading=False,
@@ -357,19 +360,19 @@ class ModelManagerController:
                     raise RuntimeError(error or "Verification failed")
 
                 self.bridge.update_task_progress(100, source=TASK_SOURCE_MODEL_DOWNLOAD)
-                self.bridge.finish_task(f"Model downloaded: {model_key} ({engine})")
+                self.bridge.finish_task(f"Model downloaded: {self.model_manager_model} ({engine})")
             except Exception as exc:
                 logger.exception(exc)
-                self.cache_model_status(engine, model_key, False, str(exc), downloading=False)
+                self.cache_model_status(engine, self.model_manager_model, False, str(exc), downloading=False)
                 self.bridge.update_task_error(str(exc))
             finally:
                 self.model_download_running = False
 
         Thread(target=worker, daemon=True).start()
-        return {"ok": True, "message": "Model download started", "model": model_key, "engine": engine}
+        return {"ok": True, "message": "Model download started", "model": self.model_manager_model, "engine": engine}
 
     def load_runtime_model(self, model_key: str) -> JsonDict:
-        model_key = self.normalize_model_key(str(model_key))
+        model_key = self._normalize_model_scope(model_key)
         if self.model_load_running:
             return {"ok": False, "message": "Another load is running"}
 
