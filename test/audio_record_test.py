@@ -12,6 +12,7 @@ from speech_translate.utils.audio.record import (
     BufferStateReducer,
     RealtimeCallbackContext,
     RecordingRuntime,
+    RecordingSessionLifecycle,
     RecordingSessionServices,
     RecordingStreamRuntime,
     RecordingStatusEmitter,
@@ -34,6 +35,7 @@ from speech_translate.utils.audio.record import (
     _commit_realtime_transcription,
     _build_recording_session_services,
     _build_recording_stream_runtime,
+    _initialize_recording_session_lifecycle,
     _execute_recording_iteration,
     _calculate_buffer_duration,
     _execute_realtime_transcription,
@@ -483,6 +485,111 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertIsInstance(services.buffer_reducer, BufferStateReducer)
         self.assertEqual(services.translator.kwargs["lang_target"], "Chinese")
         self.assertEqual(services.translator.kwargs["hallucination_filters"], {"english": ["x"]})
+
+    def test_initialize_recording_session_lifecycle_resets_session_state_and_lock(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_build_services = record_module._build_recording_session_services
+        previous_status = record_module.bc.current_rec_status
+        previous_auto_lang = record_module.bc.auto_detected_lang
+        previous_tc_sentences = list(record_module.bc.tc_sentences)
+        previous_tl_sentences = list(record_module.bc.tl_sentences)
+        previous_prev_tc = record_module.shared_state.prev_tc_res
+        previous_prev_tl = record_module.shared_state.prev_tl_res
+        previous_tc_lock = record_module.bc.tc_lock
+        try:
+            runtime = RecordingRuntime(
+                taskname="Transcribe & Translate",
+                device="mic",
+                lang_source="English",
+                lang_target="Chinese",
+                engine="Whisper",
+                is_tl=True,
+                use_temp=False,
+                separator="<br />",
+                keep_temp=False,
+                t_start=1.0,
+                max_buffer_s=10.0,
+                max_sentences=5,
+                sentence_limitless=False,
+                lang_target_display="Chinese",
+            )
+            services = RecordingSessionServices(
+                runtime=runtime,
+                status_emitter=object(),
+                translator=object(),
+                buffer_reducer=object(),
+            )
+            record_module._build_recording_session_services = lambda **kwargs: services
+            record_module.bc.current_rec_status = "busy"
+            record_module.bc.auto_detected_lang = "en"
+            record_module.bc.tc_sentences = ["old"]
+            record_module.bc.tl_sentences = ["old-tl"]
+            record_module.shared_state.prev_tc_res = "prev"
+            record_module.shared_state.prev_tl_res = "prev-tl"
+            record_module.bc.tc_lock = None
+
+            class ModelRuntimeStub:
+                pass
+
+            lifecycle = _initialize_recording_session_lifecycle(
+                config=type("Config", (), {"tl_engine_whisper": True})(),
+                model_runtime=ModelRuntimeStub(),
+                stream_runtime=RecordingStreamRuntime(
+                    input_device_index=0,
+                    sr_ori=16000,
+                    num_of_channels=1,
+                    chunk_size=320,
+                    samp_width=2,
+                    sr_divider=16000,
+                    callback_ctx=RealtimeCallbackContext(
+                        sample_rate=16000,
+                        frame_duration_ms=20,
+                        threshold_enable=True,
+                        threshold_db=-20.0,
+                        threshold_auto=True,
+                        use_silero=True,
+                        silero_min_conf=0.75,
+                        vad_checked=False,
+                        num_of_channels=1,
+                        samp_width=2,
+                        use_temp=False,
+                    ),
+                ),
+                device="mic",
+                lang_source="English",
+                lang_target="Chinese",
+                engine="Whisper",
+                is_tc=True,
+                is_tl=True,
+                t_start=2.0,
+            )
+            observed_auto_lang = record_module.bc.auto_detected_lang
+            observed_tc_sentences = list(record_module.bc.tc_sentences)
+            observed_tl_sentences = list(record_module.bc.tl_sentences)
+            observed_prev_tc = record_module.shared_state.prev_tc_res
+            observed_prev_tl = record_module.shared_state.prev_tl_res
+            observed_tc_lock = record_module.bc.tc_lock
+        finally:
+            record_module._build_recording_session_services = previous_build_services
+            record_module.bc.current_rec_status = previous_status
+            record_module.bc.auto_detected_lang = previous_auto_lang
+            record_module.bc.tc_sentences = previous_tc_sentences
+            record_module.bc.tl_sentences = previous_tl_sentences
+            record_module.shared_state.prev_tc_res = previous_prev_tc
+            record_module.shared_state.prev_tl_res = previous_prev_tl
+            record_module.bc.tc_lock = previous_tc_lock
+
+        self.assertIsInstance(lifecycle, RecordingSessionLifecycle)
+        self.assertEqual(lifecycle.session_state.last_sample, b"")
+        self.assertEqual(observed_auto_lang, "~")
+        self.assertEqual(observed_tc_sentences, [])
+        self.assertEqual(observed_tl_sentences, [])
+        self.assertEqual(observed_prev_tc, "")
+        self.assertEqual(observed_prev_tl, "")
+        self.assertIsNotNone(observed_tc_lock)
+        self.assertIs(lifecycle.services, services)
+        self.assertEqual(lifecycle.sr_divider, 16000)
 
     def test_start_recording_session_support_threads_starts_workers_and_updates_status(self) -> None:
         from speech_translate.utils.audio import record as record_module
