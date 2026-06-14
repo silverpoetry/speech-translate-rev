@@ -3,11 +3,12 @@ from __future__ import annotations
 import os
 from threading import Thread
 from time import sleep, time
-from typing import Any, Callable, Dict, Optional, cast
+from typing import Dict, Optional, cast
 from urllib.request import Request, urlopen
 
 from loguru import logger
 
+from speech_translate.controller_protocols import JsonDict, ModelManagerBridge, SettingsStore, WhisperLoadApiGetter
 from speech_translate.ui_protocol import TASK_SOURCE_MODEL_DOWNLOAD, TASK_SOURCE_MODEL_LOAD
 from speech_translate.utils.whisper.download import (
     get_default_download_root,
@@ -21,11 +22,11 @@ from speech_translate.utils.types import SettingDict
 class ModelManagerController:
     """Owns model directory resolution, model status cache, downloads, and runtime model state."""
 
-    def __init__(self, bridge: Any, settings: Any, whisper_loader_getter: Callable[[], Any]):
+    def __init__(self, bridge: ModelManagerBridge, settings: SettingsStore, whisper_loader_getter: WhisperLoadApiGetter):
         self.bridge = bridge
         self.settings = settings
         self.whisper_loader_getter = whisper_loader_getter
-        self.model_status_cache: Dict[str, Dict[str, Any]] = {}
+        self.model_status_cache: Dict[str, JsonDict] = {}
         self.model_download_running = False
         self.model_load_running = False
         self.runtime_model_key = self.normalize_model_key(str(settings.cache.get("model_f_import", "")))
@@ -130,7 +131,7 @@ class ModelManagerController:
             pass
         return 0
 
-    def build_model_manager_state(self, engine_hint: Optional[str] = None, include_both: bool = False) -> Dict[str, Any]:
+    def build_model_manager_state(self, engine_hint: Optional[str] = None, include_both: bool = False) -> JsonDict:
         self.model_manager_engine = str(engine_hint or self.model_manager_engine or "whisper")
         if self.model_manager_engine not in {"whisper", "faster-whisper"}:
             self.model_manager_engine = "whisper"
@@ -167,7 +168,7 @@ class ModelManagerController:
             "rows": rows,
         }
 
-    def build_runtime_model_state(self) -> Dict[str, Any]:
+    def build_runtime_model_state(self) -> JsonDict:
         loaded = bool(self.runtime_model_loaded)
         return {
             "key": self.runtime_model_key,
@@ -176,12 +177,12 @@ class ModelManagerController:
             "message": self.runtime_model_message,
         }
 
-    def get_model_manager_state(self, engine: Optional[str] = None) -> Dict[str, Any]:
+    def get_model_manager_state(self, engine: Optional[str] = None) -> JsonDict:
         if engine is not None:
             self.model_manager_engine = str(engine)
         return self.build_model_manager_state(engine)
 
-    def get_runtime_model_state(self) -> Dict[str, Any]:
+    def get_runtime_model_state(self) -> JsonDict:
         return self.build_runtime_model_state()
 
     def mark_runtime_model_pending(self, model_key: str, *, loaded: bool = False, message: Optional[str] = None) -> None:
@@ -205,7 +206,7 @@ class ModelManagerController:
         self.runtime_model_loaded = False
         self.runtime_model_message = str(message)
 
-    def check_model(self, model_key: str, engine: str = "whisper") -> Dict[str, Any]:
+    def check_model(self, model_key: str, engine: str = "whisper") -> JsonDict:
         engine = engine.strip().lower()
         self.model_manager_engine = engine if engine in {"whisper", "faster-whisper"} else "whisper"
         self.model_manager_model = model_key
@@ -221,7 +222,7 @@ class ModelManagerController:
         }
         return state
 
-    def check_all_models(self, engine: str = "whisper") -> Dict[str, Any]:
+    def check_all_models(self, engine: str = "whisper") -> JsonDict:
         engine = engine.strip().lower()
         if engine not in {"whisper", "faster-whisper", "both"}:
             engine = "whisper"
@@ -236,7 +237,7 @@ class ModelManagerController:
 
         return self.build_model_manager_state(self.model_manager_engine, include_both=(engine == "both"))
 
-    def download_model(self, model_key: str, engine: str = "whisper") -> Dict[str, Any]:
+    def download_model(self, model_key: str, engine: str = "whisper") -> JsonDict:
         engine = engine.strip().lower()
         engine = engine if engine in {"whisper", "faster-whisper"} else "whisper"
         if self.model_download_running:
@@ -367,7 +368,7 @@ class ModelManagerController:
         Thread(target=worker, daemon=True).start()
         return {"ok": True, "message": "Model download started", "model": model_key, "engine": engine}
 
-    def load_runtime_model(self, model_key: str) -> Dict[str, Any]:
+    def load_runtime_model(self, model_key: str) -> JsonDict:
         model_key = self.normalize_model_key(str(model_key))
         if self.model_load_running:
             return {"ok": False, "message": "Another load is running"}
@@ -459,7 +460,7 @@ class ModelManagerController:
         if lowered.startswith("model load failed"):
             self.mark_runtime_model_failed(text)
 
-    def handle_recording_status(self, payload: Dict[str, Any]) -> None:
+    def handle_recording_status(self, payload: JsonDict) -> None:
         status_text = str(payload.get("status", "")).lower()
         if "initializing" in status_text:
             if self.runtime_model_key:

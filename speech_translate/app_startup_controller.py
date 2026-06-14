@@ -7,13 +7,14 @@ from pathlib import Path
 from platform import processor, release, system, version
 from signal import SIGINT, signal
 from time import strftime, time
-from typing import Any, Callable
+from typing import Callable
 
 from loguru import logger
 
 from speech_translate._constants import APP_NAME
 from speech_translate._version import __version__
 from speech_translate.app_tray import AppTray
+from speech_translate.controller_protocols import FfmpegPathAdder, StartupBridge, WebviewImporter
 from speech_translate.linker import bc, sj
 from speech_translate.window_geometry import resolve_window_placement
 
@@ -23,9 +24,9 @@ class AppStartupController:
 
     def __init__(
         self,
-        bridge_factory: Callable[[], Any],
-        ffmpeg_path_adder: Callable[..., bool],
-        webview_importer: Callable[[str], Any] = import_module,
+        bridge_factory: Callable[[], StartupBridge],
+        ffmpeg_path_adder: FfmpegPathAdder,
+        webview_importer: WebviewImporter = import_module,
     ):
         self.bridge_factory = bridge_factory
         self.ffmpeg_path_adder = ffmpeg_path_adder

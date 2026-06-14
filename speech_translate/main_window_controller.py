@@ -2,15 +2,17 @@ from __future__ import annotations
 
 from threading import Lock
 from time import time
-from typing import Any, Optional
+from typing import Optional
 
 from loguru import logger
+
+from speech_translate.controller_protocols import MainWindowBridge, SettingsStore, TrayLike, FolderDialogWindow
 
 
 class MainWindowController:
     """Owns main-window startup markers and geometry persistence."""
 
-    def __init__(self, bridge: Any, settings: Any):
+    def __init__(self, bridge: MainWindowBridge, settings: SettingsStore):
         self.bridge = bridge
         self.settings = settings
         self.startup_t0: Optional[float] = None
@@ -29,12 +31,12 @@ class MainWindowController:
         elapsed_ms = int((time() - self.startup_t0) * 1000)
         logger.debug(f"[Startup] +{elapsed_ms}ms {marker}")
 
-    def mark_startup(self, marker: str) -> dict[str, Any]:
+    def mark_startup(self, marker: str) -> dict[str, object]:
         label = str(marker or "").strip() or "unknown"
         self.log_startup_marker(f"js_{label}")
         return {"ok": True, "marker": label}
 
-    def bind_window(self, window) -> None:
+    def bind_window(self, window: FolderDialogWindow) -> None:
         self.log_startup_marker("bind_window")
         try:
             if hasattr(window, "events"):
@@ -47,7 +49,7 @@ class MainWindowController:
         except Exception:
             pass
 
-    def on_main_window_shown(self, window) -> None:
+    def on_main_window_shown(self, window: FolderDialogWindow) -> None:
         if not self.main_window_show_allowed:
             try:
                 window.hide()

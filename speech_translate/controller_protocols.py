@@ -13,13 +13,35 @@ class SettingsStore(Protocol):
         ...
 
 
-class ModelStatusCacheOwner(Protocol):
-    def clear_model_status_cache(self) -> None:
+class FolderDialogWindow(Protocol):
+    def create_file_dialog(self, file_dialog: object, directory: str | None = None) -> object:
+        ...
+
+    width: int
+    height: int
+    native: object | None
+    events: object
+
+    def show(self) -> None:
+        ...
+
+    def bring_to_front(self) -> None:
+        ...
+
+    def hide(self) -> None:
+        ...
+
+    def destroy(self) -> None:
         ...
 
 
-class FolderDialogWindow(Protocol):
-    def create_file_dialog(self, file_dialog: object, directory: str | None = None) -> object:
+class TrayLike(Protocol):
+    def stop(self) -> None:
+        ...
+
+
+class DetachedWindowManagerLike(Protocol):
+    def close_all(self) -> None:
         ...
 
 
@@ -99,6 +121,68 @@ class StateViewBridge(Protocol):
         ...
 
     def _emit_ui_update(self, sections: Sequence[str]) -> None:
+        ...
+
+
+class StartupBridge(Protocol):
+    def set_startup_t0(self, started_at: float) -> None:
+        ...
+
+    def _log_startup_marker(self, marker: str) -> None:
+        ...
+
+    def bind_window(self, window: FolderDialogWindow) -> None:
+        ...
+
+    def get_tray(self) -> TrayLike | None:
+        ...
+
+    def bind_tray(self, tray: TrayLike) -> None:
+        ...
+
+    def quit_app(self) -> None:
+        ...
+
+
+class StartupWebviewModule(Protocol):
+    def create_window(self, *args: object, **kwargs: object) -> FolderDialogWindow:
+        ...
+
+    def start(self, callback: Callable[[], None], debug: bool = False) -> None:
+        ...
+
+
+WebviewImporter = Callable[[str], StartupWebviewModule]
+FfmpegPathAdder = Callable[..., bool]
+
+
+class MainWindowBridge(Protocol):
+    detached_window_manager: DetachedWindowManagerLike
+
+    def get_window(self) -> FolderDialogWindow | None:
+        ...
+
+    def get_tray(self) -> TrayLike | None:
+        ...
+
+
+class ModelManagerBridge(Protocol):
+    def reset_task_state(self, title: str) -> None:
+        ...
+
+    def update_task_message(self, message: str, source: str = "general") -> None:
+        ...
+
+    def update_task_progress(self, value: float, source: str = "general") -> None:
+        ...
+
+    def update_task_error(self, error: str) -> None:
+        ...
+
+    def finish_task(self, message: str) -> None:
+        ...
+
+    def get_settings_snapshot(self) -> JsonDict:
         ...
 
 
