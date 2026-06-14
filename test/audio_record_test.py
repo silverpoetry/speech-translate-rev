@@ -26,7 +26,10 @@ from speech_translate.utils.audio.record import (
     _filter_realtime_transcription_result,
     _handle_record_callback_error,
     _initialize_callback_context,
+    _merge_translation_units,
+    _normalize_translation_result_units,
     _reset_callback_context,
+    _resolve_live_input_source_language,
     _prime_realtime_vad,
     _detect_realtime_speech,
     _update_realtime_queue_state,
@@ -218,6 +221,26 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(payload["timer"], "00:00:10")
         self.assertEqual(payload["buffer"], "1.2/10.0 sec")
         self.assertEqual(payload["sentences"], "3/5")
+
+    def test_resolve_live_input_source_language_prefers_detected_supported_language(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_auto_lang = record_module.bc.auto_detected_lang
+        try:
+            record_module.bc.auto_detected_lang = "en"
+            resolved = _resolve_live_input_source_language("Auto Detect", "Google Translate")
+        finally:
+            record_module.bc.auto_detected_lang = previous_auto_lang
+
+        self.assertEqual(resolved, "english")
+
+    def test_normalize_translation_result_units_aligns_with_source_units(self) -> None:
+        aligned = _normalize_translation_result_units([" one ", "", "three"], ["a", "b", "c"])
+        self.assertEqual(aligned, ["one", "three"])
+
+    def test_merge_translation_units_preserves_sentence_spacing_rules(self) -> None:
+        merged = _merge_translation_units(["hello", "world", "!"])
+        self.assertEqual(merged, ["hello world", "!"])
 
     def test_calculate_buffer_duration_handles_invalid_denominator(self) -> None:
         self.assertEqual(

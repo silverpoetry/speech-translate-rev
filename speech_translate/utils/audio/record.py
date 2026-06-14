@@ -82,6 +82,8 @@ class SileroVadLike(Protocol):
 
 ResultSnapshot = ResultLike | str
 AudioTarget = str | np.ndarray | torch.Tensor
+TranslationApiResult = str | list[str]
+HallucinationFilters = dict[str, object]
 
 
 @dataclass
@@ -328,6 +330,45 @@ def _build_recording_state_payload(
     if sentences is not None:
         payload["sentences"] = sentences
     return payload
+
+
+def _resolve_live_input_source_language(lang_source: str, engine: str) -> str:
+    source_lang = lang_source
+    if bc.auto_detected_lang and bc.auto_detected_lang != "~":
+        try:
+            detected_name = get_whisper_lang_name(bc.auto_detected_lang)
+            if verify_language_in_key(detected_name.lower(), engine):
+                source_lang = detected_name
+        except Exception:
+            pass
+    return source_lang
+
+
+def _normalize_translation_result_units(result: TranslationApiResult, source_units: list[str]) -> list[str]:
+    result_list = result if isinstance(result, list) else [result]
+    return [
+        str(result_list[idx]).strip()
+        for idx in range(len(source_units))
+        if idx < len(result_list) and str(result_list[idx]).strip()
+    ]
+
+
+def _merge_translation_units(aligned_units: list[str]) -> list[str]:
+    merged_units: list[str] = []
+    for curr in aligned_units:
+        if not merged_units:
+            merged_units.append(curr)
+            continue
+        prev = merged_units[-1].rstrip()
+        curr = curr.lstrip()
+
+        p_tail, c_head = prev[-1] if prev else "", curr[0] if curr else ""
+        if not (p_tail and re.match(r"[^\w\s]", p_tail)) and not (c_head and re.match(r"[^\w\s]", c_head)):
+            glue = " " if re.match(r"[A-Za-z0-9]", p_tail) and re.match(r"[A-Za-z0-9]", c_head) else ""
+            merged_units[-1] = f"{prev}{glue}{curr}"
+        else:
+            merged_units.append(curr)
+    return merged_units
 
 
 class TranslationDispatcher:
@@ -1206,7 +1247,7 @@ def run_whisper_tl(
     audio: AudioTarget | None,
     stable_tl: WhisperCallable,
     separator: str,
-    hallucination_filters: dict[str, object],
+    hallucination_filters: HallucinationFilters,
     **whisper_args,
 ):
     """Run Whisper translation task"""
@@ -1232,12 +1273,8 @@ def tl_api(text: str, lang_source: str, lang_target: str, engine: str, separator
         source_units = [line.strip() for line in text.splitlines() if line.strip()]
         if not source_units: return
 
-        kwargs, source_lang = {"live_input": True}, lang_source
-        if bc.auto_detected_lang and bc.auto_detected_lang != "~":
-            try:
-                det_name = get_whisper_lang_name(bc.auto_detected_lang)
-                if verify_language_in_key(det_name.lower(), engine): source_lang = det_name
-            except Exception: pass
+        kwargs = {"live_input": True}
+        source_lang = _resolve_live_input_source_language(lang_source, engine)
 
         if engine == "LibreTranslate":
             kwargs.update({"libre_link": sj.cache["libre_link"], "libre_api_key": sj.cache["libre_api_key"]})
@@ -1245,8 +1282,7 @@ def tl_api(text: str, lang_source: str, lang_target: str, engine: str, separator
         success, result = translate(engine, source_units, source_lang, lang_target, get_proxies(sj.cache["http_proxy"], sj.cache["https_proxy"]), False, **kwargs)
         if not success: raise Exception(result)
 
-        result_list = result if isinstance(result, list) else [result]
-        aligned_units = [str(result_list[idx]).strip() for idx in range(len(source_units)) if idx < len(result_list) and str(result_list[idx]).strip()]
+        aligned_units = _normalize_translation_result_units(cast(TranslationApiResult, result), source_units)
 
         if not aligned_units: return
 
@@ -1255,22 +1291,7 @@ def tl_api(text: str, lang_source: str, lang_target: str, engine: str, separator
             bc.update_tl(None, separator)
             return
 
-        # Merge formatting (Spacing logic for non-CJK text)
-        merged_units = []
-        for curr in aligned_units:
-            if not merged_units:
-                merged_units.append(curr); continue
-            prev = merged_units[-1].rstrip()
-            curr = curr.lstrip()
-            
-            p_tail, c_head = prev[-1] if prev else "", curr[0] if curr else ""
-            if not (p_tail and re.match(r"[^\w\s]", p_tail)) and not (c_head and re.match(r"[^\w\s]", c_head)):
-                glue = " " if re.match(r"[A-Za-z0-9]", p_tail) and re.match(r"[A-Za-z0-9]", c_head) else ""
-                merged_units[-1] = f"{prev}{glue}{curr}"
-            else:
-                merged_units.append(curr)
-
-        bc.tl_sentences, shared_state.prev_tl_res = merged_units or aligned_units, ""
+        bc.tl_sentences, shared_state.prev_tl_res = _merge_translation_units(aligned_units) or aligned_units, ""
         bc.update_tl(None, separator)
     except Exception as e:
         logger.error(f"API Translation ({engine}) failed: {str(e)}")
