@@ -70,7 +70,7 @@ class WebBridge(WebBridgeFacadeMixin, WebTaskBridge):
 
     def update_task_message(self, message: str, source: str = "general"):
         super().update_task_message(message, source=source)
-        self.model_manager_controller.handle_task_message(message)
+        self.model_manager_controller.handle_task_message(message, source=source)
 
 def main(with_log_init: bool = True):
     startup_controller = AppStartupController(WebBridge, add_ffmpeg_to_path)

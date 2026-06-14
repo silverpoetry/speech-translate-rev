@@ -71,6 +71,21 @@ class ModelManagerControllerTests(unittest.TestCase):
         self.assertTrue(self.controller.runtime_model_loaded)
         self.assertEqual(self.controller.runtime_model_message, "Model ready: small")
 
+    def test_handle_task_message_uses_source_aware_model_load_path(self) -> None:
+        self.controller.handle_task_message("Loading model cache for medium", source="model-load")
+        self.assertTrue(self.controller.model_load_running)
+        self.assertEqual(self.controller.runtime_model_key, "medium")
+
+        self.controller.handle_task_message("Model ready: medium", source="model-load")
+        self.assertFalse(self.controller.model_load_running)
+        self.assertTrue(self.controller.runtime_model_loaded)
+        self.assertEqual(self.controller.runtime_model_message, "Model ready: medium")
+
+    def test_handle_task_message_ignores_model_download_source(self) -> None:
+        self.controller.runtime_model_key = "small"
+        self.controller.handle_task_message("DL small: 10 MB", source="model-download")
+        self.assertEqual(self.controller.runtime_model_key, "small")
+
     def test_handle_recording_status_marks_runtime_ready(self) -> None:
         self.controller.runtime_model_key = "medium"
         self.controller.handle_recording_status({"status": "Recording..."})

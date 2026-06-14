@@ -383,7 +383,7 @@ class ModelManagerController:
                 engine = self.normalize_engine_name(str(settings_snapshot.get("tl_engine_mw", "Google Translate")))
 
                 self.bridge.reset_task_state("Model Load")
-                self.bridge.update_task_message(f"Loading model cache for {model_key}")
+                self.bridge.update_task_message(f"Loading model cache for {model_key}", source="model-load")
                 self.bridge.update_task_progress(5)
 
                 whisper_load_api.get_model(
@@ -409,11 +409,34 @@ class ModelManagerController:
         Thread(target=worker, daemon=True).start()
         return {"ok": True, "message": "Model loading started", "model": model_key}
 
-    def handle_task_message(self, message: str) -> None:
+    def handle_task_message(self, message: str, source: str = "general") -> None:
+        source_text = str(source or "general").strip().lower()
         text = str(message or "").strip()
         if not text:
             return
+
+        if source_text == "model-download":
+            return
+
         lowered = text.lower()
+        if source_text == "model-load":
+            if lowered.startswith("loading model") or lowered.startswith("loading model cache for"):
+                if ":" in text:
+                    candidate = text.split(":", 1)[1].strip()
+                elif lowered.startswith("loading model cache for "):
+                    candidate = text[len("Loading model cache for ") :].strip()
+                else:
+                    candidate = self.runtime_model_key
+                self.mark_runtime_model_pending(candidate or self.runtime_model_key)
+                return
+            if lowered.startswith("model ready:") or lowered.startswith("model loaded:"):
+                candidate = text.split(":", 1)[1].strip() if ":" in text else self.runtime_model_key
+                self.mark_runtime_model_ready(candidate or self.runtime_model_key)
+                return
+            if lowered.startswith("model load failed"):
+                self.mark_runtime_model_failed(text)
+                return
+
         if lowered.startswith("loading model and preparing pipeline"):
             if not self.runtime_model_loaded:
                 self.mark_runtime_model_pending(self.runtime_model_key)
