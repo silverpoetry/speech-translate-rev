@@ -26,6 +26,7 @@ from speech_translate.utils.audio.record import (
     _filter_realtime_transcription_result,
     _handle_record_callback_error,
     _initialize_callback_context,
+    _reset_callback_context,
     _prime_realtime_vad,
     _detect_realtime_speech,
     _update_realtime_queue_state,
@@ -150,6 +151,26 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(ctx.sample_rate, 48000)
         self.assertEqual(ctx.num_of_channels, 2)
         self.assertGreater(ctx.frame_duration_ms, 0)
+
+    def test_reset_callback_context_clears_global_state(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        record_module._initialize_callback_context(
+            sample_rate=16000,
+            chunk_size=320,
+            threshold_enable=True,
+            threshold_db=-20.0,
+            threshold_auto=True,
+            use_silero=True,
+            silero_min_conf=0.75,
+            num_of_channels=1,
+            samp_width=2,
+            use_temp=False,
+            webrtc_vad=object(),
+            silero_vad=object(),
+        )
+        _reset_callback_context()
+        self.assertIsNone(record_module.callback_context)
 
     def test_translation_task_defaults_are_explicit(self) -> None:
         task = TranslationTask(kind="whisper", separator="<br />")

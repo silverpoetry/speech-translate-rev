@@ -412,6 +412,11 @@ def _get_callback_context() -> RealtimeCallbackContext | None:
     return callback_context
 
 
+def _reset_callback_context() -> None:
+    global callback_context
+    callback_context = None
+
+
 def _initialize_callback_context(
     *,
     sample_rate: int,
@@ -1128,6 +1133,9 @@ def record_session(
                     os.remove(audio)
                 except Exception:
                     pass
+
+        _reset_callback_context()
+        prev_tc_buffer_seconds = 0.0
 
         bc.current_rec_status = "⏹️ Stopped"
         update_status_lbl()
