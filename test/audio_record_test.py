@@ -9,6 +9,7 @@ sys.path.append(to_add)
 
 from speech_translate.utils.audio.record import (
     RealtimeSharedState,
+    TranslationDispatcher,
     TranslationTask,
     _build_recording_state_payload,
     _build_full_transcribed_text,
@@ -82,6 +83,52 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(payload["timer"], "00:00:10")
         self.assertEqual(payload["buffer"], "1.2/10.0 sec")
         self.assertEqual(payload["sentences"], "3/5")
+
+    def test_translation_dispatcher_queues_whisper_task(self) -> None:
+        updates = []
+        dispatcher = TranslationDispatcher(
+            is_tl=True,
+            tl_engine_whisper=True,
+            use_temp=True,
+            keep_temp=False,
+            separator="<br />",
+            lang_source="English",
+            lang_target="Chinese",
+            engine="Whisper",
+            hallucination_filters={},
+            stable_tl=object(),
+            whisper_args={},
+            record_status_updater=lambda: updates.append("u"),
+        )
+        dispatcher.dispatch("temp.wav", "")
+        task = dispatcher._queue.get_nowait()
+        self.assertEqual(task.kind, "whisper")
+        self.assertEqual(task.audio, "temp.wav")
+        self.assertTrue(task.cleanup_audio)
+
+    def test_translation_dispatcher_replaces_duplicate_api_task_by_text(self) -> None:
+        dispatcher = TranslationDispatcher(
+            is_tl=True,
+            tl_engine_whisper=False,
+            use_temp=False,
+            keep_temp=False,
+            separator="<br />",
+            lang_source="English",
+            lang_target="Chinese",
+            engine="Google Translate",
+            hallucination_filters={},
+            stable_tl=object(),
+            whisper_args={},
+            record_status_updater=lambda: None,
+        )
+        dispatcher.dispatch(None, "hello")
+        first_task = dispatcher._latest_api_task
+        dispatcher.dispatch(None, "hello")
+        self.assertIsNotNone(first_task)
+        self.assertEqual(dispatcher._latest_api_task.text, first_task.text)
+        self.assertEqual(dispatcher._latest_api_task.lang_target, first_task.lang_target)
+        dispatcher.dispatch(None, "world")
+        self.assertEqual(dispatcher._latest_api_task.text, "world")
 
 
 if __name__ == "__main__":
