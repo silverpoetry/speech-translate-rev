@@ -20,6 +20,7 @@ from speech_translate.utils.audio.record import (
     _apply_smart_split,
     _break_buffer_and_update_state,
     _build_record_audio_target,
+    _build_recording_session_config,
     _commit_realtime_transcription,
     _calculate_buffer_duration,
     _execute_realtime_transcription,
@@ -221,6 +222,47 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(payload["timer"], "00:00:10")
         self.assertEqual(payload["buffer"], "1.2/10.0 sec")
         self.assertEqual(payload["sentences"], "3/5")
+
+    def test_build_recording_session_config_reads_runtime_settings(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_cache = dict(record_module.sj.cache)
+        try:
+            record_module.sj.cache["transcribe_rate"] = 750
+            record_module.sj.cache["max_buffer_mic"] = 12
+            record_module.sj.cache["max_sentences_mic"] = 7
+            record_module.sj.cache["mic_no_limit"] = True
+            record_module.sj.cache["threshold_enable_mic"] = False
+            record_module.sj.cache["threshold_db_mic"] = -18
+            record_module.sj.cache["threshold_auto_mic"] = False
+            record_module.sj.cache["threshold_auto_silero_mic"] = False
+            record_module.sj.cache["threshold_silero_mic_min"] = 0.6
+            record_module.sj.cache["auto_break_buffer_mic"] = False
+            record_module.sj.cache["use_temp"] = True
+            record_module.sj.cache["separate_with"] = repr(" | ")
+
+            config = _build_recording_session_config(
+                rec_type="mic",
+                lang_source="Auto Detect",
+                engine="Whisper",
+                is_tc=True,
+                is_tl=True,
+            )
+        finally:
+            record_module.sj.cache.clear()
+            record_module.sj.cache.update(previous_cache)
+
+        self.assertEqual(config.transcribe_rate.total_seconds(), 0.75)
+        self.assertEqual(config.max_buffer_s, 12)
+        self.assertEqual(config.max_sentences, 7)
+        self.assertTrue(config.sentence_limitless)
+        self.assertFalse(config.threshold_enable)
+        self.assertFalse(config.threshold_auto)
+        self.assertFalse(config.use_silero)
+        self.assertEqual(config.silero_min_conf, 0.6)
+        self.assertFalse(config.auto_break_buffer)
+        self.assertTrue(config.use_temp)
+        self.assertEqual(config.taskname, "Transcribe & Translate")
 
     def test_resolve_live_input_source_language_prefers_detected_supported_language(self) -> None:
         from speech_translate.utils.audio import record as record_module

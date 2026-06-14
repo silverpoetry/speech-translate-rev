@@ -124,6 +124,26 @@ class RecordingRuntime:
 
 
 @dataclass
+class RecordingSessionConfig:
+    rec_type: str
+    transcribe_rate: timedelta
+    max_buffer_s: int
+    max_sentences: int
+    sentence_limitless: bool
+    tl_engine_whisper: bool
+    taskname: str
+    auto: bool
+    threshold_enable: bool
+    threshold_db: float
+    threshold_auto: bool
+    use_silero: bool
+    silero_min_conf: float
+    auto_break_buffer: bool
+    use_temp: bool
+    separator: str
+
+
+@dataclass
 class RealtimeSessionState:
     last_sample: bytes = b""
     duration_seconds: float = 0.0
@@ -332,6 +352,34 @@ def _build_recording_state_payload(
     return payload
 
 
+def _build_recording_session_config(
+    *,
+    rec_type: str,
+    lang_source: str,
+    engine: str,
+    is_tc: bool,
+    is_tl: bool,
+) -> RecordingSessionConfig:
+    return RecordingSessionConfig(
+        rec_type=rec_type,
+        transcribe_rate=timedelta(seconds=sj.cache["transcribe_rate"] / 1000),
+        max_buffer_s=int(sj.cache.get(f"max_buffer_{rec_type}", 10)),
+        max_sentences=int(sj.cache.get(f"max_sentences_{rec_type}", 5)),
+        sentence_limitless=bool(sj.cache.get(f"{rec_type}_no_limit", False)),
+        tl_engine_whisper=engine in model_values,
+        taskname="Transcribe & Translate" if is_tc and is_tl else "Transcribe" if is_tc else "Translate",
+        auto=lang_source.lower() == "auto detect",
+        threshold_enable=bool(sj.cache.get(f"threshold_enable_{rec_type}", True)),
+        threshold_db=float(sj.cache.get(f"threshold_db_{rec_type}", -20)),
+        threshold_auto=bool(sj.cache.get(f"threshold_auto_{rec_type}", True)),
+        use_silero=bool(sj.cache.get(f"threshold_auto_silero_{rec_type}", True)),
+        silero_min_conf=float(sj.cache.get(f"threshold_silero_{rec_type}_min", 0.75)),
+        auto_break_buffer=bool(sj.cache.get(f"auto_break_buffer_{rec_type}", True)),
+        use_temp=bool(sj.cache["use_temp"]),
+        separator=str_separator_to_html(literal_eval(quote(sj.cache["separate_with"]))),
+    )
+
+
 def _resolve_live_input_source_language(lang_source: str, engine: str) -> str:
     source_lang = lang_source
     if bc.auto_detected_lang and bc.auto_detected_lang != "~":
@@ -369,6 +417,41 @@ def _merge_translation_units(aligned_units: list[str]) -> list[str]:
         else:
             merged_units.append(curr)
     return merged_units
+
+
+def _drain_audio_queue() -> None:
+    while not bc.data_queue.empty():
+        bc.data_queue.get()
+
+
+def _cleanup_temp_audio_paths(temp_audio_paths: list[str]) -> None:
+    for audio in temp_audio_paths:
+        try:
+            os.remove(audio)
+        except Exception:
+            pass
+
+
+def _finalize_recording_session(p, session_state: RealtimeSessionState, update_status_lbl, *, keep_temp: bool) -> None:
+    bc.current_rec_status = "⚠️ Stopping stream"
+    update_status_lbl()
+    if bc.stream:
+        bc.stream.stop_stream()
+        bc.stream.close()
+        bc.stream = None
+    bc.rec_tc_thread = bc.rec_tl_thread = None
+
+    bc.current_rec_status = "⚠️ Terminating pyaudio"
+    update_status_lbl()
+    p.terminate()
+
+    _drain_audio_queue()
+    if not keep_temp:
+        _cleanup_temp_audio_paths(session_state.temp_audio_paths)
+
+    _reset_callback_context()
+    bc.current_rec_status = "⏹️ Stopped"
+    update_status_lbl()
 
 
 class TranslationDispatcher:
@@ -901,6 +984,13 @@ def record_session(
     rec_type = "speaker" if speaker else "mic"
 
     try:
+        config = _build_recording_session_config(
+            rec_type=rec_type,
+            lang_source=lang_source,
+            engine=engine,
+            is_tc=is_tc,
+            is_tl=is_tl,
+        )
         p = pyaudio.PyAudio()
         success, detail = get_device_details(rec_type, sj, p)
         if not success:
@@ -908,14 +998,6 @@ def record_session(
 
         device_detail = detail["device_detail"]
         sr_ori, num_of_channels, chunk_size = detail["sample_rate"], detail["num_of_channels"], detail["chunk_size"]
-        
-        transcribe_rate = timedelta(seconds=sj.cache["transcribe_rate"] / 1000)
-        max_buffer_s, max_sentences = int(sj.cache.get(f"max_buffer_{rec_type}", 10)), int(sj.cache.get(f"max_sentences_{rec_type}", 5))
-        sentence_limitless = sj.cache.get(f"{rec_type}_no_limit", False)
-        tl_engine_whisper = engine in model_values
-        taskname = "Transcribe & Translate" if is_tc and is_tl else "Transcribe" if is_tc else "Translate"
-        auto = lang_source.lower() == "auto detect"
-        language = f"{lang_source} → {lang_target}" if is_tl else lang_source
 
         if not sj.cache["supress_record_warning"] and sr_ori > 48000:
             logger.warning(f"Sample rate is high ({sr_ori} Hz). May cause issues. Can be suppressed in settings.")
@@ -923,15 +1005,6 @@ def record_session(
         #     try: requests.get("https://www.google.com/", timeout=5)
         #     except Exception: logger.warning("No internet connection detected. API Translation might fail.")
 
-        threshold_enable = sj.cache.get(f"threshold_enable_{rec_type}", True)
-        threshold_db = sj.cache.get(f"threshold_db_{rec_type}", -20)
-        threshold_auto = sj.cache.get(f"threshold_auto_{rec_type}", True)
-        use_silero = sj.cache.get(f"threshold_auto_silero_{rec_type}", True)
-        silero_min_conf = sj.cache.get(f"threshold_silero_{rec_type}_min", 0.75)
-        auto_break_buffer = sj.cache.get(f"auto_break_buffer_{rec_type}", True)
-        use_temp = sj.cache["use_temp"]
-
-        separator = str_separator_to_html(literal_eval(quote(sj.cache["separate_with"])))
         webrtc_vad = webrtcvad.Vad(sj.cache.get(f"threshold_auto_mode_{rec_type}", 3))
         
         if callable(getattr(torchaudio, "set_audio_backend", None)):
@@ -942,14 +1015,14 @@ def record_session(
         silero_vad = cast(SileroVadLike, silero_model[0] if isinstance(silero_model, tuple) else silero_model)
         silero_vad.reset_states()
 
-        bc.tc_lock = Lock() if (is_tc and is_tl and tl_engine_whisper) else None
+        bc.tc_lock = Lock() if (is_tc and is_tl and config.tl_engine_whisper) else None
 
         # Load models
         model_args = get_model_args(sj.cache)
-        _, _, stable_tc, stable_tl, to_args = get_model(is_tc, is_tl, tl_engine_whisper, model_name_tc, engine, sj.cache, **model_args)
+        _, _, stable_tc, stable_tl, to_args = get_model(is_tc, is_tl, config.tl_engine_whisper, model_name_tc, engine, sj.cache, **model_args)
         whisper_args = get_tc_args(to_args, sj.cache)
         whisper_args["verbose"] = None
-        configured_whisper_language = get_whisper_lang_similar(lang_source) if not auto else None
+        configured_whisper_language = get_whisper_lang_similar(lang_source) if not config.auto else None
         whisper_args["language"] = TO_LANGUAGE_CODE.get(configured_whisper_language) if configured_whisper_language else None
 
         if sj.cache.get("enable_initial_prompt", False):
@@ -961,32 +1034,33 @@ def record_session(
             whisper_args.pop("initial_prompt", None)
 
         demucs_enabled, vad_enabled = bool(whisper_args.get("demucs", False)), bool(whisper_args.get("vad", False))
-        if sj.cache["use_faster_whisper"] and not use_temp: whisper_args["input_sr"] = WHISPER_SR
-        if demucs_enabled and vad_enabled: use_temp = True  # Force temp file
+        if sj.cache["use_faster_whisper"] and not config.use_temp: whisper_args["input_sr"] = WHISPER_SR
+        if demucs_enabled and vad_enabled:
+            config.use_temp = True  # Force temp file
         
         hallucination_filters = get_hallucination_filter('rec', sj.cache["path_filter_rec"]) if sj.cache["filter_rec"] else {}
         cuda_device = model_args["device"]
 
-        logger.info(f"Session starting: {taskname} | Engine: {engine} | Device: {cuda_device} | Demucs: {demucs_enabled}")
+        logger.info(f"Session starting: {config.taskname} | Engine: {engine} | Device: {cuda_device} | Demucs: {demucs_enabled}")
 
         # UI & State Updaters
         t_start = time()
         session_state = RealtimeSessionState()
         bc.current_rec_status, bc.auto_detected_lang = "▶️ Recording (Waiting for speech)", "~"
         runtime = RecordingRuntime(
-            taskname=taskname,
+            taskname=config.taskname,
             device=device,
             lang_source=lang_source,
             lang_target=lang_target,
             engine=engine,
             is_tl=is_tl,
-            use_temp=use_temp,
-            separator=separator,
+            use_temp=config.use_temp,
+            separator=config.separator,
             keep_temp=bool(sj.cache.get("keep_temp", False)),
             t_start=t_start,
-            max_buffer_s=max_buffer_s,
-            max_sentences=max_sentences,
-            sentence_limitless=sentence_limitless,
+            max_buffer_s=config.max_buffer_s,
+            max_sentences=config.max_sentences,
+            sentence_limitless=config.sentence_limitless,
             lang_target_display=lang_target if is_tl else "-",
         )
         status_emitter = RecordingStatusEmitter(runtime)
@@ -1001,12 +1075,12 @@ def record_session(
                     continue
                 try:
                     sentence_count_text = f"{len(bc.tc_sentences) or len(bc.tl_sentences) or '0'}"
-                    if not sentence_limitless:
-                        sentence_count_text += f"/{max_sentences}"
+                    if not config.sentence_limitless:
+                        sentence_count_text += f"/{config.max_sentences}"
                     status_emitter.emit(
                         status=bc.current_rec_status,
                         timer=strftime("%H:%M:%S", gmtime(time() - t_start)),
-                        buffer_text=f"{round(session_state.duration_seconds, 2)}/{round(max_buffer_s, 2)} sec",
+                        buffer_text=f"{round(session_state.duration_seconds, 2)}/{round(config.max_buffer_s, 2)} sec",
                         sentences=sentence_count_text,
                     )
                     sleep(0.1)
@@ -1022,10 +1096,10 @@ def record_session(
 
         translator = TranslationDispatcher(
             is_tl=is_tl,
-            tl_engine_whisper=tl_engine_whisper,
-            use_temp=use_temp,
+            tl_engine_whisper=config.tl_engine_whisper,
+            use_temp=config.use_temp,
             keep_temp=runtime.keep_temp,
-            separator=separator,
+            separator=config.separator,
             lang_source=lang_source,
             lang_target=lang_target,
             engine=engine,
@@ -1037,10 +1111,10 @@ def record_session(
         buffer_reducer = BufferStateReducer(
             is_tc=is_tc,
             is_tl=is_tl,
-            tl_engine_whisper=tl_engine_whisper,
-            sentence_limitless=sentence_limitless,
-            max_sentences=max_sentences,
-            separator=separator,
+            tl_engine_whisper=config.tl_engine_whisper,
+            sentence_limitless=config.sentence_limitless,
+            max_sentences=config.max_sentences,
+            separator=config.separator,
             translator=translator,
         )
 
@@ -1053,18 +1127,18 @@ def record_session(
         bc.tc_sentences, bc.tl_sentences = [], []
         shared_state.prev_tc_res, shared_state.prev_tl_res = "", ""
         samp_width = p.get_sample_size(pyaudio.paInt16)
-        sr_divider = WHISPER_SR if not use_temp else sr_ori
+        sr_divider = WHISPER_SR if not config.use_temp else sr_ori
         callback_ctx = _initialize_callback_context(
             sample_rate=sr_ori,
             chunk_size=chunk_size,
-            threshold_enable=threshold_enable,
-            threshold_db=threshold_db,
-            threshold_auto=threshold_auto,
-            use_silero=use_silero,
-            silero_min_conf=silero_min_conf,
+            threshold_enable=config.threshold_enable,
+            threshold_db=config.threshold_db,
+            threshold_auto=config.threshold_auto,
+            use_silero=config.use_silero,
+            silero_min_conf=config.silero_min_conf,
             num_of_channels=num_of_channels,
             samp_width=samp_width,
-            use_temp=use_temp,
+            use_temp=config.use_temp,
             webrtc_vad=webrtc_vad,
             silero_vad=silero_vad,
         )
@@ -1081,7 +1155,7 @@ def record_session(
                 data = bc.data_queue.get(timeout=0.1)
             except Empty:
                 if (
-                    auto_break_buffer
+                    config.auto_break_buffer
                     and callback_ctx.is_silence
                     and time() - callback_ctx.silence_started_at > 1
                 ):
@@ -1093,9 +1167,9 @@ def record_session(
                         sr_divider=sr_divider,
                         samp_width=samp_width,
                         num_of_channels=num_of_channels,
-                        sentence_limitless=sentence_limitless,
-                        max_sentences=max_sentences,
-                        separator=separator,
+                        sentence_limitless=config.sentence_limitless,
+                        max_sentences=config.max_sentences,
+                        separator=config.separator,
                         translator=translator,
                         buffer_reducer=buffer_reducer,
                     )
@@ -1112,7 +1186,7 @@ def record_session(
 
             now = _utc_now()
             if not session_state.next_transcribe_time:
-                session_state.next_transcribe_time = now + transcribe_rate
+                session_state.next_transcribe_time = now + config.transcribe_rate
 
             session_state.append_audio(data)
             while not bc.data_queue.empty():
@@ -1120,7 +1194,7 @@ def record_session(
 
             if session_state.next_transcribe_time > now:
                 continue
-            session_state.next_transcribe_time = now + transcribe_rate
+            session_state.next_transcribe_time = now + config.transcribe_rate
 
             session_state.recalculate_duration(
                 samp_width=samp_width,
@@ -1132,7 +1206,7 @@ def record_session(
 
             audio_target = _build_record_audio_target(
                 session_state,
-                use_temp=use_temp,
+                use_temp=config.use_temp,
                 num_of_channels=num_of_channels,
                 samp_width=samp_width,
                 demucs_enabled=demucs_enabled,
@@ -1141,7 +1215,7 @@ def record_session(
             )
 
             # Execution logic
-            if is_tl and tl_engine_whisper and not is_tc:
+            if is_tl and config.tl_engine_whisper and not is_tc:
                 bc.current_rec_status = "▶️ Recording ⟳ Translating Audio"
                 translator.dispatch(audio_target, "")
             else:
@@ -1155,27 +1229,27 @@ def record_session(
                 result = _filter_realtime_transcription_result(
                     result,
                     hallucination_filters=hallucination_filters,
-                    auto=auto,
+                    auto=config.auto,
                     configured_language=configured_whisper_language,
                 )
                 _commit_realtime_transcription(
                     result,
                     audio_target=audio_target,
                     is_tl=is_tl,
-                    separator=separator,
+                    separator=config.separator,
                     translator=translator,
                 )
 
             # Cleanup Temp Audio
-            if use_temp and not sj.cache.get("keep_temp", False) and isinstance(audio_target, str):
-                if not (is_tl and tl_engine_whisper):
+            if config.use_temp and not sj.cache.get("keep_temp", False) and isinstance(audio_target, str):
+                if not (is_tl and config.tl_engine_whisper):
                     try:
                         os.remove(audio_target)
                         session_state.temp_audio_paths.remove(audio_target)
                     except Exception:
                         pass
 
-            if session_state.duration_seconds > max_buffer_s:
+            if session_state.duration_seconds > config.max_buffer_s:
                 _break_buffer_and_update_state(
                     reason="buffer_full",
                     session_state=session_state,
@@ -1183,38 +1257,16 @@ def record_session(
                     sr_divider=sr_divider,
                     samp_width=samp_width,
                     num_of_channels=num_of_channels,
-                    sentence_limitless=sentence_limitless,
-                    max_sentences=max_sentences,
-                    separator=separator,
+                    sentence_limitless=config.sentence_limitless,
+                    max_sentences=config.max_sentences,
+                    separator=config.separator,
                     translator=translator,
                     buffer_reducer=buffer_reducer,
                 )
             if bc.current_rec_status == "▶️ Recording ⟳ Transcribing Audio":
                 bc.current_rec_status = "▶️ Recording"
 
-        # ----------------- Shutdown sequence -----------------
-        bc.current_rec_status = "⚠️ Stopping stream"
-        update_status_lbl()
-        if bc.stream: bc.stream.stop_stream(); bc.stream.close(); bc.stream = None
-        bc.rec_tc_thread = bc.rec_tl_thread = None
-
-        bc.current_rec_status = "⚠️ Terminating pyaudio"
-        update_status_lbl()
-        p.terminate()
-
-        while not bc.data_queue.empty(): bc.data_queue.get()
-
-        if not sj.cache.get("keep_temp", False):
-            for audio in session_state.temp_audio_paths:
-                try:
-                    os.remove(audio)
-                except Exception:
-                    pass
-
-        _reset_callback_context()
-
-        bc.current_rec_status = "⏹️ Stopped"
-        update_status_lbl()
+        _finalize_recording_session(p, session_state, update_status_lbl, keep_temp=runtime.keep_temp)
 
     except Exception as e:
         logger.error(f"Error in record session: {str(e)}")
