@@ -93,6 +93,24 @@ class AppStartupControllerTests(unittest.TestCase):
         self.assertEqual(len(fake_tray_calls), 1)
         fake_setattr.assert_any_call(unittest.mock.ANY, "web_bridge", self.bridge)
 
+    def test_start_disables_tray_when_flag_present(self) -> None:
+        with patch("speech_translate.app_startup_controller.sj.cache", {"log_level": "INFO", "mw_size": "980x620"}), patch(
+            "speech_translate.app_startup_controller.sys.argv",
+            ["app.py", "--no-tray"],
+        ), patch("speech_translate.app_startup_controller.AppTray") as fake_tray:
+            self.controller.start(with_log_init=False, log_initializer=None)
+
+        fake_tray.assert_not_called()
+
+    def test_start_enables_debug_mode_when_flag_present(self) -> None:
+        with patch("speech_translate.app_startup_controller.sj.cache", {"log_level": "INFO", "mw_size": "980x620"}), patch(
+            "speech_translate.app_startup_controller.sys.argv",
+            ["app.py", "--debug-webview"],
+        ), patch("speech_translate.app_startup_controller.AppTray"):
+            self.controller.start(with_log_init=False, log_initializer=None)
+
+        self.assertEqual(self.fake_webview.start_calls[-1], True)
+
 
 if __name__ == "__main__":
     unittest.main()

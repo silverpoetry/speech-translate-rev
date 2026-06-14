@@ -1,7 +1,6 @@
 from __future__ import annotations
-
-import os
 import sys
+from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path
 from platform import processor, release, system, version
@@ -17,6 +16,14 @@ from speech_translate.app_tray import AppTray
 from speech_translate.controller_protocols import FfmpegPathAdder, StartupBridge, WebviewImporter
 from speech_translate.linker import bc, sj
 from speech_translate.window_geometry import resolve_window_placement
+
+
+@dataclass(frozen=True)
+class StartupContext:
+    startup_t0: float
+    tray_enabled: bool
+    debug_enabled: bool
+    raw_main_size: str
 
 
 class AppStartupController:
@@ -51,16 +58,25 @@ class AppStartupController:
             raw_main_size = "980x620"
         return raw_main_size
 
-    def start(self, with_log_init: bool = True, log_initializer: Callable[[str], None] | None = None) -> None:
-        startup_t0 = time()
+    def _create_startup_context(self) -> StartupContext:
+        return StartupContext(
+            startup_t0=time(),
+            tray_enabled="--no-tray" not in sys.argv,
+            debug_enabled="--debug-webview" in sys.argv or "--debug" in sys.argv,
+            raw_main_size=self.prepare_main_window_size(),
+        )
+
+    def _initialize_logging(self, *, with_log_init: bool, log_initializer: Callable[[str], None] | None) -> None:
         if with_log_init and log_initializer is not None:
             log_initializer(sj.cache["log_level"])
 
+    def _log_runtime_banner(self) -> None:
         logger.info(f"App Version: {__version__} - TIME: {strftime('%Y-%m-%d %H:%M:%S')}")
         logger.info(f"OS: {system()} {release()} {version()} | CPU: {processor()}")
         logger.debug(f"Sys args: {sys.argv}")
         logger.debug("Loading Web UI...")
 
+    def _initialize_webview_runtime(self):
         self.install_signal_handler()
         logger.debug("[Startup] before_add_ffmpeg")
         self.ffmpeg_path_adder(weak=True)
@@ -68,17 +84,18 @@ class AppStartupController:
         logger.debug("[Startup] before_import_webview")
         webview = self.webview_importer("webview")
         logger.debug("[Startup] after_import_webview")
+        return webview
 
+    def _create_bridge(self, startup_t0: float) -> StartupBridge:
         logger.debug("[Startup] before_bridge_init")
         bridge = self.bridge_factory()
         logger.debug("[Startup] after_bridge_init")
         bridge.set_startup_t0(startup_t0)
         setattr(bc, "web_bridge", bridge)
+        return bridge
 
-        tray_enabled = "--no-tray" not in sys.argv
-        raw_main_size = self.prepare_main_window_size()
+    def _create_main_window(self, *, webview, bridge: StartupBridge, raw_main_size: str):
         main_placement = resolve_window_placement(raw_main_size, 980, 620)
-
         bridge._log_startup_marker("before_create_main_window")
         window = webview.create_window(
             APP_NAME,
@@ -93,10 +110,9 @@ class AppStartupController:
         )
         bridge._log_startup_marker("after_create_main_window")
         bridge.bind_window(window)
+        return window
 
-        debug_enabled = "--debug-webview" in sys.argv or "--debug" in sys.argv
-        bridge._log_startup_marker("before_webview_start")
-
+    def _build_webview_ready_callback(self, *, bridge: StartupBridge, tray_enabled: bool):
         def on_webview_ready() -> None:
             bridge._log_startup_marker("webview_ready_callback")
             if tray_enabled and bridge.get_tray() is None:
@@ -108,4 +124,17 @@ class AppStartupController:
                 except Exception as exc:
                     logger.exception(exc)
 
-        webview.start(on_webview_ready, debug=debug_enabled)
+        return on_webview_ready
+
+    def start(self, with_log_init: bool = True, log_initializer: Callable[[str], None] | None = None) -> None:
+        self._initialize_logging(with_log_init=with_log_init, log_initializer=log_initializer)
+        self._log_runtime_banner()
+        context = self._create_startup_context()
+        webview = self._initialize_webview_runtime()
+        bridge = self._create_bridge(context.startup_t0)
+        self._create_main_window(webview=webview, bridge=bridge, raw_main_size=context.raw_main_size)
+        bridge._log_startup_marker("before_webview_start")
+        webview.start(
+            self._build_webview_ready_callback(bridge=bridge, tray_enabled=context.tray_enabled),
+            debug=context.debug_enabled,
+        )

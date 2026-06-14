@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from types import SimpleNamespace
 
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
@@ -73,6 +74,56 @@ class MainWindowControllerTests(unittest.TestCase):
         controller.show_main_window()
         self.assertTrue(bridge.window.shown)
         self.assertTrue(bridge.window.brought)
+
+    def test_save_main_window_geometry_skips_duplicate_save_without_force(self) -> None:
+        settings = FakeSettings()
+        bridge = FakeBridge()
+        controller = MainWindowController(bridge, settings)
+        bridge.window = FakeWindow()
+
+        controller.save_main_window_geometry()
+        first_saved = dict(settings.saved)
+        controller.save_main_window_geometry()
+
+        self.assertEqual(settings.saved, first_saved)
+        self.assertEqual(controller.main_geometry_last_saved, "900x620")
+
+    def test_save_main_window_geometry_uses_native_scaled_client_size(self) -> None:
+        settings = FakeSettings()
+        bridge = FakeBridge()
+        controller = MainWindowController(bridge, settings)
+        window = FakeWindow()
+        window.native = SimpleNamespace(
+            scale_factor=2.0,
+            ClientSize=SimpleNamespace(Width=1800, Height=1240),
+        )
+        bridge.window = window
+
+        controller.save_main_window_geometry()
+
+        self.assertEqual(settings.saved["mw_size"], "900x620")
+
+    def test_bind_window_registers_event_handlers(self) -> None:
+        settings = FakeSettings()
+        bridge = FakeBridge()
+        controller = MainWindowController(bridge, settings)
+        window = FakeWindow()
+
+        class EventHook(list):
+            def __iadd__(self, other):
+                self.append(other)
+                return self
+
+        window.events.shown = EventHook()
+        window.events.loaded = EventHook()
+        window.events.closed = EventHook()
+        bridge.window = window
+
+        controller.bind_window(window)
+
+        self.assertEqual(len(window.events.shown), 1)
+        self.assertEqual(len(window.events.loaded), 1)
+        self.assertEqual(len(window.events.closed), 1)
 
 
 if __name__ == "__main__":
