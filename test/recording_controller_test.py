@@ -21,9 +21,17 @@ class DummyLock:
 class FakeModelManager:
     def __init__(self) -> None:
         self.payloads = []
+        self.pending_calls = []
+        self.ready_calls = []
 
     def handle_recording_status(self, payload):
         self.payloads.append(payload)
+
+    def mark_runtime_model_pending(self, model_key: str, loaded: bool = False, message=None):
+        self.pending_calls.append((model_key, loaded, message))
+
+    def mark_runtime_model_ready(self, model_key: str | None = None, message=None):
+        self.ready_calls.append((model_key, message))
 
 
 class FakeBridge:
@@ -76,6 +84,10 @@ class RecordingSessionControllerTests(unittest.TestCase):
         self.assertEqual(state["status"], "Stopped")
         state["status"] = "Changed"
         self.assertEqual(self.controller.recording_state["status"], "Stopped")
+
+    def test_set_recording_state_routes_runtime_status_updates(self) -> None:
+        self.controller.set_recording_state({"status": "Recording...", "active": True})
+        self.assertEqual(self.bridge.model_manager_controller.payloads[-1]["status"], "Recording...")
 
 
 if __name__ == "__main__":

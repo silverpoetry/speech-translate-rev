@@ -93,6 +93,28 @@ class ModelManagerControllerTests(unittest.TestCase):
             },
         )
 
+    def test_mark_runtime_model_pending_sets_loading_state(self) -> None:
+        self.controller.mark_runtime_model_pending("medium")
+        self.assertEqual(self.controller.runtime_model_key, "medium")
+        self.assertTrue(self.controller.model_load_running)
+        self.assertFalse(self.controller.runtime_model_loaded)
+        self.assertEqual(self.controller.runtime_model_message, "Loading model cache for medium")
+
+    def test_mark_runtime_model_ready_sets_ready_state(self) -> None:
+        self.controller.mark_runtime_model_ready("large-v3")
+        self.assertEqual(self.controller.runtime_model_key, "large-v3")
+        self.assertFalse(self.controller.model_load_running)
+        self.assertTrue(self.controller.runtime_model_loaded)
+        self.assertEqual(self.controller.runtime_model_message, "Model ready: large-v3")
+
+    def test_mark_runtime_model_failed_sets_failure_state(self) -> None:
+        self.controller.model_load_running = True
+        self.controller.runtime_model_loaded = True
+        self.controller.mark_runtime_model_failed("Model load failed: boom")
+        self.assertFalse(self.controller.model_load_running)
+        self.assertFalse(self.controller.runtime_model_loaded)
+        self.assertEqual(self.controller.runtime_model_message, "Model load failed: boom")
+
 
 if __name__ == "__main__":
     unittest.main()

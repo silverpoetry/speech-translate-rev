@@ -81,7 +81,7 @@ class RecordingSessionController:
         is_tc = bool(settings_snapshot.get("transcribe_mw", is_tc))
         is_tl = bool(settings_snapshot.get("translate_mw", is_tl))
         model_name_tc = self.bridge._normalize_model_key(str(settings_snapshot.get("model_mw", "")))
-        self.bridge._runtime_model_key = model_name_tc
+        self.bridge.model_manager_controller.mark_runtime_model_pending(model_name_tc)
 
         if not is_tc and not is_tl:
             return {"ok": False, "message": "Please enable Transcribe or Translate"}
@@ -102,9 +102,7 @@ class RecordingSessionController:
             pass
 
         if cached_bundle:
-            self.bridge._model_load_running = False
-            self.bridge._runtime_model_loaded = True
-            self.bridge._runtime_model_message = f"Model ready: {self.bridge._runtime_model_key}"
+            self.bridge.model_manager_controller.mark_runtime_model_ready(model_name_tc)
 
         self.bridge.bind_headless_main_window()
         bc.tc_sentences = []

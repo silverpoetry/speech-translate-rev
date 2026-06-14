@@ -183,6 +183,27 @@ class ModelManagerController:
     def get_runtime_model_state(self) -> Dict[str, Any]:
         return self.build_runtime_model_state()
 
+    def mark_runtime_model_pending(self, model_key: str, *, loaded: bool = False, message: Optional[str] = None) -> None:
+        normalized_key = self.normalize_model_key(str(model_key))
+        self.runtime_model_key = normalized_key
+        self.runtime_model_loaded = bool(loaded)
+        self.model_load_running = not bool(loaded)
+        self.runtime_model_message = message or (
+            f"Model ready: {normalized_key}" if loaded else f"Loading model cache for {normalized_key}"
+        )
+
+    def mark_runtime_model_ready(self, model_key: Optional[str] = None, *, message: Optional[str] = None) -> None:
+        normalized_key = self.normalize_model_key(str(model_key or self.runtime_model_key))
+        self.runtime_model_key = normalized_key
+        self.runtime_model_loaded = True
+        self.model_load_running = False
+        self.runtime_model_message = message or f"Model ready: {normalized_key}"
+
+    def mark_runtime_model_failed(self, message: str) -> None:
+        self.model_load_running = False
+        self.runtime_model_loaded = False
+        self.runtime_model_message = str(message)
+
     def check_model(self, model_key: str, engine: str = "whisper") -> Dict[str, Any]:
         engine = engine.strip().lower()
         self.model_manager_engine = engine if engine in {"whisper", "faster-whisper"} else "whisper"
@@ -350,12 +371,9 @@ class ModelManagerController:
         if self.model_load_running:
             return {"ok": False, "message": "Another load is running"}
 
-        self.model_load_running = True
         self.settings.save_key("model_mw", model_key)
         self.settings.save_key("model_f_import", model_key)
-        self.runtime_model_key = model_key
-        self.runtime_model_loaded = False
-        self.runtime_model_message = f"Loading model cache for {model_key}"
+        self.mark_runtime_model_pending(model_key)
 
         def worker():
             try:
@@ -380,13 +398,11 @@ class ModelManagerController:
 
                 self.bridge.update_task_progress(100)
                 self.bridge.finish_task(f"Model ready: {model_key}")
-                self.runtime_model_loaded = True
-                self.runtime_model_message = f"Model ready: {model_key}"
+                self.mark_runtime_model_ready(model_key)
             except Exception as exc:
                 logger.exception(exc)
                 self.bridge.update_task_error(str(exc))
-                self.runtime_model_loaded = False
-                self.runtime_model_message = f"Model load failed: {exc}"
+                self.mark_runtime_model_failed(f"Model load failed: {exc}")
             finally:
                 self.model_load_running = False
 
@@ -400,46 +416,32 @@ class ModelManagerController:
         lowered = text.lower()
         if lowered.startswith("loading model and preparing pipeline"):
             if not self.runtime_model_loaded:
-                self.model_load_running = True
-                self.runtime_model_message = f"Loading model cache for {self.runtime_model_key}"
+                self.mark_runtime_model_pending(self.runtime_model_key)
             else:
-                self.model_load_running = False
-                self.runtime_model_message = f"Model ready: {self.runtime_model_key}"
+                self.mark_runtime_model_ready(self.runtime_model_key)
             return
         if lowered.startswith("loading model:") or lowered.startswith("loading model cache for"):
             candidate = text.split(":", 1)[1].strip() if ":" in text else ""
             next_key = self.normalize_model_key(candidate) if candidate else self.runtime_model_key
             if self.runtime_model_loaded and next_key and self.runtime_model_key == next_key:
-                self.model_load_running = False
-                self.runtime_model_message = f"Model ready: {self.runtime_model_key}"
+                self.mark_runtime_model_ready(self.runtime_model_key)
             else:
-                self.runtime_model_key = next_key
-                self.model_load_running = True
-                self.runtime_model_loaded = False
-                self.runtime_model_message = f"Loading model cache for {self.runtime_model_key}"
+                self.mark_runtime_model_pending(next_key)
             return
         if lowered.startswith("model loaded:") or lowered.startswith("model ready:"):
-            self.runtime_model_key = self.normalize_model_key(text.split(":", 1)[1].strip() if ":" in text else self.runtime_model_key)
-            self.model_load_running = False
-            self.runtime_model_loaded = True
-            self.runtime_model_message = f"Model ready: {self.runtime_model_key}"
+            ready_key = self.normalize_model_key(text.split(":", 1)[1].strip() if ":" in text else self.runtime_model_key)
+            self.mark_runtime_model_ready(ready_key)
             return
         if lowered.startswith("model load failed"):
-            self.model_load_running = False
-            self.runtime_model_loaded = False
-            self.runtime_model_message = text
+            self.mark_runtime_model_failed(text)
 
     def handle_recording_status(self, payload: Dict[str, Any]) -> None:
         status_text = str(payload.get("status", "")).lower()
         if "initializing" in status_text:
-            self.model_load_running = True
-            self.runtime_model_loaded = False
             if self.runtime_model_key:
-                self.runtime_model_message = f"Loading model cache for {self.runtime_model_key}"
+                self.mark_runtime_model_pending(self.runtime_model_key)
         elif any(fragment in status_text for fragment in ["recording", "transcrib", "translat"]):
-            self.model_load_running = False
             if self.runtime_model_key:
-                self.runtime_model_loaded = True
-                self.runtime_model_message = f"Model ready: {self.runtime_model_key}"
+                self.mark_runtime_model_ready(self.runtime_model_key)
         elif "stopped" in status_text:
             self.model_load_running = False

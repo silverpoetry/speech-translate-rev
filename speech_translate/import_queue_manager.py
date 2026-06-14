@@ -255,13 +255,9 @@ class ImportQueueController:
 
         if is_tc or (is_tl and engine in model_keys):
             if bool(self.bridge._runtime_model_loaded) and self.bridge._runtime_model_key == model_name_tc:
-                self.bridge._model_load_running = False
-                self.bridge._runtime_model_message = f"Model ready: {model_name_tc}"
+                self.bridge.model_manager_controller.mark_runtime_model_ready(model_name_tc)
             else:
-                self.bridge._runtime_model_key = model_name_tc
-                self.bridge._runtime_model_loaded = False
-                self.bridge._model_load_running = True
-                self.bridge._runtime_model_message = f"Loading model cache for {model_name_tc}"
+                self.bridge.model_manager_controller.mark_runtime_model_pending(model_name_tc)
 
         files_to_process = self._extract_files_to_process()
         if not files_to_process:
@@ -290,8 +286,7 @@ class ImportQueueController:
                 summary = ", ".join([f"{bc.file_tced_counter} transcribed"] * is_tc + [f"{bc.file_tled_counter} translated"] * is_tl) or "no output generated"
                 self.bridge.finish_task(f"File import finished: {summary}")
                 if self.bridge._model_load_running:
-                    self.bridge._runtime_model_loaded = True
-                    self.bridge._runtime_model_message = f"Model ready: {model_name_tc}"
+                    self.bridge.model_manager_controller.mark_runtime_model_ready(model_name_tc)
             except Exception as exc:
                 logger.exception(exc)
                 self.bridge.update_task_error(str(exc))
