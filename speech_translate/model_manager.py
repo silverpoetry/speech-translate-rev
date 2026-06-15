@@ -35,6 +35,25 @@ class ModelManagerController:
         self.model_manager_engine = "whisper"
         self.model_manager_model = "small"
 
+    def _set_runtime_model_state(
+        self,
+        *,
+        model_key: Optional[str] = None,
+        loaded: bool,
+        loading: bool,
+        message: str,
+    ) -> None:
+        if model_key is not None:
+            self.runtime_model_key = self.normalize_model_key(str(model_key))
+        self.runtime_model_loaded = bool(loaded)
+        self.model_load_running = bool(loading)
+        self.runtime_model_message = str(message)
+
+    def _resolve_runtime_model_message(self, normalized_key: str, *, loaded: bool, message: Optional[str]) -> str:
+        if message:
+            return message
+        return f"Model ready: {normalized_key}" if loaded else f"Loading model cache for {normalized_key}"
+
     def resolve_model_dir(self) -> str:
         configured = self.settings.cache.get("dir_model", "auto")
         return configured if configured != "auto" else get_default_download_root()
@@ -193,24 +212,36 @@ class ModelManagerController:
 
     def mark_runtime_model_pending(self, model_key: str, *, loaded: bool = False, message: Optional[str] = None) -> None:
         normalized_key = self.normalize_model_key(str(model_key))
-        self.runtime_model_key = normalized_key
-        self.runtime_model_loaded = bool(loaded)
-        self.model_load_running = not bool(loaded)
-        self.runtime_model_message = message or (
-            f"Model ready: {normalized_key}" if loaded else f"Loading model cache for {normalized_key}"
+        self._set_runtime_model_state(
+            model_key=normalized_key,
+            loaded=bool(loaded),
+            loading=not bool(loaded),
+            message=self._resolve_runtime_model_message(
+                normalized_key,
+                loaded=bool(loaded),
+                message=message,
+            ),
         )
 
     def mark_runtime_model_ready(self, model_key: Optional[str] = None, *, message: Optional[str] = None) -> None:
         normalized_key = self.normalize_model_key(str(model_key or self.runtime_model_key))
-        self.runtime_model_key = normalized_key
-        self.runtime_model_loaded = True
-        self.model_load_running = False
-        self.runtime_model_message = message or f"Model ready: {normalized_key}"
+        self._set_runtime_model_state(
+            model_key=normalized_key,
+            loaded=True,
+            loading=False,
+            message=self._resolve_runtime_model_message(
+                normalized_key,
+                loaded=True,
+                message=message,
+            ),
+        )
 
     def mark_runtime_model_failed(self, message: str) -> None:
-        self.model_load_running = False
-        self.runtime_model_loaded = False
-        self.runtime_model_message = str(message)
+        self._set_runtime_model_state(
+            loaded=False,
+            loading=False,
+            message=str(message),
+        )
 
     def check_model(self, model_key: str, engine: str = "whisper") -> JsonDict:
         self.model_manager_engine = self._normalize_engine_scope(engine)

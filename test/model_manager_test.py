@@ -115,12 +115,23 @@ class ModelManagerControllerTests(unittest.TestCase):
         self.assertFalse(self.controller.runtime_model_loaded)
         self.assertEqual(self.controller.runtime_model_message, "Loading model cache for medium")
 
+    def test_mark_runtime_model_pending_can_mark_ready_state(self) -> None:
+        self.controller.mark_runtime_model_pending("medium", loaded=True)
+        self.assertEqual(self.controller.runtime_model_key, "medium")
+        self.assertFalse(self.controller.model_load_running)
+        self.assertTrue(self.controller.runtime_model_loaded)
+        self.assertEqual(self.controller.runtime_model_message, "Model ready: medium")
+
     def test_mark_runtime_model_ready_sets_ready_state(self) -> None:
         self.controller.mark_runtime_model_ready("large-v3")
         self.assertEqual(self.controller.runtime_model_key, "large-v3")
         self.assertFalse(self.controller.model_load_running)
         self.assertTrue(self.controller.runtime_model_loaded)
         self.assertEqual(self.controller.runtime_model_message, "Model ready: large-v3")
+
+    def test_mark_runtime_model_ready_prefers_explicit_message(self) -> None:
+        self.controller.mark_runtime_model_ready("large-v3", message="ready now")
+        self.assertEqual(self.controller.runtime_model_message, "ready now")
 
     def test_mark_runtime_model_failed_sets_failure_state(self) -> None:
         self.controller.model_load_running = True
