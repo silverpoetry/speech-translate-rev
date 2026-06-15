@@ -57,6 +57,13 @@ def _load_model_cached(model_name: str, use_faster_whisper: bool, **model_args):
         return loaded
 
 
+def _load_model_variant(model_name: str, use_faster_whisper: bool, **model_args):
+    """Load a model and return the matching transcription entry point."""
+    model = _load_model_cached(model_name, use_faster_whisper, **model_args)
+    runner_name = "transcribe_stable" if use_faster_whisper else "transcribe"
+    return model, getattr(model, runner_name)
+
+
 def _bundle_cache_key(
     transcribe: bool,
     translate: bool,
@@ -565,13 +572,14 @@ def get_model(
         model_tc, model_tl, stable_tc, stable_tl, load_to_tc_args
     """
     model_tc, model_tl, stable_tc, stable_tl = None, None, None, None
+    use_faster_whisper = setting_cache["use_faster_whisper"]
     bundle_key = _bundle_cache_key(
         transcribe,
         translate,
         tl_engine_whisper,
         model_name_tc,
         engine,
-        setting_cache["use_faster_whisper"],
+        use_faster_whisper,
         model_args,
     )
 
@@ -580,26 +588,23 @@ def get_model(
         if cached_bundle is not None:
             logger.debug(
                 "Model bundle cache hit: "
-                f"tc={model_name_tc} engine={engine} faster={setting_cache['use_faster_whisper']}"
+                f"tc={model_name_tc} engine={engine} faster={use_faster_whisper}"
             )
             return cached_bundle
-    if setting_cache["use_faster_whisper"] and model_name_tc:
+    if use_faster_whisper and model_name_tc:
         if transcribe and translate and model_name_tc == engine:
             # same model for both transcribe and translate. Load only once
             logger.debug("Loading model for both transcribe and translate using faster-whisper | Load only once")
-            model_tc = _load_model_cached(model_name_tc, True, **model_args)
-            stable_tc = model_tc.transcribe_stable  # type: ignore
+            model_tc, stable_tc = _load_model_variant(model_name_tc, True, **model_args)
             stable_tl = stable_tc
         else:
             if transcribe:  # if transcribe, load model for transcribe
                 logger.debug("Loading model for transcribe using faster-whisper")
-                model_tc = _load_model_cached(model_name_tc, True, **model_args)
-                stable_tc = model_tc.transcribe_stable  # type: ignore
+                model_tc, stable_tc = _load_model_variant(model_name_tc, True, **model_args)
 
             if translate and tl_engine_whisper:  # if translate using whisper, load model for translate
                 logger.debug("Loading model for translate using faster-whisper")
-                model_tl = _load_model_cached(engine, True, **model_args)
-                stable_tl = model_tl.transcribe_stable  # type: ignore
+                model_tl, stable_tl = _load_model_variant(engine, True, **model_args)
 
             # if translate and the engine is not using whisper,
             # load model for transcribe, but check first wether the model is already loaded or not
@@ -609,25 +614,21 @@ def get_model(
                     "Mode is translate and engine is not using whisper, " \
                     "model for transcribe is not loaded yet, loading model for transcribe"
                 )
-                model_tc = _load_model_cached(model_name_tc, True, **model_args)
-                stable_tc = model_tc.transcribe_stable  # type: ignore
+                model_tc, stable_tc = _load_model_variant(model_name_tc, True, **model_args)
     else:
         if transcribe and translate and model_name_tc == engine:
             # same model for both transcribe and translate. Load only once
             logger.debug("Loading model for both transcribe and translate using whisper | Load only once")
-            model_tc = _load_model_cached(model_name_tc, False, **model_args)
-            stable_tc = model_tc.transcribe
+            model_tc, stable_tc = _load_model_variant(model_name_tc, False, **model_args)
             stable_tl = stable_tc
         else:
             if transcribe:  # if transcribe, load model for transcribe
                 logger.debug("Loading model for transcribe using whisper")
-                model_tc = _load_model_cached(model_name_tc, False, **model_args)
-                stable_tc = model_tc.transcribe
+                model_tc, stable_tc = _load_model_variant(model_name_tc, False, **model_args)
 
             if translate and tl_engine_whisper:  # if translate using whisper, load model for translate
                 logger.debug("Loading model for translate using whisper")
-                model_tl = _load_model_cached(engine, False, **model_args)
-                stable_tl = model_tl.transcribe
+                model_tl, stable_tl = _load_model_variant(engine, False, **model_args)
 
             # if translate and the engine is not using whisper,
             # load model for transcribe, but check first wether the model is already loaded or not
@@ -637,8 +638,7 @@ def get_model(
                     "Mode is translate and engine is not using whisper, " \
                     "model for transcribe is not loaded yet, loading model for transcribe"
                 )
-                model_tc = _load_model_cached(model_name_tc, False, **model_args)
-                stable_tc = model_tc.transcribe_stable  # type: ignore[attr-defined]
+                model_tc, stable_tc = _load_model_variant(model_name_tc, False, **model_args)
 
     load_to_tc_args = stable_tc if stable_tc is not None else stable_tl  # making sure that the load_to_tc_args is not None
 

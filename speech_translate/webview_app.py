@@ -16,7 +16,7 @@ from speech_translate.state_view_builder import StateViewBuilder
 from speech_translate.system_settings_controller import DEFAULT_PATH_CONFIG, SystemSettingsController
 from speech_translate.web_bridge_facade import WebBridgeFacadeMixin
 from speech_translate.linker import sj
-from speech_translate.web_backend import HeadlessFileProcessDialog, WebTaskBridge, headless_mbox
+from speech_translate.web_backend import WebTaskBridge
 from speech_translate.ui_protocol import TASK_SOURCE_GENERAL
 from speech_translate.utils.translate.language import TL_ENGINE_SOURCE_DICT, TL_ENGINE_TARGET_DICT
 from speech_translate.utils.translate.translator import shutdown_selenium_translator
@@ -38,7 +38,7 @@ class WebBridge(WebBridgeFacadeMixin, WebTaskBridge):
         # --- Lifecycle ---
         self.main_window_controller = MainWindowController(self, sj)
         self.model_manager_controller = ModelManagerController(self, sj, get_whisper_load_api)
-        self.import_queue_controller = ImportQueueController(self, sj, HeadlessFileProcessDialog, headless_mbox, shutdown_selenium_translator)
+        self.import_queue_controller = ImportQueueController(self, sj, shutdown_selenium_translator)
         self.recording_controller = RecordingSessionController(self, get_whisper_load_api, shutdown_selenium_translator)
         self.state_view_builder = StateViewBuilder(self, sj)
         path_config = dict(DEFAULT_PATH_CONFIG)

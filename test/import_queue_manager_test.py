@@ -114,7 +114,7 @@ class ImportQueueControllerTests(unittest.TestCase):
         self.bridge = FakeBridge()
         self.settings = FakeSettings()
         self.bridge.settings_snapshot = self.settings.cache
-        self.controller = ImportQueueController(self.bridge, self.settings, object, lambda *args, **kwargs: True, lambda: None)
+        self.controller = ImportQueueController(self.bridge, self.settings, lambda: None)
 
     def test_get_full_display_queue_merges_processing_status(self) -> None:
         self.controller.file_import_queue = [{"path": "a.wav", "name": "a.wav", "status": "Waiting", "is_completed": False}]
@@ -175,7 +175,7 @@ class ImportQueueControllerTests(unittest.TestCase):
             self.bridge._runtime_model_key = "small"
             self.bridge._model_load_running = False
             self.controller.file_import_queue = [{"path": "a.wav", "name": "a.wav", "status": "Waiting", "is_completed": False}]
-            self.controller._start_import_worker = lambda *, context, audio_file_module: captured.update(
+            self.controller._start_import_worker = lambda *, context: captured.update(
                 {"engine": context.engine, "model": context.model_name_tc, "prepare": context.should_prepare_runtime_model}
             )
             self.settings.cache["tl_engine_f_import"] = "Selenium Chrome Translate"
@@ -202,7 +202,7 @@ class ImportQueueControllerTests(unittest.TestCase):
             self.controller.shutdown_selenium_fn = lambda: shutdown_calls.append("shutdown")
             self.controller.file_import_queue = [{"path": "a.wav", "name": "a.wav", "status": "Waiting", "is_completed": False}]
 
-            def fake_start_worker(*, context, audio_file_module):
+            def fake_start_worker(*, context):
                 self.controller._finish_import_run(context=context)
 
             self.controller._start_import_worker = fake_start_worker

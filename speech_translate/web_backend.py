@@ -11,14 +11,7 @@ from loguru import logger
 
 from speech_translate.controller_protocols import JsonDict, TaskTable, TaskTableRow, TrayLike, WebviewWindowLike
 from speech_translate.linker import bc, sj
-from speech_translate.ui_protocol import (
-    TASK_SOURCE_HEADLESS_LABEL,
-    TASK_SOURCE_HEADLESS_PROGRESS,
-    TASK_SOURCE_GENERAL,
-    UI_EVENT_NAME,
-    UI_SECTION_LIVE,
-    UI_SECTION_TASK,
-)
+from speech_translate.ui_protocol import TASK_SOURCE_GENERAL, UI_EVENT_NAME, UI_SECTION_LIVE, UI_SECTION_TASK
 
 
 class HeadlessRoot:
@@ -46,81 +39,6 @@ class HeadlessRoot:
         return 0
 
 
-class HeadlessLabel:
-    def __init__(self, bridge: WebTaskBridge | None = None):
-        self.bridge = bridge
-        self.text = ""
-
-    def set_text(self, text: str) -> None:
-        self.text = text
-        if self.bridge is not None:
-            self.bridge.update_task_message(text, source=TASK_SOURCE_HEADLESS_LABEL)
-
-    def configure(self, **kwargs: object) -> None:
-        text = kwargs.get("text")
-        if text is not None:
-            self.set_text(str(text))
-
-
-class HeadlessButton:
-    def __init__(self):
-        self.state = "normal"
-        self.command: Callable[..., object] | None = None
-
-    def configure(self, **kwargs: object) -> None:
-        if "state" in kwargs:
-            self.state = str(kwargs["state"])
-        if "command" in kwargs:
-            command = kwargs["command"]
-            self.command = command if callable(command) else None
-
-
-class HeadlessCheckButton:
-    def __init__(self):
-        self.state = "normal"
-        self.selected = False
-        self.command: Callable[..., object] | None = None
-
-    def configure(self, **kwargs: object) -> None:
-        if "state" in kwargs:
-            self.state = str(kwargs["state"])
-        if "command" in kwargs:
-            command = kwargs["command"]
-            self.command = command if callable(command) else None
-
-    def instate(self, _states: Sequence[str]) -> bool:
-        return self.selected
-
-    def invoke(self) -> bool:
-        self.selected = not self.selected
-        if self.command is not None:
-            try:
-                self.command()
-            except TypeError:
-                self.command(self.selected)
-        return self.selected
-
-
-class HeadlessProgressBar:
-    def __init__(self, bridge: WebTaskBridge | None = None):
-        self.bridge = bridge
-        self.value = 0.0
-
-    def __setitem__(self, key: str, value: object) -> None:
-        if key == "value":
-            self.value = float(value)
-            if self.bridge is not None:
-                self.bridge.update_task_progress(self.value, source=TASK_SOURCE_HEADLESS_PROGRESS)
-
-    def __getitem__(self, key: str) -> float:
-        if key == "value":
-            return self.value
-        raise KeyError(key)
-
-    def configure(self, **kwargs: object) -> None:
-        return None
-
-
 class HeadlessQueueWindow:
     def __init__(self, bridge: WebTaskBridge | None = None):
         self.bridge = bridge
@@ -143,39 +61,6 @@ class TaskState:
     finished: bool = False
     message_source: str = ""
     progress_source: str = ""
-
-
-class HeadlessFileProcessDialog:
-    def __init__(self, master: object, title: str, mode: str, headers: list[str], bridge: WebTaskBridge | None = None):
-        self.bridge = bridge
-        self.mode = mode
-        self.headers = headers
-        self.root = HeadlessRoot()
-        self.lbl_task_name = HeadlessLabel(bridge)
-        self.lbl_elapsed = HeadlessLabel(bridge)
-        self.lbl_files = HeadlessLabel(bridge)
-        self.lbl_processed = HeadlessLabel(bridge)
-        self.cbtn_open_folder = HeadlessCheckButton()
-        self.btn_add = HeadlessButton()
-        self.btn_cancel = HeadlessButton()
-        self.progress_bar = HeadlessProgressBar(bridge)
-        self.queue_window = HeadlessQueueWindow(bridge)
-        self.task_title = title
-
-    def destroy(self) -> None:
-        return None
-
-
-def headless_mbox(title: str, text: str, style: int = 0, parent: object | None = None) -> bool:
-    """Headless replacement for tkinter message boxes used in backend flows."""
-    _ = parent
-    if style in (2,):
-        logger.error(f"[HeadlessMBox] {title}: {text}")
-    else:
-        logger.info(f"[HeadlessMBox] {title}: {text}")
-
-    # Return True for confirm-style dialogs so batch flows can proceed.
-    return True
 
 
 class HeadlessMainWindow:

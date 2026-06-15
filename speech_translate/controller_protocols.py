@@ -625,10 +625,4 @@ class ImportQueueBridge(Protocol):
         ...
 
 
-class HeadlessDialogFactory(Protocol):
-    def __call__(self, master: object, title: str, mode: str, headers: Sequence[str], *, bridge: object) -> object:
-        ...
-
-
-HeadlessMboxFn = Callable[..., object]
 ShutdownSeleniumFn = Callable[[], None]

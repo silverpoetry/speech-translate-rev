@@ -10,8 +10,6 @@ from typing import Dict, List, Optional
 from loguru import logger
 
 from speech_translate.controller_protocols import (
-    HeadlessDialogFactory,
-    HeadlessMboxFn,
     ImportQueueBridge,
     JsonDict,
     SettingsStore,
@@ -69,14 +67,10 @@ class ImportQueueController:
         self,
         bridge: ImportQueueBridge,
         settings: SettingsStore,
-        headless_dialog_cls: HeadlessDialogFactory,
-        headless_mbox_fn: HeadlessMboxFn,
         shutdown_selenium_fn: ShutdownSeleniumFn,
     ):
         self.bridge = bridge
         self.settings = settings
-        self.headless_dialog_cls = headless_dialog_cls
-        self.headless_mbox_fn = headless_mbox_fn
         self.shutdown_selenium_fn = shutdown_selenium_fn
         self.file_import_queue: List[object] = []
         self.processing_queue: List[JsonDict] = []
@@ -292,19 +286,6 @@ class ImportQueueController:
         else:
             self.bridge.model_manager_controller.mark_runtime_model_pending(context.model_name_tc)
 
-    def _configure_audio_file_runtime(self) -> object:
-        from speech_translate.utils.audio import file as audio_file_module
-
-        audio_file_module.FileProcessDialog = lambda master, title, mode, headers: self.headless_dialog_cls(
-            master,
-            title,
-            mode,
-            headers,
-            bridge=self.bridge,
-        )
-        audio_file_module.mbox = self.headless_mbox_fn
-        return audio_file_module
-
     def _finalize_processing_queue(self) -> None:
         with self.bridge._lock:
             processing_map = {item.get("path"): item for item in self.processing_queue}
@@ -331,7 +312,9 @@ class ImportQueueController:
     def _build_import_summary(self, *, is_tc: bool, is_tl: bool) -> str:
         return ", ".join([f"{bc.file_tced_counter} transcribed"] * is_tc + [f"{bc.file_tled_counter} translated"] * is_tl) or "no output generated"
 
-    def _start_import_worker(self, *, context: ImportStartContext, audio_file_module: object) -> None:
+    def _start_import_worker(self, *, context: ImportStartContext) -> None:
+        from speech_translate.utils.audio import file as audio_file_module
+
         def worker() -> None:
             try:
                 bc.enable_file_process()
@@ -372,7 +355,7 @@ class ImportQueueController:
         self._prepare_runtime_model_for_import(context)
         self.bridge.reset_task_state("File Import")
         self.bridge.bind_headless_main_window()
-        self._start_import_worker(context=context, audio_file_module=self._configure_audio_file_runtime())
+        self._start_import_worker(context=context)
         return {"ok": True, "count": len(context.files_to_process), "message": "File import started"}
 
     def stop_import_queue(self) -> JsonDict:

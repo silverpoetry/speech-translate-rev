@@ -150,10 +150,6 @@ class RecordingSessionController:
     def _start_recording_worker(self, context: RecordingStartContext) -> None:
         from speech_translate.utils.audio.record import record_session
 
-        import speech_translate.utils.audio.record as record_module
-
-        record_module.mbox = lambda *args, **kwargs: True
-
         def worker() -> None:
             try:
                 record_session(
