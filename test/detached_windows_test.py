@@ -20,6 +20,47 @@ from speech_translate.detached_windows import (
 
 
 class DetachedWindowHelpersTests(unittest.TestCase):
+    def test_manager_create_window_uses_injected_webview_loader(self) -> None:
+        class EventHook:
+            def __iadd__(self, callback):
+                return self
+
+        class FakeWindow:
+            def __init__(self) -> None:
+                self.events = SimpleNamespace(closed=EventHook(), loaded=EventHook())
+                self.native = None
+
+            def show(self) -> None:
+                return None
+
+            def bring_to_front(self) -> None:
+                return None
+
+        class FakeWebview:
+            def __init__(self) -> None:
+                self.calls = []
+
+            def create_window(self, *args, **kwargs):
+                self.calls.append((args, kwargs))
+                return FakeWindow()
+
+        fake_webview = FakeWebview()
+        manager = DetachedWindowManager(
+            settings=type("Settings", (), {"cache": {"ex_tc_geometry": "900x240"}})(),
+            webview_loader=lambda: fake_webview,
+        )
+
+        window = manager.create_window("tc", x=10, y=20, width=700, height=300)
+
+        self.assertIsNotNone(window)
+        self.assertIs(manager.windows["tc"], window)
+        self.assertEqual(len(fake_webview.calls), 1)
+        args, kwargs = fake_webview.calls[0]
+        self.assertEqual(args[0], "Speech Translate - Transcribed")
+        self.assertEqual(kwargs["width"], 700)
+        self.assertEqual(kwargs["height"], 300)
+        self.assertEqual((kwargs["x"], kwargs["y"]), (10, 20))
+
     def test_normalize_detached_mode_defaults_invalid_mode(self) -> None:
         self.assertEqual(normalize_detached_mode("invalid"), "tl")
         self.assertEqual(normalize_detached_mode("TC"), "tc")

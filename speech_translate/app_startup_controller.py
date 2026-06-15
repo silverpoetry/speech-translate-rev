@@ -1,7 +1,6 @@
 from __future__ import annotations
 import sys
 from dataclasses import dataclass
-from importlib import import_module
 from pathlib import Path
 from platform import processor, release, system, version
 from signal import SIGINT, signal
@@ -11,9 +10,10 @@ from typing import Callable
 from speech_translate._constants import APP_NAME
 from speech_translate._version import __version__
 from speech_translate.app_tray import AppTray
-from speech_translate.controller_protocols import FfmpegPathAdder, StartupBridge, WebviewImporter
+from speech_translate.controller_protocols import FfmpegPathAdder, StartupBridge, WebviewLoader
 from speech_translate.linker import bc, sj
 from speech_translate.log_helpers import logger
+from speech_translate.webview_runtime import load_webview_runtime
 from speech_translate.window_geometry import resolve_window_placement
 
 
@@ -32,11 +32,11 @@ class AppStartupController:
         self,
         bridge_factory: Callable[[], StartupBridge],
         ffmpeg_path_adder: FfmpegPathAdder,
-        webview_importer: WebviewImporter = import_module,
+        webview_loader: WebviewLoader = load_webview_runtime,
     ):
         self.bridge_factory = bridge_factory
         self.ffmpeg_path_adder = ffmpeg_path_adder
-        self.webview_importer = webview_importer
+        self.webview_loader = webview_loader
 
     def install_signal_handler(self) -> None:
         def signal_handler(_sig, _frame):
@@ -81,7 +81,7 @@ class AppStartupController:
         self.ffmpeg_path_adder(weak=True)
         logger.debug("[Startup] after_add_ffmpeg")
         logger.debug("[Startup] before_import_webview")
-        webview = self.webview_importer("webview")
+        webview = self.webview_loader()
         logger.debug("[Startup] after_import_webview")
         return webview
 

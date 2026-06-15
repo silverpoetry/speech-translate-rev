@@ -62,7 +62,7 @@ class AppStartupControllerTests(unittest.TestCase):
         self.controller = AppStartupController(
             bridge_factory=lambda: self.bridge,
             ffmpeg_path_adder=lambda weak=False: self.ffmpeg_calls.append(weak) or True,
-            webview_importer=lambda name: self.fake_webview,
+            webview_loader=lambda: self.fake_webview,
         )
 
     def test_prepare_main_window_size_migrates_legacy_default(self) -> None:

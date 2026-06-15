@@ -15,7 +15,7 @@ from speech_translate.controller_protocols import (
 from speech_translate.linker import bc
 from speech_translate.log_helpers import logger
 from speech_translate.ui_protocol import TASK_SOURCE_IMPORT, UI_SECTION_IMPORT
-from speech_translate.webview_dialog_runtime import create_file_dialog
+from speech_translate.webview_runtime import create_file_dialog
 from speech_translate.utils.whisper.helper import model_keys, model_select_dict
 
 

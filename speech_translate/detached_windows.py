@@ -2,21 +2,22 @@ from __future__ import annotations
 
 import ctypes
 import json
-from importlib import import_module
 from pathlib import Path
 from platform import system
 from time import time
-from typing import Mapping, Optional
+from typing import Callable, Mapping, Optional
 
 from speech_translate.controller_protocols import (
     DetachedWindowManagerBridge,
     JsonDict,
     RecordingStateProvider,
     SettingsStore,
+    StartupWebviewModule,
     WebviewWindowLike,
 )
 from speech_translate.detached_window_runtime import DetachedWindowDeliveryRuntime
 from speech_translate.log_helpers import logger
+from speech_translate.webview_runtime import load_webview_runtime
 from speech_translate.window_geometry import extract_native_window_geometry, resolve_window_placement
 
 
@@ -81,9 +82,15 @@ class DetachedWindowManager:
     _SWP_SHOWWINDOW = 0x0040
     _LWA_ALPHA = 0x00000002
 
-    def __init__(self, bridge: DetachedWindowManagerBridge | None = None, settings: SettingsStore | None = None):
+    def __init__(
+        self,
+        bridge: DetachedWindowManagerBridge | None = None,
+        settings: SettingsStore | None = None,
+        webview_loader: Callable[[], StartupWebviewModule] = load_webview_runtime,
+    ):
         self.bridge = bridge
         self.settings = settings
+        self.webview_loader = webview_loader
         self.runtime = DetachedWindowDeliveryRuntime()
         self.windows: dict[str, WebviewWindowLike] = {}
         self.pending_updates = self.runtime.pending_updates
@@ -393,7 +400,7 @@ class DetachedWindowManager:
                 self._drop_window_ref(mode)
 
         try:
-            webview = import_module("webview")
+            webview = self.webview_loader()
             html_path = str(Path(__file__).with_name("web") / "detached_window.html")
             always_on_top = self._is_always_on_top_enabled(mode)
             self.runtime.mark_window_loaded(mode, False)
@@ -578,7 +585,7 @@ class DetachedWindowManager:
             return self.recording_window
 
         try:
-            webview = import_module("webview")
+            webview = self.webview_loader()
             html_path = str(Path(__file__).with_name("web") / "recording_window.html")
             assert self.bridge is not None
             recording_window_api = RecordingWindowApi(self.bridge.get_recording_state)

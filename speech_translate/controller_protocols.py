@@ -263,7 +263,7 @@ class StartupWebviewModule(Protocol):
         ...
 
 
-WebviewImporter = Callable[[str], StartupWebviewModule]
+WebviewLoader = Callable[[], StartupWebviewModule]
 FfmpegPathAdder = Callable[..., bool]
 
 

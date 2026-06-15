@@ -4,19 +4,25 @@ from importlib import import_module
 from typing import Literal
 
 
-def load_webview_module():
+def load_webview_runtime():
     return import_module("webview")
 
 
 def resolve_file_dialog(webview_module, dialog_kind: Literal["open", "folder"]):
-    file_dialog = getattr(webview_module, "FileDialog", object)
+    file_dialog = getattr(webview_module, "FileDialog", None)
+    if file_dialog is None:
+        raise RuntimeError("pywebview FileDialog API is unavailable; pywebview>=5.0 is required")
+
     if dialog_kind == "open":
-        modern = getattr(file_dialog, "OPEN", None)
-        return modern if modern is not None else getattr(webview_module, "OPEN_DIALOG")
-    if dialog_kind == "folder":
-        modern = getattr(file_dialog, "FOLDER", None)
-        return modern if modern is not None else getattr(webview_module, "FOLDER_DIALOG")
-    raise ValueError(f"Unsupported dialog kind: {dialog_kind}")
+        dialog = getattr(file_dialog, "OPEN", None)
+    elif dialog_kind == "folder":
+        dialog = getattr(file_dialog, "FOLDER", None)
+    else:
+        raise ValueError(f"Unsupported dialog kind: {dialog_kind}")
+
+    if dialog is None:
+        raise RuntimeError(f"pywebview FileDialog.{dialog_kind.upper()} is unavailable")
+    return dialog
 
 
 def create_file_dialog(
@@ -27,7 +33,7 @@ def create_file_dialog(
     allow_multiple: bool = False,
     file_types=None,
 ):
-    webview_module = load_webview_module()
+    webview_module = load_webview_runtime()
     dialog = resolve_file_dialog(webview_module, dialog_kind)
     kwargs = {}
     if directory is not None:

@@ -8,7 +8,7 @@ from typing import Dict
 from speech_translate._path import dir_export, dir_log, dir_user
 from speech_translate.controller_protocols import SettingsStore, SystemSettingsBridge
 from speech_translate.log_helpers import logger
-from speech_translate.webview_dialog_runtime import create_file_dialog
+from speech_translate.webview_runtime import create_file_dialog
 from speech_translate.utils.helper import open_folder, open_url
 from speech_translate.utils.whisper.helper import model_select_dict
 
