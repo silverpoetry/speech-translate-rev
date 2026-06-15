@@ -7,10 +7,9 @@ import re
 from threading import Lock
 from typing import Callable, Optional, Sequence
 
-from loguru import logger
-
 from speech_translate.controller_protocols import JsonDict, TaskTable, TaskTableRow, TrayLike, WebviewWindowLike
 from speech_translate.linker import bc, sj
+from speech_translate.log_helpers import logger
 from speech_translate.ui_protocol import TASK_SOURCE_GENERAL, UI_EVENT_NAME, UI_SECTION_LIVE, UI_SECTION_TASK
 
 

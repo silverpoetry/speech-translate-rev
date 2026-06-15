@@ -1,10 +1,18 @@
+from __future__ import annotations
+
 from copy import deepcopy
 from typing import Dict, List
 
-from deep_translator import GoogleTranslator, MyMemoryTranslator
-from loguru import logger
+from speech_translate.log_helpers import logger
 
 from ..helper import get_similar_in_list, up_first_case
+
+try:
+    from deep_translator import GoogleTranslator, MyMemoryTranslator
+except ModuleNotFoundError:  # pragma: no cover - optional runtime dependency fallback
+    GoogleTranslator = None  # type: ignore[assignment]
+    MyMemoryTranslator = None  # type: ignore[assignment]
+
 
 # This language is copied directly from whisper.tokenizer to speed up the import time on startup
 LANGUAGES = {
@@ -110,12 +118,8 @@ LANGUAGES = {
     "yue": "cantonese",
 }
 
-# language code lookup by name, with a few language aliases
 TO_LANGUAGE_CODE = {
-    **{
-        language: code
-        for code, language in LANGUAGES.items()
-    },
+    **{language: code for code, language in LANGUAGES.items()},
     "burmese": "my",
     "valencian": "ca",
     "flemish": "nl",
@@ -130,37 +134,57 @@ TO_LANGUAGE_CODE = {
     "mandarin": "zh",
 }
 
-# * using deep_translator v1.11.1
-# * v1.11.4 seems to add weird language code for mymemory
-
-# List of whisper languages convert fromm the keys of TO_LANGUAGE_CODE
 WHISPER_LANG_LIST = list(TO_LANGUAGE_CODE.keys())
 WHISPER_LANG_LIST.sort()
-
-# code: name
 WHISPER_CODE_TO_NAME = {v: k for k, v in TO_LANGUAGE_CODE.items()}
 
-# List of supported languages by Google TL
-GOOGLE_KEY_VAL = deepcopy(GoogleTranslator().get_supported_languages(as_dict=True))
-assert isinstance(GOOGLE_KEY_VAL, Dict)
-GOOGLE_KEY_VAL["auto detect"] = "auto"
-if "filipino" in GOOGLE_KEY_VAL.keys():
-    GOOGLE_KEY_VAL["filipino (tagalog)"] = GOOGLE_KEY_VAL.pop("filipino")
+_STATIC_GOOGLE_KEY_VAL = {
+    "auto detect": "auto",
+    "english": "en",
+    "chinese": "zh-CN",
+    "japanese": "ja",
+    "korean": "ko",
+    "french": "fr",
+    "german": "de",
+    "spanish": "es",
+    "russian": "ru",
+    "portuguese": "pt",
+    "indonesian": "id",
+    "arabic": "ar",
+    "hindi": "hi",
+    "italian": "it",
+    "dutch": "nl",
+    "turkish": "tr",
+    "ukrainian": "uk",
+    "vietnamese": "vi",
+    "thai": "th",
+    "polish": "pl",
+    "filipino (tagalog)": "tl",
+}
 
-# List of supported languages by MyMemoryTranslator
-MYMEMORY_KEY_VAL = deepcopy(MyMemoryTranslator().get_supported_languages(as_dict=True))
-assert isinstance(MYMEMORY_KEY_VAL, Dict)
-if "filipino" in MYMEMORY_KEY_VAL.keys():
-    MYMEMORY_KEY_VAL["filipino (tagalog)"] = MYMEMORY_KEY_VAL.pop("filipino")
-# remove key that gives error or invalid -> this is get from testing the key in test/test/translate.py
-MYMEMORY_KEY_VAL.pop("aymara")
-MYMEMORY_KEY_VAL.pop("dogri")
-MYMEMORY_KEY_VAL.pop("javanese")
-MYMEMORY_KEY_VAL.pop("konkani")
-MYMEMORY_KEY_VAL.pop("krio")
-MYMEMORY_KEY_VAL.pop("oromo")
+_STATIC_MYMEMORY_KEY_VAL = {
+    "english": "en",
+    "chinese": "zh-CN",
+    "japanese": "ja",
+    "korean": "ko",
+    "french": "fr",
+    "german": "de",
+    "spanish": "es",
+    "russian": "ru",
+    "portuguese": "pt",
+    "indonesian": "id",
+    "arabic": "ar",
+    "hindi": "hi",
+    "italian": "it",
+    "dutch": "nl",
+    "turkish": "tr",
+    "ukrainian": "uk",
+    "vietnamese": "vi",
+    "thai": "th",
+    "polish": "pl",
+    "filipino (tagalog)": "tl",
+}
 
-# List of supported languages by libreTranslate. Taken from LibreTranslate.com docs v1.5.1
 LIBRE_KEY_VAL = {
     "auto detect": "auto",
     "english": "en",
@@ -211,120 +235,98 @@ LIBRE_KEY_VAL = {
 }
 
 
+def _load_translator_language_dict(translator_cls, fallback: Dict[str, str], *, include_auto_detect: bool) -> Dict[str, str]:
+    if translator_cls is None:
+        if include_auto_detect:
+            logger.debug("deep_translator unavailable; using static fallback language table with auto detect")
+        else:
+            logger.debug("deep_translator unavailable; using static fallback language table")
+        return deepcopy(fallback)
+
+    try:
+        resolved = deepcopy(translator_cls().get_supported_languages(as_dict=True))
+        assert isinstance(resolved, Dict)
+        if include_auto_detect:
+            resolved["auto detect"] = "auto"
+        if "filipino" in resolved:
+            resolved["filipino (tagalog)"] = resolved.pop("filipino")
+        return resolved
+    except Exception as exc:
+        logger.warning(f"Failed to load translator language table dynamically: {exc}")
+        return deepcopy(fallback)
+
+
+def _build_mymemory_key_val() -> Dict[str, str]:
+    resolved = _load_translator_language_dict(
+        MyMemoryTranslator,
+        _STATIC_MYMEMORY_KEY_VAL,
+        include_auto_detect=False,
+    )
+    for invalid_key in ("aymara", "dogri", "javanese", "konkani", "krio", "oromo"):
+        resolved.pop(invalid_key, None)
+    return resolved
+
+
+GOOGLE_KEY_VAL = _load_translator_language_dict(
+    GoogleTranslator,
+    _STATIC_GOOGLE_KEY_VAL,
+    include_auto_detect=True,
+)
+MYMEMORY_KEY_VAL = _build_mymemory_key_val()
+
+
 def verify_language_in_key(search: str, engine: str) -> bool:
-    """Verify if the language is in the key of the engine
-
-    Parameters
-    ----------
-    search : str
-        Language to verify
-    engine : str
-        Engine to verify
-
-    Returns
-    -------
-    bool
-        True if the language is in the key of the engine
-
-    Raises
-    ------
-    ValueError
-        If the engine is not found
-
-    """
-    # pylint: disable=consider-iterating-dictionary
     if engine in {"Google Translate", "Selenium Chrome Translate"}:
         return search in GOOGLE_KEY_VAL
-    elif engine == "LibreTranslate":
+    if engine == "LibreTranslate":
         return search in LIBRE_KEY_VAL
-    elif engine == "MyMemoryTranslator":
+    if engine == "MyMemoryTranslator":
         return search in MYMEMORY_KEY_VAL
-    else:
-        raise ValueError("Engine not found")
+    raise ValueError("Engine not found")
 
 
 def get_whisper_lang_similar(similar: str, debug: bool = True) -> str:
-    """Get whisper language from similar. 
-    This is used because we want to keep the original language name for the translation engine
-    So everytime we want to set the whisper language, we must call this function first to get the correct whisper key
-
-    Parameters
-    ----------
-    similar : str
-        Similar language
-
-    Returns
-    -------
-    str
-        Whisper key
-
-    Raises
-    ------
-    ValueError
-        If the similar language is not found
-
-    """
-
     if debug:
         logger.debug("GETTING WHISPER LANGUAGE FROM SIMILAR LANGUAGE NAME")
     should_be_there = get_similar_in_list(WHISPER_LANG_LIST, similar.lower())
-
     if len(should_be_there) != 0:
         if debug:
             logger.debug(f"Found key {should_be_there[0]} while searching for {similar}")
             logger.debug(f"FULL KEY GET {should_be_there}")
         return should_be_there[0]
-    else:
-        raise ValueError(
-            f"Fail to get whisper language from similar while searching for {similar}. "\
-            "Please report this as a bug to https://github.com/Dadangdut33/Speech-Translate/issues"
-        )
+    raise ValueError(
+        f"Fail to get whisper language from similar while searching for {similar}. "
+        "Please report this as a bug to https://github.com/Dadangdut33/Speech-Translate/issues"
+    )
 
 
 def get_whisper_lang_name(search: str) -> str:
-    """Get whisper language name from search. 
-    If by any chance the search is already a language name, then it will return the search itself
-
-    Parameters
-    ----------
-    search : str
-        language name or language code
-
-    Returns
-    -------
-    str
-        Whisper language name
-    """
     if len(search) > 3:
-        return search  # > 3 meaning already language name
-    else:
-        return WHISPER_CODE_TO_NAME[search]
+        return search
+    return WHISPER_CODE_TO_NAME[search]
 
 
-# * For Target Remove any auto detect from the list
+def _sorted_titlecase(values: List[str]) -> List[str]:
+    result = [up_first_case(value) for value in values]
+    result.sort()
+    return result
+
+
+def _filter_whisper_compatible(values: List[str]) -> List[str]:
+    compatible: list[str] = []
+    for lang in values:
+        if get_similar_in_list(WHISPER_LANG_LIST, lang):
+            compatible.append(lang)
+    return compatible
+
+
 WHISPER_TARGET = ["English"]
 
-GOOGLE_TARGET = list(GOOGLE_KEY_VAL.keys())
-GOOGLE_TARGET.remove("auto detect")
-GOOGLE_TARGET = [up_first_case(x) for x in GOOGLE_TARGET]
-GOOGLE_TARGET.sort()
+GOOGLE_TARGET = _sorted_titlecase([key for key in GOOGLE_KEY_VAL.keys() if key != "auto detect"])
+LIBRE_TARGET = _sorted_titlecase([key for key in LIBRE_KEY_VAL.keys() if key != "auto detect"])
+MY_MEMORY_TARGET = _sorted_titlecase(list(MYMEMORY_KEY_VAL.keys()))
 
-LIBRE_TARGET = list(LIBRE_KEY_VAL.keys())
-LIBRE_TARGET.remove("auto detect")
-LIBRE_TARGET = [up_first_case(x) for x in LIBRE_TARGET]
-LIBRE_TARGET.sort()
-
-MY_MEMORY_TARGET = list(MYMEMORY_KEY_VAL.keys())
-MY_MEMORY_TARGET = [up_first_case(x) for x in MY_MEMORY_TARGET]
-MY_MEMORY_TARGET.sort()
-# no auto for mymemory
-
-# * FOR TARGET LANGUAGE SELECTION
-# for target language, it does not matter wether the target is compatible with whisper or not
-# because in this part whisper is used for transcribing the audio only
-# for whisper though, it can only translate into english
 TL_ENGINE_TARGET_DICT = {
-    # selecting whisper as the tl engine
     "⚡ Tiny [1GB VRAM] (Fastest)": WHISPER_TARGET,
     "🚀 Base [1GB VRAM] (Faster)": WHISPER_TARGET,
     "⛵ Small [2GB VRAM] (Moderate)": WHISPER_TARGET,
@@ -332,80 +334,31 @@ TL_ENGINE_TARGET_DICT = {
     "🐌 Large V1 [10GB VRAM] (Most Accurate)": WHISPER_TARGET,
     "🐌 Large V2 [10GB VRAM] (Most Accurate)": WHISPER_TARGET,
     "🐌 Large V3 [10GB VRAM] (Most Accurate)": WHISPER_TARGET,
-    # selecting whisper as the tl engine
-    # selecting TL API as the tl engine
     "Google Translate": GOOGLE_TARGET,
     "Selenium Chrome Translate": GOOGLE_TARGET,
     "LibreTranslate": LIBRE_TARGET,
     "MyMemoryTranslator": MY_MEMORY_TARGET,
 }
 
-# * source engine
-# For source engine we need to check wether the language is compatible with whisper or not
-# if not then we remove it from the list
-# we keep the original language name for the translation engine here, so that its easy to pass to the tl engine
-# But we must remember that when getting the whisper key we need to use get_whisper_key_from_similar
+GOOGLE_WHISPER_COMPATIBLE = _filter_whisper_compatible(GOOGLE_TARGET.copy())
+LIBRE_WHISPER_COMPATIBLE = _filter_whisper_compatible(LIBRE_TARGET.copy())
+MYMEMORY_WHISPER_COMPATIBLE = _filter_whisper_compatible(MY_MEMORY_TARGET.copy())
 
-# --- GOOGLE --- | Filtering
-to_remove = []
-GOOGLE_WHISPER_COMPATIBLE = GOOGLE_TARGET.copy()
-for i, lang in enumerate(GOOGLE_WHISPER_COMPATIBLE):
-    is_it_there = get_similar_in_list(WHISPER_LANG_LIST, lang)
-    if len(is_it_there) == 0:
-        to_remove.append(lang)
-GOOGLE_WHISPER_COMPATIBLE = [x for x in GOOGLE_WHISPER_COMPATIBLE if x not in to_remove]
+WHISPER_LIST_UPPED = _sorted_titlecase(WHISPER_LANG_LIST.copy())
+WHISPER_SOURCE = ["Auto detect"] + [lang for lang in WHISPER_LIST_UPPED if lang != "Cantonese"]
+WHISPER_SOURCE_V3 = ["Auto detect"] + WHISPER_LIST_UPPED.copy()
+GOOGLE_SOURCE = ["Auto detect"] + _sorted_titlecase(GOOGLE_WHISPER_COMPATIBLE.copy())
+LIBRE_SOURCE = ["Auto detect"] + _sorted_titlecase(LIBRE_WHISPER_COMPATIBLE.copy())
+MYMEMORY_SOURCE = _sorted_titlecase(MYMEMORY_WHISPER_COMPATIBLE.copy())
 
-# --- LIBRE --- | Filtering
-to_remove = []
-LIBRE_WHISPER_COMPATIBLE = LIBRE_TARGET.copy()
-for i, lang in enumerate(LIBRE_WHISPER_COMPATIBLE):
-    is_it_there = get_similar_in_list(WHISPER_LANG_LIST, lang)
-    if len(is_it_there) == 0:
-        to_remove.append(lang)
-LIBRE_WHISPER_COMPATIBLE = [x for x in LIBRE_WHISPER_COMPATIBLE if x not in to_remove]
-
-# --- MYMEMORY --- | Filtering
-to_remove = []
-MYMEMORY_WHISPER_COMPATIBLE = MY_MEMORY_TARGET.copy()
-for i, lang in enumerate(MYMEMORY_WHISPER_COMPATIBLE):
-    is_it_there = get_similar_in_list(WHISPER_LANG_LIST, lang)
-    if len(is_it_there) == 0:
-        to_remove.append(lang)
-MYMEMORY_WHISPER_COMPATIBLE = [x for x in MYMEMORY_WHISPER_COMPATIBLE if x not in to_remove]
-
-# --- SOURCES ---
-WHISPER_LIST_UPPED = [up_first_case(x) for x in WHISPER_LANG_LIST]
-WHISPER_LIST_UPPED.sort()
-WHISPER_SOURCE = ["Auto detect"] + WHISPER_LIST_UPPED
-WHISPER_SOURCE_V3 = WHISPER_SOURCE.copy()
-WHISPER_SOURCE.remove("Cantonese")
-
-GOOGLE_LIST_UPPED = [up_first_case(x) for x in GOOGLE_WHISPER_COMPATIBLE]
-GOOGLE_LIST_UPPED.sort()
-GOOGLE_SOURCE = ["Auto detect"] + GOOGLE_LIST_UPPED
-
-LIBRE_LIST_UPPED = [up_first_case(x) for x in LIBRE_WHISPER_COMPATIBLE]
-LIBRE_LIST_UPPED.sort()
-LIBRE_SOURCE = ["Auto detect"] + LIBRE_LIST_UPPED
-
-MYMEMORY_SOURCE = [up_first_case(x) for x in MYMEMORY_WHISPER_COMPATIBLE]
-MYMEMORY_SOURCE.sort()
-
-# FOR SOURCE LANGUAGE SELECTION
-# so the basic idea is that
-# for whisper, we use the whisper source because every language from whisper can be used as source
-# when translating using whisper. Other than that, we filter the language that is not compatible
-# with whisper to make sure that the language is compatible between whisper and the engine
 TL_ENGINE_SOURCE_DICT = {
-    # selecting whisper as the tl engine
     "⚡ Tiny [1GB VRAM] (Fastest)": WHISPER_SOURCE,
     "🚀 Base [1GB VRAM] (Faster)": WHISPER_SOURCE,
     "⛵ Small [2GB VRAM] (Moderate)": WHISPER_SOURCE,
     "🌀 Medium [5GB VRAM] (Accurate)": WHISPER_SOURCE,
     "🐌 Large V1 [10GB VRAM] (Most Accurate)": WHISPER_SOURCE,
     "🐌 Large V2 [10GB VRAM] (Most Accurate)": WHISPER_SOURCE,
-    "🐌 Large V3 [10GB VRAM] (Most Accurate)": WHISPER_SOURCE_V3,  # only v3 has cantonese
-    # selecting TL API as the tl engine
+    "🐌 Large V3 [10GB VRAM] (Most Accurate)": WHISPER_SOURCE_V3,
     "Google Translate": GOOGLE_SOURCE,
     "Selenium Chrome Translate": GOOGLE_SOURCE,
     "LibreTranslate": LIBRE_SOURCE,
@@ -413,24 +366,7 @@ TL_ENGINE_SOURCE_DICT = {
 }
 
 
-# whisper supports 99 languages, With exception of large-v3, large-v3 added 1 more language (Cantonese)
 def get_whisper_lang_source(cur_model: str) -> List[str]:
-    """Get language source with auto checking model is v3 or not to pass either cantonese or not
-
-    Parameters
-    ----------
-    tl_engine : str
-        translation engine
-    cur_model : str
-        current model
-
-    Returns
-    -------
-    List
-        Language source
-
-    """
     if "V3" in cur_model:
         return WHISPER_SOURCE_V3
-    else:
-        return WHISPER_SOURCE
+    return WHISPER_SOURCE

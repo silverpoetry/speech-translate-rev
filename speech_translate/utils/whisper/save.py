@@ -7,8 +7,8 @@ import tempfile
 from typing import List, Optional, Union
 
 import stable_whisper
-from loguru import logger
 
+from speech_translate.log_helpers import logger
 from speech_translate.utils.types import StableTsResultDict
 
 from .load import parse_args_stable_ts

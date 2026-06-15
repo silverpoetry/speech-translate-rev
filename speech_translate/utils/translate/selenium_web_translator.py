@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from html import escape
 from importlib import import_module
-from loguru import logger
 from pathlib import Path
 import re
 from shutil import rmtree
@@ -12,6 +11,8 @@ from tempfile import NamedTemporaryFile, mkdtemp
 from time import sleep
 from typing import Iterable, List, Optional
 from urllib.parse import quote
+
+from speech_translate.log_helpers import logger
 
 
 @dataclass

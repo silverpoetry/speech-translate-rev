@@ -2,14 +2,22 @@
 from threading import Lock
 from typing import Dict, List
 
-import requests
-from loguru import logger
-from tqdm.auto import tqdm
-
 from speech_translate.linker import sj
+from speech_translate.log_helpers import logger
 
-from ..helper import get_similar_keys, no_connection_notify
+from ..helper import get_similar_keys
 from .language import GOOGLE_KEY_VAL, LIBRE_KEY_VAL, MYMEMORY_KEY_VAL
+
+try:
+    import requests
+except ModuleNotFoundError:  # pragma: no cover - optional runtime dependency fallback
+    requests = None  # type: ignore[assignment]
+
+try:
+    from tqdm.auto import tqdm
+except ModuleNotFoundError:  # pragma: no cover - optional runtime dependency fallback
+    def tqdm(iterable, **_kwargs):
+        return iterable
 
 
 def tl_batch_with_tqdm(self, batch: List[str], **kwargs) -> list:
@@ -41,22 +49,6 @@ def tl_batch_with_tqdm(self, batch: List[str], **kwargs) -> list:
     return arr
 
 
-# Import the translator
-try:
-    from deep_translator import GoogleTranslator, MyMemoryTranslator
-    GoogleTranslator._translate_batch = tl_batch_with_tqdm
-    MyMemoryTranslator._translate_batch = tl_batch_with_tqdm
-except Exception as e:
-    GoogleTranslator = None
-    MyMemoryTranslator = None
-    if "HTTPSConnectionPool" in str(e):
-        logger.error("No Internet Connection! / Host might be down")
-        no_connection_notify()
-    else:
-        no_connection_notify("Uncaught Error", str(e))
-        logger.exception(f"Error {str(e)}")
-
-
 class TranslationConnection:
     """Translate Connections
 
@@ -70,7 +62,17 @@ class TranslationConnection:
         self.MyMemoryTranslator = MyMemoryTranslator
 
 
-TlCon = TranslationConnection(GoogleTranslator, MyMemoryTranslator)
+def _load_deep_translator_classes():
+    try:
+        from deep_translator import GoogleTranslator as _GoogleTranslator, MyMemoryTranslator as _MyMemoryTranslator
+    except ModuleNotFoundError:
+        return None, None
+    _GoogleTranslator._translate_batch = tl_batch_with_tqdm
+    _MyMemoryTranslator._translate_batch = tl_batch_with_tqdm
+    return _GoogleTranslator, _MyMemoryTranslator
+
+
+TlCon = TranslationConnection(None, None)
 
 
 _selenium_translator = None
@@ -208,14 +210,9 @@ def google_tl(text: List[str], from_lang: str, to_lang: str, proxies: Dict, debu
     # --- Translate ---
     try:
         if TlCon.GoogleTranslator is None:
-            try:
-                from deep_translator import GoogleTranslator
-
-                TlCon.GoogleTranslator = GoogleTranslator
-                TlCon.GoogleTranslator._translate_batch = tl_batch_with_tqdm
-            except Exception:
-                no_connection_notify()
-                return is_success, "Error: Not connected to internet"
+            TlCon.GoogleTranslator, TlCon.MyMemoryTranslator = _load_deep_translator_classes()
+            if TlCon.GoogleTranslator is None:
+                return is_success, "Error: deep_translator is unavailable"
 
         tl_kwargs = {}
         if kwargs.pop("live_input", False):
@@ -282,14 +279,9 @@ def memory_tl(text: List[str], from_lang: str, to_lang: str, proxies: Dict, debu
     # --- Translate ---
     try:
         if TlCon.MyMemoryTranslator is None:
-            try:
-                from deep_translator import MyMemoryTranslator
-
-                TlCon.MyMemoryTranslator = MyMemoryTranslator
-                TlCon.MyMemoryTranslator._translate_batch = tl_batch_with_tqdm
-            except Exception:
-                no_connection_notify()
-                return is_success, "Error: Not connected to internet"
+            TlCon.GoogleTranslator, TlCon.MyMemoryTranslator = _load_deep_translator_classes()
+            if TlCon.MyMemoryTranslator is None:
+                return is_success, "Error: deep_translator is unavailable"
 
         tl_kwargs = {}
         if kwargs.pop("live_input", False):
@@ -359,6 +351,8 @@ def libre_tl(
     # shoot from API directly using requests
     # --- Translate ---
     try:
+        if requests is None:
+            return is_success, "Error: requests is unavailable"
         req = {"q": text, "source": LCODE_FROM, "target": LCODE_TO, "format": "text"}
         libre_link += "/translate"
 

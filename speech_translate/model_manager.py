@@ -6,17 +6,18 @@ from time import sleep, time
 from typing import Dict, Optional, cast
 from urllib.request import Request, urlopen
 
-from loguru import logger
-
 from speech_translate.controller_protocols import JsonDict, ModelManagerBridge, SettingsStore, WhisperLoadApiGetter
+from speech_translate.log_helpers import logger
 from speech_translate.ui_protocol import TASK_SOURCE_MODEL_DOWNLOAD, TASK_SOURCE_MODEL_LOAD
-from speech_translate.utils.whisper.download import (
-    get_default_download_root,
-    verify_model_faster_whisper,
-    verify_model_whisper,
-)
+from speech_translate.utils.whisper.paths import get_default_download_root
 from speech_translate.utils.whisper.helper import model_select_dict, model_values
 from speech_translate.utils.types import SettingDict
+
+
+def _get_whisper_download_api():
+    from speech_translate.utils.whisper import download as whisper_download_api
+
+    return whisper_download_api
 
 
 class ModelManagerController:
@@ -78,17 +79,18 @@ class ModelManagerController:
     def is_model_available_for_backend(self, model_key: str, backend: str, model_dir: str) -> bool:
         if backend == "faster-whisper":
             try:
-                return verify_model_faster_whisper(model_key, model_dir)
+                return _get_whisper_download_api().verify_model_faster_whisper(model_key, model_dir)
             except Exception:
                 return False
         return os.path.exists(os.path.join(model_dir, f"{model_key}.pt"))
 
     def verify_model_status(self, engine: str, model_key: str, model_dir: str) -> tuple[bool, str]:
         try:
+            whisper_download_api = _get_whisper_download_api()
             downloaded = (
-                verify_model_faster_whisper(model_key, model_dir)
+                whisper_download_api.verify_model_faster_whisper(model_key, model_dir)
                 if engine == "faster-whisper"
-                else verify_model_whisper(model_key, model_dir)
+                else whisper_download_api.verify_model_whisper(model_key, model_dir)
             )
             return downloaded, ""
         except Exception as exc:

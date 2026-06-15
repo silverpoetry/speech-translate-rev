@@ -9,8 +9,6 @@ from threading import Lock
 from time import time
 from typing import Mapping, Optional
 
-from loguru import logger
-
 from speech_translate.controller_protocols import (
     DetachedWindowManagerBridge,
     JsonDict,
@@ -18,6 +16,7 @@ from speech_translate.controller_protocols import (
     SettingsStore,
     WebviewWindowLike,
 )
+from speech_translate.log_helpers import logger
 from speech_translate.window_geometry import resolve_window_placement
 
 

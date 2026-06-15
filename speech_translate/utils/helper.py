@@ -12,12 +12,30 @@ from threading import Thread
 from typing import Callable, Dict, List, Optional, Union
 from webbrowser import open_new
 
-from loguru import logger
-from notifypy import Notify, exceptions
-
 from speech_translate._constants import APP_NAME, HACKY_SPACE
 from speech_translate._path import APP_ICON_MISSING, p_app_icon
+from speech_translate.log_helpers import logger
 from speech_translate.utils.types import ToInsert
+
+try:
+    from notifypy import Notify, exceptions
+except ModuleNotFoundError:  # pragma: no cover - optional runtime dependency fallback
+    class _NotifyFallback:
+        application_name = ""
+        title = ""
+        message = ""
+        icon = ""
+
+        def send(self, block: bool = False) -> None:
+            _ = block
+            return None
+
+    class _NotifyExceptionsFallback:
+        class UnsupportedPlatform(Exception):
+            pass
+
+    Notify = _NotifyFallback
+    exceptions = _NotifyExceptionsFallback()
 
 
 def kill_thread(thread: Optional[Thread]) -> bool:

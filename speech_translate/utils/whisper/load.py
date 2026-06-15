@@ -5,12 +5,12 @@ from typing import Literal, Optional, Union
 
 import stable_whisper
 import torch
-from loguru import logger
 from stable_whisper.utils import isolate_useful_options, str_to_valid_type
 from whisper import DecodingOptions
 
+from speech_translate.log_helpers import logger
 from speech_translate.utils.types import SettingDict
-from speech_translate.utils.whisper.download import get_default_download_root
+from speech_translate.utils.whisper.paths import get_default_download_root
 
 from .helper import get_temperature
 

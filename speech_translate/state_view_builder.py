@@ -5,11 +5,10 @@ from platform import processor, release, system, version
 from threading import Thread
 from typing import Dict, Optional
 
-from loguru import logger
-
 from speech_translate._constants import APP_NAME
 from speech_translate._version import __version__
 from speech_translate.controller_protocols import JsonDict, SettingsStore, StateViewBridge
+from speech_translate.log_helpers import logger
 from speech_translate.ui_protocol import UI_SECTION_STATE
 from speech_translate.utils.audio.device import (
     get_default_host_api,

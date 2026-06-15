@@ -5,10 +5,9 @@ from threading import Thread
 from time import sleep, time
 from typing import Optional, cast
 
-from loguru import logger
-
 from speech_translate.controller_protocols import JsonDict, RecordingBridge, ShutdownSeleniumFn, WhisperLoadApiGetter
 from speech_translate.linker import bc
+from speech_translate.log_helpers import logger
 from speech_translate.ui_protocol import UI_SECTION_TASK
 from speech_translate.utils.types import SettingDict
 from speech_translate.utils.whisper.helper import model_keys

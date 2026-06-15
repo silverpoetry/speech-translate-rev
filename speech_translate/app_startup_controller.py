@@ -8,13 +8,12 @@ from signal import SIGINT, signal
 from time import strftime, time
 from typing import Callable
 
-from loguru import logger
-
 from speech_translate._constants import APP_NAME
 from speech_translate._version import __version__
 from speech_translate.app_tray import AppTray
 from speech_translate.controller_protocols import FfmpegPathAdder, StartupBridge, WebviewImporter
 from speech_translate.linker import bc, sj
+from speech_translate.log_helpers import logger
 from speech_translate.window_geometry import resolve_window_placement
 
 

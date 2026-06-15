@@ -1,12 +1,24 @@
 from platform import system
-from typing import Literal
+from typing import Any, Literal
 
-from loguru import logger
+from speech_translate.log_helpers import logger
 
-if system() == "Windows":
-    import pyaudiowpatch as pyaudio  # type: ignore # pylint: disable=import-error
-else:
-    import pyaudio  # type: ignore # pylint: disable=import-error
+_PYAUDIO_IMPORT_ERROR: Exception | None = None
+
+try:
+    if system() == "Windows":
+        import pyaudiowpatch as pyaudio  # type: ignore # pylint: disable=import-error
+    else:
+        import pyaudio  # type: ignore # pylint: disable=import-error
+except Exception as exc:  # pragma: no cover - optional runtime dependency fallback
+    pyaudio = None  # type: ignore[assignment]
+    _PYAUDIO_IMPORT_ERROR = exc
+
+
+def _require_pyaudio() -> Any:
+    if pyaudio is None:
+        raise RuntimeError("PyAudio backend is unavailable") from _PYAUDIO_IMPORT_ERROR
+    return pyaudio
 
 
 def get_channel_int(channel_string: str):
@@ -20,7 +32,7 @@ def get_channel_int(channel_string: str):
         raise ValueError("Invalid channel string")
 
 
-def get_device_details(device_type: Literal["speaker", "mic"], sj, p: pyaudio.PyAudio, debug: bool = True):
+def get_device_details(device_type: Literal["speaker", "mic"], sj, p, debug: bool = True):
     """
     Function to get the device detail, chunk size, sample rate, and number of channels.
 
@@ -107,7 +119,7 @@ def get_input_devices(host_api: str):
     Get the input devices (mic) from the specified hostAPI.
     """
     devices = []
-    p = pyaudio.PyAudio()
+    p = _require_pyaudio().PyAudio()
     try:
         for i in range(p.get_host_api_count()):
             current_api_info = p.get_host_api_info_by_index(i)
@@ -136,7 +148,7 @@ def get_output_devices(host_api: str):
     Get the output devices (speaker) from the specified hostAPI.
     """
     devices = []
-    p = pyaudio.PyAudio()
+    p = _require_pyaudio().PyAudio()
     try:
         for i in range(p.get_host_api_count()):
             current_api_info = p.get_host_api_info_by_index(i)
@@ -165,7 +177,7 @@ def get_host_apis():
     Get the host apis from the system.
     """
     host_apis = []
-    p = pyaudio.PyAudio()
+    p = _require_pyaudio().PyAudio()
     try:
         for i in range(p.get_host_api_count()):
             current_api_info = p.get_host_api_info_by_index(i)
@@ -193,7 +205,7 @@ def get_default_input_device():
     str | dict
         Default input device detail. If failed, return the error message (str).
     """
-    p = pyaudio.PyAudio()
+    p = _require_pyaudio().PyAudio()
     sucess = False
     default_device = None
     try:
@@ -224,7 +236,7 @@ def get_default_output_device():
     str | dict
         Default output device detail. If failed, return the error message (str).
     """
-    p = pyaudio.PyAudio()
+    p = _require_pyaudio().PyAudio()
     sucess = False
     default_device = None
     try:
@@ -260,7 +272,7 @@ def get_default_host_api():
     str | dict
         Default host api detail. If failed, return the error message (str).
     """
-    p = pyaudio.PyAudio()
+    p = _require_pyaudio().PyAudio()
     sucess = False
     default_host_api = None
     try:

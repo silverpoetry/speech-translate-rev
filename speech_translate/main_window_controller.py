@@ -4,9 +4,8 @@ from threading import Lock
 from time import time
 from typing import Optional
 
-from loguru import logger
-
 from speech_translate.controller_protocols import MainWindowBridge, SettingsStore, TrayLike, FolderDialogWindow
+from speech_translate.log_helpers import logger
 
 
 class MainWindowController:

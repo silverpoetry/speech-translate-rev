@@ -7,8 +7,6 @@ from threading import Thread
 from time import gmtime, sleep, strftime, time
 from typing import Dict, List, Optional
 
-from loguru import logger
-
 from speech_translate.controller_protocols import (
     ImportQueueBridge,
     JsonDict,
@@ -16,6 +14,7 @@ from speech_translate.controller_protocols import (
     ShutdownSeleniumFn,
 )
 from speech_translate.linker import bc
+from speech_translate.log_helpers import logger
 from speech_translate.ui_protocol import TASK_SOURCE_IMPORT, UI_SECTION_IMPORT
 from speech_translate.utils.whisper.helper import model_keys, model_select_dict
 

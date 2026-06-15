@@ -14,9 +14,7 @@ from .utils.setting import SettingJson
 
 if system() == "Windows":
     from multiprocessing import Queue
-    import pyaudiowpatch as pyaudio  # type: ignore # pylint: disable=import-error
 else:
-    import pyaudio  # type: ignore # pylint: disable=import-error
     # to get qsize on platform other than windows
     from .utils.custom.queue import MyQueue as Queue
 
@@ -54,7 +52,7 @@ class BridgeClass:
         self.web_bridge = None
 
         # stream / transcribe variables
-        self.stream: Optional[pyaudio.Stream] = None
+        self.stream: Optional[object] = None
         self.data_queue = Queue()
         self.current_rec_status: str = ""
         self.auto_detected_lang: str = "~"

@@ -5,11 +5,22 @@ from typing import List
 import inspect
 import threading
 
-from loguru import logger
-from notifypy import Notify
-
 from speech_translate._version import __setting_version__
+from speech_translate.log_helpers import logger
 from speech_translate.utils.types import SettingDict
+
+try:
+    from notifypy import Notify
+except ModuleNotFoundError:  # pragma: no cover - optional runtime dependency fallback
+    class Notify:  # type: ignore[no-redef]
+        application_name = ""
+        title = ""
+        message = ""
+        icon = ""
+
+        def send(self, block: bool = False) -> None:
+            _ = block
+            return None
 
 default_setting: SettingDict = {
     "version": __setting_version__,

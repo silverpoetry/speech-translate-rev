@@ -2,13 +2,16 @@ import json
 import os
 from typing import Dict, Literal, Union
 
-import requests
-from loguru import logger
-
 from speech_translate._path import p_base_filter, p_filter_file_import, p_filter_rec
+from speech_translate.log_helpers import logger
 from speech_translate.utils.types import StableTsResultDict
 
 from ..translate.language import LANGUAGES
+
+try:
+    import requests
+except ModuleNotFoundError:  # pragma: no cover - optional runtime dependency fallback
+    requests = None  # type: ignore[assignment]
 
 model_select_dict = {
     "⚡ Tiny [1GB VRAM] (Fastest)": "tiny",
@@ -183,6 +186,9 @@ def get_base_filter() -> Dict:
             return json.load(f)
     except FileNotFoundError:
         logger.warning("Base filter file not found, attempting to download it")
+        if requests is None:
+            logger.error("Failed to download base filter file because requests is unavailable, returning empty!")
+            return {}
         filter_https = "https://raw.githubusercontent.com/Dadangdut33/Speech-Translate/" \
             "master/speech_translate/assets/base_hallucination_filter.json"
         r = requests.get(filter_https, timeout=5)

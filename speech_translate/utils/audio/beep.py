@@ -1,10 +1,10 @@
 import os
 
-from loguru import logger
 from sounddevice import play
 from soundfile import read
 
 from speech_translate._path import dir_assets
+from speech_translate.log_helpers import logger
 
 
 def beep():

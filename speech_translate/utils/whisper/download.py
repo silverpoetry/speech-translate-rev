@@ -5,19 +5,28 @@ import urllib.request
 from pathlib import Path
 from threading import Thread
 from time import sleep, time
-from typing import Optional, Union, Literal, List, Dict
+from typing import Dict, List, Literal, Optional, Union
 
-import huggingface_hub
-import requests
-from huggingface_hub.file_download import repo_folder_name
-from loguru import logger
+from speech_translate.log_helpers import logger
+from speech_translate.utils.whisper.paths import get_default_download_root
+
+try:
+    import huggingface_hub
+    from huggingface_hub.file_download import repo_folder_name
+    _validate_hf_hub_args = huggingface_hub.utils.validate_hf_hub_args
+except ModuleNotFoundError:  # pragma: no cover - optional runtime dependency fallback
+    huggingface_hub = None  # type: ignore[assignment]
+    repo_folder_name = None  # type: ignore[assignment]
+
+    def _validate_hf_hub_args(func):
+        return func
+
+try:
+    import requests
+except ModuleNotFoundError:  # pragma: no cover - optional runtime dependency fallback
+    requests = None  # type: ignore[assignment]
 
 from speech_translate.linker import bc
-
-
-def get_default_download_root():
-    """Get the default download root"""
-    return os.getenv("XDG_CACHE_HOME", os.path.join(os.path.expanduser("~"), ".cache", "whisper"))
 
 
 def whisper_download_headless(
@@ -112,7 +121,7 @@ def whisper_download_headless(
         return False
 
 
-@huggingface_hub.utils.validate_hf_hub_args
+@_validate_hf_hub_args
 def snapshot_download(
     repo_id: str,
     *,
@@ -136,6 +145,8 @@ def snapshot_download(
     tqdm_class=None,
 ) -> str:
     """Wrapper around huggingface_hub.snapshot_download to download correctly."""
+    if huggingface_hub is None:
+        raise RuntimeError("huggingface_hub is unavailable")
     return huggingface_hub.snapshot_download(
         repo_id,
         repo_type=repo_type,
@@ -163,6 +174,8 @@ from speech_translate.utils.helper import kill_thread
 def faster_whisper_download_headless(
     model_name: str, repo_id: str, cache_dir: str, cancel_func, after_func, failed_func
 ):
+    if huggingface_hub is None or repo_folder_name is None:
+        raise RuntimeError("huggingface_hub is unavailable")
     logger.debug("Downloading model from Hugging Face Hub")
     os.makedirs(cache_dir, exist_ok=True)
 
@@ -274,6 +287,8 @@ def faster_whisper_download_headless(
 
 # donwload function
 def download_model(model_key, bridge=None, **kwargs):
+    if huggingface_hub is None:
+        raise RuntimeError("huggingface_hub is unavailable")
     from faster_whisper.utils import _MODELS as FW_MODELS
     from whisper import _MODELS
 
@@ -314,6 +329,8 @@ def verify_model_whisper(model_key, download_root=None):
 
 
 def verify_model_faster_whisper(model_key: str, cache_dir) -> bool:
+    if huggingface_hub is None or repo_folder_name is None:
+        raise RuntimeError("huggingface_hub is unavailable")
     from faster_whisper.utils import _MODELS as FW_MODELS
     repo_id = FW_MODELS.get(model_key)
     if repo_id is None:
