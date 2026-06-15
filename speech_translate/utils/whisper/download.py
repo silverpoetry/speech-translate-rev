@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import os
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from time import time
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
@@ -18,6 +18,7 @@ from speech_translate.runtime_deps import (
     get_whisper_model_registry,
     try_get_requests,
 )
+from speech_translate.web_bridge_runtime import WebBridgeRegistry, web_bridge_registry
 from speech_translate.utils.helper import kill_thread
 from speech_translate.utils.whisper.download_runtime import (
     TaskReporter,
@@ -45,9 +46,10 @@ class DownloadExecutionHooks:
 @dataclass(frozen=True)
 class DownloadBridgeAdapter:
     bridge: Any | None = None
+    bridge_registry: WebBridgeRegistry = field(default_factory=lambda: web_bridge_registry)
 
     def resolve(self) -> Any | None:
-        return bc.web_bridge if self.bridge is None else self.bridge
+        return self.bridge_registry.get() if self.bridge is None else self.bridge
 
 
 @dataclass(frozen=True)

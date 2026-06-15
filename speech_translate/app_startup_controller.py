@@ -11,8 +11,9 @@ from speech_translate._constants import APP_NAME
 from speech_translate._version import __version__
 from speech_translate.app_tray import AppTray
 from speech_translate.controller_protocols import FfmpegPathAdder, StartupBridge, WebviewLoader
-from speech_translate.linker import bc, sj
+from speech_translate.linker import sj
 from speech_translate.log_helpers import logger
+from speech_translate.web_bridge_runtime import WebBridgeRegistry, web_bridge_registry
 from speech_translate.webview_runtime import load_webview_runtime
 from speech_translate.window_geometry import resolve_window_placement
 
@@ -33,15 +34,17 @@ class AppStartupController:
         bridge_factory: Callable[[], StartupBridge],
         ffmpeg_path_adder: FfmpegPathAdder,
         webview_loader: WebviewLoader = load_webview_runtime,
+        bridge_registry: WebBridgeRegistry = web_bridge_registry,
     ):
         self.bridge_factory = bridge_factory
         self.ffmpeg_path_adder = ffmpeg_path_adder
         self.webview_loader = webview_loader
+        self.bridge_registry = bridge_registry
 
     def install_signal_handler(self) -> None:
         def signal_handler(_sig, _frame):
             logger.info("Received Ctrl+C, exiting...")
-            bridge = getattr(bc, "web_bridge", None)
+            bridge = self.bridge_registry.get()
             if bridge is not None:
                 bridge.quit_app()
 
@@ -90,7 +93,7 @@ class AppStartupController:
         bridge = self.bridge_factory()
         logger.debug("[Startup] after_bridge_init")
         bridge.set_startup_t0(startup_t0)
-        setattr(bc, "web_bridge", bridge)
+        self.bridge_registry.set(bridge)
         return bridge
 
     def _create_main_window(self, *, webview, bridge: StartupBridge, raw_main_size: str):

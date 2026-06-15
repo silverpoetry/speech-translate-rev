@@ -81,6 +81,17 @@ class FakeCancellationState:
         self.cancel_dl = cancel_dl
 
 
+class FakeBridgeRegistry:
+    def __init__(self, bridge=None) -> None:
+        self.bridge = bridge
+
+    def get(self):
+        return self.bridge
+
+    def set(self, bridge) -> None:
+        self.bridge = bridge
+
+
 class WhisperDownloadTests(unittest.TestCase):
     def test_build_bridge_task_reporter_supports_injected_bridge_adapter(self) -> None:
         bridge = FakeDownloadBridge()
@@ -97,6 +108,16 @@ class WhisperDownloadTests(unittest.TestCase):
         self.assertEqual(bridge.progress[-1][1], 25.0)
         self.assertEqual(bridge.finished, ["done"])
         self.assertEqual(bridge.errors, ["boom"])
+
+    def test_build_bridge_task_reporter_supports_registry_backed_adapter(self) -> None:
+        bridge = FakeDownloadBridge()
+        reporter = _build_bridge_task_reporter(
+            bridge_adapter=DownloadBridgeAdapter(bridge_registry=FakeBridgeRegistry(bridge)),
+        )
+
+        reporter.reset_task_state("Download")
+
+        self.assertEqual(bridge.task_titles, ["Download"])
 
     def test_build_download_execution_hooks_supports_injected_cancellation_adapter(self) -> None:
         cancellation_state = FakeCancellationState(cancel_dl=True)

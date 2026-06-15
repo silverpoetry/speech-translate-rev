@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from queue import Empty, Queue
 from threading import Lock
 
 from speech_translate._logging import logger
 from speech_translate.linker import bc, sj
+from speech_translate.web_bridge_runtime import WebBridgeRegistry, web_bridge_registry
 from speech_translate.utils.audio.record_types import (
     AudioTarget,
     HallucinationFilters,
@@ -78,15 +79,16 @@ shared_state = RealtimeSharedState()
 @dataclass
 class RecordingBridgeAdapter:
     bridge: object | None = None
+    bridge_registry: WebBridgeRegistry = field(default_factory=lambda: web_bridge_registry)
 
     def update_task_message(self, status: str) -> None:
-        bridge = bc.web_bridge if self.bridge is None else self.bridge
+        bridge = self.bridge_registry.get() if self.bridge is None else self.bridge
         if bridge is None:
             return
         bridge.update_task_message(status)
 
     def set_recording_state(self, payload: dict[str, object]) -> None:
-        bridge = bc.web_bridge if self.bridge is None else self.bridge
+        bridge = self.bridge_registry.get() if self.bridge is None else self.bridge
         if bridge is None:
             return
         bridge.set_recording_state(payload)
