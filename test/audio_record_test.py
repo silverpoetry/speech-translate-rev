@@ -655,7 +655,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
         from speech_translate.utils.audio import record as record_module
 
         previous_build_config = record_module._build_recording_session_config
-        previous_pyaudio = record_module.pyaudio.PyAudio
+        previous_get_pyaudio_module = record_module.get_pyaudio_module
         previous_load_runtime = record_module._load_recording_model_runtime
         previous_build_stream = record_module._build_recording_stream_runtime
         previous_build_services = record_module._build_recording_session_services
@@ -686,7 +686,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
 
             config = ConfigStub()
             record_module._build_recording_session_config = lambda **kwargs: config
-            record_module.pyaudio.PyAudio = lambda: object()
+            record_module.get_pyaudio_module = lambda: type("FakePyAudioModule", (), {"PyAudio": lambda self: object()})()
 
             class ModelRuntimeStub:
                 use_temp = True
@@ -752,7 +752,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
             record_session("English", "Chinese", "Whisper", "base", "mic", True, False)
         finally:
             record_module._build_recording_session_config = previous_build_config
-            record_module.pyaudio.PyAudio = previous_pyaudio
+            record_module.get_pyaudio_module = previous_get_pyaudio_module
             record_module._load_recording_model_runtime = previous_load_runtime
             record_module._build_recording_stream_runtime = previous_build_stream
             record_module._build_recording_session_services = previous_build_services
@@ -768,11 +768,11 @@ class AudioRecordHelpersTests(unittest.TestCase):
         from speech_translate.utils.audio import record as record_module
 
         previous_build_config = record_module._build_recording_session_config
-        previous_pyaudio = record_module.pyaudio.PyAudio
+        previous_get_pyaudio_module = record_module.get_pyaudio_module
         previous_load_runtime = record_module._load_recording_model_runtime
         previous_build_stream = record_module._build_recording_stream_runtime
         previous_finalize = record_module._finalize_recording_session
-        previous_empty_cache = record_module.torch.cuda.empty_cache
+        previous_empty_torch_cuda_cache = record_module.empty_torch_cuda_cache
         previous_recording = record_module.bc.recording
         finalized = []
         try:
@@ -781,7 +781,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
 
             py_audio = object()
             record_module._build_recording_session_config = lambda **kwargs: ConfigStub()
-            record_module.pyaudio.PyAudio = lambda: py_audio
+            record_module.get_pyaudio_module = lambda: type("FakePyAudioModule", (), {"PyAudio": lambda self: py_audio})()
             record_module._load_recording_model_runtime = lambda **kwargs: type(
                 "ModelRuntime",
                 (),
@@ -789,17 +789,17 @@ class AudioRecordHelpersTests(unittest.TestCase):
             )()
             record_module._build_recording_stream_runtime = lambda **kwargs: (_ for _ in ()).throw(RuntimeError("boom"))
             record_module._finalize_recording_session = lambda *args, **kwargs: finalized.append((args, kwargs))
-            record_module.torch.cuda.empty_cache = lambda: None
+            record_module.empty_torch_cuda_cache = lambda: None
             record_module.bc.recording = False
 
             record_session("English", "Chinese", "Whisper", "base", "mic", True, False)
         finally:
             record_module._build_recording_session_config = previous_build_config
-            record_module.pyaudio.PyAudio = previous_pyaudio
+            record_module.get_pyaudio_module = previous_get_pyaudio_module
             record_module._load_recording_model_runtime = previous_load_runtime
             record_module._build_recording_stream_runtime = previous_build_stream
             record_module._finalize_recording_session = previous_finalize
-            record_module.torch.cuda.empty_cache = previous_empty_cache
+            record_module.empty_torch_cuda_cache = previous_empty_torch_cuda_cache
             record_module.bc.recording = previous_recording
 
         self.assertEqual(finalized[0][0][0], py_audio)

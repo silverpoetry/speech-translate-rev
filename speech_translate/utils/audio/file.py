@@ -7,19 +7,15 @@ from time import gmtime, sleep, strftime, time
 from typing import Callable, Dict, List, Literal, Mapping
 import os
 
-import stable_whisper
-from torch import cuda
-from whisper.tokenizer import TO_LANGUAGE_CODE
-
 from speech_translate._logging import logger
 from speech_translate._path import dir_alignment, dir_export, dir_refinement, dir_translate
 from speech_translate.linker import bc, sj
+from speech_translate.runtime_deps import empty_torch_cuda_cache, get_stable_whisper, get_whisper_to_language_code
 from speech_translate.utils.translate.language import get_whisper_lang_name, get_whisper_lang_similar
 
 from ..helper import filename_only, get_proxies, kill_thread, start_file
 from ..translate.translator import translate
 from ..whisper.helper import get_hallucination_filter, get_task_format, model_values, to_language_name
-from ..whisper.load import get_model, get_model_args, get_tc_args
 from ..whisper.result import remove_segments_by_str, split_res
 from ..whisper.save import save_output_stable_ts
 
@@ -38,6 +34,24 @@ GLOBAL_IS_TL = False
 GLOBAL_IS_MOD = False
 
 StatusMap = Dict[int, str]
+
+
+def _get_whisper_runtime_api():
+    from speech_translate.utils.whisper import load as whisper_load_api
+
+    return whisper_load_api
+
+
+def get_model(*args, **kwargs):
+    return _get_whisper_runtime_api().get_model(*args, **kwargs)
+
+
+def get_model_args(*args, **kwargs):
+    return _get_whisper_runtime_api().get_model_args(*args, **kwargs)
+
+
+def get_tc_args(*args, **kwargs):
+    return _get_whisper_runtime_api().get_tc_args(*args, **kwargs)
 
 
 @dataclass
@@ -206,7 +220,7 @@ def run_whisper(func, audio: str | None, task: str, fail_status: WorkerFailure, 
             fail_status.error = Exception("FFmpeg not found in system path. Please install FFmpeg.")
 
 def run_translate_api(
-    query: stable_whisper.WhisperResult,
+    query,
     engine: str,
     lang_source: str,
     lang_target: str,
@@ -264,7 +278,7 @@ def _cancellable_tc(file_path, lang_source, lang_target, model_name, tc_func, tl
 
         fail_status.raise_if_failed()
 
-        result: stable_whisper.WhisperResult = bc.data_queue.get()
+        result = bc.data_queue.get()
         if sj.cache["filter_file_import"]:
             try: result = remove_segments_by_str(result, filters.get(get_whisper_lang_name(result.language) if auto else get_whisper_lang_similar(lang_source), []), sj.cache["filter_file_import_case_sensitive"], sj.cache["filter_file_import_strip"], sj.cache["filter_file_import_ignore_punctuations"], sj.cache["filter_file_import_exact_match"], sj.cache["filter_file_import_similarity"])
             except Exception: pass
@@ -275,6 +289,7 @@ def _cancellable_tc(file_path, lang_source, lang_target, model_name, tc_func, tl
             if result.text.strip():
                 bc.file_tced_counter += 1
                 export_dir = dir_export if sj.cache["dir_export"] == "auto" else sj.cache["dir_export"]
+                stable_whisper = get_stable_whisper()
                 save_output_stable_ts(split_res(stable_whisper.WhisperResult(result.to_dict()), sj.cache), path.join(export_dir, tc_save_name), sj.cache["export_to"], sj, source_media_path=file_path)
             else:
                 _update_status(status_tc, index, "TC Fail! Got empty text")
@@ -351,7 +366,7 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
         
         _, _, stable_tc, stable_tl, to_args = get_model(is_tc, is_tl, tl_engine_whisper, model_name_tc, engine, sj.cache, **get_model_args(sj.cache))
         whisper_args = get_tc_args(to_args, sj.cache)
-        whisper_args["language"] = TO_LANGUAGE_CODE[get_whisper_lang_similar(lang_source)] if lang_source != "auto detect" else None
+        whisper_args["language"] = get_whisper_to_language_code()[get_whisper_lang_similar(lang_source)] if lang_source != "auto detect" else None
         whisper_args["verbose"] = None
         filters = get_hallucination_filter('file', sj.cache["path_filter_file_import"]) if sj.cache["filter_file_import"] else {}
 
@@ -410,7 +425,7 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
         bc.disable_file_process()
         bc.disable_file_tc()
         bc.disable_file_tl()
-        cuda.empty_cache()
+        empty_torch_cuda_cache()
 
 
 def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement", "alignment"]):
@@ -425,6 +440,7 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
         if sj.cache["dir_export"] != "auto": export_dir = sj.cache["dir_export"] + f"/@{action.lower()}"
         slice_s, slice_e = int(sj.cache["file_slice_start"]) if sj.cache["file_slice_start"] else None, int(sj.cache["file_slice_end"]) if sj.cache["file_slice_end"] else None
 
+        stable_whisper = get_stable_whisper()
         model = stable_whisper.load_model(model_name_tc, **get_model_args(sj.cache))
         mod_func = model.refine if mode == "refinement" else model.align 
         mod_args = get_tc_args(mod_func, sj.cache, mode="refine" if mode == "refinement" else "align")
@@ -465,7 +481,7 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
                 continue
 
             if mode == "alignment" and len(file_data) > 2 and len(file_data[2]) > 3:
-                mod_args["language"] = TO_LANGUAGE_CODE.get(get_whisper_lang_similar(file_data[2]), "auto")
+                mod_args["language"] = get_whisper_to_language_code().get(get_whisper_lang_similar(file_data[2]), "auto")
 
             def _run_mod():
                 try:
@@ -511,7 +527,7 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
         logger.error(f"Process MOD error: {e}")
     finally:
         bc.disable_file_process()
-        cuda.empty_cache()
+        empty_torch_cuda_cache()
 
 
 def translate_result(data_files: List, engine: str, lang_target: str):
@@ -536,6 +552,7 @@ def translate_result(data_files: List, engine: str, lang_target: str):
         for i, file_path in enumerate(data_files):
             if not bc.file_processing: break
 
+            stable_whisper = get_stable_whisper()
             try: result = stable_whisper.WhisperResult(file_path)
             except Exception:
                 _update_status(status_mod, i, "Parse Error")
@@ -585,3 +602,4 @@ def translate_result(data_files: List, engine: str, lang_target: str):
         logger.error(f"Process TL JSON error: {e}")
     finally:
         bc.disable_file_process()
+        empty_torch_cuda_cache()

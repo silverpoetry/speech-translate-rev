@@ -3,16 +3,13 @@ from __future__ import annotations
 from time import time
 from typing import cast
 
-import torch
-import torchaudio
-import webrtcvad
-
 from speech_translate._constants import WHISPER_SR
 from speech_translate._logging import logger
 from speech_translate._path import dir_silero_vad
 from speech_translate.linker import bc, sj
+from speech_translate.runtime_deps import get_torch, get_torchaudio, get_webrtcvad
 from speech_translate.utils.audio.audio import get_db, get_frame_duration, get_speech_webrtc, to_silero
-from speech_translate.utils.audio.device import get_device_details
+from speech_translate.utils.audio.device import get_device_details, get_pyaudio_module
 from speech_translate.utils.audio.record_runtime import shared_state
 from speech_translate.utils.audio.record_types import (
     RecordingSessionConfig,
@@ -20,14 +17,6 @@ from speech_translate.utils.audio.record_types import (
     RealtimeCallbackContext,
     SileroVadLike,
 )
-
-if __name__ == "speech_translate.utils.audio.record_streaming":
-    from platform import system
-
-    if system() == "Windows":
-        import pyaudiowpatch as pyaudio
-    else:
-        import pyaudio
 
 
 callback_context: RealtimeCallbackContext | None = None
@@ -54,7 +43,7 @@ def initialize_callback_context(
     num_of_channels: int,
     samp_width: int,
     use_temp: bool,
-    webrtc_vad: webrtcvad.Vad,
+    webrtc_vad: object,
     silero_vad: SileroVadLike,
 ) -> RealtimeCallbackContext:
     global callback_context
@@ -78,8 +67,10 @@ def initialize_callback_context(
     return callback_context
 
 
-def load_recording_vad_runtime(*, rec_type: str) -> tuple[webrtcvad.Vad, SileroVadLike]:
-    webrtc_vad = webrtcvad.Vad(sj.cache.get(f"threshold_auto_mode_{rec_type}", 3))
+def load_recording_vad_runtime(*, rec_type: str) -> tuple[object, SileroVadLike]:
+    webrtc_vad = get_webrtcvad().Vad(sj.cache.get(f"threshold_auto_mode_{rec_type}", 3))
+    torchaudio = get_torchaudio()
+    torch = get_torch()
 
     if callable(getattr(torchaudio, "set_audio_backend", None)):
         try:
@@ -117,6 +108,7 @@ def build_recording_stream_runtime(
         logger_instance.warning(f"Sample rate is high ({sr_ori} Hz). May cause issues. Can be suppressed in settings.")
 
     webrtc_vad, silero_vad = load_recording_vad_runtime_fn(rec_type=rec_type)
+    pyaudio = get_pyaudio_module()
     sample_format = pyaudio.paInt16 if audio_format is None else audio_format
     samp_width = p.get_sample_size(sample_format)
     sr_divider = WHISPER_SR if not config.use_temp else sr_ori
@@ -146,6 +138,7 @@ def build_recording_stream_runtime(
 
 
 def open_recording_stream(*, p, stream_runtime: RecordingStreamRuntime, record_cb) -> None:
+    pyaudio = get_pyaudio_module()
     bc.stream = p.open(
         format=pyaudio.paInt16,
         channels=stream_runtime.num_of_channels,

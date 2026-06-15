@@ -1,14 +1,33 @@
 import re
-from typing import List, Union
-
-import stable_whisper
+from typing import List, Protocol, Union
 
 from speech_translate.utils.types import SettingDict
 
 from ..helper import rate_similarity
 
 
-def split_res(result: stable_whisper.WhisperResult, sj_cache: SettingDict):
+class WhisperSegmentLike(Protocol):
+    text: str
+
+
+class WhisperResultLike(Protocol):
+    segments: list[WhisperSegmentLike]
+
+    def split_by_length(
+        self,
+        *,
+        max_chars: int | None,
+        max_words: int | None,
+        newline: bool,
+        even_split: bool,
+    ):
+        ...
+
+    def remove_segment(self, index: int, *, verbose: bool = False) -> None:
+        ...
+
+
+def split_res(result: WhisperResultLike, sj_cache: SettingDict):
     """Split the segment results if max char or max word is set
     
     Parameters
@@ -37,7 +56,7 @@ def split_res(result: stable_whisper.WhisperResult, sj_cache: SettingDict):
 
 
 def remove_segments_by_str(
-    result: stable_whisper.WhisperResult,
+    result: WhisperResultLike,
     str_to_find: Union[str, List[str]],
     case_sensitive: bool = False,
     strip: bool = True,

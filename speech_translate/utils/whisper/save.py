@@ -4,9 +4,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-from typing import List, Optional, Union
-
-import stable_whisper
+from typing import List, Optional, Protocol, Union
 
 from speech_translate.log_helpers import logger
 from speech_translate.utils.types import StableTsResultDict
@@ -14,8 +12,25 @@ from speech_translate.utils.types import StableTsResultDict
 from .load import parse_args_stable_ts
 
 
+class WhisperSegmentLike(Protocol):
+    text: str
+    start: float
+    end: float
+
+
+class WhisperResultLike(Protocol):
+    segments: list[WhisperSegmentLike]
+
+    def to_dict(self) -> StableTsResultDict:
+        ...
+
+
+def _is_whisper_result_like(value: object) -> bool:
+    return hasattr(value, "segments") and hasattr(value, "to_dict")
+
+
 def write_csv(
-    transcript: Union[stable_whisper.WhisperResult, StableTsResultDict],
+    transcript: Union[WhisperResultLike, StableTsResultDict],
     file,
     sep=",",
     text_first=True,
@@ -30,7 +45,7 @@ def write_csv(
     if header:
         writer.writerow(header)
     if text_first:
-        if isinstance(transcript, stable_whisper.WhisperResult):
+        if _is_whisper_result_like(transcript):
             writer.writerows(
                 [
                     [segment.text.strip(),
@@ -47,7 +62,7 @@ def write_csv(
                 ]
             )
     else:
-        if isinstance(transcript, stable_whisper.WhisperResult):
+        if _is_whisper_result_like(transcript):
             writer.writerows(
                 [
                     [format_timestamps(segment.start),
@@ -90,7 +105,7 @@ def _next_available_path(base_path: str, extension: str) -> str:
         idx += 1
 
 
-def _save_temp_srt(result: Union[stable_whisper.WhisperResult, StableTsResultDict], sj) -> str:
+def _save_temp_srt(result: Union[WhisperResultLike, StableTsResultDict], sj) -> str:
     temp_dir = tempfile.mkdtemp(prefix="st_subtitle_")
     temp_base = os.path.join(temp_dir, "subtitle")
     save_method = getattr(result, "to_srt_vtt")
@@ -113,7 +128,7 @@ def _source_has_video(media_path: str) -> bool:
 
 
 def _export_fast_mp4_with_subtitle(
-    result: Union[stable_whisper.WhisperResult, StableTsResultDict],
+    result: Union[WhisperResultLike, StableTsResultDict],
     outname: str,
     media_path: Optional[str],
     sj,
@@ -210,7 +225,7 @@ def _export_fast_mp4_with_subtitle(
 
 
 def save_output_stable_ts(
-    result: Union[stable_whisper.WhisperResult, StableTsResultDict], outname, output_formats: List, sj,
+    result: Union[WhisperResultLike, StableTsResultDict], outname, output_formats: List, sj,
     source_media_path: Optional[str] = None
 ):
     output_formats_methods = {
@@ -242,7 +257,7 @@ def save_output_stable_ts(
         # Save JSON
         elif f_format == "json":
             with open(fname_dupe_check(outname, f_format) + ".json", "w", encoding="utf-8") as f_json:
-                res = result.to_dict() if isinstance(result, stable_whisper.WhisperResult) else result
+                res = result.to_dict() if _is_whisper_result_like(result) else result
                 json.dump(res, f_json, indent=2, allow_nan=True, ensure_ascii=False)
 
         # Save other formats (SRT, ASS, VTT, TSV)

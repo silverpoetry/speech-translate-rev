@@ -1,23 +1,19 @@
 import os
 from ast import literal_eval
 from datetime import UTC, datetime, timedelta
-from platform import system
 from queue import Empty, Queue
 from shlex import quote
 from threading import Lock, Thread
 from time import gmtime, sleep, strftime, time
 
-import numpy as np
-import torch
-import webrtcvad
 from typing import Callable, cast
-from whisper.tokenizer import TO_LANGUAGE_CODE
 
 from speech_translate._constants import WHISPER_SR
 from speech_translate._logging import logger
 from speech_translate.linker import bc, sj
+from speech_translate.runtime_deps import empty_torch_cuda_cache, get_whisper_to_language_code
 from speech_translate.utils.audio.audio import get_db, get_speech_webrtc, resample_sr, to_silero
-from speech_translate.utils.audio.device import get_device_details
+from speech_translate.utils.audio.device import get_device_details, get_pyaudio_module
 from speech_translate.utils.audio import record_processing as processing_module
 from speech_translate.utils.audio.record_runtime import (
     BufferStateReducer,
@@ -56,17 +52,30 @@ from speech_translate.utils.translate.language import get_whisper_lang_name, get
 
 from ..helper import str_separator_to_html
 from ..whisper.helper import get_hallucination_filter, model_values
-from ..whisper.load import get_model, get_model_args, get_tc_args
 from ..whisper.result import remove_segments_by_str
-if system() == "Windows":
-    import pyaudiowpatch as pyaudio
-else:
-    import pyaudio
 
 
 callback_context: RealtimeCallbackContext | None = None
 
 _build_smart_split_outcome = processing_module.build_smart_split_outcome
+
+
+def _get_whisper_runtime_api():
+    from speech_translate.utils.whisper import load as whisper_load_api
+
+    return whisper_load_api
+
+
+def get_model(*args, **kwargs):
+    return _get_whisper_runtime_api().get_model(*args, **kwargs)
+
+
+def get_model_args(*args, **kwargs):
+    return _get_whisper_runtime_api().get_model_args(*args, **kwargs)
+
+
+def get_tc_args(*args, **kwargs):
+    return _get_whisper_runtime_api().get_tc_args(*args, **kwargs)
 
 
 # Keep these wrappers in record.py because tests and external callers monkey-patch
@@ -124,7 +133,7 @@ def _load_recording_model_runtime(
     whisper_args = get_tc_args(to_args, sj.cache)
     whisper_args["verbose"] = None
     configured_whisper_language = get_whisper_lang_similar(lang_source) if not config.auto else None
-    whisper_args["language"] = TO_LANGUAGE_CODE.get(configured_whisper_language) if configured_whisper_language else None
+    whisper_args["language"] = get_whisper_to_language_code().get(configured_whisper_language) if configured_whisper_language else None
 
     if sj.cache.get("enable_initial_prompt", False):
         from ..whisper.prompts import pick_initial_prompt
@@ -539,7 +548,7 @@ def _initialize_callback_context(
     num_of_channels: int,
     samp_width: int,
     use_temp: bool,
-    webrtc_vad: webrtcvad.Vad,
+    webrtc_vad: object,
     silero_vad: SileroVadLike,
 ) -> RealtimeCallbackContext:
     global callback_context
@@ -560,7 +569,7 @@ def _initialize_callback_context(
     return callback_context
 
 
-def _load_recording_vad_runtime(*, rec_type: str) -> tuple[webrtcvad.Vad, SileroVadLike]:
+def _load_recording_vad_runtime(*, rec_type: str) -> tuple[object, SileroVadLike]:
     return streaming_module.load_recording_vad_runtime(rec_type=rec_type)
 
 
@@ -570,6 +579,7 @@ def _build_recording_stream_runtime(
     config: RecordingSessionConfig,
     p,
 ) -> RecordingStreamRuntime:
+    pyaudio = get_pyaudio_module()
     return streaming_module.build_recording_stream_runtime(
         rec_type=rec_type,
         config=config,
@@ -805,7 +815,7 @@ def _commit_realtime_transcription(
 def _save_to_temp(audio_bytes: bytes, channels: int, samp_width: int, sr: int) -> str:
     return processing_module.save_to_temp(audio_bytes, channels, samp_width, sr)
 
-def _bytes_to_numpy(audio_bytes: bytes, channels: int, use_demucs: bool, device: str) -> np.ndarray | torch.Tensor:
+def _bytes_to_numpy(audio_bytes: bytes, channels: int, use_demucs: bool, device: str) -> object:
     return processing_module.bytes_to_numpy(audio_bytes, channels, use_demucs, device)
 
 def _calculate_smart_split(
@@ -890,7 +900,7 @@ def record_session(
             is_tc=is_tc,
             is_tl=is_tl,
         )
-        p = pyaudio.PyAudio()
+        p = get_pyaudio_module().PyAudio()
 
         model_runtime = _load_recording_model_runtime(
             config=config,
@@ -953,12 +963,13 @@ def record_session(
                 )
             except Exception as finalize_exc:
                 logger.error(f"Error finalizing record session: {finalize_exc}")
-        torch.cuda.empty_cache()
+        empty_torch_cuda_cache()
         logger.info("Record session ended")
 
 
 def record_cb(in_data, _frame_count, _time_info, _status):
     """Audio stream callback for PyAudio"""
+    pyaudio = get_pyaudio_module()
     ctx = _get_callback_context()
     try:
         if ctx is None:

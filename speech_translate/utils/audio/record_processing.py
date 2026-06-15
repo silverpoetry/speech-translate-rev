@@ -5,12 +5,12 @@ from io import BytesIO
 from wave import open as w_open
 
 import numpy as np
-import torch
 
 from speech_translate._constants import WHISPER_SR
 from speech_translate._logging import logger
 from speech_translate._path import dir_temp
 from speech_translate.linker import bc, sj
+from speech_translate.runtime_deps import torch_from_numpy
 from speech_translate.utils.audio.record_runtime import (
     _build_full_transcribed_text,
     _enforce_sentence_limits,
@@ -47,7 +47,7 @@ def save_to_temp(audio_bytes: bytes, channels: int, samp_width: int, sr: int) ->
     return path
 
 
-def bytes_to_numpy(audio_bytes: bytes, channels: int, use_demucs: bool, device: str) -> np.ndarray | torch.Tensor:
+def bytes_to_numpy(audio_bytes: bytes, channels: int, use_demucs: bool, device: str) -> np.ndarray | object:
     audio_as_np_int16 = np.frombuffer(audio_bytes, dtype=np.int16).flatten()
     audio_as_np_float32 = audio_as_np_int16.astype(np.float32)
     max_int16 = 32768.0
@@ -60,7 +60,7 @@ def bytes_to_numpy(audio_bytes: bytes, channels: int, use_demucs: bool, device: 
         audio_np = audio_reshaped[:, 0] / max_int16
 
     if use_demucs:
-        return torch.from_numpy(audio_np).to(device)
+        return torch_from_numpy(audio_np).to(device)
     return audio_np
 
 

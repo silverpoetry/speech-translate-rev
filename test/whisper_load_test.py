@@ -28,21 +28,26 @@ class WhisperLoadTests(unittest.TestCase):
         whisper_load._MODEL_CACHE.clear()
         whisper_load._MODEL_BUNDLE_CACHE.clear()
 
-        self.previous_load_model = whisper_load.stable_whisper.load_model
-        self.previous_load_faster = whisper_load.stable_whisper.load_faster_whisper
+        self.previous_get_stable_whisper_api = whisper_load._get_stable_whisper_api
         self.load_calls = []
         self.load_faster_calls = []
 
-        whisper_load.stable_whisper.load_model = self._fake_load_model
-        whisper_load.stable_whisper.load_faster_whisper = self._fake_load_faster
+        fake_api = type(
+            "FakeStableWhisperApi",
+            (),
+            {
+                "load_model": self._fake_load_model,
+                "load_faster_whisper": self._fake_load_faster,
+            },
+        )()
+        whisper_load._get_stable_whisper_api = lambda: fake_api
 
     def tearDown(self) -> None:
         whisper_load._MODEL_CACHE.clear()
         whisper_load._MODEL_CACHE.update(self.previous_model_cache)
         whisper_load._MODEL_BUNDLE_CACHE.clear()
         whisper_load._MODEL_BUNDLE_CACHE.update(self.previous_bundle_cache)
-        whisper_load.stable_whisper.load_model = self.previous_load_model
-        whisper_load.stable_whisper.load_faster_whisper = self.previous_load_faster
+        whisper_load._get_stable_whisper_api = self.previous_get_stable_whisper_api
 
     def _fake_load_model(self, model_name: str, **model_args):
         self.load_calls.append((model_name, dict(model_args)))

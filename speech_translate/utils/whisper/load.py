@@ -1,14 +1,11 @@
 import argparse
 import json
+from importlib import import_module
 from threading import Lock
 from typing import Literal, Optional, Union
 
-import stable_whisper
-import torch
-from stable_whisper.utils import isolate_useful_options, str_to_valid_type
-from whisper import DecodingOptions
-
 from speech_translate.log_helpers import logger
+from speech_translate.runtime_deps import get_stable_whisper, get_torch
 from speech_translate.utils.types import SettingDict
 from speech_translate.utils.whisper.paths import get_default_download_root
 
@@ -21,6 +18,25 @@ str2val = {"true": True, "false": False, "1": True, "0": False}
 _MODEL_CACHE = {}
 _MODEL_CACHE_LOCK = Lock()
 _MODEL_BUNDLE_CACHE = {}
+
+
+def _get_stable_whisper_api():
+    return get_stable_whisper()
+
+
+def _get_torch_api():
+    return get_torch()
+
+
+def _get_stable_whisper_utils():
+    stable_whisper_utils = import_module("stable_whisper.utils")
+    return stable_whisper_utils.isolate_useful_options, stable_whisper_utils.str_to_valid_type
+
+
+def _get_decoding_options_type():
+    from whisper import DecodingOptions  # pylint: disable=import-outside-toplevel
+
+    return DecodingOptions
 
 
 def _freeze_model_args(model_args: dict) -> str:
@@ -43,10 +59,11 @@ def _load_model_cached(model_name: str, use_faster_whisper: bool, **model_args):
             return cached
 
     logger.debug(f"Model cache miss: backend={cache_key[0]} model={model_name}; loading model")
+    stable_whisper_api = _get_stable_whisper_api()
     if use_faster_whisper:
-        loaded = stable_whisper.load_faster_whisper(model_name, **model_args)
+        loaded = stable_whisper_api.load_faster_whisper(model_name, **model_args)
     else:
-        loaded = stable_whisper.load_model(model_name, **model_args)
+        loaded = stable_whisper_api.load_model(model_name, **model_args)
 
     with _MODEL_CACHE_LOCK:
         # Double-check in case another thread loaded the same model while we were loading.
@@ -162,6 +179,8 @@ def parse_args_stable_ts(
         description="Example Argument Parser", formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     args = {}
+    torch = _get_torch_api()
+    isolate_useful_options, str_to_valid_type = _get_stable_whisper_utils()
 
     def update_options_with_args(arg_key: str, options: Optional[dict] = None, pop: bool = False):
         extra_options = args.pop(arg_key) if pop else args.get(arg_key)
@@ -410,7 +429,7 @@ def parse_args_stable_ts(
                     kwargs["patience"] = 1
                 args.update(isolate_useful_options(kwargs, TranscriptionOptions))
             else:
-                args.update(isolate_useful_options(kwargs, DecodingOptions))
+                args.update(isolate_useful_options(kwargs, _get_decoding_options_type()))
             # logger.debug(f"Updated args with kwargs: {args}")
 
             args["threads"] = threads
@@ -423,7 +442,7 @@ def parse_args_stable_ts(
 
             update_options_with_args('transcribe_option', args)
             args.pop('transcribe_option')
-            args.update(isolate_useful_options(args, DecodingOptions))
+            args.update(isolate_useful_options(args, _get_decoding_options_type()))
             args["threads"] = threads
 
         elif mode == "refine":
@@ -675,10 +694,13 @@ def get_model_args(setting_cache: SettingDict):
     # pylint: disable=import-outside-toplevel, protected-access
     from faster_whisper import WhisperModel
 
+    stable_whisper_api = _get_stable_whisper_api()
+    torch = _get_torch_api()
+
     # load model
     model_args = parse_args_stable_ts(
         setting_cache["whisper_args"], "load",
-        WhisperModel if setting_cache["use_faster_whisper"] else stable_whisper.load_model
+        WhisperModel if setting_cache["use_faster_whisper"] else stable_whisper_api.load_model
     )
     if not model_args.pop("success"):
         raise Exception(model_args["msg"])

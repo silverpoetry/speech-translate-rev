@@ -3,11 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from types import TracebackType
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 import numpy as np
-import torch
-import webrtcvad
 
 from speech_translate._constants import MAX_THRESHOLD, MIN_THRESHOLD
 from speech_translate.linker import bc
@@ -54,7 +52,7 @@ class SileroVadLike(Protocol):
 
 
 ResultSnapshot = ResultLike | str
-AudioTarget = str | np.ndarray | torch.Tensor
+AudioTarget = str | np.ndarray | Any
 TranslationApiResult = str | list[str]
 HallucinationFilters = dict[str, object]
 
@@ -213,5 +211,5 @@ class RealtimeCallbackContext:
     was_recording: bool = False
     silence_started_at: float = 0.0
     silero_disabled: bool = False
-    webrtc_vad: webrtcvad.Vad | None = None
+    webrtc_vad: Any | None = None
     silero_vad: SileroVadLike | None = None

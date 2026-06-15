@@ -1,14 +1,14 @@
 from io import BytesIO
+from typing import Any
 from wave import Wave_read, Wave_write
 from wave import open as w_open
 
-import torch
 from numpy import abs as np_abs
 from numpy import float32, frombuffer, iinfo, int16, log10, reshape, sqrt
 from scipy.signal import butter, filtfilt, resample_poly
-from webrtcvad import Vad
 
 from speech_translate._constants import WHISPER_SR
+from speech_translate.runtime_deps import torch_from_numpy
 
 
 class Frame(object):
@@ -135,7 +135,7 @@ def get_db(audio_data: bytes) -> float:
 
 
 def get_speech_webrtc(
-    data: bytes, sample_rate: int, frame_duration_ms: int, vad: Vad, get_only_first_frame: bool = True
+    data: bytes, sample_rate: int, frame_duration_ms: int, vad: Any, get_only_first_frame: bool = True
 ) -> bool:
     frames = list(frame_generator(frame_duration_ms, data, sample_rate, get_only_first_frame=get_only_first_frame))
     data_to_check = data if len(frames) == 0 else frames[0].bytes
@@ -187,5 +187,5 @@ def to_silero(sound_bytes: bytes, num_of_channels: int, samp_width: int = 2):
         audio_reshaped = reshape(audio_as_np_float32, (int(chunk_length), num_of_channels))
         np_buf = audio_reshaped[:, 0] / iinfo(int16).max  # take left channel only
 
-    torch_float32 = torch.from_numpy(np_buf.squeeze())
+    torch_float32 = torch_from_numpy(np_buf.squeeze())
     return torch_float32

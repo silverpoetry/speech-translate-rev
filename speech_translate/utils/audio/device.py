@@ -21,6 +21,10 @@ def _require_pyaudio() -> Any:
     return pyaudio
 
 
+def get_pyaudio_module() -> Any:
+    return _require_pyaudio()
+
+
 def get_channel_int(channel_string: str):
     if channel_string.isdigit():
         return int(channel_string)
