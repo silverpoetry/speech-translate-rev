@@ -6,9 +6,14 @@ from time import sleep, time
 from typing import Optional, cast
 
 from speech_translate.controller_protocols import JsonDict, RecordingBridge, ShutdownSeleniumFn, WhisperLoadApiGetter
-from speech_translate.linker import bc
 from speech_translate.log_helpers import logger
 from speech_translate.ui_protocol import UI_SECTION_TASK
+from speech_translate.utils.audio.recording_runtime_state import (
+    RecordingRuntimeStateAdapter,
+    RecordingTextStoreAdapter,
+    recording_runtime_state,
+    recording_text_store,
+)
 from speech_translate.utils.types import SettingDict
 from speech_translate.utils.whisper.helper import model_keys
 
@@ -59,10 +64,14 @@ class RecordingSessionController:
         bridge: RecordingBridge,
         whisper_loader_getter: WhisperLoadApiGetter,
         shutdown_selenium_fn: ShutdownSeleniumFn,
+        runtime_state: RecordingRuntimeStateAdapter | None = None,
+        text_store: RecordingTextStoreAdapter | None = None,
     ):
         self.bridge = bridge
         self.whisper_loader_getter = whisper_loader_getter
         self.shutdown_selenium_fn = shutdown_selenium_fn
+        self.runtime_state = runtime_state or recording_runtime_state
+        self.text_store = text_store or recording_text_store
         self._lock = RLock()
         self.record_worker_thread: Optional[Thread] = None
         self.recording_state: JsonDict = dict(DEFAULT_RECORDING_STATE)
@@ -77,8 +86,8 @@ class RecordingSessionController:
 
     def _is_recording_idle(self) -> bool:
         worker_alive = self.record_worker_thread is not None and self.record_worker_thread.is_alive()
-        stream_released = getattr(bc, "stream", None) is None
-        recording_flag_off = not getattr(bc, "recording", False)
+        stream_released = self.runtime_state.is_stream_released()
+        recording_flag_off = not self.runtime_state.is_recording_active()
         return stream_released and recording_flag_off and not worker_alive
 
     def _resolve_start_context(
@@ -133,15 +142,14 @@ class RecordingSessionController:
         }
 
     def _reset_recording_runtime(self) -> None:
-        self.bridge.bind_headless_main_window()
-        bc.tc_sentences = []
-        bc.tl_sentences = []
+        self.text_store.set_transcribed_sentences([])
+        self.text_store.set_translated_sentences([])
         self.bridge.clear_live()
-        bc.enable_rec()
+        self.runtime_state.enable_recording()
         self.bridge.reset_task_state("Recording")
 
     def _shutdown_recording_session(self, *, context: RecordingStartContext) -> None:
-        bc.disable_rec()
+        self.runtime_state.disable_recording()
         self.set_recording_state({"status": "Stopped", "active": False})
         if context.should_auto_close_selenium and bool(self.bridge.get_settings_snapshot().get("selenium_auto_close_on_task_done", True)):
             self.shutdown_selenium_fn()
@@ -176,7 +184,7 @@ class RecordingSessionController:
         with self._lock:
             self.recording_state.update(payload)
             if "active" not in payload:
-                self.recording_state["active"] = bool(bc.recording)
+                self.recording_state["active"] = self.runtime_state.is_recording_active()
         self.bridge.model_manager_controller.handle_recording_status(payload)
         self.bridge.emit_ui_update([UI_SECTION_TASK])
         return {"ok": True}
@@ -194,7 +202,7 @@ class RecordingSessionController:
         is_tc: bool = True,
         is_tl: bool = True,
     ) -> JsonDict:
-        if bc.recording:
+        if self.runtime_state.is_recording_active():
             return {"ok": False, "message": "Already recording"}
 
         context = self._resolve_start_context(
@@ -221,10 +229,10 @@ class RecordingSessionController:
         return {"ok": True, "device": context.device, "engine_whisper": context.engine in model_keys, "message": "Recording started"}
 
     def stop_recording(self) -> JsonDict:
-        if not bc.recording:
+        if not self.runtime_state.is_recording_active():
             return {"ok": False, "message": "Not currently recording"}
         self.set_recording_state({"status": "Stopping...", "active": False})
-        bc.disable_rec()
+        self.runtime_state.disable_recording()
 
         if self.wait_recording_idle(timeout_s=12.0):
             if bool(self.bridge.get_settings_snapshot().get("selenium_auto_close_on_task_done", True)) and self.bridge.normalize_engine_name(str(self.bridge.get_settings_snapshot().get("tl_engine_mw", ""))) == "Selenium Chrome Translate":

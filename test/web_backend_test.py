@@ -8,7 +8,7 @@ to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
 from speech_translate.ui_protocol import TASK_SOURCE_GENERAL, UI_SECTION_TASK
-from speech_translate.web_backend import HeadlessQueueWindow, WebTaskBridge
+from speech_translate.web_backend import WebTaskBridge
 
 
 class FakeWindow:
@@ -51,9 +51,8 @@ class WebTaskBridgeTests(unittest.TestCase):
         self.assertTrue(state["active"])
         self.assertTrue(any(UI_SECTION_TASK in script for script in self.window.scripts))
 
-    def test_headless_queue_window_routes_rows_to_bridge(self) -> None:
-        queue_window = HeadlessQueueWindow(self.bridge)
-        queue_window.update_sheet([["a.wav", "Queued"]])
+    def test_update_task_rows_routes_rows_to_task_snapshot(self) -> None:
+        self.bridge.update_task_rows([["a.wav", "Queued"]])
         self.assertEqual(self.bridge.snapshot_task_state()["rows"], [["a.wav", "Queued"]])
 
     def test_reset_task_state_emits_task_section(self) -> None:

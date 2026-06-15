@@ -523,9 +523,6 @@ class RecordingBridge(Protocol):
     def normalize_model_key(self, value: str) -> str:
         ...
 
-    def bind_headless_main_window(self) -> None:
-        ...
-
     def clear_live(self) -> None:
         ...
 
@@ -589,9 +586,6 @@ class ImportQueueBridge(Protocol):
         ...
 
     def set_task_title(self, title: str) -> None:
-        ...
-
-    def bind_headless_main_window(self) -> None:
         ...
 
     def clear_live(self) -> None:

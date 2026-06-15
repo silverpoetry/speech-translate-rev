@@ -387,7 +387,6 @@ class ImportQueueController:
 
         self._prepare_runtime_model_for_import(context)
         self.bridge.reset_task_state("File Import")
-        self.bridge.bind_headless_main_window()
         self._start_import_worker(context=context)
         return {"ok": True, "count": len(context.files_to_process), "message": "File import started"}
 

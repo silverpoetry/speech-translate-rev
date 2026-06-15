@@ -6,7 +6,7 @@ from queue import Empty, Queue
 from threading import Lock
 
 from speech_translate._logging import logger
-from speech_translate.linker import bc, sj
+from speech_translate.linker import sj
 from speech_translate.web_bridge_runtime import WebBridgeRegistry, web_bridge_registry
 from speech_translate.utils.audio.record_types import (
     AudioTarget,
@@ -17,6 +17,10 @@ from speech_translate.utils.audio.record_types import (
     TranslationApiResult,
     TranslationTask,
     WhisperCallable,
+)
+from speech_translate.utils.audio.recording_runtime_state import (
+    RecordingTextStoreAdapter,
+    recording_text_store,
 )
 from speech_translate.utils.translate.language import get_whisper_lang_name, verify_language_in_key
 
@@ -95,38 +99,44 @@ class RecordingBridgeAdapter:
 
 
 class RecordingTextState:
-    def __init__(self, *, shared_runtime_state: RealtimeSharedState | None = None):
+    def __init__(
+        self,
+        *,
+        shared_runtime_state: RealtimeSharedState | None = None,
+        text_store: RecordingTextStoreAdapter | None = None,
+    ):
         self._shared = shared_runtime_state or shared_state
+        self._text_store = text_store or recording_text_store
 
     def transcribed_sentences(self) -> list[object]:
-        return list(bc.tc_sentences)
+        return self._text_store.transcribed_sentences()
 
     def translated_sentences(self) -> list[object]:
-        return list(bc.tl_sentences)
+        return self._text_store.translated_sentences()
 
     def set_transcribed_sentences(self, sentences: list[object]) -> None:
-        bc.tc_sentences = list(sentences)
+        self._text_store.set_transcribed_sentences(sentences)
 
     def set_translated_sentences(self, sentences: list[object]) -> None:
-        bc.tl_sentences = list(sentences)
+        self._text_store.set_translated_sentences(sentences)
 
     def append_transcribed_sentence(self, sentence: object) -> None:
-        bc.tc_sentences.append(sentence)
+        self._text_store.append_transcribed_sentence(sentence)
 
     def append_translated_sentence(self, sentence: object) -> None:
-        bc.tl_sentences.append(sentence)
+        self._text_store.append_translated_sentence(sentence)
 
     def update_transcribed_output(self, current: object | None, separator: str) -> None:
-        bc.update_tc(current, separator)
+        self._text_store.update_transcribed_output(current, separator)
 
     def update_translated_output(self, current: object | None, separator: str) -> None:
-        bc.update_tl(current, separator)
+        self._text_store.update_translated_output(current, separator)
 
     def detected_language(self) -> str:
-        return str(bc.auto_detected_lang)
+        return self._text_store.detected_language()
 
     def set_detected_language(self, language: str) -> None:
-        bc.auto_detected_lang = language
+        self._text_store.set_detected_language(language)
 
     def previous_transcribed_result(self) -> ResultSnapshot:
         return self._shared.prev_tc_res

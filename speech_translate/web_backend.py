@@ -5,48 +5,11 @@ from html import escape
 import json
 import re
 from threading import Lock
-from typing import Callable, Optional, Sequence
+from typing import Sequence
 
 from speech_translate.controller_protocols import JsonDict, TaskTable, TaskTableRow, TrayLike, WebviewWindowLike
-from speech_translate.linker import bc, sj
-from speech_translate.log_helpers import logger
+from speech_translate.linker import sj
 from speech_translate.ui_protocol import TASK_SOURCE_GENERAL, UI_EVENT_NAME, UI_SECTION_LIVE, UI_SECTION_TASK
-
-
-class HeadlessRoot:
-    def update(self) -> None:
-        return None
-
-    def update_idletasks(self) -> None:
-        return None
-
-    def after(self, _delay: int, callback: Optional[Callable[..., object]] = None, *args: object) -> object | None:
-        if callback is not None:
-            return callback(*args)
-        return None
-
-    def winfo_exists(self) -> bool:
-        return True
-
-    def destroy(self) -> None:
-        return None
-
-    def winfo_rootx(self) -> int:
-        return 0
-
-    def winfo_rooty(self) -> int:
-        return 0
-
-
-class HeadlessQueueWindow:
-    def __init__(self, bridge: WebTaskBridge | None = None):
-        self.bridge = bridge
-        self.rows: TaskTable = []
-
-    def update_sheet(self, rows: Sequence[Sequence[object]]) -> None:
-        self.rows = [list(row) for row in rows]
-        if self.bridge is not None:
-            self.bridge.update_task_rows(self.rows)
 
 
 @dataclass
@@ -60,54 +23,6 @@ class TaskState:
     finished: bool = False
     message_source: str = ""
     progress_source: str = ""
-
-
-class HeadlessMainWindow:
-    def __init__(self, bridge: WebTaskBridge | None = None):
-        self.bridge = bridge
-        self.root = HeadlessRoot()
-
-    def disable_interactions(self) -> None:
-        return None
-
-    def enable_interactions(self) -> None:
-        return None
-
-    def tb_clear(self) -> None:
-        return None
-
-    def start_lb(self, *_args: object, **_kwargs: object) -> None:
-        if self.bridge is not None:
-            self.bridge.set_task_active(True)
-
-    def stop_lb(self, *_args: object, **_kwargs: object) -> None:
-        if self.bridge is not None:
-            self.bridge.set_task_active(False)
-
-    def from_file_stop(self, prompt: bool = False, notify: bool = True, master: object | None = None) -> None:
-        _ = (prompt, notify, master)
-        return None
-
-    def rec_stop(self) -> None:
-        return None
-
-    def after_rec_stop(self) -> None:
-        return None
-
-    def error_notif(self, msg: str, **_kwargs):
-        logger.error(msg)
-        if self.bridge is not None:
-            self.bridge.update_task_error(msg)
-
-    def show(self) -> None:
-        return None
-
-    def bring_to_front(self) -> None:
-        return None
-
-    def quit_app(self) -> None:
-        if self.bridge is not None:
-            self.bridge.quit_app()
 
 
 class WebTaskBridge:
@@ -126,7 +41,6 @@ class WebTaskBridge:
         self._lock = Lock()
         self._window: WebviewWindowLike | None = None
         self._tray: TrayLike | None = None
-        self._main_window = HeadlessMainWindow(self)
 
     def _emit_task_update(self) -> None:
         self._emit_ui_update([UI_SECTION_TASK])
@@ -199,15 +113,6 @@ class WebTaskBridge:
 
     def emit_ui_update(self, sections: Sequence[str]) -> None:
         self._emit_ui_update(list(sections))
-
-    def bind_headless_main_window(self) -> HeadlessMainWindow:
-        setattr(bc, "mw", self._main_window)
-        setattr(bc, "sw", None)
-        setattr(bc, "lw", None)
-        setattr(bc, "about", None)
-        setattr(bc, "ex_tcw", None)
-        setattr(bc, "ex_tlw", None)
-        return self._main_window
 
     def reset_task_state(self, title: str = "") -> TaskState:
         with self._lock:

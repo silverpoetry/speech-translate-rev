@@ -9,7 +9,7 @@ import numpy as np
 from speech_translate._constants import WHISPER_SR
 from speech_translate._logging import logger
 from speech_translate._path import dir_temp
-from speech_translate.linker import bc, sj
+from speech_translate.linker import sj
 from speech_translate.runtime_deps import torch_from_numpy
 from speech_translate.utils.audio.record_runtime import (
     RecordingTextState,
@@ -18,6 +18,7 @@ from speech_translate.utils.audio.record_runtime import (
     shared_state,
     text_state,
 )
+from speech_translate.utils.audio.recording_runtime_state import recording_runtime_state
 from speech_translate.utils.audio.record_types import (
     AudioTarget,
     HallucinationFilters,
@@ -154,7 +155,7 @@ def commit_realtime_transcription(
     set_current_status=None,
 ) -> None:
     runtime_text_state = runtime_text_state or text_state
-    set_current_status = set_current_status or (lambda status: setattr(bc, "current_rec_status", status))
+    set_current_status = set_current_status or recording_runtime_state.set_current_status
     text = result.text.strip() if result else ""
     runtime_text_state.set_detected_language(result.language if result else "~")
 

@@ -1,17 +1,21 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from time import time
 from typing import cast
 
 from speech_translate._constants import WHISPER_SR
 from speech_translate._logging import logger
 from speech_translate._path import dir_silero_vad
-from speech_translate.linker import bc, sj
+from speech_translate.linker import sj
 from speech_translate.runtime_deps import get_torch, get_torchaudio, get_webrtcvad
 from speech_translate.utils.audio.audio import get_db, get_frame_duration, get_speech_webrtc, to_silero
 from speech_translate.utils.audio.device import get_device_details, get_pyaudio_module
 from speech_translate.utils.audio.record_runtime import shared_state
+from speech_translate.utils.audio.recording_runtime_state import (
+    RecordingRuntimeStateAdapter,
+    recording_runtime_state,
+)
 from speech_translate.utils.audio.record_types import (
     RecordingSessionConfig,
     RecordingStreamRuntime,
@@ -41,16 +45,16 @@ class CallbackContextStore:
 
 @dataclass
 class StreamingStateAdapter:
-    state: object = bc
+    runtime_state: RecordingRuntimeStateAdapter = field(default_factory=lambda: recording_runtime_state)
 
     def set_stream(self, stream) -> None:
-        self.state.stream = stream
+        self.runtime_state.set_stream(stream)
 
     def enqueue_audio(self, payload: bytes) -> None:
-        self.state.data_queue.put(payload)
+        self.runtime_state.enqueue_audio(payload)
 
     def set_current_status(self, status: str) -> None:
-        self.state.current_rec_status = status
+        self.runtime_state.set_current_status(status)
 
 
 callback_context_store = CallbackContextStore()

@@ -58,9 +58,6 @@ class FakeBridge:
     def normalize_model_key(self, value: str) -> str:
         return value
 
-    def bind_headless_main_window(self) -> None:
-        self.bound_headless += 1
-
     def clear_live(self) -> None:
         self.clear_live_calls += 1
 
@@ -87,34 +84,54 @@ class FakeWhisperLoadApi:
         return {"device": "cpu"}
 
 
+class FakeRecordingRuntimeState:
+    def __init__(self) -> None:
+        self.recording = False
+        self.stream = None
+        self.enabled = 0
+        self.disabled = 0
+
+    def is_recording_active(self) -> bool:
+        return self.recording
+
+    def enable_recording(self) -> None:
+        self.enabled += 1
+        self.recording = True
+
+    def disable_recording(self) -> None:
+        self.disabled += 1
+        self.recording = False
+
+    def is_stream_released(self) -> bool:
+        return self.stream is None
+
+
+class FakeRecordingTextStore:
+    def __init__(self) -> None:
+        self.tc_sentences = []
+        self.tl_sentences = []
+
+    def set_transcribed_sentences(self, sentences) -> None:
+        self.tc_sentences = list(sentences)
+
+    def set_translated_sentences(self, sentences) -> None:
+        self.tl_sentences = list(sentences)
+
+
 class RecordingSessionControllerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.bridge = FakeBridge()
         self.shutdown_calls = 0
         self.whisper_api = FakeWhisperLoadApi(cached_bundle=False)
+        self.runtime_state = FakeRecordingRuntimeState()
+        self.text_store = FakeRecordingTextStore()
         self.controller = RecordingSessionController(
             self.bridge,
             lambda: self.whisper_api,
             self._shutdown_selenium,
+            runtime_state=self.runtime_state,
+            text_store=self.text_store,
         )
-
-        from speech_translate.linker import bc
-
-        self.bc = bc
-        self.previous_recording = self.bc.recording
-        self.previous_stream = self.bc.stream
-        self.previous_tc_sentences = list(self.bc.tc_sentences)
-        self.previous_tl_sentences = list(self.bc.tl_sentences)
-        self.bc.recording = False
-        self.bc.stream = None
-        self.bc.tc_sentences = []
-        self.bc.tl_sentences = []
-
-    def tearDown(self) -> None:
-        self.bc.recording = self.previous_recording
-        self.bc.stream = self.previous_stream
-        self.bc.tc_sentences = self.previous_tc_sentences
-        self.bc.tl_sentences = self.previous_tl_sentences
 
     def _shutdown_selenium(self) -> None:
         self.shutdown_calls += 1
@@ -167,34 +184,34 @@ class RecordingSessionControllerTests(unittest.TestCase):
         self.assertEqual(self.bridge.model_manager_controller.pending_calls[-1][0], "small")
         self.assertEqual(self.bridge.model_manager_controller.ready_calls[-1][0], "small")
         self.assertEqual(self.bridge.reset_task_titles, ["Recording"])
-        self.assertEqual(self.bridge.bound_headless, 1)
         self.assertEqual(self.bridge.clear_live_calls, 1)
+        self.assertEqual(self.runtime_state.enabled, 1)
+        self.assertEqual(self.text_store.tc_sentences, [])
+        self.assertEqual(self.text_store.tl_sentences, [])
         self.assertEqual(self.controller.recording_state["status"], "Preparing recording...")
         self.assertEqual(self.controller.recording_state["mode"], "Transcribe & Translate")
         self.assertEqual(len(started_contexts), 1)
 
     def test_stop_recording_stops_and_closes_selenium_when_idle(self) -> None:
         previous_wait_idle = self.controller.wait_recording_idle
-        previous_recording = self.bc.recording
         try:
-            self.bc.recording = True
+            self.runtime_state.recording = True
             self.controller.wait_recording_idle = lambda timeout_s=12.0: True
             result = self.controller.stop_recording()
         finally:
             self.controller.wait_recording_idle = previous_wait_idle
-            self.bc.recording = previous_recording
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["message"], "Recording stopped")
         self.assertEqual(self.shutdown_calls, 0)
+        self.assertGreaterEqual(self.runtime_state.disabled, 1)
         self.assertEqual(self.controller.recording_state["status"], "Stopped")
 
     def test_stop_recording_closes_selenium_for_selenium_engine(self) -> None:
         previous_wait_idle = self.controller.wait_recording_idle
-        previous_recording = self.bc.recording
         previous_get_settings = self.bridge.get_settings_snapshot
         try:
-            self.bc.recording = True
+            self.runtime_state.recording = True
             self.controller.wait_recording_idle = lambda timeout_s=12.0: True
             self.bridge.get_settings_snapshot = lambda: {
                 **previous_get_settings(),
@@ -204,7 +221,6 @@ class RecordingSessionControllerTests(unittest.TestCase):
             result = self.controller.stop_recording()
         finally:
             self.controller.wait_recording_idle = previous_wait_idle
-            self.bc.recording = previous_recording
             self.bridge.get_settings_snapshot = previous_get_settings
 
         self.assertTrue(result["ok"])

@@ -1,6 +1,6 @@
 import os
 from ast import literal_eval
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from queue import Empty, Queue
 from shlex import quote
@@ -34,6 +34,10 @@ from speech_translate.utils.audio.record_runtime import (
     tl_api,
 )
 from speech_translate.utils.audio import record_streaming as streaming_module
+from speech_translate.utils.audio.recording_runtime_state import (
+    RecordingRuntimeStateAdapter,
+    recording_runtime_state,
+)
 from speech_translate.utils.audio.record_types import (
     AudioTarget,
     RecordingSessionBootstrap,
@@ -61,6 +65,9 @@ from ..whisper.result import remove_segments_by_str
 
 _build_smart_split_outcome = processing_module.build_smart_split_outcome
 
+# Compatibility export for tests and legacy monkey-patching; production code
+# should use recording_runtime_state / recording_control instead of bc directly.
+
 
 def _get_whisper_runtime_api():
     from speech_translate.utils.whisper import load as whisper_load_api
@@ -86,38 +93,37 @@ def _recording_settings_snapshot(settings_snapshot: Mapping[str, object] | None 
 
 @dataclass
 class RecordingSessionControl:
-    state: object = bc
+    runtime_state: RecordingRuntimeStateAdapter = field(default_factory=lambda: recording_runtime_state)
 
     def is_recording(self) -> bool:
-        return bool(self.state.recording)
+        return self.runtime_state.is_recording_active()
 
     def current_status(self) -> str:
-        return str(self.state.current_rec_status)
+        return self.runtime_state.current_status()
 
     def set_current_status(self, status: str) -> None:
-        self.state.current_rec_status = status
+        self.runtime_state.set_current_status(status)
 
     def data_queue_empty(self) -> bool:
-        return self.state.data_queue.empty()
+        return self.runtime_state.data_queue_empty()
 
     def get_data(self, *, timeout: float) -> bytes:
-        return self.state.data_queue.get(timeout=timeout)
+        return self.runtime_state.get_data(timeout=timeout)
 
     def get_data_nowait(self) -> bytes:
-        return self.state.data_queue.get_nowait()
+        return self.runtime_state.get_data_nowait()
 
     def clear_data_queue(self) -> None:
-        while not self.state.data_queue.empty():
-            self.state.data_queue.get()
+        self.runtime_state.clear_data_queue()
 
     def stream(self):
-        return self.state.stream
+        return self.runtime_state.stream()
 
     def clear_stream(self) -> None:
-        self.state.stream = None
+        self.runtime_state.clear_stream()
 
     def clear_runtime_threads(self) -> None:
-        self.state.rec_tc_thread = self.state.rec_tl_thread = None
+        self.runtime_state.clear_runtime_threads()
 
 
 recording_control = RecordingSessionControl()

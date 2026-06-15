@@ -65,9 +65,6 @@ class FakeBridge:
     def set_task_title(self, title: str):
         self.updates.append(("title", title))
 
-    def bind_headless_main_window(self):
-        self.bound_headless += 1
-
     def finish_task(self, message: str):
         self.finished.append(message)
 
@@ -240,7 +237,6 @@ class ImportQueueControllerTests(unittest.TestCase):
         self.assertEqual(captured["engine"], "Selenium Chrome Translate")
         self.assertEqual(captured["model"], "small")
         self.assertTrue(captured["prepare"])
-        self.assertEqual(self.bridge.bound_headless, 1)
         self.assertEqual(self.bridge.model_manager_controller.ready_calls[-1][0], "small")
 
     def test_start_import_queue_closes_selenium_when_configured(self) -> None:

@@ -8,7 +8,6 @@ from typing import Any, Callable, Literal, Protocol
 import numpy as np
 
 from speech_translate._constants import MAX_THRESHOLD, MIN_THRESHOLD
-from speech_translate.linker import bc
 
 
 class ResultLike(Protocol):
@@ -152,7 +151,10 @@ class RecordingSessionServices:
         if self.status_getter is not None:
             self.status_emitter.emit(status=self.status_getter())
             return
-        self.status_emitter.emit(status=bc.current_rec_status)
+        if self.control is not None and hasattr(self.control, "current_status"):
+            self.status_emitter.emit(status=self.control.current_status())
+            return
+        raise RuntimeError("RecordingSessionServices.status_getter is required")
 
 
 @dataclass

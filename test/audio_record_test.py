@@ -940,10 +940,8 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertTrue(context.keep_temp)
 
     def test_recording_session_finalize_context_captures_lifecycle_cleanup_contract(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
         updated = []
-        previous_status = record_module.bc.current_rec_status
+        control = FakeRecordingSessionControl(status="Stopping")
         runtime = RecordingRuntime(
             taskname="Transcribe",
             device="mic",
@@ -965,6 +963,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
             status_emitter=type("Emitter", (), {"emit": lambda self, **kwargs: updated.append(kwargs)})(),
             translator=object(),
             buffer_reducer=object(),
+            control=control,
         )
         lifecycle = RecordingSessionLifecycle(
             session_state=RealtimeSessionState(),
@@ -987,12 +986,8 @@ class AudioRecordHelpersTests(unittest.TestCase):
             samp_width=2,
             sr_divider=16000,
         )
-        try:
-            record_module.bc.current_rec_status = "Stopping"
-            context = RecordingSessionFinalizeContext.from_lifecycle(lifecycle)
-            context.update_status()
-        finally:
-            record_module.bc.current_rec_status = previous_status
+        context = RecordingSessionFinalizeContext.from_lifecycle(lifecycle)
+        context.update_status()
 
         self.assertIs(context.session_state, lifecycle.session_state)
         self.assertFalse(context.keep_temp)
@@ -1030,11 +1025,13 @@ class AudioRecordHelpersTests(unittest.TestCase):
             emitter = RecordingStatusEmitter(runtime)
             previous_bridge = record_module.bc.web_bridge
             record_module.bc.web_bridge = bridge
+            control = FakeRecordingSessionControl(status="Recording")
             services = RecordingSessionServices(
                 runtime=runtime,
                 status_emitter=emitter,
                 translator=object(),
                 buffer_reducer=object(),
+                control=control,
             )
             state = RealtimeSessionState()
 
