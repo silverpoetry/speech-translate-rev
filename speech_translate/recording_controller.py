@@ -155,8 +155,26 @@ class RecordingSessionController:
             self.shutdown_selenium_fn()
         self.record_worker_thread = None
 
+    def _build_recording_session_dependencies(self, context: RecordingStartContext) -> dict[str, object]:
+        from speech_translate.utils.audio.record import build_recording_session_control
+        from speech_translate.utils.audio.record_runtime import build_recording_text_state
+        from speech_translate.utils.audio.record_streaming import build_callback_context_store
+        from speech_translate.utils.audio.record_types import RealtimeSharedState
+
+        shared_runtime_state = RealtimeSharedState()
+        return {
+            "settings_snapshot": dict(context.settings_snapshot),
+            "session_control": build_recording_session_control(runtime_state=self.runtime_state),
+            "runtime_text_state": build_recording_text_state(
+                shared_runtime_state=shared_runtime_state,
+                text_store=self.text_store,
+            ),
+            "callback_context_store": build_callback_context_store(),
+        }
+
     def _start_recording_worker(self, context: RecordingStartContext) -> None:
         from speech_translate.utils.audio.record import record_session
+        session_dependencies = self._build_recording_session_dependencies(context)
 
         def worker() -> None:
             try:
@@ -169,6 +187,10 @@ class RecordingSessionController:
                     context.is_tc,
                     context.is_tl,
                     context.device.lower() == "speaker",
+                    settings_snapshot=session_dependencies["settings_snapshot"],
+                    session_control=session_dependencies["session_control"],
+                    runtime_text_state=session_dependencies["runtime_text_state"],
+                    callback_context_store=session_dependencies["callback_context_store"],
                 )
                 self.bridge.finish_task("Recording finished")
             except Exception as exc:

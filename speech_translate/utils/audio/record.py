@@ -1143,17 +1143,29 @@ def _break_buffer_and_update_state(
 # =========================================================================
 
 def record_session(
-    lang_source: str, lang_target: str, engine: str, model_name_tc: str, device: str, is_tc: bool, is_tl: bool, speaker: bool = False
+    lang_source: str,
+    lang_target: str,
+    engine: str,
+    model_name_tc: str,
+    device: str,
+    is_tc: bool,
+    is_tl: bool,
+    speaker: bool = False,
+    *,
+    settings_snapshot: Mapping[str, object] | None = None,
+    session_control: RecordingSessionControl | None = None,
+    runtime_text_state: RecordingTextState | None = None,
+    callback_context_store=None,
 ) -> None:
     """实时录音、语音识别与翻译核心总管"""
     rec_type = "speaker" if speaker else "mic"
     p = None
     lifecycle: RecordingSessionLifecycle | None = None
-    settings_snapshot = dict(_get_recording_settings_store().cache)
-    session_shared_state = RealtimeSharedState()
-    session_text_state = build_recording_text_state(shared_runtime_state=session_shared_state)
-    session_control = build_recording_session_control()
-    session_callback_context_store = streaming_module.build_callback_context_store()
+    settings_snapshot = dict(_recording_settings_snapshot(settings_snapshot))
+    session_control = session_control or build_recording_session_control()
+    session_text_state = runtime_text_state or build_recording_text_state()
+    session_shared_state = getattr(session_text_state, "_shared", RealtimeSharedState())
+    session_callback_context_store = callback_context_store or streaming_module.build_callback_context_store()
 
     try:
         p = get_pyaudio_module().PyAudio()

@@ -29,6 +29,7 @@ from speech_translate.utils.audio.record import (
     _build_recording_sentence_count_text,
     _build_record_audio_target,
     _prepare_recording_session_bootstrap,
+    build_recording_session_control,
     _build_recording_session_config,
     _load_recording_model_runtime,
     _advance_recording_buffer,
@@ -63,6 +64,10 @@ from speech_translate.utils.audio.record import (
 )
 from speech_translate.bridge_runtime_state import BridgeLiveTextRuntime, BridgeRecordingRuntime
 from speech_translate.runtime_registry import bridge_state_registry
+from speech_translate.utils.audio.recording_runtime_state import (
+    build_recording_runtime_state_adapter,
+    build_recording_text_store_adapter,
+)
 
 
 class FakeResult:
@@ -1385,6 +1390,152 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertIsNone(finalized[0][0][1].session_state)
         self.assertIsNone(finalized[0][0][1].update_status)
         self.assertTrue(finalized[0][0][1].keep_temp)
+
+    def test_record_session_uses_injected_session_dependencies(self) -> None:
+        from queue import Queue
+        from speech_translate.utils.audio import record as record_module
+
+        previous_build_config = record_module._build_recording_session_config
+        previous_get_pyaudio_module = record_module.get_pyaudio_module
+        previous_load_runtime = record_module._load_recording_model_runtime
+        previous_build_stream = record_module._build_recording_stream_runtime
+        previous_build_services = record_module._build_recording_session_services
+        previous_start_support_threads = record_module._start_recording_session_support_threads
+        previous_open_stream = record_module._open_recording_stream
+        previous_run_loop = record_module._run_recording_session_loop
+        previous_finalize = record_module._finalize_recording_session
+        observed = {}
+        injected_runtime_state = build_recording_runtime_state_adapter(
+            state=BridgeRecordingRuntime(recording=True, data_queue=Queue()),
+        )
+        injected_control = build_recording_session_control(runtime_state=injected_runtime_state)
+        injected_text_state = build_recording_text_state(
+            shared_runtime_state=RealtimeSharedState(),
+            text_store=build_recording_text_store_adapter(state=BridgeLiveTextRuntime()),
+        )
+        injected_store = FakeCallbackContextStore()
+        injected_settings_snapshot = {
+            "transcribe_rate": 1000,
+            "max_buffer_mic": 10,
+            "max_sentences_mic": 5,
+            "mic_no_limit": False,
+            "min_input_length_mic": 0.4,
+            "keep_temp": False,
+            "threshold_enable_mic": True,
+            "threshold_db_mic": -20.0,
+            "threshold_auto_mic": True,
+            "threshold_auto_silero_mic": True,
+            "threshold_silero_mic_min": 0.75,
+            "auto_break_buffer_mic": True,
+            "use_temp": False,
+            "separate_with": repr("\n"),
+        }
+        try:
+            class ConfigStub:
+                use_temp = False
+                taskname = "Transcribe"
+                max_buffer_s = 10
+                max_sentences = 5
+                sentence_limitless = False
+
+            record_module._build_recording_session_config = lambda **kwargs: ConfigStub()
+            record_module.get_pyaudio_module = lambda: type("FakePyAudioModule", (), {"PyAudio": lambda self: object()})()
+            record_module._load_recording_model_runtime = lambda **kwargs: type(
+                "ModelRuntime",
+                (),
+                {"use_temp": False, "cuda_device": "cpu", "demucs_enabled": False, "hallucination_filters": {}, "stable_tl": None, "whisper_args": {}},
+            )()
+
+            def fake_build_stream_runtime(*, settings_snapshot=None, shared_runtime_state=None, callback_context_store_instance=None, **kwargs):
+                observed["settings_snapshot"] = settings_snapshot
+                observed["shared_runtime_state"] = shared_runtime_state
+                observed["callback_context_store_instance"] = callback_context_store_instance
+                return RecordingStreamRuntime(
+                    input_device_index=0,
+                    sr_ori=16000,
+                    num_of_channels=1,
+                    chunk_size=320,
+                    samp_width=2,
+                    sr_divider=16000,
+                    callback_ctx=RealtimeCallbackContext(
+                        sample_rate=16000,
+                        frame_duration_ms=20,
+                        threshold_enable=True,
+                        threshold_db=-20.0,
+                        threshold_auto=True,
+                        use_silero=True,
+                        silero_min_conf=0.75,
+                        vad_checked=False,
+                        num_of_channels=1,
+                        samp_width=2,
+                        use_temp=False,
+                    ),
+                )
+
+            record_module._build_recording_stream_runtime = fake_build_stream_runtime
+
+            def fake_build_services(**kwargs):
+                observed["control"] = kwargs["control"]
+                observed["runtime_text_state"] = kwargs["runtime_text_state"]
+                return RecordingSessionServices(
+                    runtime=RecordingRuntime(
+                        taskname="Transcribe",
+                        device="mic",
+                        lang_source="English",
+                        lang_target="-",
+                        engine="Whisper",
+                        is_tl=False,
+                        use_temp=False,
+                        separator="<br />",
+                        keep_temp=False,
+                        t_start=0.0,
+                        max_buffer_s=10.0,
+                        max_sentences=5,
+                        sentence_limitless=False,
+                        lang_target_display="-",
+                    ),
+                    status_emitter=type("Emitter", (), {"emit": lambda self, **kwargs: None})(),
+                    translator=object(),
+                    buffer_reducer=object(),
+                )
+
+            record_module._build_recording_session_services = fake_build_services
+            record_module._start_recording_session_support_threads = lambda **kwargs: None
+            record_module._open_recording_stream = lambda **kwargs: observed.setdefault("open_stream_kwargs", kwargs)
+            record_module._run_recording_session_loop = lambda **kwargs: None
+            record_module._finalize_recording_session = lambda *args, **kwargs: None
+
+            record_session(
+                "English",
+                "Chinese",
+                "Whisper",
+                "base",
+                "mic",
+                True,
+                False,
+                settings_snapshot=injected_settings_snapshot,
+                session_control=injected_control,
+                runtime_text_state=injected_text_state,
+                callback_context_store=injected_store,
+            )
+        finally:
+            record_module._build_recording_session_config = previous_build_config
+            record_module.get_pyaudio_module = previous_get_pyaudio_module
+            record_module._load_recording_model_runtime = previous_load_runtime
+            record_module._build_recording_stream_runtime = previous_build_stream
+            record_module._build_recording_session_services = previous_build_services
+            record_module._start_recording_session_support_threads = previous_start_support_threads
+            record_module._open_recording_stream = previous_open_stream
+            record_module._run_recording_session_loop = previous_run_loop
+            record_module._finalize_recording_session = previous_finalize
+
+        self.assertEqual(observed["settings_snapshot"], injected_settings_snapshot)
+        self.assertIsNot(observed["settings_snapshot"], injected_settings_snapshot)
+        self.assertIs(observed["shared_runtime_state"], injected_text_state._shared)
+        self.assertIs(observed["callback_context_store_instance"], injected_store)
+        self.assertIs(observed["control"], injected_control)
+        self.assertIs(observed["runtime_text_state"], injected_text_state)
+        self.assertIs(observed["open_stream_kwargs"]["state_adapter"].runtime_state, injected_runtime_state)
 
     def test_resolve_live_input_source_language_prefers_detected_supported_language(self) -> None:
         runtime_text_state = FakeRuntimeTextState(detected_language="en")

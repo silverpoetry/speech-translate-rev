@@ -192,6 +192,56 @@ class RecordingSessionControllerTests(unittest.TestCase):
         self.assertEqual(self.controller.recording_state["mode"], "Transcribe & Translate")
         self.assertEqual(len(started_contexts), 1)
 
+    def test_start_recording_worker_passes_explicit_session_dependencies(self) -> None:
+        from speech_translate import recording_controller as controller_module
+        from speech_translate.utils.audio import record as record_module
+
+        previous_thread = controller_module.Thread
+        previous_record_session = record_module.record_session
+        observed = {}
+
+        class InlineThread:
+            def __init__(self, target, daemon=None) -> None:
+                self._target = target
+                self._alive = False
+
+            def start(self) -> None:
+                self._alive = True
+                try:
+                    self._target()
+                finally:
+                    self._alive = False
+
+            def is_alive(self) -> bool:
+                return self._alive
+
+        def fake_record_session(*args, **kwargs) -> None:
+            observed["args"] = args
+            observed["kwargs"] = kwargs
+
+        try:
+            controller_module.Thread = InlineThread
+            record_module.record_session = fake_record_session
+            context = self.controller._resolve_start_context(
+                device="mic",
+                lang_source="English",
+                lang_target="Chinese",
+                engine="Google Translate",
+                is_tc=True,
+                is_tl=True,
+            )
+            self.controller._start_recording_worker(context)
+        finally:
+            controller_module.Thread = previous_thread
+            record_module.record_session = previous_record_session
+
+        self.assertEqual(observed["args"][:4], ("English", "Chinese", "Google Translate", "small"))
+        self.assertEqual(observed["kwargs"]["settings_snapshot"], context.settings_snapshot)
+        self.assertIs(observed["kwargs"]["session_control"].runtime_state, self.runtime_state)
+        self.assertIs(observed["kwargs"]["runtime_text_state"]._text_store, self.text_store)
+        self.assertIsNotNone(observed["kwargs"]["callback_context_store"])
+        self.assertEqual(self.bridge.finished, ["Recording finished"])
+
     def test_stop_recording_stops_and_closes_selenium_when_idle(self) -> None:
         previous_wait_idle = self.controller.wait_recording_idle
         try:
