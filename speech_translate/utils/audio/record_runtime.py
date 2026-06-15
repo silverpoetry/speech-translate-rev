@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from queue import Empty, Queue
 from threading import Lock
 
@@ -74,16 +75,82 @@ def _build_recording_state_payload(
 shared_state = RealtimeSharedState()
 
 
+@dataclass
+class RecordingBridgeAdapter:
+    bridge: object | None = None
+
+    def update_task_message(self, status: str) -> None:
+        bridge = bc.web_bridge if self.bridge is None else self.bridge
+        if bridge is None:
+            return
+        bridge.update_task_message(status)
+
+    def set_recording_state(self, payload: dict[str, object]) -> None:
+        bridge = bc.web_bridge if self.bridge is None else self.bridge
+        if bridge is None:
+            return
+        bridge.set_recording_state(payload)
+
+
+class RecordingTextState:
+    def __init__(self, *, shared_runtime_state: RealtimeSharedState | None = None):
+        self._shared = shared_runtime_state or shared_state
+
+    def transcribed_sentences(self) -> list[object]:
+        return list(bc.tc_sentences)
+
+    def translated_sentences(self) -> list[object]:
+        return list(bc.tl_sentences)
+
+    def set_transcribed_sentences(self, sentences: list[object]) -> None:
+        bc.tc_sentences = list(sentences)
+
+    def set_translated_sentences(self, sentences: list[object]) -> None:
+        bc.tl_sentences = list(sentences)
+
+    def append_transcribed_sentence(self, sentence: object) -> None:
+        bc.tc_sentences.append(sentence)
+
+    def append_translated_sentence(self, sentence: object) -> None:
+        bc.tl_sentences.append(sentence)
+
+    def update_transcribed_output(self, current: object | None, separator: str) -> None:
+        bc.update_tc(current, separator)
+
+    def update_translated_output(self, current: object | None, separator: str) -> None:
+        bc.update_tl(current, separator)
+
+    def detected_language(self) -> str:
+        return str(bc.auto_detected_lang)
+
+    def set_detected_language(self, language: str) -> None:
+        bc.auto_detected_lang = language
+
+    def previous_transcribed_result(self) -> ResultSnapshot:
+        return self._shared.prev_tc_res
+
+    def previous_translated_result(self) -> ResultSnapshot:
+        return self._shared.prev_tl_res
+
+    def set_previous_transcribed_result(self, result: ResultSnapshot) -> None:
+        self._shared.prev_tc_res = result
+
+    def set_previous_translated_result(self, result: ResultSnapshot) -> None:
+        self._shared.prev_tl_res = result
+
+
+text_state = RecordingTextState()
+
+
 class RecordingStatusEmitter:
-    def __init__(self, runtime: RecordingRuntime):
+    def __init__(self, runtime: RecordingRuntime, bridge_adapter: RecordingBridgeAdapter | None = None):
         self._runtime = runtime
+        self._bridge = bridge_adapter or RecordingBridgeAdapter()
 
     def emit(self, *, status: str, timer: str | None = None, buffer_text: str | None = None, sentences: str | None = None) -> None:
-        if not bc.web_bridge:
-            return
-        bc.web_bridge.update_task_message(status)
         try:
-            bc.web_bridge.set_recording_state(
+            self._bridge.update_task_message(status)
+            self._bridge.set_recording_state(
                 _build_recording_state_payload(
                     status=status,
                     device=self._runtime.device,
@@ -116,6 +183,7 @@ class TranslationDispatcher:
         stable_tl,
         whisper_args,
         record_status_updater,
+        runtime_text_state: RecordingTextState | None = None,
     ):
         self._is_tl = is_tl
         self._tl_engine_whisper = tl_engine_whisper
@@ -129,6 +197,7 @@ class TranslationDispatcher:
         self._stable_tl = stable_tl
         self._whisper_args = whisper_args
         self._record_status_updater = record_status_updater
+        self._text_state = runtime_text_state or text_state
         self._queue: Queue[TranslationTask] = Queue()
         self._lock = Lock()
         self._latest_api_task: TranslationTask | None = None
@@ -186,9 +255,23 @@ class TranslationDispatcher:
             try:
                 self._record_status_updater()
                 if task.kind == "whisper":
-                    run_whisper_tl(task.audio, self._stable_tl, task.separator, self._hallucination_filters, **self._whisper_args)
+                    run_whisper_tl(
+                        task.audio,
+                        self._stable_tl,
+                        task.separator,
+                        self._hallucination_filters,
+                        runtime_text_state=self._text_state,
+                        **self._whisper_args,
+                    )
                 else:
-                    tl_api(task.text, task.lang_source, task.lang_target, task.engine, task.separator)
+                    tl_api(
+                        task.text,
+                        task.lang_source,
+                        task.lang_target,
+                        task.engine,
+                        task.separator,
+                        runtime_text_state=self._text_state,
+                    )
             except Exception as exc:
                 logger.exception(exc)
             finally:
@@ -211,6 +294,7 @@ class BufferStateReducer:
         max_sentences: int,
         separator: str,
         translator: TranslationDispatcher,
+        runtime_text_state: RecordingTextState | None = None,
     ):
         self._is_tc = is_tc
         self._is_tl = is_tl
@@ -219,30 +303,39 @@ class BufferStateReducer:
         self._max_sentences = max_sentences
         self._separator = separator
         self._translator = translator
+        self._text_state = runtime_text_state or text_state
 
     def reduce_sentences(self) -> None:
-        if self._is_tc and shared_state.prev_tc_res:
-            bc.tc_sentences.append(shared_state.prev_tc_res)
-        bc.tc_sentences = _enforce_sentence_limits(bc.tc_sentences, self._sentence_limitless, self._max_sentences)
-        if bc.tc_sentences:
-            bc.update_tc(None, self._separator)
-        self._translator.dispatch(None, _build_full_transcribed_text(bc.tc_sentences, None))
-        shared_state.prev_tc_res = ""
+        previous_tc = self._text_state.previous_transcribed_result()
+        tc_sentences = self._text_state.transcribed_sentences()
+        if self._is_tc and previous_tc:
+            tc_sentences.append(previous_tc)
+        tc_sentences = _enforce_sentence_limits(tc_sentences, self._sentence_limitless, self._max_sentences)
+        self._text_state.set_transcribed_sentences(tc_sentences)
+        if tc_sentences:
+            self._text_state.update_transcribed_output(None, self._separator)
+        self._translator.dispatch(None, _build_full_transcribed_text(tc_sentences, None))
+        self._text_state.set_previous_transcribed_result("")
 
         if self._is_tl:
-            if shared_state.prev_tl_res and self._tl_engine_whisper:
-                bc.tl_sentences.append(shared_state.prev_tl_res)
-            bc.tl_sentences = _enforce_sentence_limits(bc.tl_sentences, self._sentence_limitless, self._max_sentences)
-            if bc.tl_sentences:
-                bc.update_tl(None, self._separator)
-            shared_state.prev_tl_res = ""
+            previous_tl = self._text_state.previous_translated_result()
+            tl_sentences = self._text_state.translated_sentences()
+            if previous_tl and self._tl_engine_whisper:
+                tl_sentences.append(previous_tl)
+            tl_sentences = _enforce_sentence_limits(tl_sentences, self._sentence_limitless, self._max_sentences)
+            self._text_state.set_translated_sentences(tl_sentences)
+            if tl_sentences:
+                self._text_state.update_translated_output(None, self._separator)
+            self._text_state.set_previous_translated_result("")
 
 
-def _resolve_live_input_source_language(lang_source: str, engine: str) -> str:
+def _resolve_live_input_source_language(lang_source: str, engine: str, runtime_text_state: RecordingTextState | None = None) -> str:
+    runtime_text_state = runtime_text_state or text_state
     source_lang = lang_source
-    if bc.auto_detected_lang and bc.auto_detected_lang != "~":
+    detected_lang = runtime_text_state.detected_language()
+    if detected_lang and detected_lang != "~":
         try:
-            detected_name = get_whisper_lang_name(bc.auto_detected_lang)
+            detected_name = get_whisper_lang_name(detected_lang)
             if verify_language_in_key(detected_name.lower(), engine):
                 source_lang = detected_name
         except Exception:
@@ -282,8 +375,10 @@ def run_whisper_tl(
     stable_tl: WhisperCallable,
     separator: str,
     hallucination_filters: HallucinationFilters,
+    runtime_text_state: RecordingTextState | None = None,
     **whisper_args,
 ):
+    runtime_text_state = runtime_text_state or text_state
     try:
         result = stable_tl(audio, task="translate", **whisper_args)
         if sj.cache["filter_rec"]:
@@ -293,22 +388,30 @@ def run_whisper_tl(
                 sj.cache["filter_rec_exact_match"], sj.cache["filter_rec_similarity"], False
             )
         text = result.text.strip()
-        bc.auto_detected_lang = result.language or "~"
+        runtime_text_state.set_detected_language(result.language or "~")
         if text:
-            shared_state.prev_tl_res = result
-            bc.update_tl(result, separator)
+            runtime_text_state.set_previous_translated_result(result)
+            runtime_text_state.update_translated_output(result, separator)
     except Exception as e:
         logger.error(f"Whisper TL Error: {e}")
 
 
-def tl_api(text: str, lang_source: str, lang_target: str, engine: str, separator: str):
+def tl_api(
+    text: str,
+    lang_source: str,
+    lang_target: str,
+    engine: str,
+    separator: str,
+    runtime_text_state: RecordingTextState | None = None,
+):
+    runtime_text_state = runtime_text_state or text_state
     try:
         source_units = [line.strip() for line in text.splitlines() if line.strip()]
         if not source_units:
             return
 
         kwargs = {"live_input": True}
-        source_lang = _resolve_live_input_source_language(lang_source, engine)
+        source_lang = _resolve_live_input_source_language(lang_source, engine, runtime_text_state)
 
         if engine == "LibreTranslate":
             kwargs.update({"libre_link": sj.cache["libre_link"], "libre_api_key": sj.cache["libre_api_key"]})
@@ -330,11 +433,13 @@ def tl_api(text: str, lang_source: str, lang_target: str, engine: str, separator
             return
 
         if engine == "Selenium Chrome Translate":
-            bc.tl_sentences, shared_state.prev_tl_res = aligned_units, ""
-            bc.update_tl(None, separator)
+            runtime_text_state.set_translated_sentences(aligned_units)
+            runtime_text_state.set_previous_translated_result("")
+            runtime_text_state.update_translated_output(None, separator)
             return
 
-        bc.tl_sentences, shared_state.prev_tl_res = _merge_translation_units(aligned_units) or aligned_units, ""
-        bc.update_tl(None, separator)
+        runtime_text_state.set_translated_sentences(_merge_translation_units(aligned_units) or aligned_units)
+        runtime_text_state.set_previous_translated_result("")
+        runtime_text_state.update_translated_output(None, separator)
     except Exception as e:
         logger.error(f"API Translation ({engine}) failed: {str(e)}")

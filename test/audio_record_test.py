@@ -110,6 +110,61 @@ class FakeBufferReducer:
         self.calls += 1
 
 
+class FakeRuntimeTextState:
+    def __init__(
+        self,
+        *,
+        tc_sentences=None,
+        tl_sentences=None,
+        detected_language: str = "~",
+        prev_tc_res="",
+        prev_tl_res="",
+    ) -> None:
+        self._tc_sentences = [] if tc_sentences is None else list(tc_sentences)
+        self._tl_sentences = [] if tl_sentences is None else list(tl_sentences)
+        self._detected_language = detected_language
+        self._prev_tc_res = prev_tc_res
+        self._prev_tl_res = prev_tl_res
+        self.tc_updates = []
+        self.tl_updates = []
+
+    def transcribed_sentences(self):
+        return list(self._tc_sentences)
+
+    def translated_sentences(self):
+        return list(self._tl_sentences)
+
+    def set_transcribed_sentences(self, sentences):
+        self._tc_sentences = list(sentences)
+
+    def set_translated_sentences(self, sentences):
+        self._tl_sentences = list(sentences)
+
+    def update_transcribed_output(self, current, separator):
+        self.tc_updates.append((current, separator))
+
+    def update_translated_output(self, current, separator):
+        self.tl_updates.append((current, separator))
+
+    def detected_language(self) -> str:
+        return self._detected_language
+
+    def set_detected_language(self, language: str) -> None:
+        self._detected_language = language
+
+    def previous_transcribed_result(self):
+        return self._prev_tc_res
+
+    def previous_translated_result(self):
+        return self._prev_tl_res
+
+    def set_previous_transcribed_result(self, result):
+        self._prev_tc_res = result
+
+    def set_previous_translated_result(self, result):
+        self._prev_tl_res = result
+
+
 class FakeLock:
     def __enter__(self):
         return self
@@ -1557,6 +1612,41 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(bridge.states[-1]["status"], "Recording")
         self.assertEqual(bridge.states[-1]["timer"], "00:00:01")
 
+    def test_recording_status_emitter_supports_injected_bridge_adapter(self) -> None:
+        runtime = RecordingRuntime(
+            taskname="Transcribe",
+            device="mic",
+            lang_source="English",
+            lang_target="Chinese",
+            engine="Whisper",
+            is_tl=True,
+            use_temp=False,
+            separator="<br />",
+            keep_temp=False,
+            t_start=0.0,
+            max_buffer_s=10.0,
+            max_sentences=5,
+            sentence_limitless=False,
+            lang_target_display="Chinese",
+        )
+        bridge = FakeWebBridge()
+        emitter = RecordingStatusEmitter(
+            runtime,
+            bridge_adapter=type(
+                "InjectedBridgeAdapter",
+                (),
+                {
+                    "update_task_message": lambda _self, message: bridge.update_task_message(message),
+                    "set_recording_state": lambda _self, payload: bridge.set_recording_state(payload),
+                },
+            )(),
+        )
+
+        emitter.emit(status="Recording", timer="00:00:02")
+
+        self.assertEqual(bridge.messages, ["Recording"])
+        self.assertEqual(bridge.states[-1]["timer"], "00:00:02")
+
     def test_buffer_state_reducer_moves_previous_results_into_sentences(self) -> None:
         from speech_translate.utils.audio import record as record_module
 
@@ -1602,6 +1692,56 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(tc_updates[-1][1], "<br />")
         self.assertEqual(tl_updates[-1][1], "<br />")
         self.assertEqual(translator.calls[-1], (None, "old\nnew"))
+
+    def test_buffer_state_reducer_can_use_injected_text_state(self) -> None:
+        translator = FakeTranslator()
+        runtime_text_state = FakeRuntimeTextState(
+            tc_sentences=["old"],
+            tl_sentences=[],
+            prev_tc_res=FakeResult("new"),
+            prev_tl_res=FakeResult("translated"),
+        )
+        reducer = BufferStateReducer(
+            is_tc=True,
+            is_tl=True,
+            tl_engine_whisper=True,
+            sentence_limitless=False,
+            max_sentences=2,
+            separator="<br />",
+            translator=translator,
+            runtime_text_state=runtime_text_state,
+        )
+
+        reducer.reduce_sentences()
+
+        self.assertEqual(runtime_text_state.tc_updates[-1][1], "<br />")
+        self.assertEqual(runtime_text_state.tl_updates[-1][1], "<br />")
+        self.assertEqual(len(runtime_text_state.transcribed_sentences()), 2)
+        self.assertEqual(_result_text(runtime_text_state.transcribed_sentences()[0]), "old")
+        self.assertEqual(_result_text(runtime_text_state.transcribed_sentences()[-1]), "new")
+        self.assertEqual(translator.calls[-1], (None, "old\nnew"))
+
+    def test_tl_api_uses_injected_text_state_for_detected_language_and_output(self) -> None:
+        from speech_translate.utils.audio import record_runtime as record_runtime_module
+
+        previous_translate = record_runtime_module.translate
+        runtime_text_state = FakeRuntimeTextState(detected_language="en")
+        try:
+            record_runtime_module.translate = lambda *args, **kwargs: (True, [" ni hao "])
+            record_runtime_module.tl_api(
+                "hello",
+                "Auto Detect",
+                "Chinese",
+                "Google Translate",
+                "<br />",
+                runtime_text_state=runtime_text_state,
+            )
+        finally:
+            record_runtime_module.translate = previous_translate
+
+        self.assertEqual(runtime_text_state.translated_sentences(), ["ni hao"])
+        self.assertEqual(runtime_text_state.previous_translated_result(), "")
+        self.assertEqual(runtime_text_state.tl_updates[-1][1], "<br />")
 
     def test_build_smart_split_outcome_slices_audio_and_results(self) -> None:
         result = FakeSmartResult(
