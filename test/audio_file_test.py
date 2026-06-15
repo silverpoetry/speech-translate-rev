@@ -47,6 +47,7 @@ from speech_translate.utils.audio.file import (
     process_file,
     translate_result,
 )
+from speech_translate.utils.audio.file_runtime_settings import build_file_runtime_settings
 from speech_translate.bridge_runtime_state import BridgeFileRuntime, BridgeRecordingRuntime, BridgeVisualRuntime
 from speech_translate.runtime_registry import bridge_state_registry
 
@@ -195,6 +196,55 @@ class AudioFileHelpersTests(unittest.TestCase):
         )
 
         self.assertTrue(environment.has_ffmpeg)
+
+    def test_build_file_runtime_settings_extracts_file_runtime_policy(self) -> None:
+        settings = build_file_runtime_settings(
+            {
+                "export_format": "{file}-{task}",
+                "export_to": ["txt", "json"],
+                "auto_open_dir_export": False,
+                "auto_open_dir_translate": True,
+                "auto_open_dir_refinement": False,
+                "auto_open_dir_alignment": True,
+                "path_filter_file_import": "D:\\filters\\input.json",
+                "filter_file_import": True,
+                "filter_file_import_case_sensitive": True,
+                "filter_file_import_strip": False,
+                "filter_file_import_ignore_punctuations": "!?",
+                "filter_file_import_exact_match": False,
+                "filter_file_import_similarity": 0.9,
+                "remove_repetition_file_import": True,
+                "remove_repetition_amount": 2,
+                "http_proxy": "http://127.0.0.1:8080",
+                "https_proxy": "https://127.0.0.1:8443",
+                "debug_translate": True,
+                "libre_link": "http://127.0.0.1:5000",
+                "libre_api_key": "secret",
+            }
+        )
+
+        self.assertEqual(settings.export_format, "{file}-{task}")
+        self.assertEqual(settings.export_to, ["txt", "json"])
+        self.assertFalse(settings.auto_open_dir_export)
+        self.assertTrue(settings.auto_open_dir_translate)
+        self.assertFalse(settings.auto_open_dir_refinement)
+        self.assertTrue(settings.auto_open_dir_alignment)
+        self.assertEqual(settings.path_filter_file_import, "D:\\filters\\input.json")
+        self.assertTrue(settings.filter_file_import)
+        self.assertTrue(settings.filter_file_import_case_sensitive)
+        self.assertFalse(settings.filter_file_import_strip)
+        self.assertEqual(settings.filter_file_import_ignore_punctuations, "!?")
+        self.assertFalse(settings.filter_file_import_exact_match)
+        self.assertEqual(settings.filter_file_import_similarity, 0.9)
+        self.assertTrue(settings.remove_repetition_file_import)
+        self.assertEqual(settings.remove_repetition_amount, 2)
+        self.assertEqual(settings.http_proxy, "http://127.0.0.1:8080")
+        self.assertEqual(settings.https_proxy, "https://127.0.0.1:8443")
+        self.assertTrue(settings.debug_translate)
+        self.assertEqual(settings.libre_link, "http://127.0.0.1:5000")
+        self.assertEqual(settings.libre_api_key, "secret")
+        self.assertFalse(settings.should_auto_open_dir("refinement"))
+        self.assertTrue(settings.should_auto_open_dir("alignment"))
 
     def test_build_process_file_runtime_collects_shared_runtime_state(self) -> None:
         fake_stable_tc = object()
@@ -530,6 +580,7 @@ class AudioFileHelpersTests(unittest.TestCase):
             result_queue=result_queue,
             processing_state=processing_state,
             settings=FileSettingsAdapter(cache={"auto_open_dir_export": True, "export_format": "{file}", "export_to": ["txt"]}),
+            runtime_settings=build_file_runtime_settings({"auto_open_dir_export": True, "export_format": "{file}", "export_to": ["txt"]}),
             environment=FileEnvironmentAdapter(has_ffmpeg=True),
         )
         with (
@@ -588,6 +639,7 @@ class AudioFileHelpersTests(unittest.TestCase):
             result_queue=result_queue,
             processing_state=processing_state,
             settings=FileSettingsAdapter(cache={"auto_open_dir_alignment": True, "export_format": "{file}", "export_to": ["json"]}),
+            runtime_settings=build_file_runtime_settings({"auto_open_dir_alignment": True, "export_format": "{file}", "export_to": ["json"]}),
         )
         with (
             patch("speech_translate.utils.audio.file._build_mod_result_runtime", return_value=runtime),
@@ -629,6 +681,7 @@ class AudioFileHelpersTests(unittest.TestCase):
             ui_bridge=ui_bridge,
             processing_state=processing_state,
             settings=FileSettingsAdapter(cache={"auto_open_dir_translate": True, "export_format": "{file}", "export_to": ["json"]}),
+            runtime_settings=build_file_runtime_settings({"auto_open_dir_translate": True, "export_format": "{file}", "export_to": ["json"]}),
         )
         with (
             patch("speech_translate.utils.audio.file._build_translate_result_runtime", return_value=runtime),

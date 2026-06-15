@@ -12,6 +12,7 @@ from speech_translate._path import dir_alignment, dir_export, dir_refinement, di
 from speech_translate.runtime_registry import bridge_state_registry, get_current_bridge, settings_registry
 from speech_translate.runtime_deps import empty_torch_cuda_cache, get_stable_whisper, get_whisper_to_language_code
 from speech_translate.utils.translate.language import get_whisper_lang_name, get_whisper_lang_similar
+from speech_translate.utils.audio.file_runtime_settings import FileRuntimeSettings, build_file_runtime_settings
 
 from ..helper import filename_only, get_proxies, kill_thread, start_file
 from ..translate.translator import translate
@@ -193,7 +194,7 @@ class FileProcessingStateAdapter:
 
 
 def _get_file_settings_store():
-    return FileSettingsAdapter(cache=settings_registry.get().cache)
+    return FileSettingsAdapter(cache=dict(settings_registry.get().cache))
 
 
 def _get_file_runtime_state():
@@ -404,6 +405,7 @@ class FileProcessRuntime:
     result_queue: FileResultQueueAdapter
     processing_state: FileProcessingStateAdapter
     settings: FileSettingsAdapter
+    runtime_settings: FileRuntimeSettings
     environment: FileEnvironmentAdapter
 
 
@@ -423,6 +425,7 @@ class FileModRuntime:
     result_queue: FileResultQueueAdapter
     processing_state: FileProcessingStateAdapter
     settings: FileSettingsAdapter
+    runtime_settings: FileRuntimeSettings
 
 
 @dataclass(frozen=True)
@@ -437,6 +440,7 @@ class FileResultTranslateRuntime:
     ui_bridge: FileUiBridgeAdapter
     processing_state: FileProcessingStateAdapter
     settings: FileSettingsAdapter
+    runtime_settings: FileRuntimeSettings
 
 def _build_combined_status(
     index: int,
@@ -582,6 +586,7 @@ def _build_process_file_runtime(
     settings = dependencies.settings
     environment = dependencies.environment
     setting_cache = settings.cache
+    runtime_settings = build_file_runtime_settings(setting_cache)
     tl_engine_whisper = request.engine in model_values
     stable_tc = stable_tl = None
     to_args = None
@@ -591,10 +596,10 @@ def _build_process_file_runtime(
         tl_engine_whisper,
         request.model_name_tc,
         request.engine,
-        setting_cache,
-        **get_model_args(setting_cache),
+        runtime_settings.snapshot,
+        **get_model_args(runtime_settings.snapshot),
     )
-    whisper_args = get_tc_args(to_args, setting_cache)
+    whisper_args = get_tc_args(to_args, runtime_settings.snapshot)
     whisper_args["language"] = (
         get_whisper_to_language_code()[get_whisper_lang_similar(request.lang_source)]
         if request.lang_source != "auto detect"
@@ -609,11 +614,11 @@ def _build_process_file_runtime(
         else "Translate"
     )
     filters = (
-        get_hallucination_filter("file", setting_cache["path_filter_file_import"])
-        if setting_cache["filter_file_import"]
+        get_hallucination_filter("file", runtime_settings.path_filter_file_import)
+        if runtime_settings.filter_file_import
         else {}
     )
-    slice_start, slice_end = _resolve_slice_bounds(setting_cache)
+    slice_start, slice_end = _resolve_slice_bounds(runtime_settings.snapshot)
     return FileProcessRuntime(
         status_context=FileBatchStatusContext(
             is_tc=request.is_tc,
@@ -621,7 +626,7 @@ def _build_process_file_runtime(
             is_mod=False,
             ui_bridge=ui_bridge,
         ),
-        export_dir=_resolve_process_export_dir(setting_cache),
+        export_dir=_resolve_process_export_dir(runtime_settings.snapshot),
         slice_start=slice_start,
         slice_end=slice_end,
         tl_engine_whisper=tl_engine_whisper,
@@ -635,6 +640,7 @@ def _build_process_file_runtime(
         result_queue=result_queue,
         processing_state=processing_state,
         settings=settings,
+        runtime_settings=runtime_settings,
         environment=environment,
     )
 
@@ -649,26 +655,32 @@ def _build_mod_result_runtime(
     processing_state = dependencies.processing_state
     settings = dependencies.settings
     setting_cache = settings.cache
+    runtime_settings = build_file_runtime_settings(setting_cache)
     action = "Refinement" if request.mode == "refinement" else "Alignment"
     stable_whisper = get_stable_whisper()
-    model = stable_whisper.load_model(request.model_name_tc, **get_model_args(setting_cache))
+    model = stable_whisper.load_model(request.model_name_tc, **get_model_args(runtime_settings.snapshot))
     mod_func = model.refine if request.mode == "refinement" else model.align
-    slice_start, slice_end = _resolve_slice_bounds(setting_cache)
+    slice_start, slice_end = _resolve_slice_bounds(runtime_settings.snapshot)
     return FileModRuntime(
         status_context=FileBatchStatusContext(is_tc=False, is_tl=False, is_mod=True, ui_bridge=ui_bridge),
         action=action,
-        export_dir=_resolve_mod_export_dir(setting_cache, action=action),
+        export_dir=_resolve_mod_export_dir(runtime_settings.snapshot, action=action),
         slice_start=slice_start,
         slice_end=slice_end,
         stable_whisper_api=stable_whisper,
         model=model,
         mod_func=mod_func,
-        mod_args=get_tc_args(mod_func, setting_cache, mode="refine" if request.mode == "refinement" else "align"),
+        mod_args=get_tc_args(
+            mod_func,
+            runtime_settings.snapshot,
+            mode="refine" if request.mode == "refinement" else "align",
+        ),
         started_at=time(),
         ui_bridge=ui_bridge,
         result_queue=result_queue,
         processing_state=processing_state,
         settings=settings,
+        runtime_settings=runtime_settings,
     )
 
 
@@ -681,15 +693,16 @@ def _build_translate_result_runtime(
     processing_state = dependencies.processing_state
     settings = dependencies.settings
     setting_cache = settings.cache
-    slice_start, slice_end = _resolve_slice_bounds(setting_cache)
+    runtime_settings = build_file_runtime_settings(setting_cache)
+    slice_start, slice_end = _resolve_slice_bounds(runtime_settings.snapshot)
     api_kwargs = (
-        {"libre_link": setting_cache["libre_link"], "libre_api_key": setting_cache["libre_api_key"]}
+        {"libre_link": runtime_settings.libre_link, "libre_api_key": runtime_settings.libre_api_key}
         if request.engine == "LibreTranslate"
         else {}
     )
     return FileResultTranslateRuntime(
         status_context=FileBatchStatusContext(is_tc=False, is_tl=False, is_mod=True, ui_bridge=ui_bridge),
-        export_dir=_resolve_translate_result_export_dir(setting_cache),
+        export_dir=_resolve_translate_result_export_dir(runtime_settings.snapshot),
         slice_start=slice_start,
         slice_end=slice_end,
         stable_whisper_api=get_stable_whisper(),
@@ -698,6 +711,7 @@ def _build_translate_result_runtime(
         ui_bridge=ui_bridge,
         processing_state=processing_state,
         settings=settings,
+        runtime_settings=runtime_settings,
     )
 
 def _monitor_thread(thread: Thread, check_cancel: Callable[[], bool]) -> None:
@@ -775,14 +789,14 @@ def run_translate_api(
     try:
         segment_texts = [segment.text for segment in query.segments]
         query.language = lang_target
-        cache = settings.cache
+        runtime_settings = build_file_runtime_settings(settings.cache)
         _success, result = translate(
             engine,
             segment_texts,
             lang_source,
             lang_target,
-            get_proxies(cache["http_proxy"], cache["https_proxy"]),
-            cache["debug_translate"],
+            get_proxies(runtime_settings.http_proxy, runtime_settings.https_proxy),
+            runtime_settings.debug_translate,
             **kwargs,
         )
 
@@ -840,7 +854,7 @@ def _cancellable_tc(
 ):
     processing_state = processing_state or build_file_processing_state_adapter()
     result_queue = result_queue or build_file_result_queue_adapter()
-    cache = settings.cache
+    runtime_settings = build_file_runtime_settings(settings.cache)
     start = time()
     try:
         _update_status(status_context, "tc", index, "Transcribing please wait...")
@@ -858,20 +872,31 @@ def _cancellable_tc(
             fail_status=fail_status,
             result_queue=result_queue,
         )
-        if cache["filter_file_import"]:
-            try: result = remove_segments_by_str(result, filters.get(get_whisper_lang_name(result.language) if auto else get_whisper_lang_similar(lang_source), []), cache["filter_file_import_case_sensitive"], cache["filter_file_import_strip"], cache["filter_file_import_ignore_punctuations"], cache["filter_file_import_exact_match"], cache["filter_file_import_similarity"])
-            except Exception: pass
+        if runtime_settings.filter_file_import:
+            try:
+                result = remove_segments_by_str(
+                    result,
+                    filters.get(get_whisper_lang_name(result.language) if auto else get_whisper_lang_similar(lang_source), []),
+                    runtime_settings.filter_file_import_case_sensitive,
+                    runtime_settings.filter_file_import_strip,
+                    runtime_settings.filter_file_import_ignore_punctuations,
+                    runtime_settings.filter_file_import_exact_match,
+                    runtime_settings.filter_file_import_similarity,
+                )
+            except Exception:
+                pass
 
-        if cache["remove_repetition_file_import"]: result = result.remove_repetition(cache["remove_repetition_amount"])
+        if runtime_settings.remove_repetition_file_import:
+            result = result.remove_repetition(runtime_settings.remove_repetition_amount)
 
         if is_tc:
             if result.text.strip():
                 processing_state.increment_transcribed_count()
                 stable_whisper = get_stable_whisper()
                 save_output_stable_ts(
-                    split_res(stable_whisper.WhisperResult(result.to_dict()), cache),
+                    split_res(stable_whisper.WhisperResult(result.to_dict()), runtime_settings.snapshot),
                     tc_export_plan.save_base_path,
-                    cache["export_to"],
+                    runtime_settings.export_to,
                     settings,
                     source_media_path=file_path,
                 )
@@ -916,7 +941,7 @@ def _cancellable_tl(
 ):
     processing_state = processing_state or build_file_processing_state_adapter()
     result_queue = result_queue or build_file_result_queue_adapter()
-    cache = settings.cache
+    runtime_settings = build_file_runtime_settings(settings.cache)
     start = time()
     try:
         _update_status(status_context, "tl", index, "Translating please wait...")
@@ -935,14 +960,29 @@ def _cancellable_tl(
                 fail_status=fail_status,
                 result_queue=result_queue,
             )
-            if cache["filter_file_import"]:
-                try: result = remove_segments_by_str(result, filters.get("english", []), cache["filter_file_import_case_sensitive"], cache["filter_file_import_strip"], cache["filter_file_import_ignore_punctuations"], cache["filter_file_import_exact_match"], cache["filter_file_import_similarity"])
-                except Exception: pass
-            if cache["remove_repetition_file_import"]: result = result.remove_repetition(cache["remove_repetition_amount"])
+            if runtime_settings.filter_file_import:
+                try:
+                    result = remove_segments_by_str(
+                        result,
+                        filters.get("english", []),
+                        runtime_settings.filter_file_import_case_sensitive,
+                        runtime_settings.filter_file_import_strip,
+                        runtime_settings.filter_file_import_ignore_punctuations,
+                        runtime_settings.filter_file_import_exact_match,
+                        runtime_settings.filter_file_import_similarity,
+                    )
+                except Exception:
+                    pass
+            if runtime_settings.remove_repetition_file_import:
+                result = result.remove_repetition(runtime_settings.remove_repetition_amount)
         else:
             if not getattr(query, "text", "").strip():
                 return _update_status(status_context, "tl", index, "TL Fail! Empty text")
-            api_kwargs = {"libre_link": cache["libre_link"], "libre_api_key": cache["libre_api_key"]} if engine == "LibreTranslate" else {}
+            api_kwargs = (
+                {"libre_link": runtime_settings.libre_link, "libre_api_key": runtime_settings.libre_api_key}
+                if engine == "LibreTranslate"
+                else {}
+            )
             _run_monitored_worker(
                 run_translate_api,
                 cancel_check=processing_state.is_translating_file,
@@ -956,7 +996,13 @@ def _cancellable_tl(
             return _update_status(status_context, "tl", index, "TL Fail! Empty text")
 
         processing_state.increment_translated_count()
-        save_output_stable_ts(split_res(result, cache), tl_export_plan.save_base_path, cache["export_to"], settings, source_media_path=media_path)
+        save_output_stable_ts(
+            split_res(result, runtime_settings.snapshot),
+            tl_export_plan.save_base_path,
+            runtime_settings.export_to,
+            settings,
+            source_media_path=media_path,
+        )
         _update_status(status_context, "tl", index, "Translated")
         _save_export_plan_metadata(export_plan, {"translate_time": time() - start, "translate_success": True})
 
@@ -1007,7 +1053,7 @@ def process_file(
             logger.info(f"Loop entered for file: {file}")
             file_name = _slice_display_name(file, start=runtime.slice_start, end=runtime.slice_end)
             base_name = _build_base_export_name(
-                datetime.now().strftime(runtime.settings.cache["export_format"]),
+                datetime.now().strftime(runtime.runtime_settings.export_format),
                 file_name,
                 request.lang_source,
                 request.lang_target,
@@ -1056,7 +1102,9 @@ def process_file(
             sleep(0.5)
 
         logger.info(f"Process FILE completed in {time() - runtime.started_at:.2f}s")
-        if (processing_state.transcribed_count() > 0 or processing_state.translated_count() > 0) and runtime.settings.cache["auto_open_dir_export"]:
+        if (
+            processing_state.transcribed_count() > 0 or processing_state.translated_count() > 0
+        ) and runtime.runtime_settings.auto_open_dir_export:
             open_dir_fn(runtime.export_dir)
 
     except Exception as e:
@@ -1104,7 +1152,7 @@ def mod_result(
             audio_path, mod_path = file_data[0], file_data[1]
             file_name = _slice_display_name(audio_path, start=runtime.slice_start, end=runtime.slice_end)
             base_name = _build_base_export_name(
-                datetime.now().strftime(runtime.settings.cache["export_format"]),
+                datetime.now().strftime(runtime.runtime_settings.export_format),
                 file_name,
                 "",
                 "",
@@ -1149,7 +1197,10 @@ def mod_result(
                     if "'NoneType'" in str(e) and request.mode == "refinement":
                         try:
                             _update_status(status_context, "mod", i, "Re-transcribing...")
-                            res = runtime.model.transcribe(audio_path, **get_tc_args(runtime.model.transcribe, runtime.settings.cache))
+                            res = runtime.model.transcribe(
+                                audio_path,
+                                **get_tc_args(runtime.model.transcribe, runtime.runtime_settings.snapshot),
+                            )
                             res = runtime.mod_func(audio_path, res, **mod_args)
                             runtime.result_queue.put(res)
                         except Exception as ee:
@@ -1170,19 +1221,22 @@ def mod_result(
                 _update_status(status_context, "mod", i, "Failed")
                 continue
 
-            result = split_res(result, runtime.settings.cache)
+            result = split_res(result, runtime.runtime_settings.snapshot)
             if not result.language: result.language = mod_args.get("language", "auto")
 
-            save_output_stable_ts(result, export_plan.save_base_path, runtime.settings.cache["export_to"], runtime.settings)
+            save_output_stable_ts(result, export_plan.save_base_path, runtime.runtime_settings.export_to, runtime.settings)
             processing_state.increment_mod_counter()
             _update_status(status_context, "mod", i, runtime.action)
-            _save_export_plan_metadata(export_plan, {"meta_written_at": str(datetime.now()), "task": f"Mod Result ({mode})", "time": time() - runtime.started_at})
+            _save_export_plan_metadata(
+                export_plan,
+                {"meta_written_at": str(datetime.now()), "task": f"Mod Result ({request.mode})", "time": time() - runtime.started_at},
+            )
 
         while processing_state.is_file_processing() and is_still_active():
             sleep(0.5)
 
         logger.info(f"Process MOD completed in {time() - runtime.started_at:.2f}s")
-        if processing_state.mod_counter() > 0 and runtime.settings.cache.get(f"auto_open_dir_{request.mode}", True):
+        if processing_state.mod_counter() > 0 and runtime.runtime_settings.should_auto_open_dir(request.mode):
             open_dir_fn(runtime.export_dir)
 
     except Exception as e:
@@ -1230,7 +1284,7 @@ def translate_result(
             lang_src = to_language_name(result.language) or "auto"
             file_name = _slice_display_name(file_path, start=runtime.slice_start, end=runtime.slice_end)
             base_name = _build_base_export_name(
-                datetime.now().strftime(runtime.settings.cache["export_format"]),
+                datetime.now().strftime(runtime.runtime_settings.export_format),
                 file_name,
                 lang_src,
                 request.lang_target,
@@ -1270,7 +1324,13 @@ def translate_result(
                 continue
 
             processing_state.increment_mod_counter()
-            save_output_stable_ts(split_res(result, runtime.settings.cache), export_plan.save_base_path, runtime.settings.cache["export_to"], runtime.settings, source_media_path=file_path)
+            save_output_stable_ts(
+                split_res(result, runtime.runtime_settings.snapshot),
+                export_plan.save_base_path,
+                runtime.runtime_settings.export_to,
+                runtime.settings,
+                source_media_path=file_path,
+            )
             _update_status(status_context, "mod", i, "Translated")
             _save_export_plan_metadata(export_plan, {"meta_written_at": str(datetime.now()), "task": "Translate JSON", "time": time() - runtime.started_at})
 
@@ -1278,7 +1338,7 @@ def translate_result(
             sleep(0.5)
 
         logger.info(f"Process TL JSON completed in {time() - runtime.started_at:.2f}s")
-        if processing_state.mod_counter() > 0 and runtime.settings.cache["auto_open_dir_translate"]:
+        if processing_state.mod_counter() > 0 and runtime.runtime_settings.auto_open_dir_translate:
             open_dir_fn(runtime.export_dir)
 
     except Exception as e:

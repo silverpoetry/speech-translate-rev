@@ -89,7 +89,7 @@ def get_tc_args(*args, **kwargs):
 
 
 def _get_recording_settings_store() -> RecordingSettingsAdapter:
-    return RecordingSettingsAdapter(cache=settings_registry.get().cache)
+    return RecordingSettingsAdapter(cache=dict(settings_registry.get().cache))
 
 
 def _recording_settings_snapshot(settings_snapshot: Mapping[str, object] | None = None) -> Mapping[str, object]:

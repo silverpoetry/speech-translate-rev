@@ -36,7 +36,7 @@ if False:
 
 
 def _get_recording_processing_settings():
-    return RecordingSettingsAdapter(cache=settings_registry.get().cache)
+    return RecordingSettingsAdapter(cache=dict(settings_registry.get().cache))
 
 
 def save_to_temp(audio_bytes: bytes, channels: int, samp_width: int, sr: int) -> str:

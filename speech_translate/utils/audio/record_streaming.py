@@ -61,7 +61,7 @@ callback_context_store = build_callback_context_store()
 
 
 def _get_recording_settings():
-    return AudioDeviceSettings(cache=settings_registry.get().cache)
+    return AudioDeviceSettings(cache=dict(settings_registry.get().cache))
 
 
 def _recording_settings_snapshot(settings_snapshot=None):
