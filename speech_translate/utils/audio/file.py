@@ -114,6 +114,9 @@ class FileBatchStatusContext:
             for stage, enabled in (("tc", self.is_tc), ("tl", self.is_tl), ("mod", self.is_mod))
         )
 
+    def has_active_work(self, item_count: int) -> bool:
+        return any(self.is_active(index) for index in range(item_count))
+
     def sync_ui(self, index: int) -> None:
         if not bc.web_bridge:
             return
@@ -126,20 +129,6 @@ class FileBatchStatusContext:
             self.sync_ui(index)
         except Exception as exc:
             logger.error(f"UI Sync Error suppressed: {exc}")
-
-
-_batch_status_context = FileBatchStatusContext()
-
-
-def _set_batch_status_context(*, is_tc: bool, is_tl: bool, is_mod: bool) -> FileBatchStatusContext:
-    global _batch_status_context
-    _batch_status_context = FileBatchStatusContext(is_tc=is_tc, is_tl=is_tl, is_mod=is_mod)
-    return _batch_status_context
-
-
-def _get_batch_status_context() -> FileBatchStatusContext:
-    return _batch_status_context
-
 
 def _build_combined_status(
     index: int,
@@ -192,14 +181,9 @@ def _is_file_status_completed(
         return "refined" in mod_value or "aligned" in mod_value or "translated" in mod_value
     return False
 
-def _sync_ui(index: int):
-    """自动判断文件是否处理完成，并把最纯粹的状态文字抛给 webview_app 去渲染"""
-    _get_batch_status_context().sync_ui(index)
-
-
-def _update_status(stage: StageKey, index: int, msg: str):
+def _update_status(status_context: FileBatchStatusContext, stage: StageKey, index: int, msg: str):
     """修改状态并触发 UI 同步（带防崩溃保护）"""
-    _get_batch_status_context().update_status(stage, index, msg)
+    status_context.update_status(stage, index, msg)
 
 def _save_metadata(filepath: str, meta_data: dict):
     try:
@@ -309,10 +293,28 @@ def run_translate_api(
 # FILE PROCESSORS
 # =========================================================================
 
-def _cancellable_tc(file_path, lang_source, lang_target, model_name, tc_func, tl_func, auto, is_tc, is_tl, engine, base_name, meta_path, index, filters, **kwargs):
+def _cancellable_tc(
+    file_path,
+    lang_source,
+    lang_target,
+    model_name,
+    tc_func,
+    tl_func,
+    auto,
+    is_tc,
+    is_tl,
+    engine,
+    base_name,
+    meta_path,
+    index,
+    filters,
+    *,
+    status_context: FileBatchStatusContext,
+    **kwargs,
+):
     start = time()
     try:
-        _update_status("tc", index, "Transcribing please wait...")
+        _update_status(status_context, "tc", index, "Transcribing please wait...")
         fail_status = WorkerFailure()
         
         format_dict = get_task_format("transcribed", f"transcribed {lang_source}", f"transcribed with {model_name}", f"transcribed {lang_source} with {model_name}")
@@ -339,25 +341,44 @@ def _cancellable_tc(file_path, lang_source, lang_target, model_name, tc_func, tl
                 stable_whisper = get_stable_whisper()
                 save_output_stable_ts(split_res(stable_whisper.WhisperResult(result.to_dict()), sj.cache), path.join(export_dir, tc_save_name), sj.cache["export_to"], sj, source_media_path=file_path)
             else:
-                _update_status("tc", index, "TC Fail! Got empty text")
+                _update_status(status_context, "tc", index, "TC Fail! Got empty text")
 
-        _update_status("tc", index, "Transcribed")
+        _update_status(status_context, "tc", index, "Transcribed")
         _save_metadata(meta_path, {"transcribe_time": time() - start, "transcribe_success": True})
 
         if is_tl:
             tl_query = file_path if engine in model_values else result
-            Thread(target=_cancellable_tl, args=[tl_query, lang_source, lang_target, tl_func, engine, base_name, meta_path, index, file_path, filters], kwargs=kwargs, daemon=True).start()
+            Thread(
+                target=_cancellable_tl,
+                args=[tl_query, lang_source, lang_target, tl_func, engine, base_name, meta_path, index, file_path, filters],
+                kwargs={**kwargs, "status_context": status_context},
+                daemon=True,
+            ).start()
             
     except Exception as e:
-        _update_status("tc", index, "Failed to transcribe")
+        _update_status(status_context, "tc", index, "Failed to transcribe")
         if is_tl:
-            _update_status("tl", index, "Skipped (TC Failed)")
+            _update_status(status_context, "tl", index, "Skipped (TC Failed)")
         if str(e) != "Cancelled": logger.error(f"TC Error: {e}")
 
-def _cancellable_tl(query, lang_source, lang_target, tl_func, engine, base_name, meta_path, index, media_path, filters, **kwargs):
+def _cancellable_tl(
+    query,
+    lang_source,
+    lang_target,
+    tl_func,
+    engine,
+    base_name,
+    meta_path,
+    index,
+    media_path,
+    filters,
+    *,
+    status_context: FileBatchStatusContext,
+    **kwargs,
+):
     start = time()
     try:
-        _update_status("tl", index, "Translating please wait...")
+        _update_status(status_context, "tl", index, "Translating please wait...")
         export_dir = dir_export if sj.cache["dir_export"] == "auto" else sj.cache["dir_export"]
         fail_status = WorkerFailure()
 
@@ -378,7 +399,7 @@ def _cancellable_tl(query, lang_source, lang_target, tl_func, engine, base_name,
             if sj.cache["remove_repetition_file_import"]: result = result.remove_repetition(sj.cache["remove_repetition_amount"])
         else:
             if not getattr(query, "text", "").strip():
-                return _update_status("tl", index, "TL Fail! Empty text")
+                return _update_status(status_context, "tl", index, "TL Fail! Empty text")
             api_kwargs = {"libre_link": sj.cache["libre_link"], "libre_api_key": sj.cache["libre_api_key"]} if engine == "LibreTranslate" else {}
             thread = Thread(target=run_translate_api, args=[query, engine, lang_source, lang_target, fail_status], kwargs=api_kwargs, daemon=True)
             thread.start()
@@ -387,15 +408,15 @@ def _cancellable_tl(query, lang_source, lang_target, tl_func, engine, base_name,
             result = query
 
         if not getattr(result, "text", "").strip():
-            return _update_status("tl", index, "TL Fail! Empty text")
+            return _update_status(status_context, "tl", index, "TL Fail! Empty text")
 
         bc.file_tled_counter += 1
         save_output_stable_ts(split_res(result, sj.cache), path.join(export_dir, tl_save_name), sj.cache["export_to"], sj, source_media_path=media_path)
-        _update_status("tl", index, "Translated")
+        _update_status(status_context, "tl", index, "Translated")
         _save_metadata(meta_path, {"translate_time": time() - start, "translate_success": True})
 
     except Exception as e:
-        _update_status("tl", index, "Failed to translate")
+        _update_status(status_context, "tl", index, "Failed to translate")
         if str(e) != "Cancelled": logger.error(f"TL Error: {e}")
 
 # =========================================================================
@@ -404,7 +425,7 @@ def _cancellable_tl(query, lang_source, lang_target, tl_func, engine, base_name,
 
 def process_file(data_files: List[str], model_name_tc: str, lang_source: str, lang_target: str, is_tc: bool, is_tl: bool, engine: str) -> None:
     try:
-        status_context = _set_batch_status_context(is_tc=is_tc, is_tl=is_tl, is_mod=False)
+        status_context = FileBatchStatusContext(is_tc=is_tc, is_tl=is_tl, is_mod=False)
         bc.file_tced_counter = bc.file_tled_counter = 0
         
         tl_engine_whisper = engine in model_values
@@ -428,7 +449,7 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
             bc.web_bridge.init_file_batch(f"Task: {taskname} with {model_name_tc}", data_files)
 
         def is_still_active():
-            return any(status_context.is_active(i) for i in range(len(data_files)))
+            return status_context.has_active_work(len(data_files))
 
         for i, file in enumerate(data_files):
             if not bc.file_processing: break
@@ -451,9 +472,19 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
             })
 
             if is_tl and not is_tc and tl_engine_whisper:
-                Thread(target=_cancellable_tl, args=[file, lang_source, lang_target, stable_tl, engine, base_name, meta_path, i, file, filters], kwargs=whisper_args, daemon=True).start()
+                Thread(
+                    target=_cancellable_tl,
+                    args=[file, lang_source, lang_target, stable_tl, engine, base_name, meta_path, i, file, filters],
+                    kwargs={**whisper_args, "status_context": status_context},
+                    daemon=True,
+                ).start()
             else:
-                tc_thread = Thread(target=_cancellable_tc, args=[file, lang_source, lang_target, model_name_tc, stable_tc, stable_tl, lang_source == "auto detect", is_tc, is_tl, engine, base_name, meta_path, i, filters], kwargs=whisper_args, daemon=True)
+                tc_thread = Thread(
+                    target=_cancellable_tc,
+                    args=[file, lang_source, lang_target, model_name_tc, stable_tc, stable_tl, lang_source == "auto detect", is_tc, is_tl, engine, base_name, meta_path, i, filters],
+                    kwargs={**whisper_args, "status_context": status_context},
+                    daemon=True,
+                )
                 tc_thread.start()
                 tc_thread.join()
 
@@ -475,7 +506,7 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
 
 def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement", "alignment"]):
     try:
-        status_context = _set_batch_status_context(is_tc=False, is_tl=False, is_mod=True)
+        status_context = FileBatchStatusContext(is_tc=False, is_tl=False, is_mod=True)
         bc.mod_file_counter = 0
         action = "Refinement" if mode == "refinement" else "Alignment"
         
@@ -494,7 +525,7 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
             bc.web_bridge.init_file_batch(f"Task {mode} with {model_name_tc}", [f[0] for f in data_files])
 
         def is_still_active():
-            return any(status_context.is_active(i) for i in range(len(data_files)))
+            return status_context.has_active_work(len(data_files))
 
         for i, file_data in enumerate(data_files):
             if not bc.file_processing: break
@@ -520,7 +551,7 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
             try:
                 mod_src = stable_whisper.WhisperResult(mod_path) if mod_path.endswith(".json") else open(mod_path, "r", encoding="utf-8").read()
             except Exception:
-                _update_status("mod", i, "Parse Error")
+                _update_status(status_context, "mod", i, "Parse Error")
                 continue
 
             if mode == "alignment" and len(file_data) > 2 and len(file_data[2]) > 3:
@@ -528,13 +559,13 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
 
             def _run_mod():
                 try:
-                    _update_status("mod", i, f"Processing {mode}")
+                    _update_status(status_context, "mod", i, f"Processing {mode}")
                     res = mod_func(audio_path, mod_src, **mod_args)
                     bc.data_queue.put(res)
                 except Exception as e:
                     if "'NoneType'" in str(e) and mode == "refinement":
                         try:
-                            _update_status("mod", i, "Re-transcribing...")
+                            _update_status(status_context, "mod", i, "Re-transcribing...")
                             res = model.transcribe(audio_path, **get_tc_args(model.transcribe, sj.cache))
                             res = mod_func(audio_path, res, **mod_args)
                             bc.data_queue.put(res)
@@ -548,7 +579,7 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
             _monitor_thread(thread, lambda: bc.file_processing)
 
             if fail_status.failed:
-                _update_status("mod", i, "Failed")
+                _update_status(status_context, "mod", i, "Failed")
                 continue
 
             result = split_res(bc.data_queue.get(), sj.cache)
@@ -556,7 +587,7 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
 
             save_output_stable_ts(result, path.join(export_dir, save_name), sj.cache["export_to"], sj)
             bc.mod_file_counter += 1
-            _update_status("mod", i, action)
+            _update_status(status_context, "mod", i, action)
             _save_metadata(meta_path, {"meta_written_at": str(datetime.now()), "task": f"Mod Result ({mode})", "time": time() - t_start})
 
         while bc.file_processing and is_still_active():
@@ -575,7 +606,7 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
 
 def translate_result(data_files: List, engine: str, lang_target: str):
     try:
-        status_context = _set_batch_status_context(is_tc=False, is_tl=False, is_mod=True)
+        status_context = FileBatchStatusContext(is_tc=False, is_tl=False, is_mod=True)
         bc.mod_file_counter = 0
         export_dir = dir_translate if sj.cache["dir_export"] == "auto" else sj.cache["dir_export"] + "/@translated"
         slice_s, slice_e = int(sj.cache["file_slice_start"]) if sj.cache["file_slice_start"] else None, int(sj.cache["file_slice_end"]) if sj.cache["file_slice_end"] else None
@@ -586,7 +617,7 @@ def translate_result(data_files: List, engine: str, lang_target: str):
             bc.web_bridge.init_file_batch(f"Task Translate with {engine}", data_files)
 
         def is_still_active():
-            return any(status_context.is_active(i) for i in range(len(data_files)))
+            return status_context.has_active_work(len(data_files))
 
         api_kwargs = {"libre_link": sj.cache["libre_link"], "libre_api_key": sj.cache["libre_api_key"]} if engine == "LibreTranslate" else {}
 
@@ -596,7 +627,7 @@ def translate_result(data_files: List, engine: str, lang_target: str):
             stable_whisper = get_stable_whisper()
             try: result = stable_whisper.WhisperResult(file_path)
             except Exception:
-                _update_status("mod", i, "Parse Error")
+                _update_status(status_context, "mod", i, "Parse Error")
                 continue
 
             lang_src = to_language_name(result.language) or "auto"
@@ -616,7 +647,7 @@ def translate_result(data_files: List, engine: str, lang_target: str):
             format_dict.update(get_task_format("tl res", f"tl res from {lang_src} to {lang_target}", f"tl res with {engine}", f"tl res from {lang_src} to {lang_target} with {engine}", short_only=True))
             save_name = _apply_task_format(base_name, format_dict)
 
-            _update_status("mod", i, "Translating please wait...")
+            _update_status(status_context, "mod", i, "Translating please wait...")
             fail_status = WorkerFailure()
             
             thread = Thread(target=run_translate_api, args=[result, engine, lang_src, lang_target, fail_status], kwargs=api_kwargs, daemon=True)
@@ -624,12 +655,12 @@ def translate_result(data_files: List, engine: str, lang_target: str):
             _monitor_thread(thread, lambda: bc.file_processing)
 
             if fail_status.failed:
-                _update_status("mod", i, "Failed")
+                _update_status(status_context, "mod", i, "Failed")
                 continue
 
             bc.mod_file_counter += 1
             save_output_stable_ts(split_res(result, sj.cache), path.join(export_dir, save_name), sj.cache["export_to"], sj, source_media_path=file_path)
-            _update_status("mod", i, "Translated")
+            _update_status(status_context, "mod", i, "Translated")
             _save_metadata(meta_path, {"meta_written_at": str(datetime.now()), "task": "Translate JSON", "time": time() - t_start})
 
         while bc.file_processing and is_still_active():

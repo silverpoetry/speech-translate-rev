@@ -139,6 +139,17 @@ class AudioFileHelpersTests(unittest.TestCase):
         self.assertEqual(context.mod_status[3], "Processing")
         self.assertEqual(bridge.calls[-1], (3, "Processing", False))
 
+    def test_file_batch_status_context_has_active_work_aggregates_enabled_stages(self) -> None:
+        context = FileBatchStatusContext(
+            is_tc=True,
+            is_tl=True,
+            tc_status={0: "Transcribed"},
+            tl_status={0: "Translated", 1: "Translating please wait..."},
+        )
+
+        self.assertTrue(context.has_active_work(2))
+        self.assertFalse(context.has_active_work(1))
+
 
 if __name__ == "__main__":
     unittest.main()
