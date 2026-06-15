@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from queue import Queue
+import tempfile
 import sys
 import unittest
 
@@ -10,13 +11,16 @@ sys.path.append(to_add)
 
 from speech_translate.utils.audio.file import (
     FileBatchStatusContext,
+    FileExportPlan,
     WorkerFailure,
     _execute_monitored_queue_task,
     _apply_task_format,
     _build_base_export_name,
     _build_combined_status,
+    _build_export_plan,
     _build_metadata_name,
     _is_file_status_completed,
+    _save_export_plan_metadata,
 )
 from speech_translate.linker import bc
 
@@ -112,6 +116,36 @@ class AudioFileHelpersTests(unittest.TestCase):
     def test_apply_task_format_rewrites_save_name_tokens(self) -> None:
         result = _apply_task_format("{file}-{task}-{task-short}", {"{task}": "translated", "{task-short}": "tl"})
         self.assertEqual(result, "{file}-translated-tl")
+
+    def test_build_export_plan_uses_base_name_for_metadata_and_formatted_save_name(self) -> None:
+        export_plan = _build_export_plan(
+            "D:\\exports",
+            "{file}-{task}-{task-short}",
+            {"{task}": "translated", "{task-short}": "tl"},
+        )
+
+        self.assertIsInstance(export_plan, FileExportPlan)
+        self.assertEqual(export_plan.save_name, "{file}-translated-tl")
+        self.assertEqual(export_plan.save_base_path, "D:\\exports\\{file}-translated-tl")
+        self.assertEqual(export_plan.metadata_path, "D:\\exports\\{file}-metadata-metadata.json")
+
+    def test_save_export_plan_metadata_merges_existing_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            export_plan = FileExportPlan(
+                export_dir=temp_dir,
+                base_name="clip",
+                save_name="clip-translated",
+                metadata_path=os.path.join(temp_dir, "clip.json"),
+            )
+            _save_export_plan_metadata(export_plan, {"task": "initial", "ok": True})
+            _save_export_plan_metadata(export_plan, {"time": 1.5})
+
+            with open(export_plan.metadata_path, "r", encoding="utf-8") as file:
+                saved = file.read()
+
+        self.assertIn('"task": "initial"', saved)
+        self.assertIn('"ok": true', saved)
+        self.assertIn('"time": 1.5', saved)
 
     def test_file_batch_status_context_updates_stage_status_and_syncs_bridge(self) -> None:
         previous_bridge = bc.web_bridge

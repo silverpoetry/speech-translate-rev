@@ -130,6 +130,18 @@ class FileBatchStatusContext:
         except Exception as exc:
             logger.error(f"UI Sync Error suppressed: {exc}")
 
+
+@dataclass(frozen=True)
+class FileExportPlan:
+    export_dir: str
+    base_name: str
+    save_name: str
+    metadata_path: str
+
+    @property
+    def save_base_path(self) -> str:
+        return path.join(self.export_dir, self.save_name)
+
 def _build_combined_status(
     index: int,
     *,
@@ -198,15 +210,6 @@ def _save_metadata(filepath: str, meta_data: dict):
     except Exception as e:
         logger.warning(f"Failed to save metadata: {e}")
 
-def _generate_save_name(template: str, file_name: str, lang_src: str, lang_tgt: str, tc_model: str, tl_engine: str, action: str = "") -> str:
-    res = template.replace("{file}", file_name).replace("{lang-source}", lang_src).replace("{lang-target}", lang_tgt)\
-                  .replace("{transcribe-with}", tc_model).replace("{translate-with}", tl_engine)
-    if action:
-        for fmt, value in get_task_format(action, action, f"{action} with {tc_model or tl_engine}", f"{action} from {lang_src} to {lang_tgt}", both=True).items():
-            res = res.replace(fmt, value)
-    return res
-
-
 def _build_base_export_name(template: str, file_name: str, lang_src: str, lang_tgt: str, tc_model: str, tl_engine: str) -> str:
     return (
         template.replace("{file}", file_name)
@@ -229,6 +232,21 @@ def _apply_task_format(base_name: str, format_dict: Mapping[str, str]) -> str:
     for fmt, val in format_dict.items():
         save_name = save_name.replace(fmt, val)
     return save_name
+
+
+def _build_export_plan(export_dir: str, base_name: str, format_dict: Mapping[str, str]) -> FileExportPlan:
+    save_name = _apply_task_format(base_name, format_dict)
+    metadata_name = _build_metadata_name(base_name)
+    return FileExportPlan(
+        export_dir=export_dir,
+        base_name=base_name,
+        save_name=save_name,
+        metadata_path=path.join(export_dir, metadata_name + ".json"),
+    )
+
+
+def _save_export_plan_metadata(export_plan: FileExportPlan, meta_data: Mapping[str, object]) -> None:
+    _save_metadata(export_plan.metadata_path, dict(meta_data))
 
 def _monitor_thread(thread: Thread, check_cancel: Callable[[], bool]) -> None:
     while thread.is_alive():
@@ -334,8 +352,7 @@ def _cancellable_tc(
     is_tc,
     is_tl,
     engine,
-    base_name,
-    meta_path,
+    export_plan: FileExportPlan,
     index,
     filters,
     *,
@@ -349,7 +366,7 @@ def _cancellable_tc(
         
         format_dict = get_task_format("transcribed", f"transcribed {lang_source}", f"transcribed with {model_name}", f"transcribed {lang_source} with {model_name}")
         format_dict.update(get_task_format("tc", f"tc {lang_source}", f"tc with {model_name}", f"tc {lang_source} with {model_name}", short_only=True))
-        tc_save_name = _apply_task_format(base_name, format_dict)
+        tc_export_plan = _build_export_plan(export_plan.export_dir, export_plan.base_name, format_dict)
 
         result = _execute_monitored_queue_task(
             run_whisper,
@@ -367,20 +384,25 @@ def _cancellable_tc(
         if is_tc:
             if result.text.strip():
                 bc.file_tced_counter += 1
-                export_dir = dir_export if sj.cache["dir_export"] == "auto" else sj.cache["dir_export"]
                 stable_whisper = get_stable_whisper()
-                save_output_stable_ts(split_res(stable_whisper.WhisperResult(result.to_dict()), sj.cache), path.join(export_dir, tc_save_name), sj.cache["export_to"], sj, source_media_path=file_path)
+                save_output_stable_ts(
+                    split_res(stable_whisper.WhisperResult(result.to_dict()), sj.cache),
+                    tc_export_plan.save_base_path,
+                    sj.cache["export_to"],
+                    sj,
+                    source_media_path=file_path,
+                )
             else:
                 _update_status(status_context, "tc", index, "TC Fail! Got empty text")
 
         _update_status(status_context, "tc", index, "Transcribed")
-        _save_metadata(meta_path, {"transcribe_time": time() - start, "transcribe_success": True})
+        _save_export_plan_metadata(export_plan, {"transcribe_time": time() - start, "transcribe_success": True})
 
         if is_tl:
             tl_query = file_path if engine in model_values else result
             Thread(
                 target=_cancellable_tl,
-                args=[tl_query, lang_source, lang_target, tl_func, engine, base_name, meta_path, index, file_path, filters],
+                args=[tl_query, lang_source, lang_target, tl_func, engine, export_plan, index, file_path, filters],
                 kwargs={**kwargs, "status_context": status_context},
                 daemon=True,
             ).start()
@@ -397,8 +419,7 @@ def _cancellable_tl(
     lang_target,
     tl_func,
     engine,
-    base_name,
-    meta_path,
+    export_plan: FileExportPlan,
     index,
     media_path,
     filters,
@@ -409,12 +430,11 @@ def _cancellable_tl(
     start = time()
     try:
         _update_status(status_context, "tl", index, "Translating please wait...")
-        export_dir = dir_export if sj.cache["dir_export"] == "auto" else sj.cache["dir_export"]
         fail_status = WorkerFailure()
 
         format_dict = get_task_format("translated", f"translated {lang_source} to {lang_target}", f"translated with {engine}", f"translated {lang_source} to {lang_target} with {engine}")
         format_dict.update(get_task_format("tl", f"tl {lang_source} to {lang_target}", f"tl with {engine}", f"tl {lang_source} to {lang_target} with {engine}", short_only=True))
-        tl_save_name = _apply_task_format(base_name, format_dict)
+        tl_export_plan = _build_export_plan(export_plan.export_dir, export_plan.base_name, format_dict)
 
         if engine in model_values:
             result = _execute_monitored_queue_task(
@@ -445,9 +465,9 @@ def _cancellable_tl(
             return _update_status(status_context, "tl", index, "TL Fail! Empty text")
 
         bc.file_tled_counter += 1
-        save_output_stable_ts(split_res(result, sj.cache), path.join(export_dir, tl_save_name), sj.cache["export_to"], sj, source_media_path=media_path)
+        save_output_stable_ts(split_res(result, sj.cache), tl_export_plan.save_base_path, sj.cache["export_to"], sj, source_media_path=media_path)
         _update_status(status_context, "tl", index, "Translated")
-        _save_metadata(meta_path, {"translate_time": time() - start, "translate_success": True})
+        _save_export_plan_metadata(export_plan, {"translate_time": time() - start, "translate_success": True})
 
     except Exception as e:
         _update_status(status_context, "tl", index, "Failed to translate")
@@ -497,10 +517,9 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
                 model_name_tc,
                 engine,
             )
-            meta_name = _build_metadata_name(base_name)
-            meta_path = path.join(export_dir, meta_name + ".json")
+            export_plan = _build_export_plan(export_dir, base_name, {})
 
-            _save_metadata(meta_path, {
+            _save_export_plan_metadata(export_plan, {
                 "meta_written_at": str(datetime.now()), "task": taskname, "filename": file_name,
                 "transcribe": is_tc, "translate": is_tl, "model": model_name_tc, "engine": engine
             })
@@ -508,14 +527,14 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
             if is_tl and not is_tc and tl_engine_whisper:
                 Thread(
                     target=_cancellable_tl,
-                    args=[file, lang_source, lang_target, stable_tl, engine, base_name, meta_path, i, file, filters],
+                    args=[file, lang_source, lang_target, stable_tl, engine, export_plan, i, file, filters],
                     kwargs={**whisper_args, "status_context": status_context},
                     daemon=True,
                 ).start()
             else:
                 tc_thread = Thread(
                     target=_cancellable_tc,
-                    args=[file, lang_source, lang_target, model_name_tc, stable_tc, stable_tl, lang_source == "auto detect", is_tc, is_tl, engine, base_name, meta_path, i, filters],
+                    args=[file, lang_source, lang_target, model_name_tc, stable_tc, stable_tl, lang_source == "auto detect", is_tc, is_tl, engine, export_plan, i, filters],
                     kwargs={**whisper_args, "status_context": status_context},
                     daemon=True,
                 )
@@ -574,13 +593,11 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
                 model_name_tc,
                 "",
             )
-            meta_name = _build_metadata_name(base_name)
-            meta_path = path.join(export_dir, meta_name + ".json")
 
             task_short = {"refinement": "rf", "alignment": "al"}
             format_dict = get_task_format(action, action, f"{action} with {model_name_tc}", f"{action} with {model_name_tc}")
             format_dict.update(get_task_format(task_short[mode], task_short[mode], f"{task_short[mode]} with {model_name_tc}", f"{task_short[mode]} with {model_name_tc}", short_only=True))
-            save_name = _apply_task_format(base_name, format_dict)
+            export_plan = _build_export_plan(export_dir, base_name, format_dict)
 
             try:
                 mod_src = stable_whisper.WhisperResult(mod_path) if mod_path.endswith(".json") else open(mod_path, "r", encoding="utf-8").read()
@@ -623,10 +640,10 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
             result = split_res(result, sj.cache)
             if not result.language: result.language = mod_args.get("language", "auto")
 
-            save_output_stable_ts(result, path.join(export_dir, save_name), sj.cache["export_to"], sj)
+            save_output_stable_ts(result, export_plan.save_base_path, sj.cache["export_to"], sj)
             bc.mod_file_counter += 1
             _update_status(status_context, "mod", i, action)
-            _save_metadata(meta_path, {"meta_written_at": str(datetime.now()), "task": f"Mod Result ({mode})", "time": time() - t_start})
+            _save_export_plan_metadata(export_plan, {"meta_written_at": str(datetime.now()), "task": f"Mod Result ({mode})", "time": time() - t_start})
 
         while bc.file_processing and is_still_active():
             sleep(0.5)
@@ -678,12 +695,10 @@ def translate_result(data_files: List, engine: str, lang_target: str):
                 "",
                 engine,
             )
-            meta_name = _build_metadata_name(base_name)
-            meta_path = path.join(export_dir, meta_name + ".json")
 
             format_dict = get_task_format("translated result", f"translated result from {lang_src} to {lang_target}", f"translated result with {engine}", f"translated result from {lang_src} to {lang_target} with {engine}")
             format_dict.update(get_task_format("tl res", f"tl res from {lang_src} to {lang_target}", f"tl res with {engine}", f"tl res from {lang_src} to {lang_target} with {engine}", short_only=True))
-            save_name = _apply_task_format(base_name, format_dict)
+            export_plan = _build_export_plan(export_dir, base_name, format_dict)
 
             _update_status(status_context, "mod", i, "Translating please wait...")
             fail_status = WorkerFailure()
@@ -700,9 +715,9 @@ def translate_result(data_files: List, engine: str, lang_target: str):
                 continue
 
             bc.mod_file_counter += 1
-            save_output_stable_ts(split_res(result, sj.cache), path.join(export_dir, save_name), sj.cache["export_to"], sj, source_media_path=file_path)
+            save_output_stable_ts(split_res(result, sj.cache), export_plan.save_base_path, sj.cache["export_to"], sj, source_media_path=file_path)
             _update_status(status_context, "mod", i, "Translated")
-            _save_metadata(meta_path, {"meta_written_at": str(datetime.now()), "task": "Translate JSON", "time": time() - t_start})
+            _save_export_plan_metadata(export_plan, {"meta_written_at": str(datetime.now()), "task": "Translate JSON", "time": time() - t_start})
 
         while bc.file_processing and is_still_active():
             sleep(0.5)
