@@ -165,6 +165,53 @@ class FakeRuntimeTextState:
         self._prev_tl_res = result
 
 
+class FakeRecordingSessionControl:
+    def __init__(self, *, recording: bool = True, status: str = "Recording", queue_items=None, stream=None) -> None:
+        from queue import Queue
+
+        self._recording = recording
+        self._status = status
+        self._queue = Queue()
+        for item in queue_items or []:
+            self._queue.put(item)
+        self._stream = stream
+        self.runtime_threads_cleared = False
+
+    def is_recording(self) -> bool:
+        return self._recording
+
+    def set_recording(self, value: bool) -> None:
+        self._recording = value
+
+    def current_status(self) -> str:
+        return self._status
+
+    def set_current_status(self, status: str) -> None:
+        self._status = status
+
+    def data_queue_empty(self) -> bool:
+        return self._queue.empty()
+
+    def get_data(self, *, timeout: float):
+        return self._queue.get(timeout=timeout)
+
+    def get_data_nowait(self):
+        return self._queue.get_nowait()
+
+    def clear_data_queue(self) -> None:
+        while not self._queue.empty():
+            self._queue.get_nowait()
+
+    def stream(self):
+        return self._stream
+
+    def clear_stream(self) -> None:
+        self._stream = None
+
+    def clear_runtime_threads(self) -> None:
+        self.runtime_threads_cleared = True
+
+
 class FakeLock:
     def __enter__(self):
         return self
@@ -1120,6 +1167,16 @@ class AudioRecordHelpersTests(unittest.TestCase):
 
         self.assertEqual(state.last_sample, b"abcd")
 
+    def test_drain_pending_audio_supports_injected_session_control(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        state = RealtimeSessionState(last_sample=b"")
+        control = FakeRecordingSessionControl(queue_items=[b"ab", b"cd"])
+
+        record_module._drain_pending_audio(state, control=control)
+
+        self.assertEqual(state.last_sample, b"abcd")
+
     def test_advance_recording_buffer_waits_for_next_transcribe_time(self) -> None:
         state = RealtimeSessionState(last_sample=b"", next_transcribe_time=None)
         ready = _advance_recording_buffer(
@@ -1290,6 +1347,76 @@ class AudioRecordHelpersTests(unittest.TestCase):
 
         self.assertEqual(calls, [("cleanup", "temp.wav")])
         self.assertEqual(observed_status, "▶️ Recording")
+
+    def test_finalize_recording_session_supports_injected_control(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_reset = record_module._reset_callback_context
+        updates = []
+        stream_events = []
+        control = FakeRecordingSessionControl(
+            recording=False,
+            status="busy",
+            queue_items=[b"leftover"],
+            stream=type(
+                "FakeStream",
+                (),
+                {
+                    "stop_stream": lambda _self: stream_events.append("stop"),
+                    "close": lambda _self: stream_events.append("close"),
+                },
+            )(),
+        )
+        terminated = []
+        try:
+            record_module._reset_callback_context = lambda: updates.append("reset")
+            finalize_context = RecordingSessionFinalizeContext(
+                session_state=RealtimeSessionState(temp_audio_paths=[]),
+                update_status=lambda: updates.append(control.current_status()),
+                keep_temp=True,
+            )
+            py_audio = type("FakePyAudio", (), {"terminate": lambda _self: terminated.append("terminated")})()
+
+            record_module._finalize_recording_session(py_audio, finalize_context, control=control)
+        finally:
+            record_module._reset_callback_context = previous_reset
+
+        self.assertEqual(stream_events, ["stop", "close"])
+        self.assertEqual(terminated, ["terminated"])
+        self.assertEqual(updates[:2], ["⚠️ Stopping stream", "⚠️ Terminating pyaudio"])
+        self.assertEqual(updates[-2:], ["reset", "⏹️ Stopped"])
+        self.assertTrue(control.runtime_threads_cleared)
+        self.assertIsNone(control.stream())
+        self.assertTrue(control.data_queue_empty())
+
+    def test_run_recording_status_loop_supports_injected_control_and_text_state(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        emitted = []
+        control = FakeRecordingSessionControl(recording=True, status="Injected")
+        runtime_text_state = FakeRuntimeTextState(tc_sentences=["a"])
+        session_state = RealtimeSessionState(duration_seconds=1.5)
+        emitter = type(
+            "Emitter",
+            (),
+            {
+                "emit": lambda _self, **payload: (emitted.append(payload), control.set_recording(False)),
+            },
+        )()
+
+        record_module._run_recording_status_loop(
+            session_state,
+            emitter,
+            t_start=0.0,
+            max_buffer_s=10,
+            max_sentences=5,
+            sentence_limitless=False,
+            control=control,
+            runtime_text_state=runtime_text_state,
+        )
+
+        self.assertEqual(emitted[0]["status"], "Injected")
+        self.assertEqual(emitted[0]["sentences"], "1/5")
 
     def test_calculate_buffer_duration_handles_invalid_denominator(self) -> None:
         self.assertEqual(

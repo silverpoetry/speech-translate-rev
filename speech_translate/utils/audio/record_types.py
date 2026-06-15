@@ -145,8 +145,13 @@ class RecordingSessionServices:
     status_emitter: "RecordingStatusEmitter"
     translator: "TranslationDispatcher"
     buffer_reducer: "BufferStateReducer"
+    control: object | None = None
+    status_getter: Callable[[], str] | None = None
 
     def update_status(self) -> None:
+        if self.status_getter is not None:
+            self.status_emitter.emit(status=self.status_getter())
+            return
         self.status_emitter.emit(status=bc.current_rec_status)
 
 
