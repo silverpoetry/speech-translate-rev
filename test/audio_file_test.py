@@ -8,6 +8,7 @@ to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
 from speech_translate.utils.audio.file import (
+    FileBatchStatusContext,
     WorkerFailure,
     _apply_task_format,
     _build_base_export_name,
@@ -15,6 +16,18 @@ from speech_translate.utils.audio.file import (
     _build_metadata_name,
     _is_file_status_completed,
 )
+from speech_translate.linker import bc
+
+
+class FakeFileStatusBridge:
+    def __init__(self, *, should_fail: bool = False) -> None:
+        self.should_fail = should_fail
+        self.calls = []
+
+    def sync_file_status(self, index: int, status: str, is_completed: bool) -> None:
+        self.calls.append((index, status, is_completed))
+        if self.should_fail:
+            raise RuntimeError("bridge failed")
 
 
 class AudioFileHelpersTests(unittest.TestCase):
@@ -97,6 +110,34 @@ class AudioFileHelpersTests(unittest.TestCase):
     def test_apply_task_format_rewrites_save_name_tokens(self) -> None:
         result = _apply_task_format("{file}-{task}-{task-short}", {"{task}": "translated", "{task-short}": "tl"})
         self.assertEqual(result, "{file}-translated-tl")
+
+    def test_file_batch_status_context_updates_stage_status_and_syncs_bridge(self) -> None:
+        previous_bridge = bc.web_bridge
+        bridge = FakeFileStatusBridge()
+        try:
+            bc.web_bridge = bridge
+            context = FileBatchStatusContext(is_tc=True, is_tl=True)
+            context.update_status("tc", 0, "Transcribed")
+            context.update_status("tl", 0, "Translated")
+        finally:
+            bc.web_bridge = previous_bridge
+
+        self.assertEqual(context.tc_status[0], "Transcribed")
+        self.assertEqual(context.tl_status[0], "Translated")
+        self.assertEqual(bridge.calls[-1], (0, "Transcribed, Translated", True))
+
+    def test_file_batch_status_context_suppresses_bridge_sync_errors(self) -> None:
+        previous_bridge = bc.web_bridge
+        bridge = FakeFileStatusBridge(should_fail=True)
+        try:
+            bc.web_bridge = bridge
+            context = FileBatchStatusContext(is_mod=True)
+            context.update_status("mod", 3, "Processing")
+        finally:
+            bc.web_bridge = previous_bridge
+
+        self.assertEqual(context.mod_status[3], "Processing")
+        self.assertEqual(bridge.calls[-1], (3, "Processing", False))
 
 
 if __name__ == "__main__":
