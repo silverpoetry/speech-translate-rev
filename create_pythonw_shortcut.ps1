@@ -108,7 +108,8 @@ public static class ShortcutPropertyStore
     {
         var propertyStore = OpenPropertyStore(shortcutPath, GpsDefault);
         var propertyKey = AppUserModelIdKey;
-        EnsureSucceeded(propertyStore.GetValue(ref propertyKey, out var propVariant));
+        PROPVARIANT propVariant;
+        EnsureSucceeded(propertyStore.GetValue(ref propertyKey, out propVariant));
 
         try
         {
@@ -125,7 +126,8 @@ public static class ShortcutPropertyStore
     private static IPropertyStore OpenPropertyStore(string shortcutPath, uint flags)
     {
         var propertyStoreGuid = IPropertyStoreGuid;
-        SHGetPropertyStoreFromParsingName(shortcutPath, IntPtr.Zero, flags, ref propertyStoreGuid, out var propertyStore);
+        IPropertyStore propertyStore;
+        SHGetPropertyStoreFromParsingName(shortcutPath, IntPtr.Zero, flags, ref propertyStoreGuid, out propertyStore);
         return propertyStore;
     }
 
