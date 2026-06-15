@@ -209,7 +209,7 @@ def _get_file_visual_runtime_state():
 
 
 def _get_file_environment():
-    return FileEnvironmentAdapter(has_ffmpeg=bool(getattr(_get_file_visual_runtime_state(), "has_ffmpeg", False)))
+    return build_file_environment_adapter()
 
 
 def build_file_ui_bridge_adapter(
@@ -234,6 +234,18 @@ def build_file_processing_state_adapter(
     state_provider: Callable[[], object] | None = _get_file_runtime_state,
 ) -> FileProcessingStateAdapter:
     return FileProcessingStateAdapter(state=state, state_provider=state_provider)
+
+
+def build_file_environment_adapter(
+    *,
+    visual_state: object | None = None,
+    visual_state_provider: Callable[[], object] | None = _get_file_visual_runtime_state,
+) -> FileEnvironmentAdapter:
+    if visual_state is None:
+        if visual_state_provider is None:
+            return FileEnvironmentAdapter()
+        visual_state = visual_state_provider()
+    return FileEnvironmentAdapter(has_ffmpeg=bool(getattr(visual_state, "has_ffmpeg", False)))
 
 
 def _get_whisper_runtime_api():

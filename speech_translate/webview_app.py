@@ -6,10 +6,11 @@ from typing import Callable
 from speech_translate._logging import init_logging
 from speech_translate._path import dir_debug
 from speech_translate.app_startup_controller import AppStartupController
+from speech_translate.app_runtime import get_runtime_root
 from speech_translate.controller_protocols import JsonDict, SettingsStore, TrayLike, WebviewWindowLike
 from speech_translate.detached_window_controller import DetachedWindowController
 from speech_translate.detached_windows import DetachedWindowManager
-from speech_translate.import_queue_manager import ImportQueueController
+from speech_translate.import_queue_manager import ImportQueueController, ImportQueueRuntimeBindings
 from speech_translate.main_window_controller import MainWindowController
 from speech_translate.model_manager import ModelManagerController
 from speech_translate.recording_controller import RecordingSessionController
@@ -55,6 +56,7 @@ def _get_default_settings() -> SettingsStore:
 
 def build_web_bridge_dependencies(bridge: "WebBridge", settings: SettingsStore | None = None) -> WebBridgeDependencies:
     settings = settings or _get_default_settings()
+    runtime_root = get_runtime_root()
     main_window_controller = MainWindowController(bridge, settings)
     model_manager_controller = ModelManagerController(bridge, settings, get_whisper_load_api)
     import_queue_controller = ImportQueueController(
@@ -62,6 +64,11 @@ def build_web_bridge_dependencies(bridge: "WebBridge", settings: SettingsStore |
         settings,
         shutdown_selenium_translator,
         model_manager_controller,
+        runtime_bindings=ImportQueueRuntimeBindings(
+            recording_state=runtime_root.recording_runtime,
+            file_state=runtime_root.file_runtime,
+            visual_state=runtime_root.visual,
+        ),
     )
     recording_controller = RecordingSessionController(bridge, get_whisper_load_api, shutdown_selenium_translator)
     state_view_builder = StateViewBuilder(bridge, settings)

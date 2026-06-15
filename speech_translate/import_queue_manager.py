@@ -6,6 +6,7 @@ from threading import RLock, Thread
 from time import gmtime, strftime, time
 from typing import List, Optional
 
+from speech_translate.bridge_runtime_state import BridgeFileRuntime, BridgeRecordingRuntime, BridgeVisualRuntime
 from speech_translate.controller_protocols import (
     ImportQueueBridge,
     JsonDict,
@@ -14,18 +15,9 @@ from speech_translate.controller_protocols import (
     ShutdownSeleniumFn,
 )
 from speech_translate.log_helpers import logger
-from speech_translate.runtime_registry import bridge_state_registry
 from speech_translate.ui_protocol import TASK_SOURCE_IMPORT, UI_SECTION_IMPORT
 from speech_translate.webview_runtime import create_file_dialog
 from speech_translate.utils.whisper.helper import model_keys, model_select_dict
-
-
-def _get_import_queue_recording_state():
-    return bridge_state_registry.get().recording_runtime
-
-
-def _get_import_queue_file_state():
-    return bridge_state_registry.get().file_runtime
 
 
 MEDIA_FILE_TYPES = [
@@ -70,32 +62,39 @@ class ImportStartContext:
 
 @dataclass
 class ImportQueueProcessRuntime:
-    recording_state: object | None = None
-    file_state: object | None = None
-
-    def _resolve_recording_state(self) -> object:
-        return _get_import_queue_recording_state() if self.recording_state is None else self.recording_state
-
-    def _resolve_file_state(self) -> object:
-        return _get_import_queue_file_state() if self.file_state is None else self.file_state
+    recording_state: BridgeRecordingRuntime
+    file_state: BridgeFileRuntime
 
     def is_recording_active(self) -> bool:
-        return bool(getattr(self._resolve_recording_state(), "recording", False))
+        return bool(getattr(self.recording_state, "recording", False))
 
     def is_file_processing_active(self) -> bool:
-        return bool(getattr(self._resolve_file_state(), "file_processing", False))
+        return bool(getattr(self.file_state, "file_processing", False))
 
     def enable_file_processing(self) -> None:
-        setattr(self._resolve_file_state(), "file_processing", True)
+        self.file_state.file_processing = True
 
     def disable_file_processing(self) -> None:
-        setattr(self._resolve_file_state(), "file_processing", False)
+        self.file_state.file_processing = False
 
     def transcribed_count(self) -> int:
-        return int(getattr(self._resolve_file_state(), "file_tced_counter", 0))
+        return int(getattr(self.file_state, "file_tced_counter", 0))
 
     def translated_count(self) -> int:
-        return int(getattr(self._resolve_file_state(), "file_tled_counter", 0))
+        return int(getattr(self.file_state, "file_tled_counter", 0))
+
+
+@dataclass(frozen=True)
+class ImportQueueRuntimeBindings:
+    recording_state: BridgeRecordingRuntime
+    file_state: BridgeFileRuntime
+    visual_state: BridgeVisualRuntime
+
+    def build_process_runtime(self) -> ImportQueueProcessRuntime:
+        return ImportQueueProcessRuntime(
+            recording_state=self.recording_state,
+            file_state=self.file_state,
+        )
 
 
 class ImportQueueController:
@@ -107,13 +106,15 @@ class ImportQueueController:
         settings: SettingsStore,
         shutdown_selenium_fn: ShutdownSeleniumFn,
         model_manager: ModelManagerControllerApi,
+        runtime_bindings: ImportQueueRuntimeBindings,
         process_runtime: ImportQueueProcessRuntime | None = None,
     ):
         self.bridge = bridge
         self.settings = settings
         self.shutdown_selenium_fn = shutdown_selenium_fn
         self.model_manager = model_manager
-        self.process_runtime = process_runtime or ImportQueueProcessRuntime()
+        self.runtime_bindings = runtime_bindings
+        self.process_runtime = process_runtime or runtime_bindings.build_process_runtime()
         self._lock = RLock()
         self.file_import_queue: List[object] = []
         self.processing_queue: List[JsonDict] = []
@@ -365,10 +366,19 @@ class ImportQueueController:
 
         return audio_file_module.FileProcessDependencies(
             ui_bridge=audio_file_module.build_file_ui_bridge_adapter(bridge=self),
-            result_queue=audio_file_module.build_file_result_queue_adapter(),
-            processing_state=audio_file_module.build_file_processing_state_adapter(),
+            result_queue=audio_file_module.build_file_result_queue_adapter(
+                state=self.runtime_bindings.recording_state,
+                state_provider=None,
+            ),
+            processing_state=audio_file_module.build_file_processing_state_adapter(
+                state=self.runtime_bindings.file_state,
+                state_provider=None,
+            ),
             settings=audio_file_module.FileSettingsAdapter(cache=dict(context.settings_snapshot)),
-            environment=audio_file_module._get_file_environment(),
+            environment=audio_file_module.build_file_environment_adapter(
+                visual_state=self.runtime_bindings.visual_state,
+                visual_state_provider=None,
+            ),
         )
 
     def _start_import_worker(self, *, context: ImportStartContext) -> None:

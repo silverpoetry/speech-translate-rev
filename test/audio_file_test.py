@@ -38,6 +38,7 @@ from speech_translate.utils.audio.file import (
     _build_process_file_runtime,
     _build_translate_result_runtime,
     build_file_processing_state_adapter,
+    build_file_environment_adapter,
     build_file_result_queue_adapter,
     _get_file_environment,
     _is_file_status_completed,
@@ -184,6 +185,14 @@ class AudioFileHelpersTests(unittest.TestCase):
         fake_bridge = type("FakeBridgeState", (), {"visual": BridgeVisualRuntime(has_ffmpeg=True)})()
         with bridge_state_registry.override(fake_bridge):
             environment = _get_file_environment()
+
+        self.assertTrue(environment.has_ffmpeg)
+
+    def test_build_file_environment_adapter_supports_explicit_visual_state(self) -> None:
+        environment = build_file_environment_adapter(
+            visual_state=BridgeVisualRuntime(has_ffmpeg=True),
+            visual_state_provider=None,
+        )
 
         self.assertTrue(environment.has_ffmpeg)
 

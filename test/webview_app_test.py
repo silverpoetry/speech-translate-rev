@@ -3,11 +3,13 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
-from speech_translate.webview_app import WebBridge, WebBridgeDependencies
+from speech_translate.bridge_runtime_state import BridgeFileRuntime, BridgeRecordingRuntime, BridgeVisualRuntime
+from speech_translate.webview_app import WebBridge, WebBridgeDependencies, build_web_bridge_dependencies
 
 
 class FakeSettings:
@@ -75,6 +77,57 @@ class FakeDependenciesBuilder:
 
 
 class WebviewAppTests(unittest.TestCase):
+    def test_build_web_bridge_dependencies_injects_explicit_runtime_bindings(self) -> None:
+        settings = FakeSettings()
+        bridge = object()
+        fake_runtime_root = type(
+            "FakeRuntimeRoot",
+            (),
+            {
+                "recording_runtime": BridgeRecordingRuntime(),
+                "file_runtime": BridgeFileRuntime(),
+                "visual": BridgeVisualRuntime(has_ffmpeg=True),
+            },
+        )()
+        captured = {}
+
+        def fake_import_queue_controller(
+            bridge_arg,
+            settings_arg,
+            shutdown_arg,
+            model_manager_arg,
+            runtime_bindings,
+            process_runtime=None,
+        ):
+            captured["bridge"] = bridge_arg
+            captured["settings"] = settings_arg
+            captured["shutdown"] = shutdown_arg
+            captured["model_manager"] = model_manager_arg
+            captured["runtime_bindings"] = runtime_bindings
+            captured["process_runtime"] = process_runtime
+            return FakeController()
+
+        with (
+            patch("speech_translate.webview_app.get_runtime_root", return_value=fake_runtime_root),
+            patch("speech_translate.webview_app.MainWindowController", return_value=FakeController()),
+            patch("speech_translate.webview_app.ModelManagerController", return_value=FakeController()),
+            patch("speech_translate.webview_app.ImportQueueController", side_effect=fake_import_queue_controller),
+            patch("speech_translate.webview_app.RecordingSessionController", return_value=FakeController()),
+            patch("speech_translate.webview_app.StateViewBuilder", return_value=FakeStateViewBuilder()),
+            patch("speech_translate.webview_app.SystemSettingsController", return_value=FakeController()),
+            patch("speech_translate.webview_app.DetachedWindowManager", return_value=object()),
+            patch("speech_translate.webview_app.DetachedWindowController", return_value=FakeController()),
+        ):
+            dependencies = build_web_bridge_dependencies(bridge, settings)
+
+        self.assertIsInstance(dependencies, WebBridgeDependencies)
+        self.assertIs(captured["bridge"], bridge)
+        self.assertIs(captured["settings"], settings)
+        self.assertIs(captured["runtime_bindings"].recording_state, fake_runtime_root.recording_runtime)
+        self.assertIs(captured["runtime_bindings"].file_state, fake_runtime_root.file_runtime)
+        self.assertIs(captured["runtime_bindings"].visual_state, fake_runtime_root.visual)
+        self.assertIsNone(captured["process_runtime"])
+
     def test_web_bridge_uses_injected_dependencies_and_bootstrapper(self) -> None:
         bootstrap_calls = []
         deps_builder = FakeDependenciesBuilder()

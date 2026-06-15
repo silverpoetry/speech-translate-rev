@@ -8,9 +8,8 @@ from unittest.mock import patch
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
-from speech_translate.import_queue_manager import ImportQueueController
-from speech_translate.bridge_runtime_state import BridgeFileRuntime, BridgeRecordingRuntime
-from speech_translate.runtime_registry import bridge_state_registry
+from speech_translate.import_queue_manager import ImportQueueController, ImportQueueProcessRuntime, ImportQueueRuntimeBindings
+from speech_translate.bridge_runtime_state import BridgeFileRuntime, BridgeRecordingRuntime, BridgeVisualRuntime
 from speech_translate.ui_protocol import TASK_SOURCE_IMPORT, UI_SECTION_IMPORT
 from speech_translate.utils.audio.file import FileProcessDependencies, FileProcessRequest
 
@@ -143,35 +142,35 @@ class FakeProcessRuntime:
 
 
 class ImportQueueControllerTests(unittest.TestCase):
-    def test_import_process_runtime_default_provider_reads_bridge_substates(self) -> None:
-        from speech_translate.import_queue_manager import ImportQueueProcessRuntime
+    def test_import_runtime_bindings_build_process_runtime_from_explicit_states(self) -> None:
+        runtime = ImportQueueRuntimeBindings(
+            recording_state=BridgeRecordingRuntime(recording=True),
+            file_state=BridgeFileRuntime(file_processing=True, file_tced_counter=3, file_tled_counter=4),
+            visual_state=BridgeVisualRuntime(has_ffmpeg=True),
+        ).build_process_runtime()
 
-        fake_bridge = type(
-            "FakeBridgeState",
-            (),
-            {
-                "recording_runtime": BridgeRecordingRuntime(recording=True),
-                "file_runtime": BridgeFileRuntime(file_processing=True, file_tced_counter=3, file_tled_counter=4),
-            },
-        )()
-        with bridge_state_registry.override(fake_bridge):
-
-            runtime = ImportQueueProcessRuntime()
-            self.assertTrue(runtime.is_recording_active())
-            self.assertTrue(runtime.is_file_processing_active())
-            self.assertEqual(runtime.transcribed_count(), 3)
-            self.assertEqual(runtime.translated_count(), 4)
+        self.assertIsInstance(runtime, ImportQueueProcessRuntime)
+        self.assertTrue(runtime.is_recording_active())
+        self.assertTrue(runtime.is_file_processing_active())
+        self.assertEqual(runtime.transcribed_count(), 3)
+        self.assertEqual(runtime.translated_count(), 4)
 
     def setUp(self) -> None:
         self.bridge = FakeBridge()
         self.settings = FakeSettings()
         self.bridge.settings_snapshot = self.settings.cache
         self.process_runtime = FakeProcessRuntime()
+        self.runtime_bindings = ImportQueueRuntimeBindings(
+            recording_state=BridgeRecordingRuntime(),
+            file_state=BridgeFileRuntime(),
+            visual_state=BridgeVisualRuntime(has_ffmpeg=True),
+        )
         self.controller = ImportQueueController(
             self.bridge,
             self.settings,
             lambda: None,
             self.bridge.model_manager_controller,
+            runtime_bindings=self.runtime_bindings,
             process_runtime=self.process_runtime,
         )
 
@@ -321,6 +320,9 @@ class ImportQueueControllerTests(unittest.TestCase):
         self.assertEqual(observed["request"].engine, context.engine)
         self.assertEqual(observed["kwargs"]["dependencies"].settings.cache, context.settings_snapshot)
         self.assertIs(observed["kwargs"]["dependencies"].ui_bridge.bridge, self.controller)
+        self.assertIs(observed["kwargs"]["dependencies"].result_queue.state, self.runtime_bindings.recording_state)
+        self.assertIs(observed["kwargs"]["dependencies"].processing_state.state, self.runtime_bindings.file_state)
+        self.assertTrue(observed["kwargs"]["dependencies"].environment.has_ffmpeg)
         self.assertEqual(self.bridge.finished, ["File import finished: 0 transcribed, 0 translated"])
 
     def test_get_file_processing_state_uses_injected_process_runtime(self) -> None:
