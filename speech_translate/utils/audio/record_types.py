@@ -162,6 +162,13 @@ class RecordingSessionLifecycle:
 
 
 @dataclass
+class RecordingSessionBootstrap:
+    config: RecordingSessionConfig
+    model_runtime: RecordingModelRuntime
+    stream_runtime: RecordingStreamRuntime
+
+
+@dataclass
 class SmartSplitOutcome:
     pre_audio_bytes: bytes
     post_audio_bytes: bytes

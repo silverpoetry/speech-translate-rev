@@ -33,6 +33,7 @@ from speech_translate.utils.audio.record_runtime import (
 from speech_translate.utils.audio import record_streaming as streaming_module
 from speech_translate.utils.audio.record_types import (
     AudioTarget,
+    RecordingSessionBootstrap,
     RecordingModelRuntime,
     RecordingRuntime,
     RecordingSessionConfig,
@@ -113,6 +114,48 @@ def _build_recording_session_config(
         auto_break_buffer=bool(settings_snapshot.get(f"auto_break_buffer_{rec_type}", True)),
         use_temp=bool(settings_snapshot["use_temp"]),
         separator=str_separator_to_html(literal_eval(quote(settings_snapshot["separate_with"]))),
+    )
+
+
+def _prepare_recording_session_bootstrap(
+    *,
+    rec_type: str,
+    settings_snapshot: Mapping[str, object],
+    lang_source: str,
+    engine: str,
+    model_name_tc: str,
+    is_tc: bool,
+    is_tl: bool,
+    p,
+) -> RecordingSessionBootstrap:
+    config = _build_recording_session_config(
+        rec_type=rec_type,
+        lang_source=lang_source,
+        engine=engine,
+        is_tc=is_tc,
+        is_tl=is_tl,
+        settings_snapshot=settings_snapshot,
+    )
+    model_runtime = _load_recording_model_runtime(
+        config=config,
+        lang_source=lang_source,
+        model_name_tc=model_name_tc,
+        engine=engine,
+        is_tc=is_tc,
+        is_tl=is_tl,
+        settings_snapshot=settings_snapshot,
+    )
+    config.use_temp = model_runtime.use_temp
+    stream_runtime = _build_recording_stream_runtime(
+        rec_type=rec_type,
+        config=config,
+        p=p,
+        settings_snapshot=settings_snapshot,
+    )
+    return RecordingSessionBootstrap(
+        config=config,
+        model_runtime=model_runtime,
+        stream_runtime=stream_runtime,
     )
 
 
@@ -899,32 +942,20 @@ def record_session(
     settings_snapshot = dict(sj.cache)
 
     try:
-        config = _build_recording_session_config(
-            rec_type=rec_type,
-            lang_source=lang_source,
-            engine=engine,
-            is_tc=is_tc,
-            is_tl=is_tl,
-            settings_snapshot=settings_snapshot,
-        )
         p = get_pyaudio_module().PyAudio()
-
-        model_runtime = _load_recording_model_runtime(
-            config=config,
+        bootstrap = _prepare_recording_session_bootstrap(
+            rec_type=rec_type,
+            settings_snapshot=settings_snapshot,
             lang_source=lang_source,
-            model_name_tc=model_name_tc,
             engine=engine,
+            model_name_tc=model_name_tc,
             is_tc=is_tc,
             is_tl=is_tl,
-            settings_snapshot=settings_snapshot,
-        )
-        config.use_temp = model_runtime.use_temp
-        stream_runtime = _build_recording_stream_runtime(
-            rec_type=rec_type,
-            config=config,
             p=p,
-            settings_snapshot=settings_snapshot,
         )
+        config = bootstrap.config
+        model_runtime = bootstrap.model_runtime
+        stream_runtime = bootstrap.stream_runtime
 
         logger.info(
             f"Session starting: {config.taskname} | Engine: {engine} | Device: {model_runtime.cuda_device} | Demucs: {model_runtime.demucs_enabled}"

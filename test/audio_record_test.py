@@ -27,6 +27,7 @@ from speech_translate.utils.audio.record import (
     _drain_pending_audio,
     _build_recording_sentence_count_text,
     _build_record_audio_target,
+    _prepare_recording_session_bootstrap,
     _build_recording_session_config,
     _load_recording_model_runtime,
     _advance_recording_buffer,
@@ -331,6 +332,64 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(runtime.cuda_device, "cpu")
         self.assertEqual(runtime.hallucination_filters, {"english": ["x"]})
         self.assertEqual(runtime.whisper_args["language"], "en")
+
+    def test_prepare_recording_session_bootstrap_snapshots_runtime_sequence(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_build_config = record_module._build_recording_session_config
+        previous_load_runtime = record_module._load_recording_model_runtime
+        previous_build_stream = record_module._build_recording_stream_runtime
+        calls = []
+        try:
+            config = type("Config", (), {"use_temp": False, "taskname": "Transcribe"})()
+            model_runtime = type("ModelRuntime", (), {"use_temp": True, "cuda_device": "cpu", "demucs_enabled": False})()
+            stream_runtime = RecordingStreamRuntime(
+                input_device_index=0,
+                sr_ori=16000,
+                num_of_channels=1,
+                chunk_size=320,
+                samp_width=2,
+                sr_divider=16000,
+                callback_ctx=RealtimeCallbackContext(
+                    sample_rate=16000,
+                    frame_duration_ms=20,
+                    threshold_enable=True,
+                    threshold_db=-20.0,
+                    threshold_auto=True,
+                    use_silero=True,
+                    silero_min_conf=0.75,
+                    vad_checked=False,
+                    num_of_channels=1,
+                    samp_width=2,
+                    use_temp=True,
+                ),
+            )
+
+            record_module._build_recording_session_config = lambda **kwargs: calls.append(("config", kwargs["settings_snapshot"]["use_temp"])) or config
+            record_module._load_recording_model_runtime = lambda **kwargs: calls.append(("model", kwargs["config"].use_temp)) or model_runtime
+            record_module._build_recording_stream_runtime = (
+                lambda **kwargs: calls.append(("stream", kwargs["config"].use_temp, kwargs["settings_snapshot"]["use_temp"])) or stream_runtime
+            )
+
+            bootstrap = _prepare_recording_session_bootstrap(
+                rec_type="mic",
+                settings_snapshot={"use_temp": False},
+                lang_source="English",
+                engine="Whisper",
+                model_name_tc="base",
+                is_tc=True,
+                is_tl=False,
+                p=object(),
+            )
+        finally:
+            record_module._build_recording_session_config = previous_build_config
+            record_module._load_recording_model_runtime = previous_load_runtime
+            record_module._build_recording_stream_runtime = previous_build_stream
+
+        self.assertIs(bootstrap.config, config)
+        self.assertIs(bootstrap.model_runtime, model_runtime)
+        self.assertIs(bootstrap.stream_runtime, stream_runtime)
+        self.assertEqual(calls, [("config", False), ("model", False), ("stream", True, False)])
 
     def test_build_recording_stream_runtime_uses_device_and_vad_bootstrap(self) -> None:
         from speech_translate.utils.audio import record as record_module
