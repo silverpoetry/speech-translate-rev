@@ -8,7 +8,7 @@ import unittest
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
-from speech_translate.web_bridge_facade import WebBridgeFacadeMixin
+from speech_translate.web_bridge_api import WebBridgeApiMixin
 
 
 class DummyController:
@@ -56,7 +56,7 @@ class DummyController:
         return {"name": name}
 
 
-class DummyBridge(WebBridgeFacadeMixin):
+class DummyBridge(WebBridgeApiMixin):
     def __init__(self) -> None:
         self.model_manager_controller = DummyController()
         self.import_queue_controller = DummyController()
@@ -67,7 +67,7 @@ class DummyBridge(WebBridgeFacadeMixin):
         self.main_window_controller = DummyController()
 
 
-class WebBridgeFacadeMixinTests(unittest.TestCase):
+class WebBridgeApiMixinTests(unittest.TestCase):
     def setUp(self) -> None:
         self.bridge = DummyBridge()
 

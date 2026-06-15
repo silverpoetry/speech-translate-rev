@@ -15,7 +15,7 @@ from speech_translate.controller_protocols import (
 
 
 class ControllerPropertyProxy:
-    """Route facade properties directly to the owning controller."""
+    """Route bridge API properties directly to the owning controller."""
 
     def __init__(self, controller_attr: str, attr_name: str):
         self.controller_attr = controller_attr
@@ -41,8 +41,8 @@ def _make_controller_forwarder(controller_attr: str, method_name: str):
     return forward
 
 
-class WebBridgeFacadeMixin:
-    """Explicit facade forwarding for WebBridge controller-backed APIs."""
+class WebBridgeApiMixin:
+    """Expose the pywebview bridge API as explicit controller-backed forwards."""
 
     model_manager_controller: ModelManagerControllerApi
     import_queue_controller: ImportQueueControllerApi
@@ -161,11 +161,11 @@ _FORWARDED_METHODS: dict[str, tuple[str, str]] = {
 }
 
 
-for facade_name, (controller_attr, controller_method) in _FORWARDED_METHODS.items():
-    setattr(WebBridgeFacadeMixin, facade_name, _make_controller_forwarder(controller_attr, controller_method))
+for api_name, (controller_attr, controller_method) in _FORWARDED_METHODS.items():
+    setattr(WebBridgeApiMixin, api_name, _make_controller_forwarder(controller_attr, controller_method))
 
 
 __all__ = [
     "ControllerPropertyProxy",
-    "WebBridgeFacadeMixin",
+    "WebBridgeApiMixin",
 ]

@@ -22,7 +22,7 @@ from speech_translate.ui_protocol import TASK_SOURCE_GENERAL
 from speech_translate.utils.translate.language import TL_ENGINE_SOURCE_DICT, TL_ENGINE_TARGET_DICT
 from speech_translate.utils.translate.translator import shutdown_selenium_translator
 from speech_translate.web_backend import WebTaskBridge
-from speech_translate.web_bridge_facade import WebBridgeFacadeMixin
+from speech_translate.web_bridge_api import WebBridgeApiMixin
 
 
 BridgeBootstrapper = Callable[[], None]
@@ -87,7 +87,7 @@ def build_web_bridge_dependencies(bridge: "WebBridge", settings: SettingsStore |
     )
 
 
-class WebBridge(WebBridgeFacadeMixin, WebTaskBridge):
+class WebBridge(WebBridgeApiMixin, WebTaskBridge):
     """Bridge exposed to the pywebview frontend."""
 
     TL_ENGINE_SOURCE_DICT_REF = TL_ENGINE_SOURCE_DICT
