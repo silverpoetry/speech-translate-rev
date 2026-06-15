@@ -15,51 +15,22 @@ from speech_translate.controller_protocols import (
     StartupWebviewModule,
     WebviewWindowLike,
 )
+from speech_translate.detached_window_settings import (
+    DETACHED_WINDOW_DEFAULT_GEOMETRY,
+    build_detached_window_config,
+    build_detached_window_settings,
+    detached_setting_key,
+    get_detached_live_content,
+    normalize_detached_mode,
+)
 from speech_translate.detached_window_runtime import DetachedWindowDeliveryRuntime
 from speech_translate.log_helpers import logger
 from speech_translate.webview_runtime import load_webview_runtime
 from speech_translate.window_geometry import extract_native_window_geometry, resolve_window_placement
 
 
-DETACHED_WINDOW_MODES = {"tc", "tl"}
-DETACHED_WINDOW_DEFAULT_MODE = "tl"
-
-
-def normalize_detached_mode(mode: object) -> str:
-    normalized = str(mode).lower()
-    return normalized if normalized in DETACHED_WINDOW_MODES else DETACHED_WINDOW_DEFAULT_MODE
-
-
 def build_detached_config(settings_cache: Mapping[str, object], mode: object) -> JsonDict:
-    normalized_mode = normalize_detached_mode(mode)
-    return {
-        "font": settings_cache.get(f"tb_ex_{normalized_mode}_font", "Arial"),
-        "font_size": settings_cache.get(f"tb_ex_{normalized_mode}_font_size", 13),
-        "font_bold": settings_cache.get(f"tb_ex_{normalized_mode}_font_bold", True),
-        "font_color": settings_cache.get(f"tb_ex_{normalized_mode}_font_color", "#FFFFFF"),
-        "bg_color": settings_cache.get(f"tb_ex_{normalized_mode}_bg_color", "#000000"),
-        "always_on_top": settings_cache.get(f"ex_{normalized_mode}_always_on_top", 0),
-        "no_title_bar": settings_cache.get(f"ex_{normalized_mode}_no_title_bar", 0),
-        "opacity": settings_cache.get(f"ex_{normalized_mode}_opacity", 1.0),
-        "click_through": settings_cache.get(f"ex_{normalized_mode}_click_through", 0),
-    }
-
-
-def detached_setting_key(mode: object, key: str) -> str:
-    normalized_mode = normalize_detached_mode(mode)
-    if key in ("always_on_top", "no_title_bar", "opacity", "click_through"):
-        return f"ex_{normalized_mode}_{key}"
-    return f"tb_ex_{normalized_mode}_{key}"
-
-
-def get_detached_live_content(mode: object, live_state: Mapping[str, object]) -> Optional[str]:
-    normalized_mode = normalize_detached_mode(mode)
-    content_key = "transcribed" if normalized_mode == "tc" else "translated"
-    html = live_state.get(f"detached_{content_key}_html")
-    text = live_state.get(f"detached_{content_key}_text")
-    if html or text:
-        return str(html or text)
-    return None
+    return build_detached_window_config(settings_cache, mode).to_payload()
 
 
 class DetachedWindowManager:
@@ -358,9 +329,9 @@ class DetachedWindowManager:
         width: Optional[int],
         height: Optional[int],
     ) -> tuple[int, int, int, int]:
-        geometry_cache = "900x240"
+        geometry_cache = DETACHED_WINDOW_DEFAULT_GEOMETRY
         if self.settings is not None:
-            geometry_cache = str(self.settings.cache.get(f"ex_{mode}_geometry", geometry_cache))
+            geometry_cache = build_detached_window_settings(self.settings.cache, mode).geometry_cache
 
         cached_placement = resolve_window_placement(
             geometry_cache,
@@ -414,7 +385,7 @@ class DetachedWindowManager:
 
             cache_value = None
             if self.settings is not None:
-                cache_value = self.settings.cache.get(f"ex_{mode}_geometry", "900x240")
+                cache_value = build_detached_window_settings(self.settings.cache, mode).geometry_cache
             logger.info(
                 f"[DetachedGeometry][open-created] mode={mode} "
                 f"requested={width}x{height} position={x},{y} cache={cache_value}"

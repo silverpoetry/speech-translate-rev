@@ -17,6 +17,7 @@ from speech_translate.detached_windows import (
     get_detached_live_content,
     normalize_detached_mode,
 )
+from speech_translate.detached_window_settings import build_detached_window_settings
 
 
 class DetachedWindowHelpersTests(unittest.TestCase):
@@ -92,6 +93,21 @@ class DetachedWindowHelpersTests(unittest.TestCase):
                 "click_through": 1,
             },
         )
+
+    def test_build_detached_window_settings_collects_geometry_and_config(self) -> None:
+        settings_view = build_detached_window_settings(
+            {
+                "ex_tl_geometry": "640x320",
+                "tb_ex_tl_font": "Arial",
+                "tb_ex_tl_font_size": 15,
+            },
+            "invalid",
+        )
+
+        self.assertEqual(settings_view.mode, "tl")
+        self.assertEqual(settings_view.geometry_cache, "640x320")
+        self.assertEqual(settings_view.config.to_payload()["font"], "Arial")
+        self.assertEqual(settings_view.config.to_payload()["font_size"], 15)
 
     def test_detached_setting_key_routes_window_flags_and_text_settings(self) -> None:
         self.assertEqual(detached_setting_key("tc", "always_on_top"), "ex_tc_always_on_top")

@@ -3,8 +3,9 @@ from __future__ import annotations
 from typing import Optional
 
 from speech_translate.controller_protocols import DetachedWindowBridge, DetachedWindowManagerApi, JsonDict, SettingsStore
-from speech_translate.detached_windows import (
-    build_detached_config,
+from speech_translate.detached_window_settings import (
+    DETACHED_WINDOW_DEFAULT_GEOMETRY,
+    build_detached_window_settings,
     detached_setting_key,
     get_detached_live_content,
     normalize_detached_mode,
@@ -27,8 +28,9 @@ class DetachedWindowController:
         return detached_setting_key(mode, key)
 
     def _resolve_window_placement(self, mode: str, x: Optional[int], y: Optional[int]):
+        settings_view = build_detached_window_settings(self.settings.cache, mode)
         return resolve_window_placement(
-            self.settings.cache.get(f"ex_{mode}_geometry", "900x240"),
+            settings_view.geometry_cache or DETACHED_WINDOW_DEFAULT_GEOMETRY,
             900,
             240,
             x=x,
@@ -41,7 +43,7 @@ class DetachedWindowController:
             self.update_detached_content(mode, html)
 
     def get_detached_config(self, mode: str) -> JsonDict:
-        return build_detached_config(self.settings.cache, mode)
+        return build_detached_window_settings(self.settings.cache, mode).config.to_payload()
 
     def set_detached_config(self, mode: str, key: str, value: object) -> JsonDict:
         normalized_mode = self._normalize_mode(mode)
