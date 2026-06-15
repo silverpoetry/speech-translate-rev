@@ -719,6 +719,7 @@ function renderGlobalStatusBar(task, data, recordingState = null) {
   const modelKey = runtime.key || data?.import_ui?.selected_model_key || data?.import_ui?.selected_model || '未知';
   const loading = Boolean(runtime.loading);
   const loaded = Boolean(runtime.loaded);
+  const runtimeElapsed = Math.max(0, Number(runtime.elapsed_seconds) || 0);
 
   const normalizeMessage = (msg) => {
     const raw = String(msg || '').trim();
@@ -780,7 +781,7 @@ function renderGlobalStatusBar(task, data, recordingState = null) {
     const modelMeta = loaded
       ? (runtimeMsg || '模型缓存可用')
       : loading
-        ? (runtimeMsg || '正在准备模型缓存')
+        ? `${runtimeMsg || '正在准备模型缓存'}${runtimeElapsed > 0 ? ` · 已耗时 ${runtimeElapsed.toFixed(0)}s` : ''}`
         : (runtimeMsg && runtimeMsg.includes('失败') ? runtimeMsg : '可点击 Load Model 预加载');
     els.globalModelMeta.textContent = modelMeta;
   }
@@ -960,6 +961,30 @@ function startModelProgressPolling(engine) {
       }
     } catch (error) {
       console.debug('Model progress polling stopped', error);
+      stopModelProgressPolling();
+    }
+  }, 800);
+}
+
+function startRuntimeModelLoadPolling() {
+  stopModelProgressPolling();
+  let sawLoading = false;
+  state.modelPollTimer = window.setInterval(async () => {
+    try {
+      await refreshTaskState();
+      const runtimeModel = state.data && state.data.runtime_model ? state.data.runtime_model : null;
+      const loading = Boolean(runtimeModel && runtimeModel.loading);
+      if (loading) {
+        sawLoading = true;
+        return;
+      }
+
+      stopModelProgressPolling();
+      if (sawLoading) {
+        await refreshState();
+      }
+    } catch (error) {
+      console.debug('Runtime model polling stopped', error);
       stopModelProgressPolling();
     }
   }, 800);
@@ -1257,6 +1282,7 @@ async function loadRuntimeModel() {
   }
 
   await refreshTaskState();
+  startRuntimeModelLoadPolling();
 }
 
 async function saveRecordSettings(shouldRefresh = true) {

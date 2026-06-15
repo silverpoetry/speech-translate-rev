@@ -106,6 +106,7 @@ class ModelManagerControllerTests(unittest.TestCase):
                 "loading": True,
                 "loaded": False,
                 "message": self.controller.runtime_model_message,
+                "elapsed_seconds": 0.0,
             },
         )
 
@@ -235,6 +236,9 @@ class ModelManagerControllerTests(unittest.TestCase):
             def get_model_args(self, settings_snapshot):
                 return {"device": "cpu", "download_root": "D:/models"}
 
+            def is_model_bundle_cached(self, *args, **kwargs):
+                return False
+
             def get_model(self, *args, **kwargs):
                 return ("tc", None, object(), None, object())
 
@@ -256,6 +260,50 @@ class ModelManagerControllerTests(unittest.TestCase):
         self.assertTrue(controller.runtime_model_loaded)
         self.assertEqual(controller.runtime_model_key, "tiny")
         self.assertIn(("finish", "Model ready: tiny"), self.bridge.messages)
+
+    def test_load_runtime_model_reports_staged_progress_before_loading(self) -> None:
+        from speech_translate import model_manager as model_manager_module
+
+        class InlineThread:
+            def __init__(self, target, daemon=True):
+                self._target = target
+                self.daemon = daemon
+
+            def start(self):
+                self._target()
+
+        class FakeWhisperLoadApi:
+            def __init__(self) -> None:
+                self.cached_calls = []
+                self.model_calls = []
+
+            def get_model_args(self, settings_snapshot):
+                return {"device": "cpu", "download_root": "D:/models"}
+
+            def is_model_bundle_cached(self, *args, **kwargs):
+                self.cached_calls.append((args, kwargs))
+                return False
+
+            def get_model(self, *args, **kwargs):
+                self.model_calls.append((args, kwargs))
+                return ("tc", None, object(), None, object())
+
+        api = FakeWhisperLoadApi()
+        controller = ModelManagerController(self.bridge, self.settings, lambda: api)
+
+        previous_thread = model_manager_module.Thread
+        try:
+            model_manager_module.Thread = InlineThread
+            controller.load_runtime_model("tiny")
+        finally:
+            model_manager_module.Thread = previous_thread
+
+        self.assertTrue(any(msg == "Preparing model arguments for tiny" for _, msg in self.bridge.messages))
+        self.assertTrue(any(msg == "Checking model cache for tiny" for _, msg in self.bridge.messages))
+        self.assertTrue(any(msg == "Loading model into runtime memory for tiny" for _, msg in self.bridge.messages))
+        self.assertIn(("model-load", 5), self.bridge.progress)
+        self.assertIn(("model-load", 15), self.bridge.progress)
+        self.assertIn(("model-load", 35), self.bridge.progress)
 
 
 if __name__ == "__main__":

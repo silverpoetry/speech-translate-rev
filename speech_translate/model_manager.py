@@ -40,6 +40,7 @@ class ModelManagerController:
         self.runtime_model_key = self.normalize_model_key(str(settings.cache.get("model_f_import", "")))
         self.runtime_model_loaded = False
         self.runtime_model_message = "模型未预加载"
+        self.runtime_model_started_at = 0.0
         self.model_manager_engine = "whisper"
         self.model_manager_model = "small"
 
@@ -56,6 +57,13 @@ class ModelManagerController:
         self.runtime_model_loaded = bool(loaded)
         self.model_load_running = bool(loading)
         self.runtime_model_message = str(message)
+        if loading:
+            if self.runtime_model_started_at <= 0:
+                from time import time as _time
+
+                self.runtime_model_started_at = _time()
+        else:
+            self.runtime_model_started_at = 0.0
 
     def _resolve_runtime_model_message(self, normalized_key: str, *, loaded: bool, message: Optional[str]) -> str:
         if message:
@@ -182,11 +190,17 @@ class ModelManagerController:
 
     def build_runtime_model_state(self) -> JsonDict:
         loaded = bool(self.runtime_model_loaded)
+        elapsed = 0.0
+        if self.model_load_running and self.runtime_model_started_at > 0:
+            from time import time as _time
+
+            elapsed = max(0.0, _time() - self.runtime_model_started_at)
         return {
             "key": self.runtime_model_key,
             "loading": bool(self.model_load_running) and not loaded,
             "loaded": loaded,
             "message": self.runtime_model_message,
+            "elapsed_seconds": elapsed,
         }
 
     def get_model_manager_state(self, engine: Optional[str] = None) -> JsonDict:
@@ -345,22 +359,58 @@ class ModelManagerController:
                 settings_snapshot = cast(SettingDict, self.bridge.get_settings_snapshot())
                 settings_snapshot["model_mw"] = settings_snapshot["model_f_import"] = model_key
                 engine = self.normalize_engine_name(str(settings_snapshot.get("tl_engine_mw", "Google Translate")))
+                transcribe_enabled = bool(settings_snapshot.get("transcribe_mw", True))
+                translate_enabled = bool(settings_snapshot.get("translate_mw", True))
+                tl_engine_whisper = engine in model_values
 
                 self.bridge.reset_task_state("Model Load")
                 self.bridge.update_task_message(f"Loading model cache for {model_key}", source=TASK_SOURCE_MODEL_LOAD)
-                self.bridge.update_task_progress(5)
+                self.bridge.update_task_progress(5, source=TASK_SOURCE_MODEL_LOAD)
+                self.bridge.update_task_message(
+                    f"Preparing model arguments for {model_key}",
+                    source=TASK_SOURCE_MODEL_LOAD,
+                )
 
-                whisper_load_api.get_model(
-                    bool(settings_snapshot.get("transcribe_mw", True)),
-                    bool(settings_snapshot.get("translate_mw", True)),
-                    engine in model_values,
+                model_args = whisper_load_api.get_model_args(settings_snapshot)
+                self.bridge.update_task_progress(15, source=TASK_SOURCE_MODEL_LOAD)
+                self.bridge.update_task_message(
+                    f"Checking model cache for {model_key}",
+                    source=TASK_SOURCE_MODEL_LOAD,
+                )
+
+                bundle_cached = whisper_load_api.is_model_bundle_cached(
+                    transcribe_enabled,
+                    translate_enabled,
+                    tl_engine_whisper,
                     model_key,
                     engine,
                     settings_snapshot,
-                    **whisper_load_api.get_model_args(settings_snapshot),
+                    **model_args,
+                )
+                if bundle_cached:
+                    self.bridge.update_task_progress(80, source=TASK_SOURCE_MODEL_LOAD)
+                    self.bridge.update_task_message(
+                        f"Using cached runtime bundle for {model_key}",
+                        source=TASK_SOURCE_MODEL_LOAD,
+                    )
+                else:
+                    self.bridge.update_task_progress(35, source=TASK_SOURCE_MODEL_LOAD)
+                    self.bridge.update_task_message(
+                        f"Loading model into runtime memory for {model_key}",
+                        source=TASK_SOURCE_MODEL_LOAD,
+                    )
+
+                whisper_load_api.get_model(
+                    transcribe_enabled,
+                    translate_enabled,
+                    tl_engine_whisper,
+                    model_key,
+                    engine,
+                    settings_snapshot,
+                    **model_args,
                 )
 
-                self.bridge.update_task_progress(100)
+                self.bridge.update_task_progress(100, source=TASK_SOURCE_MODEL_LOAD)
                 self.bridge.finish_task(f"Model ready: {model_key}")
                 self.mark_runtime_model_ready(model_key)
             except Exception as exc:
@@ -384,6 +434,18 @@ class ModelManagerController:
 
         lowered = text.lower()
         if source_text == "model-load":
+            if lowered.startswith("preparing model arguments for"):
+                self.mark_runtime_model_pending(self.runtime_model_key, message=text)
+                return
+            if lowered.startswith("checking model cache for"):
+                self.mark_runtime_model_pending(self.runtime_model_key, message=text)
+                return
+            if lowered.startswith("using cached runtime bundle for"):
+                self.mark_runtime_model_pending(self.runtime_model_key, message=text)
+                return
+            if lowered.startswith("loading model into runtime memory for"):
+                self.mark_runtime_model_pending(self.runtime_model_key, message=text)
+                return
             if lowered.startswith("loading model") or lowered.startswith("loading model cache for"):
                 if ":" in text:
                     candidate = text.split(":", 1)[1].strip()
