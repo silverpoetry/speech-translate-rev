@@ -922,7 +922,7 @@ def _execute_realtime_transcription(
     stable_tc: WhisperCallable,
     whisper_args: dict[str, object],
 ) -> TranscriptionResultLike | None:
-    return processing_module.execute_realtime_transcription(audio_target, stable_tc, whisper_args)
+    return processing_module.execute_realtime_transcription(audio_target, stable_tc, whisper_args, tc_lock=bc.tc_lock)
 
 
 def _filter_realtime_transcription_result(
@@ -956,6 +956,8 @@ def _commit_realtime_transcription(
         is_tl=is_tl,
         separator=separator,
         translator=translator,
+        runtime_text_state=text_state,
+        set_current_status=recording_control.set_current_status,
     )
 
 
@@ -995,6 +997,7 @@ def _apply_smart_split(
         separator=separator,
         translator=translator,
         utc_now=_utc_now,
+        runtime_text_state=text_state,
     )
 
 
@@ -1025,6 +1028,7 @@ def _break_buffer_and_update_state(
         translator=translator,
         buffer_reducer=buffer_reducer,
         utc_now=_utc_now,
+        runtime_text_state=text_state,
     )
 
 # =========================================================================

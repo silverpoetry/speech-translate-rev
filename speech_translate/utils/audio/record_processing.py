@@ -12,9 +12,11 @@ from speech_translate._path import dir_temp
 from speech_translate.linker import bc, sj
 from speech_translate.runtime_deps import torch_from_numpy
 from speech_translate.utils.audio.record_runtime import (
+    RecordingTextState,
     _build_full_transcribed_text,
     _enforce_sentence_limits,
     shared_state,
+    text_state,
 )
 from speech_translate.utils.audio.record_types import (
     AudioTarget,
@@ -98,10 +100,12 @@ def execute_realtime_transcription(
     audio_target: AudioTarget,
     stable_tc: WhisperCallable,
     whisper_args: dict[str, object],
+    *,
+    tc_lock: LockLike | None = None,
 ) -> TranscriptionResultLike | None:
     try:
-        if bc.tc_lock:
-            with bc.tc_lock:  # type: ignore[union-attr]
+        if tc_lock:
+            with tc_lock:
                 return stable_tc(audio_target, task="transcribe", **whisper_args)
         return stable_tc(audio_target, task="transcribe", **whisper_args)
     except Exception as exc:
@@ -146,18 +150,22 @@ def commit_realtime_transcription(
     is_tl: bool,
     separator: str,
     translator: TranslationDispatcher,
+    runtime_text_state: RecordingTextState | None = None,
+    set_current_status=None,
 ) -> None:
+    runtime_text_state = runtime_text_state or text_state
+    set_current_status = set_current_status or (lambda status: setattr(bc, "current_rec_status", status))
     text = result.text.strip() if result else ""
-    bc.auto_detected_lang = result.language if result else "~"
+    runtime_text_state.set_detected_language(result.language if result else "~")
 
     if not text:
-        bc.current_rec_status = "▶️ Recording"
+        set_current_status("▶️ Recording")
         return
 
-    shared_state.prev_tc_res = result
-    bc.update_tc(result, separator)
-    bc.current_rec_status = "▶️ Recording ⟳ Translating text" if is_tl else "▶️ Recording"
-    translator.dispatch(audio_target, _build_full_transcribed_text(bc.tc_sentences, result))
+    runtime_text_state.set_previous_transcribed_result(result)
+    runtime_text_state.update_transcribed_output(result, separator)
+    set_current_status("▶️ Recording ⟳ Translating text" if is_tl else "▶️ Recording")
+    translator.dispatch(audio_target, _build_full_transcribed_text(runtime_text_state.transcribed_sentences(), result))
 
 
 def calculate_smart_split(
@@ -273,7 +281,9 @@ def apply_smart_split(
     separator: str,
     translator: TranslationDispatcher,
     utc_now,
+    runtime_text_state: RecordingTextState | None = None,
 ) -> bool:
+    runtime_text_state = runtime_text_state or text_state
     split_outcome = build_smart_split_outcome(
         previous_result,
         session_state.last_sample,
@@ -294,18 +304,23 @@ def apply_smart_split(
             sr_divider,
         )
 
-        bc.tc_sentences.append(split_outcome.pre_result)
+        tc_sentences = runtime_text_state.transcribed_sentences()
+        tc_sentences.append(split_outcome.pre_result)
         session_state.recalculate_duration(
             samp_width=samp_width,
             num_of_channels=num_of_channels,
             sr_divider=sr_divider,
         )
         session_state.next_transcribe_time = utc_now()
-        shared_state.prev_tc_res = split_outcome.post_result
+        runtime_text_state.set_previous_transcribed_result(split_outcome.post_result)
 
-        bc.tc_sentences = _enforce_sentence_limits(bc.tc_sentences, sentence_limitless, max_sentences)
-        bc.update_tc(shared_state.prev_tc_res, separator)
-        translator.dispatch(pre_audio_path, _build_full_transcribed_text(bc.tc_sentences, shared_state.prev_tc_res))
+        tc_sentences = _enforce_sentence_limits(tc_sentences, sentence_limitless, max_sentences)
+        runtime_text_state.set_transcribed_sentences(tc_sentences)
+        runtime_text_state.update_transcribed_output(runtime_text_state.previous_transcribed_result(), separator)
+        translator.dispatch(
+            pre_audio_path,
+            _build_full_transcribed_text(tc_sentences, runtime_text_state.previous_transcribed_result()),
+        )
         return True
     except Exception as exc:
         logger.warning(f"Smart-Split fallback due to error: {exc}")
@@ -326,17 +341,19 @@ def break_buffer_and_update_state(
     translator: TranslationDispatcher,
     buffer_reducer: BufferStateReducer,
     utc_now,
+    runtime_text_state: RecordingTextState | None = None,
 ) -> None:
+    runtime_text_state = runtime_text_state or text_state
     logger.info(f"Buffer break [{reason}] | bytes={len(session_state.last_sample)} dur={session_state.duration_seconds:.2f}s")
 
     preserved_tc = (
         reason == "buffer_full"
         and is_tc
-        and bool(shared_state.prev_tc_res)
-        and hasattr(shared_state.prev_tc_res, "segments")
+        and bool(runtime_text_state.previous_transcribed_result())
+        and hasattr(runtime_text_state.previous_transcribed_result(), "segments")
         and apply_smart_split(
             session_state=session_state,
-            previous_result=shared_state.prev_tc_res,
+            previous_result=runtime_text_state.previous_transcribed_result(),
             sr_divider=sr_divider,
             samp_width=samp_width,
             num_of_channels=num_of_channels,
@@ -345,6 +362,7 @@ def break_buffer_and_update_state(
             separator=separator,
             translator=translator,
             utc_now=utc_now,
+            runtime_text_state=runtime_text_state,
         )
     )
 

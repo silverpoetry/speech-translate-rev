@@ -1532,6 +1532,29 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(tc_updates[-1][1], "<br />")
         self.assertEqual(translator.calls[-1], ("audio", "hello"))
 
+    def test_commit_realtime_transcription_supports_injected_text_state_and_status_setter(self) -> None:
+        from speech_translate.utils.audio import record_processing as processing_module
+
+        translator = FakeTranslator()
+        runtime_text_state = FakeRuntimeTextState(tc_sentences=["old"])
+        statuses = []
+
+        processing_module.commit_realtime_transcription(
+            FakeResult("hello", language="en"),
+            audio_target="audio",
+            is_tl=True,
+            separator="<br />",
+            translator=translator,
+            runtime_text_state=runtime_text_state,
+            set_current_status=statuses.append,
+        )
+
+        self.assertEqual(runtime_text_state.detected_language(), "en")
+        self.assertEqual(_result_text(runtime_text_state.previous_transcribed_result()), "hello")
+        self.assertEqual(runtime_text_state.tc_updates[-1][1], "<br />")
+        self.assertEqual(statuses[-1], "▶️ Recording ⟳ Translating text")
+        self.assertEqual(translator.calls[-1], ("audio", "old\nhello"))
+
     def test_build_record_audio_target_tracks_temp_file(self) -> None:
         from speech_translate.utils.audio import record as record_module
 
@@ -1951,6 +1974,49 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertIsNotNone(session_state.next_transcribe_time)
         self.assertEqual(tc_updates[-1][1], "<br />")
         self.assertEqual(translator.calls[-1][1], "alpha\nbeta")
+
+    def test_apply_smart_split_supports_injected_text_state(self) -> None:
+        from speech_translate.utils.audio import record_processing as processing_module
+
+        result = FakeSmartResult(
+            [
+                {
+                    "text": "alpha",
+                    "words": [{"word": "alpha", "start": 5.0, "end": 6.0}],
+                },
+                {
+                    "text": "beta",
+                    "words": [{"word": "beta", "start": 9.0, "end": 10.0}],
+                },
+            ]
+        )
+        previous_save = processing_module.save_to_temp
+        session_state = RealtimeSessionState(last_sample=b"0123456789ABCDEFGHIJ", duration_seconds=20.0)
+        translator = FakeTranslator()
+        runtime_text_state = FakeRuntimeTextState(tc_sentences=[], prev_tc_res=result)
+        try:
+            processing_module.save_to_temp = lambda *_args, **_kwargs: "temp.wav"
+            applied = processing_module.apply_smart_split(
+                session_state=session_state,
+                previous_result=result,
+                sr_divider=1,
+                samp_width=1,
+                num_of_channels=1,
+                sentence_limitless=False,
+                max_sentences=5,
+                separator="<br />",
+                translator=translator,
+                utc_now=lambda: timedelta(seconds=0),
+                runtime_text_state=runtime_text_state,
+            )
+        finally:
+            processing_module.save_to_temp = previous_save
+
+        self.assertTrue(applied)
+        self.assertEqual(_result_text(runtime_text_state.previous_transcribed_result()), "beta")
+        self.assertEqual(_result_text(runtime_text_state.transcribed_sentences()[0]), "alpha")
+        self.assertEqual(runtime_text_state.tc_updates[-1][1], "<br />")
+        self.assertEqual(translator.calls[-1], ("temp.wav", "alpha\nbeta"))
 
     def test_break_buffer_falls_back_to_reducer_when_split_not_preserved(self) -> None:
         from speech_translate.utils.audio import record as record_module
