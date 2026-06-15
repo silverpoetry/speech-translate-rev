@@ -52,9 +52,22 @@ class WindowGeometryTests(unittest.TestCase):
         metrics = FakeMetricsProvider(virtual_bounds=(100, 50, 1000, 800))
         self.assertEqual(center_window_pos(400, 200, metrics=metrics), (400, 350))
 
+    def test_center_window_pos_windows_falls_back_when_scale_factor_is_invalid(self) -> None:
+        metrics = FakeMetricsProvider(
+            screen_size=(1920, 1080),
+            virtual_bounds=(100, 50, 1000, 800),
+            scale_factor=0.0,
+            platform_name="Windows",
+        )
+        self.assertEqual(center_window_pos(400, 200, metrics=metrics), (400, 350))
+
     def test_ensure_visible_or_center_recenters_offscreen_window(self) -> None:
         metrics = FakeMetricsProvider(virtual_bounds=(0, 0, 1280, 720))
         self.assertEqual(ensure_visible_or_center(2000, 2000, 400, 300, metrics=metrics), (440, 210))
+
+    def test_ensure_visible_or_center_keeps_partially_visible_window(self) -> None:
+        metrics = FakeMetricsProvider(virtual_bounds=(0, 0, 1280, 720))
+        self.assertEqual(ensure_visible_or_center(-200, 20, 400, 300, metrics=metrics), (-200, 20))
 
     def test_resolve_window_placement_keeps_visible_coordinates(self) -> None:
         metrics = FakeMetricsProvider(virtual_bounds=(0, 0, 1280, 720))
@@ -69,6 +82,14 @@ class WindowGeometryTests(unittest.TestCase):
             platform_name="Windows",
         )
         self.assertEqual(center_window_pos(900, 600, metrics=metrics), (340, 160))
+
+    def test_parse_window_size_clamps_windows_size_to_screen(self) -> None:
+        metrics = FakeMetricsProvider(
+            screen_size=(800, 600),
+            virtual_bounds=(0, 0, 800, 600),
+            platform_name="Windows",
+        )
+        self.assertEqual(parse_window_size("2000x2000", 980, 620, metrics=metrics), (720, 480))
 
 
 if __name__ == "__main__":

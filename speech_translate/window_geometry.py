@@ -69,6 +69,42 @@ class DefaultMetricsProvider:
 
 
 DEFAULT_METRICS_PROVIDER = DefaultMetricsProvider()
+MIN_WINDOW_WIDTH = 320
+MIN_WINDOW_HEIGHT = 180
+WINDOW_SCREEN_MARGIN_X = 80
+WINDOW_SCREEN_MARGIN_Y = 120
+MIN_VISIBLE_WIDTH = 120
+MIN_VISIBLE_HEIGHT = 80
+
+
+def _clamp_window_size(width: int, height: int) -> tuple[int, int]:
+    return max(MIN_WINDOW_WIDTH, width), max(MIN_WINDOW_HEIGHT, height)
+
+
+def _limit_size_to_screen(width: int, height: int, *, metrics: MetricsProvider) -> tuple[int, int]:
+    if metrics.platform_name() != "Windows":
+        return width, height
+
+    try:
+        screen_width, screen_height = metrics.screen_size()
+    except Exception:
+        return width, height
+
+    return (
+        min(width, max(MIN_WINDOW_WIDTH, screen_width - WINDOW_SCREEN_MARGIN_X)),
+        min(height, max(MIN_WINDOW_HEIGHT, screen_height - WINDOW_SCREEN_MARGIN_Y)),
+    )
+
+
+def _center_on_virtual_screen(width: int, height: int, *, metrics: MetricsProvider) -> tuple[int, int]:
+    left, top, v_width, v_height = metrics.virtual_screen_bounds()
+    centered_x = left + max(0, (v_width - max(1, width)) // 2)
+    centered_y = top + max(0, (v_height - max(1, height)) // 2)
+    return centered_x, centered_y
+
+
+def _is_visible_enough(visible_width: int, visible_height: int) -> bool:
+    return visible_width >= MIN_VISIBLE_WIDTH and visible_height >= MIN_VISIBLE_HEIGHT
 
 
 def parse_window_size(
@@ -83,16 +119,8 @@ def parse_window_size(
     if not match:
         return default_width, default_height
 
-    width = max(320, int(match.group(1)))
-    height = max(180, int(match.group(2)))
-    if metrics.platform_name() == "Windows":
-        try:
-            screen_width, screen_height = metrics.screen_size()
-            width = min(width, max(320, screen_width - 80))
-            height = min(height, max(180, screen_height - 120))
-        except Exception:
-            pass
-    return width, height
+    width, height = _clamp_window_size(int(match.group(1)), int(match.group(2)))
+    return _limit_size_to_screen(width, height, metrics=metrics)
 
 
 def get_virtual_screen_bounds(*, metrics: MetricsProvider = DEFAULT_METRICS_PROVIDER) -> tuple[int, int, int, int]:
@@ -110,10 +138,7 @@ def center_window_pos(width: int, height: int, *, metrics: MetricsProvider = DEF
         except Exception:
             pass
 
-    left, top, v_width, v_height = metrics.virtual_screen_bounds()
-    centered_x = left + max(0, (v_width - max(1, width)) // 2)
-    centered_y = top + max(0, (v_height - max(1, height)) // 2)
-    return centered_x, centered_y
+    return _center_on_virtual_screen(width, height, metrics=metrics)
 
 
 def ensure_visible_or_center(
@@ -135,7 +160,7 @@ def ensure_visible_or_center(
     visible_width = max(0, visible_right - visible_left)
     visible_height = max(0, visible_bottom - visible_top)
 
-    if visible_width >= 120 and visible_height >= 80:
+    if _is_visible_enough(visible_width, visible_height):
         return x, y
 
     return center_window_pos(width, height, metrics=metrics)
