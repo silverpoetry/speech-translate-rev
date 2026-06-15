@@ -6,7 +6,7 @@ from shlex import quote
 from threading import Lock, Thread
 from time import gmtime, sleep, strftime, time
 
-from typing import Callable, cast
+from typing import Callable, Mapping, cast
 
 from speech_translate._constants import WHISPER_SR
 from speech_translate._logging import logger
@@ -75,6 +75,10 @@ def get_tc_args(*args, **kwargs):
     return _get_whisper_runtime_api().get_tc_args(*args, **kwargs)
 
 
+def _recording_settings_snapshot(settings_snapshot: Mapping[str, object] | None = None) -> Mapping[str, object]:
+    return sj.cache if settings_snapshot is None else settings_snapshot
+
+
 # Keep these wrappers in record.py because tests and external callers monkey-patch
 # them directly. The real logic lives in record_processing / record_streaming.
 # =========================================================================
@@ -87,24 +91,28 @@ def _build_recording_session_config(
     engine: str,
     is_tc: bool,
     is_tl: bool,
+    settings_snapshot: Mapping[str, object] | None = None,
 ) -> RecordingSessionConfig:
+    settings_snapshot = _recording_settings_snapshot(settings_snapshot)
     return RecordingSessionConfig(
         rec_type=rec_type,
-        transcribe_rate=timedelta(seconds=sj.cache["transcribe_rate"] / 1000),
-        max_buffer_s=int(sj.cache.get(f"max_buffer_{rec_type}", 10)),
-        max_sentences=int(sj.cache.get(f"max_sentences_{rec_type}", 5)),
-        sentence_limitless=bool(sj.cache.get(f"{rec_type}_no_limit", False)),
+        transcribe_rate=timedelta(seconds=settings_snapshot["transcribe_rate"] / 1000),
+        max_buffer_s=int(settings_snapshot.get(f"max_buffer_{rec_type}", 10)),
+        max_sentences=int(settings_snapshot.get(f"max_sentences_{rec_type}", 5)),
+        sentence_limitless=bool(settings_snapshot.get(f"{rec_type}_no_limit", False)),
+        min_input_length=float(settings_snapshot.get(f"min_input_length_{rec_type}", 0.4)),
+        keep_temp=bool(settings_snapshot.get("keep_temp", False)),
         tl_engine_whisper=engine in model_values,
         taskname="Transcribe & Translate" if is_tc and is_tl else "Transcribe" if is_tc else "Translate",
         auto=lang_source.lower() == "auto detect",
-        threshold_enable=bool(sj.cache.get(f"threshold_enable_{rec_type}", True)),
-        threshold_db=float(sj.cache.get(f"threshold_db_{rec_type}", -20)),
-        threshold_auto=bool(sj.cache.get(f"threshold_auto_{rec_type}", True)),
-        use_silero=bool(sj.cache.get(f"threshold_auto_silero_{rec_type}", True)),
-        silero_min_conf=float(sj.cache.get(f"threshold_silero_{rec_type}_min", 0.75)),
-        auto_break_buffer=bool(sj.cache.get(f"auto_break_buffer_{rec_type}", True)),
-        use_temp=bool(sj.cache["use_temp"]),
-        separator=str_separator_to_html(literal_eval(quote(sj.cache["separate_with"]))),
+        threshold_enable=bool(settings_snapshot.get(f"threshold_enable_{rec_type}", True)),
+        threshold_db=float(settings_snapshot.get(f"threshold_db_{rec_type}", -20)),
+        threshold_auto=bool(settings_snapshot.get(f"threshold_auto_{rec_type}", True)),
+        use_silero=bool(settings_snapshot.get(f"threshold_auto_silero_{rec_type}", True)),
+        silero_min_conf=float(settings_snapshot.get(f"threshold_silero_{rec_type}_min", 0.75)),
+        auto_break_buffer=bool(settings_snapshot.get(f"auto_break_buffer_{rec_type}", True)),
+        use_temp=bool(settings_snapshot["use_temp"]),
+        separator=str_separator_to_html(literal_eval(quote(settings_snapshot["separate_with"]))),
     )
 
 
@@ -116,26 +124,28 @@ def _load_recording_model_runtime(
     engine: str,
     is_tc: bool,
     is_tl: bool,
+    settings_snapshot: Mapping[str, object] | None = None,
 ) -> RecordingModelRuntime:
-    model_args = get_model_args(sj.cache)
+    settings_snapshot = _recording_settings_snapshot(settings_snapshot)
+    model_args = get_model_args(settings_snapshot)
     _, _, stable_tc, stable_tl, to_args = get_model(
         is_tc,
         is_tl,
         config.tl_engine_whisper,
         model_name_tc,
         engine,
-        sj.cache,
+        settings_snapshot,
         **model_args,
     )
-    whisper_args = get_tc_args(to_args, sj.cache)
+    whisper_args = get_tc_args(to_args, settings_snapshot)
     whisper_args["verbose"] = None
     configured_whisper_language = get_whisper_lang_similar(lang_source) if not config.auto else None
     whisper_args["language"] = get_whisper_to_language_code().get(configured_whisper_language) if configured_whisper_language else None
 
-    if sj.cache.get("enable_initial_prompt", False):
+    if settings_snapshot.get("enable_initial_prompt", False):
         from ..whisper.prompts import pick_initial_prompt
 
-        prompt = pick_initial_prompt(whisper_args.get("language"), True, sj.cache.get("initial_prompts_map", {}), None)
+        prompt = pick_initial_prompt(whisper_args.get("language"), True, settings_snapshot.get("initial_prompts_map", {}), None)
         if prompt:
             whisper_args["initial_prompt"] = prompt
         else:
@@ -146,12 +156,12 @@ def _load_recording_model_runtime(
     demucs_enabled = bool(whisper_args.get("demucs", False))
     vad_enabled = bool(whisper_args.get("vad", False))
     use_temp = config.use_temp
-    if sj.cache["use_faster_whisper"] and not use_temp:
+    if settings_snapshot["use_faster_whisper"] and not use_temp:
         whisper_args["input_sr"] = WHISPER_SR
     if demucs_enabled and vad_enabled:
         use_temp = True
 
-    hallucination_filters = get_hallucination_filter('rec', sj.cache["path_filter_rec"]) if sj.cache["filter_rec"] else {}
+    hallucination_filters = get_hallucination_filter('rec', settings_snapshot["path_filter_rec"]) if settings_snapshot["filter_rec"] else {}
     return RecordingModelRuntime(
         stable_tc=cast(WhisperCallable | None, stable_tc),
         stable_tl=cast(WhisperCallable | None, stable_tl),
@@ -455,7 +465,7 @@ def _run_recording_session_loop(
             samp_width=lifecycle.samp_width,
             num_of_channels=lifecycle.num_of_channels,
             sr_divider=lifecycle.sr_divider,
-            min_input_length=sj.cache.get(f"min_input_length_{rec_type}", 0.4),
+            min_input_length=config.min_input_length,
         ):
             continue
 
@@ -571,6 +581,7 @@ def _build_recording_stream_runtime(
     rec_type: str,
     config: RecordingSessionConfig,
     p,
+    settings_snapshot: Mapping[str, object] | None = None,
 ) -> RecordingStreamRuntime:
     pyaudio = get_pyaudio_module()
     return streaming_module.build_recording_stream_runtime(
@@ -582,7 +593,7 @@ def _build_recording_stream_runtime(
         initialize_callback_context_fn=_initialize_callback_context,
         audio_format=pyaudio.paInt16,
         logger_instance=logger,
-        settings_snapshot=sj.cache,
+        settings_snapshot=_recording_settings_snapshot(settings_snapshot),
     )
 
 
@@ -611,7 +622,7 @@ def _build_recording_session_services(
         is_tl=is_tl,
         use_temp=config.use_temp,
         separator=config.separator,
-        keep_temp=bool(sj.cache.get("keep_temp", False)),
+        keep_temp=config.keep_temp,
         t_start=t_start,
         max_buffer_s=config.max_buffer_s,
         max_sentences=config.max_sentences,
@@ -885,6 +896,7 @@ def record_session(
     rec_type = "speaker" if speaker else "mic"
     p = None
     lifecycle: RecordingSessionLifecycle | None = None
+    settings_snapshot = dict(sj.cache)
 
     try:
         config = _build_recording_session_config(
@@ -893,6 +905,7 @@ def record_session(
             engine=engine,
             is_tc=is_tc,
             is_tl=is_tl,
+            settings_snapshot=settings_snapshot,
         )
         p = get_pyaudio_module().PyAudio()
 
@@ -903,9 +916,15 @@ def record_session(
             engine=engine,
             is_tc=is_tc,
             is_tl=is_tl,
+            settings_snapshot=settings_snapshot,
         )
         config.use_temp = model_runtime.use_temp
-        stream_runtime = _build_recording_stream_runtime(rec_type=rec_type, config=config, p=p)
+        stream_runtime = _build_recording_stream_runtime(
+            rec_type=rec_type,
+            config=config,
+            p=p,
+            settings_snapshot=settings_snapshot,
+        )
 
         logger.info(
             f"Session starting: {config.taskname} | Engine: {engine} | Device: {model_runtime.cuda_device} | Demucs: {model_runtime.demucs_enabled}"

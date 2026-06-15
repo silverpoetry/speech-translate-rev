@@ -764,8 +764,9 @@ class AudioRecordHelpersTests(unittest.TestCase):
 
             record_module._load_recording_model_runtime = lambda **kwargs: ModelRuntimeStub()
 
-            def fake_build_stream_runtime(*, rec_type, config, p):
+            def fake_build_stream_runtime(*, rec_type, config, p, settings_snapshot=None):
                 observed["use_temp_seen"] = config.use_temp
+                observed["settings_snapshot_use_temp"] = settings_snapshot["use_temp"]
                 return RecordingStreamRuntime(
                     input_device_index=0,
                     sr_ori=16000,
@@ -829,6 +830,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
             record_module.bc.tc_lock = previous_tc_lock
 
         self.assertTrue(observed["use_temp_seen"])
+        self.assertFalse(observed["settings_snapshot_use_temp"])
 
     def test_record_session_finalizes_when_failure_happens_after_pyaudio_bootstrap(self) -> None:
         from speech_translate.utils.audio import record as record_module

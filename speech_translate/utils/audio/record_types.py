@@ -101,6 +101,8 @@ class RecordingSessionConfig:
     max_buffer_s: int
     max_sentences: int
     sentence_limitless: bool
+    min_input_length: float
+    keep_temp: bool
     tl_engine_whisper: bool
     taskname: str
     auto: bool
