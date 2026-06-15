@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from types import TracebackType
-from typing import Any, Callable, Literal, Protocol
+from typing import Any, Callable, Literal, Mapping, Protocol
 
 import numpy as np
 
@@ -115,6 +115,22 @@ class RecordingSessionConfig:
     separator: str
 
 
+@dataclass(frozen=True)
+class RecordingSessionRequest:
+    lang_source: str
+    lang_target: str
+    engine: str
+    model_name_tc: str
+    device: str
+    is_tc: bool
+    is_tl: bool
+    speaker: bool = False
+
+    @property
+    def rec_type(self) -> str:
+        return "speaker" if self.speaker else "mic"
+
+
 @dataclass
 class RecordingModelRuntime:
     stable_tc: WhisperCallable | None
@@ -191,6 +207,14 @@ class RecordingSessionBootstrap:
     config: RecordingSessionConfig
     model_runtime: RecordingModelRuntime
     stream_runtime: RecordingStreamRuntime
+
+
+@dataclass(frozen=True)
+class RecordingSessionDependencies:
+    settings_snapshot: Mapping[str, object]
+    session_control: object
+    runtime_text_state: object
+    callback_context_store: object
 
 
 @dataclass

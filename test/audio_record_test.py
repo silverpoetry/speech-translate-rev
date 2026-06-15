@@ -12,8 +12,10 @@ from speech_translate.utils.audio.record import (
     BufferStateReducer,
     RealtimeCallbackContext,
     RecordingRuntime,
+    RecordingSessionDependencies,
     RecordingSessionFinalizeContext,
     RecordingSessionLifecycle,
+    RecordingSessionRequest,
     RecordingSessionServices,
     RecordingStreamRuntime,
     RecordingStatusEmitter,
@@ -1321,7 +1323,17 @@ class AudioRecordHelpersTests(unittest.TestCase):
             record_module._run_recording_session_loop = lambda **kwargs: None
             record_module._finalize_recording_session = lambda *args, **kwargs: None
 
-            record_session("English", "Chinese", "Whisper", "base", "mic", True, False)
+            record_session(
+                RecordingSessionRequest(
+                    lang_source="English",
+                    lang_target="Chinese",
+                    engine="Whisper",
+                    model_name_tc="base",
+                    device="mic",
+                    is_tc=True,
+                    is_tl=False,
+                )
+            )
         finally:
             record_module._build_recording_session_config = previous_build_config
             record_module.get_pyaudio_module = previous_get_pyaudio_module
@@ -1376,7 +1388,17 @@ class AudioRecordHelpersTests(unittest.TestCase):
             record_module._finalize_recording_session = lambda *args, **kwargs: finalized.append((args, kwargs))
             record_module.empty_torch_cuda_cache = lambda: None
 
-            record_session("English", "Chinese", "Whisper", "base", "mic", True, False)
+            record_session(
+                RecordingSessionRequest(
+                    lang_source="English",
+                    lang_target="Chinese",
+                    engine="Whisper",
+                    model_name_tc="base",
+                    device="mic",
+                    is_tc=True,
+                    is_tl=False,
+                )
+            )
         finally:
             record_module._build_recording_session_config = previous_build_config
             record_module.get_pyaudio_module = previous_get_pyaudio_module
@@ -1506,17 +1528,21 @@ class AudioRecordHelpersTests(unittest.TestCase):
             record_module._finalize_recording_session = lambda *args, **kwargs: None
 
             record_session(
-                "English",
-                "Chinese",
-                "Whisper",
-                "base",
-                "mic",
-                True,
-                False,
-                settings_snapshot=injected_settings_snapshot,
-                session_control=injected_control,
-                runtime_text_state=injected_text_state,
-                callback_context_store=injected_store,
+                RecordingSessionRequest(
+                    lang_source="English",
+                    lang_target="Chinese",
+                    engine="Whisper",
+                    model_name_tc="base",
+                    device="mic",
+                    is_tc=True,
+                    is_tl=False,
+                ),
+                dependencies=RecordingSessionDependencies(
+                    settings_snapshot=injected_settings_snapshot,
+                    session_control=injected_control,
+                    runtime_text_state=injected_text_state,
+                    callback_context_store=injected_store,
+                ),
             )
         finally:
             record_module._build_recording_session_config = previous_build_config

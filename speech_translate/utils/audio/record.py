@@ -44,6 +44,8 @@ from speech_translate.utils.audio.record_types import (
     RecordingSessionBootstrap,
     RecordingSessionFinalizeContext,
     RecordingModelRuntime,
+    RecordingSessionDependencies,
+    RecordingSessionRequest,
     RecordingRuntime,
     RecordingSessionConfig,
     RecordingSessionLifecycle,
@@ -1143,40 +1145,34 @@ def _break_buffer_and_update_state(
 # =========================================================================
 
 def record_session(
-    lang_source: str,
-    lang_target: str,
-    engine: str,
-    model_name_tc: str,
-    device: str,
-    is_tc: bool,
-    is_tl: bool,
-    speaker: bool = False,
+    request: RecordingSessionRequest,
     *,
-    settings_snapshot: Mapping[str, object] | None = None,
-    session_control: RecordingSessionControl | None = None,
-    runtime_text_state: RecordingTextState | None = None,
-    callback_context_store=None,
+    dependencies: RecordingSessionDependencies | None = None,
 ) -> None:
     """实时录音、语音识别与翻译核心总管"""
-    rec_type = "speaker" if speaker else "mic"
+    rec_type = request.rec_type
     p = None
     lifecycle: RecordingSessionLifecycle | None = None
-    settings_snapshot = dict(_recording_settings_snapshot(settings_snapshot))
-    session_control = session_control or build_recording_session_control()
-    session_text_state = runtime_text_state or build_recording_text_state()
+    settings_snapshot = dict(_recording_settings_snapshot(None if dependencies is None else dependencies.settings_snapshot))
+    session_control = build_recording_session_control() if dependencies is None else dependencies.session_control
+    session_text_state = build_recording_text_state() if dependencies is None else dependencies.runtime_text_state
     session_shared_state = getattr(session_text_state, "_shared", RealtimeSharedState())
-    session_callback_context_store = callback_context_store or streaming_module.build_callback_context_store()
+    session_callback_context_store = (
+        streaming_module.build_callback_context_store()
+        if dependencies is None
+        else dependencies.callback_context_store
+    )
 
     try:
         p = get_pyaudio_module().PyAudio()
         bootstrap = _prepare_recording_session_bootstrap(
             rec_type=rec_type,
             settings_snapshot=settings_snapshot,
-            lang_source=lang_source,
-            engine=engine,
-            model_name_tc=model_name_tc,
-            is_tc=is_tc,
-            is_tl=is_tl,
+            lang_source=request.lang_source,
+            engine=request.engine,
+            model_name_tc=request.model_name_tc,
+            is_tc=request.is_tc,
+            is_tl=request.is_tl,
             p=p,
             shared_runtime_state=session_shared_state,
             callback_context_store_instance=session_callback_context_store,
@@ -1186,7 +1182,7 @@ def record_session(
         stream_runtime = bootstrap.stream_runtime
 
         logger.info(
-            f"Session starting: {config.taskname} | Engine: {engine} | Device: {model_runtime.cuda_device} | Demucs: {model_runtime.demucs_enabled}"
+            f"Session starting: {config.taskname} | Engine: {request.engine} | Device: {model_runtime.cuda_device} | Demucs: {model_runtime.demucs_enabled}"
         )
 
         t_start = time()
@@ -1194,12 +1190,12 @@ def record_session(
             config=config,
             model_runtime=model_runtime,
             stream_runtime=stream_runtime,
-            device=device,
-            lang_source=lang_source,
-            lang_target=lang_target,
-            engine=engine,
-            is_tc=is_tc,
-            is_tl=is_tl,
+            device=request.device,
+            lang_source=request.lang_source,
+            lang_target=request.lang_target,
+            engine=request.engine,
+            is_tc=request.is_tc,
+            is_tl=request.is_tl,
             t_start=t_start,
             control=session_control,
             runtime_text_state=session_text_state,
@@ -1231,8 +1227,8 @@ def record_session(
             lifecycle=lifecycle,
             config=config,
             model_runtime=model_runtime,
-            is_tc=is_tc,
-            is_tl=is_tl,
+            is_tc=request.is_tc,
+            is_tl=request.is_tl,
             rec_type=rec_type,
             control=session_control,
             runtime_text_state=session_text_state,

@@ -14,6 +14,7 @@ from speech_translate.utils.audio.recording_runtime_state import (
     build_recording_runtime_state_adapter,
     build_recording_text_store_adapter,
 )
+from speech_translate.utils.audio.record_types import RecordingSessionDependencies, RecordingSessionRequest
 from speech_translate.utils.types import SettingDict
 from speech_translate.utils.whisper.helper import model_keys
 
@@ -155,43 +156,43 @@ class RecordingSessionController:
             self.shutdown_selenium_fn()
         self.record_worker_thread = None
 
-    def _build_recording_session_dependencies(self, context: RecordingStartContext) -> dict[str, object]:
+    def _build_recording_session_request(self, context: RecordingStartContext) -> RecordingSessionRequest:
+        return RecordingSessionRequest(
+            lang_source=context.lang_source,
+            lang_target=context.lang_target,
+            engine=context.engine,
+            model_name_tc=context.model_name_tc,
+            device=context.device,
+            is_tc=context.is_tc,
+            is_tl=context.is_tl,
+            speaker=context.device.lower() == "speaker",
+        )
+
+    def _build_recording_session_dependencies(self, context: RecordingStartContext) -> RecordingSessionDependencies:
         from speech_translate.utils.audio.record import build_recording_session_control
         from speech_translate.utils.audio.record_runtime import build_recording_text_state
         from speech_translate.utils.audio.record_streaming import build_callback_context_store
         from speech_translate.utils.audio.record_types import RealtimeSharedState
 
         shared_runtime_state = RealtimeSharedState()
-        return {
-            "settings_snapshot": dict(context.settings_snapshot),
-            "session_control": build_recording_session_control(runtime_state=self.runtime_state),
-            "runtime_text_state": build_recording_text_state(
+        return RecordingSessionDependencies(
+            settings_snapshot=dict(context.settings_snapshot),
+            session_control=build_recording_session_control(runtime_state=self.runtime_state),
+            runtime_text_state=build_recording_text_state(
                 shared_runtime_state=shared_runtime_state,
                 text_store=self.text_store,
             ),
-            "callback_context_store": build_callback_context_store(),
-        }
+            callback_context_store=build_callback_context_store(),
+        )
 
     def _start_recording_worker(self, context: RecordingStartContext) -> None:
         from speech_translate.utils.audio.record import record_session
+        request = self._build_recording_session_request(context)
         session_dependencies = self._build_recording_session_dependencies(context)
 
         def worker() -> None:
             try:
-                record_session(
-                    context.lang_source,
-                    context.lang_target,
-                    context.engine,
-                    context.model_name_tc,
-                    context.device,
-                    context.is_tc,
-                    context.is_tl,
-                    context.device.lower() == "speaker",
-                    settings_snapshot=session_dependencies["settings_snapshot"],
-                    session_control=session_dependencies["session_control"],
-                    runtime_text_state=session_dependencies["runtime_text_state"],
-                    callback_context_store=session_dependencies["callback_context_store"],
-                )
+                record_session(request, dependencies=session_dependencies)
                 self.bridge.finish_task("Recording finished")
             except Exception as exc:
                 logger.exception(exc)

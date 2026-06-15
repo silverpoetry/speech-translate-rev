@@ -235,11 +235,16 @@ class RecordingSessionControllerTests(unittest.TestCase):
             controller_module.Thread = previous_thread
             record_module.record_session = previous_record_session
 
-        self.assertEqual(observed["args"][:4], ("English", "Chinese", "Google Translate", "small"))
-        self.assertEqual(observed["kwargs"]["settings_snapshot"], context.settings_snapshot)
-        self.assertIs(observed["kwargs"]["session_control"].runtime_state, self.runtime_state)
-        self.assertIs(observed["kwargs"]["runtime_text_state"]._text_store, self.text_store)
-        self.assertIsNotNone(observed["kwargs"]["callback_context_store"])
+        request = observed["args"][0]
+        dependencies = observed["kwargs"]["dependencies"]
+        self.assertEqual(request.lang_source, "English")
+        self.assertEqual(request.lang_target, "Chinese")
+        self.assertEqual(request.engine, "Google Translate")
+        self.assertEqual(request.model_name_tc, "small")
+        self.assertEqual(dependencies.settings_snapshot, context.settings_snapshot)
+        self.assertIs(dependencies.session_control.runtime_state, self.runtime_state)
+        self.assertIs(dependencies.runtime_text_state._text_store, self.text_store)
+        self.assertIsNotNone(dependencies.callback_context_store)
         self.assertEqual(self.bridge.finished, ["Recording finished"])
 
     def test_stop_recording_stops_and_closes_selenium_when_idle(self) -> None:
