@@ -161,6 +161,30 @@ def _generate_save_name(template: str, file_name: str, lang_src: str, lang_tgt: 
             res = res.replace(fmt, value)
     return res
 
+
+def _build_base_export_name(template: str, file_name: str, lang_src: str, lang_tgt: str, tc_model: str, tl_engine: str) -> str:
+    return (
+        template.replace("{file}", file_name)
+        .replace("{lang-source}", lang_src)
+        .replace("{lang-target}", lang_tgt)
+        .replace("{transcribe-with}", tc_model)
+        .replace("{translate-with}", tl_engine)
+    )
+
+
+def _build_metadata_name(base_name: str) -> str:
+    meta_name = base_name
+    for fmt, val in get_task_format("metadata", "metadata", "metadata", "metadata", both=True).items():
+        meta_name = meta_name.replace(fmt, val)
+    return meta_name
+
+
+def _apply_task_format(base_name: str, format_dict: Mapping[str, str]) -> str:
+    save_name = base_name
+    for fmt, val in format_dict.items():
+        save_name = save_name.replace(fmt, val)
+    return save_name
+
 def _monitor_thread(thread: Thread, check_cancel: Callable[[], bool]) -> None:
     while thread.is_alive():
         if not check_cancel():
@@ -232,8 +256,7 @@ def _cancellable_tc(file_path, lang_source, lang_target, model_name, tc_func, tl
         
         format_dict = get_task_format("transcribed", f"transcribed {lang_source}", f"transcribed with {model_name}", f"transcribed {lang_source} with {model_name}")
         format_dict.update(get_task_format("tc", f"tc {lang_source}", f"tc with {model_name}", f"tc {lang_source} with {model_name}", short_only=True))
-        tc_save_name = base_name
-        for fmt, val in format_dict.items(): tc_save_name = tc_save_name.replace(fmt, val)
+        tc_save_name = _apply_task_format(base_name, format_dict)
 
         thread = Thread(target=run_whisper, args=[tc_func, file_path, "transcribe", fail_status], kwargs=kwargs, daemon=True)
         thread.start()
@@ -277,8 +300,7 @@ def _cancellable_tl(query, lang_source, lang_target, tl_func, engine, base_name,
 
         format_dict = get_task_format("translated", f"translated {lang_source} to {lang_target}", f"translated with {engine}", f"translated {lang_source} to {lang_target} with {engine}")
         format_dict.update(get_task_format("tl", f"tl {lang_source} to {lang_target}", f"tl with {engine}", f"tl {lang_source} to {lang_target} with {engine}", short_only=True))
-        tl_save_name = base_name
-        for fmt, val in format_dict.items(): tl_save_name = tl_save_name.replace(fmt, val)
+        tl_save_name = _apply_task_format(base_name, format_dict)
 
         if engine in model_values:
             thread = Thread(target=run_whisper, args=[tl_func, query, "translate", fail_status], kwargs=kwargs, daemon=True)
@@ -352,16 +374,15 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
             if not bc.file_processing: break
             logger.info(f"Loop entered for file: {file}")
             file_name = filename_only(file)[slice_s:slice_e]
-            base_name = datetime.now().strftime(export_fmt)
-            base_name = base_name.replace("{file}", file_name)\
-                                 .replace("{lang-source}", lang_source)\
-                                 .replace("{lang-target}", lang_target)\
-                                 .replace("{transcribe-with}", model_name_tc)\
-                                 .replace("{translate-with}", engine)
-
-            meta_name = base_name
-            for fmt, val in get_task_format("metadata", "metadata", "metadata", "metadata", both=True).items():
-                meta_name = meta_name.replace(fmt, val)
+            base_name = _build_base_export_name(
+                datetime.now().strftime(export_fmt),
+                file_name,
+                lang_source,
+                lang_target,
+                model_name_tc,
+                engine,
+            )
+            meta_name = _build_metadata_name(base_name)
             meta_path = path.join(export_dir, meta_name + ".json")
 
             _save_metadata(meta_path, {
@@ -421,20 +442,21 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
 
             audio_path, mod_path = file_data[0], file_data[1]
             file_name = filename_only(audio_path)[slice_s:slice_e]
-            base_name = datetime.now().strftime(sj.cache["export_format"])
-            base_name = base_name.replace("{file}", file_name).replace("{lang-source}", "").replace("{lang-target}", "")\
-                                 .replace("{transcribe-with}", model_name_tc).replace("{translate-with}", "")
-
-            meta_name = base_name
-            for fmt, val in get_task_format("metadata", "metadata", "metadata", "metadata", both=True).items():
-                meta_name = meta_name.replace(fmt, val)
+            base_name = _build_base_export_name(
+                datetime.now().strftime(sj.cache["export_format"]),
+                file_name,
+                "",
+                "",
+                model_name_tc,
+                "",
+            )
+            meta_name = _build_metadata_name(base_name)
             meta_path = path.join(export_dir, meta_name + ".json")
 
-            save_name = base_name
             task_short = {"refinement": "rf", "alignment": "al"}
             format_dict = get_task_format(action, action, f"{action} with {model_name_tc}", f"{action} with {model_name_tc}")
             format_dict.update(get_task_format(task_short[mode], task_short[mode], f"{task_short[mode]} with {model_name_tc}", f"{task_short[mode]} with {model_name_tc}", short_only=True))
-            for fmt, val in format_dict.items(): save_name = save_name.replace(fmt, val)
+            save_name = _apply_task_format(base_name, format_dict)
 
             try:
                 mod_src = stable_whisper.WhisperResult(mod_path) if mod_path.endswith(".json") else open(mod_path, "r", encoding="utf-8").read()
@@ -521,19 +543,20 @@ def translate_result(data_files: List, engine: str, lang_target: str):
 
             lang_src = to_language_name(result.language) or "auto"
             file_name = filename_only(file_path)[slice_s:slice_e]
-            base_name = datetime.now().strftime(sj.cache["export_format"])
-            base_name = base_name.replace("{file}", file_name).replace("{lang-source}", lang_src).replace("{lang-target}", lang_target)\
-                                 .replace("{transcribe-with}", "").replace("{translate-with}", engine)
-
-            meta_name = base_name
-            for fmt, val in get_task_format("metadata", "metadata", "metadata", "metadata", both=True).items():
-                meta_name = meta_name.replace(fmt, val)
+            base_name = _build_base_export_name(
+                datetime.now().strftime(sj.cache["export_format"]),
+                file_name,
+                lang_src,
+                lang_target,
+                "",
+                engine,
+            )
+            meta_name = _build_metadata_name(base_name)
             meta_path = path.join(export_dir, meta_name + ".json")
 
-            save_name = base_name
             format_dict = get_task_format("translated result", f"translated result from {lang_src} to {lang_target}", f"translated result with {engine}", f"translated result from {lang_src} to {lang_target} with {engine}")
             format_dict.update(get_task_format("tl res", f"tl res from {lang_src} to {lang_target}", f"tl res with {engine}", f"tl res from {lang_src} to {lang_target} with {engine}", short_only=True))
-            for fmt, val in format_dict.items(): save_name = save_name.replace(fmt, val)
+            save_name = _apply_task_format(base_name, format_dict)
 
             _update_status(status_mod, i, "Translating please wait...")
             fail_status = WorkerFailure()

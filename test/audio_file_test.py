@@ -9,7 +9,10 @@ sys.path.append(to_add)
 
 from speech_translate.utils.audio.file import (
     WorkerFailure,
+    _apply_task_format,
+    _build_base_export_name,
     _build_combined_status,
+    _build_metadata_name,
     _is_file_status_completed,
 )
 
@@ -75,6 +78,25 @@ class AudioFileHelpersTests(unittest.TestCase):
         with self.assertRaises(RuntimeError) as ctx:
             failure.raise_if_failed()
         self.assertIs(ctx.exception, captured)
+
+    def test_build_base_export_name_replaces_standard_tokens(self) -> None:
+        result = _build_base_export_name(
+            "{file}-{lang-source}-{lang-target}-{transcribe-with}-{translate-with}",
+            "clip",
+            "English",
+            "Chinese",
+            "small",
+            "Google Translate",
+        )
+        self.assertEqual(result, "clip-English-Chinese-small-Google Translate")
+
+    def test_build_metadata_name_rewrites_task_tokens(self) -> None:
+        result = _build_metadata_name("{file}-{task}-{task-short}")
+        self.assertEqual(result, "{file}-metadata-metadata")
+
+    def test_apply_task_format_rewrites_save_name_tokens(self) -> None:
+        result = _apply_task_format("{file}-{task}-{task-short}", {"{task}": "translated", "{task-short}": "tl"})
+        self.assertEqual(result, "{file}-translated-tl")
 
 
 if __name__ == "__main__":
