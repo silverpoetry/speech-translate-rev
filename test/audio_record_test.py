@@ -212,6 +212,37 @@ class FakeRecordingSessionControl:
         self.runtime_threads_cleared = True
 
 
+class FakeCallbackContextStore:
+    def __init__(self) -> None:
+        self.value = None
+
+    def get(self):
+        return self.value
+
+    def set(self, context):
+        self.value = context
+        return context
+
+    def reset(self) -> None:
+        self.value = None
+
+
+class FakeStreamingStateAdapter:
+    def __init__(self) -> None:
+        self.stream = None
+        self.queued = []
+        self.statuses = []
+
+    def set_stream(self, stream) -> None:
+        self.stream = stream
+
+    def enqueue_audio(self, payload: bytes) -> None:
+        self.queued.append(payload)
+
+    def set_current_status(self, status: str) -> None:
+        self.statuses.append(status)
+
+
 class FakeLock:
     def __enter__(self):
         return self
@@ -281,6 +312,29 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(ctx.num_of_channels, 2)
         self.assertGreater(ctx.frame_duration_ms, 0)
 
+    def test_initialize_callback_context_supports_injected_store(self) -> None:
+        from speech_translate.utils.audio import record_streaming as streaming_module
+
+        store = FakeCallbackContextStore()
+        ctx = streaming_module.initialize_callback_context(
+            sample_rate=16000,
+            chunk_size=320,
+            threshold_enable=True,
+            threshold_db=-20.0,
+            threshold_auto=True,
+            use_silero=True,
+            silero_min_conf=0.75,
+            num_of_channels=1,
+            samp_width=2,
+            use_temp=False,
+            webrtc_vad=object(),
+            silero_vad=object(),
+            store=store,
+        )
+
+        self.assertIs(store.get(), ctx)
+        self.assertIs(streaming_module.get_callback_context(store), ctx)
+
     def test_reset_callback_context_clears_global_state(self) -> None:
         from speech_translate.utils.audio import record as record_module
         from speech_translate.utils.audio import record_streaming as streaming_module
@@ -301,6 +355,28 @@ class AudioRecordHelpersTests(unittest.TestCase):
         )
         _reset_callback_context()
         self.assertIsNone(streaming_module.get_callback_context())
+
+    def test_reset_callback_context_supports_injected_store(self) -> None:
+        from speech_translate.utils.audio import record_streaming as streaming_module
+
+        store = FakeCallbackContextStore()
+        streaming_module.initialize_callback_context(
+            sample_rate=16000,
+            chunk_size=320,
+            threshold_enable=True,
+            threshold_db=-20.0,
+            threshold_auto=True,
+            use_silero=True,
+            silero_min_conf=0.75,
+            num_of_channels=1,
+            samp_width=2,
+            use_temp=False,
+            webrtc_vad=object(),
+            silero_vad=object(),
+            store=store,
+        )
+        streaming_module.reset_callback_context(store)
+        self.assertIsNone(store.get())
 
     def test_translation_task_defaults_are_explicit(self) -> None:
         task = TranslationTask(kind="whisper", separator="<br />")
@@ -663,6 +739,45 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(owner.calls[0]["rate"], 44100)
         self.assertEqual(owner.calls[0]["input_device_index"], 5)
         self.assertEqual(owner.calls[0]["stream_callback"](), "cb")
+
+    def test_open_recording_stream_supports_injected_state_adapter(self) -> None:
+        from speech_translate.utils.audio import record_streaming as streaming_module
+
+        class FakeStreamOwner:
+            def open(self, **kwargs):
+                return ("stream", kwargs["rate"])
+
+        runtime = RecordingStreamRuntime(
+            input_device_index=5,
+            sr_ori=44100,
+            num_of_channels=1,
+            chunk_size=512,
+            samp_width=2,
+            sr_divider=44100,
+            callback_ctx=RealtimeCallbackContext(
+                sample_rate=44100,
+                frame_duration_ms=10,
+                threshold_enable=True,
+                threshold_db=-20.0,
+                threshold_auto=True,
+                use_silero=True,
+                silero_min_conf=0.75,
+                vad_checked=False,
+                num_of_channels=1,
+                samp_width=2,
+                use_temp=False,
+            ),
+        )
+        state_adapter = FakeStreamingStateAdapter()
+
+        streaming_module.open_recording_stream(
+            p=FakeStreamOwner(),
+            stream_runtime=runtime,
+            record_cb=lambda *args, **kwargs: "cb",
+            state_adapter=state_adapter,
+        )
+
+        self.assertEqual(state_adapter.stream, ("stream", 44100))
 
     def test_build_recording_session_services_wires_runtime_translator_and_reducer(self) -> None:
         from speech_translate.utils.audio import record as record_module
@@ -1665,6 +1780,40 @@ class AudioRecordHelpersTests(unittest.TestCase):
 
         self.assertEqual(queued, b"abc")
         self.assertTrue(ctx.is_silence)
+
+    def test_update_realtime_queue_state_supports_injected_state_adapter(self) -> None:
+        from speech_translate.utils.audio import record_streaming as streaming_module
+
+        ctx = RealtimeCallbackContext(
+            sample_rate=16000,
+            frame_duration_ms=30,
+            threshold_enable=True,
+            threshold_db=-20.0,
+            threshold_auto=False,
+            use_silero=False,
+            silero_min_conf=0.75,
+            vad_checked=True,
+            num_of_channels=1,
+            samp_width=2,
+            use_temp=False,
+        )
+        state_adapter = FakeStreamingStateAdapter()
+
+        streaming_module.update_realtime_queue_state(
+            ctx,
+            is_speech=True,
+            data_to_queue=b"abc",
+            state_adapter=state_adapter,
+        )
+        streaming_module.update_realtime_queue_state(
+            ctx,
+            is_speech=False,
+            data_to_queue=b"",
+            state_adapter=state_adapter,
+        )
+
+        self.assertEqual(state_adapter.queued, [b"abc"])
+        self.assertEqual(state_adapter.statuses[-1], "▶️ Recording (Waiting for speech)")
 
     def test_handle_record_callback_error_downgrades_auto_threshold(self) -> None:
         ctx = RealtimeCallbackContext(

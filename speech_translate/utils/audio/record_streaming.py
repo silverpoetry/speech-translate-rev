@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from time import time
 from typing import cast
 
@@ -22,17 +23,59 @@ from speech_translate.utils.audio.record_types import (
 callback_context: RealtimeCallbackContext | None = None
 
 
+@dataclass
+class CallbackContextStore:
+    value: RealtimeCallbackContext | None = None
+
+    def get(self) -> RealtimeCallbackContext | None:
+        return self.value
+
+    def set(self, context: RealtimeCallbackContext) -> RealtimeCallbackContext:
+        self.value = context
+        return context
+
+    def reset(self) -> None:
+        self.value = None
+
+
+@dataclass
+class StreamingStateAdapter:
+    state: object = bc
+
+    def set_stream(self, stream) -> None:
+        self.state.stream = stream
+
+    def enqueue_audio(self, payload: bytes) -> None:
+        self.state.data_queue.put(payload)
+
+    def set_current_status(self, status: str) -> None:
+        self.state.current_rec_status = status
+
+
+callback_context_store = CallbackContextStore()
+streaming_state = StreamingStateAdapter()
+
+
 def _recording_settings_snapshot(settings_snapshot=None):
     return sj.cache if settings_snapshot is None else settings_snapshot
 
 
-def get_callback_context() -> RealtimeCallbackContext | None:
-    return callback_context
-
-
-def reset_callback_context() -> None:
+def _sync_legacy_callback_context(store: CallbackContextStore) -> None:
     global callback_context
-    callback_context = None
+    callback_context = store.get()
+
+
+def get_callback_context(store: CallbackContextStore | None = None) -> RealtimeCallbackContext | None:
+    store = store or callback_context_store
+    context = store.get()
+    _sync_legacy_callback_context(store)
+    return context
+
+
+def reset_callback_context(store: CallbackContextStore | None = None) -> None:
+    store = store or callback_context_store
+    store.reset()
+    _sync_legacy_callback_context(store)
 
 
 def initialize_callback_context(
@@ -49,10 +92,10 @@ def initialize_callback_context(
     use_temp: bool,
     webrtc_vad: object,
     silero_vad: SileroVadLike,
+    store: CallbackContextStore | None = None,
 ) -> RealtimeCallbackContext:
-    global callback_context
-
-    callback_context = RealtimeCallbackContext(
+    store = store or callback_context_store
+    context = RealtimeCallbackContext(
         sample_rate=sample_rate,
         frame_duration_ms=get_frame_duration(sample_rate, chunk_size),
         threshold_enable=threshold_enable,
@@ -68,7 +111,9 @@ def initialize_callback_context(
         webrtc_vad=webrtc_vad,
         silero_vad=silero_vad,
     )
-    return callback_context
+    store.set(context)
+    _sync_legacy_callback_context(store)
+    return context
 
 
 def load_recording_vad_runtime(*, rec_type: str, settings_snapshot=None) -> tuple[object, SileroVadLike]:
@@ -100,6 +145,7 @@ def build_recording_stream_runtime(
     audio_format=None,
     logger_instance=logger,
     settings_snapshot=None,
+    callback_context_store_instance: CallbackContextStore | None = None,
 ) -> RecordingStreamRuntime:
     settings_snapshot = _recording_settings_snapshot(settings_snapshot)
     success, detail = get_device_details_fn(rec_type, sj, p)
@@ -132,6 +178,7 @@ def build_recording_stream_runtime(
         use_temp=config.use_temp,
         webrtc_vad=webrtc_vad,
         silero_vad=silero_vad,
+        store=callback_context_store_instance,
     )
     return RecordingStreamRuntime(
         input_device_index=int(device_detail["index"]),
@@ -144,9 +191,16 @@ def build_recording_stream_runtime(
     )
 
 
-def open_recording_stream(*, p, stream_runtime: RecordingStreamRuntime, record_cb) -> None:
+def open_recording_stream(
+    *,
+    p,
+    stream_runtime: RecordingStreamRuntime,
+    record_cb,
+    state_adapter: StreamingStateAdapter | None = None,
+) -> None:
+    state_adapter = state_adapter or streaming_state
     pyaudio = get_pyaudio_module()
-    bc.stream = p.open(
+    stream = p.open(
         format=pyaudio.paInt16,
         channels=stream_runtime.num_of_channels,
         rate=stream_runtime.sr_ori,
@@ -155,6 +209,7 @@ def open_recording_stream(*, p, stream_runtime: RecordingStreamRuntime, record_c
         input_device_index=stream_runtime.input_device_index,
         stream_callback=record_cb,
     )
+    state_adapter.set_stream(stream)
 
 
 def prime_realtime_vad(
@@ -220,16 +275,23 @@ def detect_realtime_speech(
     return is_speech, data_to_queue
 
 
-def update_realtime_queue_state(ctx: RealtimeCallbackContext, *, is_speech: bool, data_to_queue: bytes) -> None:
+def update_realtime_queue_state(
+    ctx: RealtimeCallbackContext,
+    *,
+    is_speech: bool,
+    data_to_queue: bytes,
+    state_adapter: StreamingStateAdapter | None = None,
+) -> None:
+    state_adapter = state_adapter or streaming_state
     if is_speech:
-        bc.data_queue.put(data_to_queue)
+        state_adapter.enqueue_audio(data_to_queue)
         ctx.was_recording = True
         if ctx.is_silence:
             ctx.is_silence = False
             ctx.silence_started_at = 0.0
         return
 
-    bc.current_rec_status = "▶️ Recording (Waiting for speech)"
+    state_adapter.set_current_status("▶️ Recording (Waiting for speech)")
     if ctx.was_recording:
         ctx.was_recording = False
         if not ctx.is_silence:
