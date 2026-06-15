@@ -147,6 +147,45 @@ class DetachedWindowHelpersTests(unittest.TestCase):
         )
         self.assertEqual((width, height, x, y), (640, 500, 30, 40))
 
+    def test_manager_update_window_content_skips_duplicate_payload_after_send(self) -> None:
+        class FakeWindow:
+            def __init__(self) -> None:
+                self.scripts = []
+
+            def evaluate_js(self, script: str):
+                self.scripts.append(script)
+                return None
+
+        manager = DetachedWindowManager(settings=None)
+        manager.windows["tc"] = FakeWindow()
+        manager.runtime.mark_window_loaded("tc", True)
+        manager.runtime.mark_window_content_ready("tc", True)
+
+        manager.update_window_content("tc", "hello")
+        manager.update_window_content("tc", "hello")
+
+        self.assertEqual(len(manager.windows["tc"].scripts), 1)
+
+    def test_manager_update_window_config_skips_duplicate_payload_after_send(self) -> None:
+        class FakeWindow:
+            def __init__(self) -> None:
+                self.scripts = []
+                self.native = None
+
+            def evaluate_js(self, script: str):
+                self.scripts.append(script)
+                return None
+
+        manager = DetachedWindowManager(settings=None)
+        manager.windows["tc"] = FakeWindow()
+        manager.runtime.mark_window_loaded("tc", True)
+
+        config = {"font": "Arial", "opacity": 1.0}
+        manager.update_window_config("tc", config)
+        manager.update_window_config("tc", config)
+
+        self.assertEqual(len(manager.windows["tc"].scripts), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
