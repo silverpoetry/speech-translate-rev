@@ -29,11 +29,11 @@ from speech_translate.utils.audio.file import (
     _build_mod_result_runtime,
     _build_process_file_runtime,
     _build_translate_result_runtime,
+    build_file_processing_state_adapter,
+    build_file_result_queue_adapter,
     _get_file_environment,
     _is_file_status_completed,
     _save_export_plan_metadata,
-    file_processing_state,
-    file_result_queue,
     process_file,
 )
 from speech_translate.bridge_runtime_state import BridgeFileRuntime, BridgeRecordingRuntime, BridgeVisualRuntime
@@ -138,17 +138,19 @@ class AudioFileHelpersTests(unittest.TestCase):
             {"recording_runtime": BridgeRecordingRuntime(data_queue=fake_queue)},
         )()
         with bridge_state_registry.override(fake_bridge):
-            file_result_queue.put({"message": "ok"})
-            self.assertEqual(file_result_queue.get(), {"message": "ok"})
+            result_queue = build_file_result_queue_adapter()
+            result_queue.put({"message": "ok"})
+            self.assertEqual(result_queue.get(), {"message": "ok"})
 
     def test_file_processing_state_default_adapter_resolves_registry_state_lazily(self) -> None:
         runtime_state = BridgeFileRuntime(file_processing=True, file_tced_counter=2, file_tled_counter=3, mod_file_counter=4)
         fake_bridge = type("FakeBridgeState", (), {"file_runtime": runtime_state})()
         with bridge_state_registry.override(fake_bridge):
-            self.assertTrue(file_processing_state.is_file_processing())
-            self.assertEqual(file_processing_state.transcribed_count(), 2)
-            self.assertEqual(file_processing_state.translated_count(), 3)
-            self.assertEqual(file_processing_state.mod_counter(), 4)
+            processing_state = build_file_processing_state_adapter()
+            self.assertTrue(processing_state.is_file_processing())
+            self.assertEqual(processing_state.transcribed_count(), 2)
+            self.assertEqual(processing_state.translated_count(), 3)
+            self.assertEqual(processing_state.mod_counter(), 4)
 
     def test_get_file_environment_reads_visual_runtime_ffmpeg_state(self) -> None:
         fake_bridge = type("FakeBridgeState", (), {"visual": BridgeVisualRuntime(has_ffmpeg=True)})()

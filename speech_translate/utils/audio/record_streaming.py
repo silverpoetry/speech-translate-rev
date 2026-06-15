@@ -14,7 +14,7 @@ from speech_translate.utils.audio.device import AudioDeviceSettings, get_device_
 from speech_translate.utils.audio.record_runtime import shared_state
 from speech_translate.utils.audio.recording_runtime_state import (
     RecordingRuntimeStateAdapter,
-    recording_runtime_state,
+    build_recording_runtime_state_adapter,
 )
 from speech_translate.utils.audio.record_types import (
     RecordingSessionConfig,
@@ -45,7 +45,7 @@ class CallbackContextStore:
 
 @dataclass
 class StreamingStateAdapter:
-    runtime_state: RecordingRuntimeStateAdapter = field(default_factory=lambda: recording_runtime_state)
+    runtime_state: RecordingRuntimeStateAdapter = field(default_factory=build_recording_runtime_state_adapter)
 
     def set_stream(self, stream) -> None:
         self.runtime_state.set_stream(stream)
@@ -56,9 +56,7 @@ class StreamingStateAdapter:
     def set_current_status(self, status: str) -> None:
         self.runtime_state.set_current_status(status)
 
-
 callback_context_store = CallbackContextStore()
-streaming_state = StreamingStateAdapter()
 
 
 def _get_recording_settings():
@@ -215,7 +213,7 @@ def open_recording_stream(
     record_cb,
     state_adapter: StreamingStateAdapter | None = None,
 ) -> None:
-    state_adapter = state_adapter or streaming_state
+    state_adapter = state_adapter or StreamingStateAdapter()
     pyaudio = get_pyaudio_module()
     stream = p.open(
         format=pyaudio.paInt16,
@@ -300,7 +298,7 @@ def update_realtime_queue_state(
     data_to_queue: bytes,
     state_adapter: StreamingStateAdapter | None = None,
 ) -> None:
-    state_adapter = state_adapter or streaming_state
+    state_adapter = state_adapter or StreamingStateAdapter()
     if is_speech:
         state_adapter.enqueue_audio(data_to_queue)
         ctx.was_recording = True

@@ -183,9 +183,28 @@ def _get_file_environment():
     return FileEnvironmentAdapter(has_ffmpeg=bool(getattr(_get_file_visual_runtime_state(), "has_ffmpeg", False)))
 
 
-file_ui_bridge = FileUiBridgeAdapter()
-file_result_queue = FileResultQueueAdapter(state_provider=_get_file_recording_runtime_state)
-file_processing_state = FileProcessingStateAdapter(state_provider=_get_file_runtime_state)
+def build_file_ui_bridge_adapter(
+    *,
+    bridge: object | None = None,
+    bridge_getter: Callable[[], object | None] = get_current_bridge,
+) -> FileUiBridgeAdapter:
+    return FileUiBridgeAdapter(bridge=bridge, bridge_getter=bridge_getter)
+
+
+def build_file_result_queue_adapter(
+    *,
+    state: object | None = None,
+    state_provider: Callable[[], object] | None = _get_file_recording_runtime_state,
+) -> FileResultQueueAdapter:
+    return FileResultQueueAdapter(state=state, state_provider=state_provider)
+
+
+def build_file_processing_state_adapter(
+    *,
+    state: object | None = None,
+    state_provider: Callable[[], object] | None = _get_file_runtime_state,
+) -> FileProcessingStateAdapter:
+    return FileProcessingStateAdapter(state=state, state_provider=state_provider)
 
 
 def _get_whisper_runtime_api():
@@ -280,7 +299,7 @@ class FileBatchStatusContext:
 
     def sync_ui(self, index: int) -> None:
         combined_status = self.combined_status(index)
-        bridge_adapter = self.ui_bridge or file_ui_bridge
+        bridge_adapter = self.ui_bridge or build_file_ui_bridge_adapter()
         bridge_adapter.sync_file_status(index, combined_status, self.is_completed(index, combined_status))
 
     def update_status(self, stage: StageKey, index: int, msg: str) -> None:
@@ -501,9 +520,9 @@ def _build_process_file_runtime(
     settings: FileSettingsAdapter | None = None,
     environment: FileEnvironmentAdapter | None = None,
 ) -> FileProcessRuntime:
-    ui_bridge = ui_bridge or file_ui_bridge
-    result_queue = result_queue or file_result_queue
-    processing_state = processing_state or file_processing_state
+    ui_bridge = ui_bridge or build_file_ui_bridge_adapter()
+    result_queue = result_queue or build_file_result_queue_adapter()
+    processing_state = processing_state or build_file_processing_state_adapter()
     settings = settings or FileSettingsAdapter(cache=setting_cache)
     environment = environment or _get_file_environment()
     tl_engine_whisper = engine in model_values
@@ -562,9 +581,9 @@ def _build_mod_result_runtime(
     processing_state: FileProcessingStateAdapter | None = None,
     settings: FileSettingsAdapter | None = None,
 ) -> FileModRuntime:
-    ui_bridge = ui_bridge or file_ui_bridge
-    result_queue = result_queue or file_result_queue
-    processing_state = processing_state or file_processing_state
+    ui_bridge = ui_bridge or build_file_ui_bridge_adapter()
+    result_queue = result_queue or build_file_result_queue_adapter()
+    processing_state = processing_state or build_file_processing_state_adapter()
     settings = settings or FileSettingsAdapter(cache=setting_cache)
     action = "Refinement" if mode == "refinement" else "Alignment"
     stable_whisper = get_stable_whisper()
@@ -597,8 +616,8 @@ def _build_translate_result_runtime(
     processing_state: FileProcessingStateAdapter | None = None,
     settings: FileSettingsAdapter | None = None,
 ) -> FileResultTranslateRuntime:
-    ui_bridge = ui_bridge or file_ui_bridge
-    processing_state = processing_state or file_processing_state
+    ui_bridge = ui_bridge or build_file_ui_bridge_adapter()
+    processing_state = processing_state or build_file_processing_state_adapter()
     settings = settings or FileSettingsAdapter(cache=setting_cache)
     slice_start, slice_end = _resolve_slice_bounds(setting_cache)
     api_kwargs = (
@@ -649,7 +668,7 @@ def _execute_monitored_queue_task(
     raise_failure: bool = True,
     result_queue: FileResultQueueAdapter | None = None,
 ):
-    result_queue = result_queue or file_result_queue
+    result_queue = result_queue or build_file_result_queue_adapter()
     _run_monitored_worker(target, cancel_check=cancel_check, args=args, kwargs=kwargs)
     if fail_status is not None:
         if raise_failure:
@@ -672,7 +691,7 @@ def run_whisper(
     environment: FileEnvironmentAdapter | None = None,
     **kwargs,
 ) -> None:
-    result_queue = result_queue or file_result_queue
+    result_queue = result_queue or build_file_result_queue_adapter()
     environment = environment or _get_file_environment()
     try:
         result = func(audio, task=task, **kwargs)
@@ -757,8 +776,8 @@ def _cancellable_tc(
     environment: FileEnvironmentAdapter,
     **kwargs,
 ):
-    processing_state = processing_state or file_processing_state
-    result_queue = result_queue or file_result_queue
+    processing_state = processing_state or build_file_processing_state_adapter()
+    result_queue = result_queue or build_file_result_queue_adapter()
     cache = settings.cache
     start = time()
     try:
@@ -833,8 +852,8 @@ def _cancellable_tl(
     environment: FileEnvironmentAdapter,
     **kwargs,
 ):
-    processing_state = processing_state or file_processing_state
-    result_queue = result_queue or file_result_queue
+    processing_state = processing_state or build_file_processing_state_adapter()
+    result_queue = result_queue or build_file_result_queue_adapter()
     cache = settings.cache
     start = time()
     try:
@@ -904,9 +923,9 @@ def process_file(
     open_dir_fn: Callable[[str], None] = start_file,
 ) -> None:
     try:
-        ui_bridge = ui_bridge or file_ui_bridge
-        result_queue = result_queue or file_result_queue
-        processing_state = processing_state or file_processing_state
+        ui_bridge = ui_bridge or build_file_ui_bridge_adapter()
+        result_queue = result_queue or build_file_result_queue_adapter()
+        processing_state = processing_state or build_file_processing_state_adapter()
         settings = settings or _get_file_settings_store()
         environment = environment or _get_file_environment()
         runtime = _build_process_file_runtime(
@@ -998,9 +1017,9 @@ def mod_result(
     open_dir_fn: Callable[[str], None] = start_file,
 ):
     try:
-        ui_bridge = ui_bridge or file_ui_bridge
-        result_queue = result_queue or file_result_queue
-        processing_state = processing_state or file_processing_state
+        ui_bridge = ui_bridge or build_file_ui_bridge_adapter()
+        result_queue = result_queue or build_file_result_queue_adapter()
+        processing_state = processing_state or build_file_processing_state_adapter()
         settings = settings or _get_file_settings_store()
         runtime = _build_mod_result_runtime(
             model_name_tc=model_name_tc,
@@ -1112,8 +1131,8 @@ def translate_result(
     open_dir_fn: Callable[[str], None] = start_file,
 ):
     try:
-        ui_bridge = ui_bridge or file_ui_bridge
-        processing_state = processing_state or file_processing_state
+        ui_bridge = ui_bridge or build_file_ui_bridge_adapter()
+        processing_state = processing_state or build_file_processing_state_adapter()
         settings = settings or _get_file_settings_store()
         runtime = _build_translate_result_runtime(
             engine=engine,

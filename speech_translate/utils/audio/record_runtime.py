@@ -19,7 +19,7 @@ from speech_translate.utils.audio.record_types import (
 )
 from speech_translate.utils.audio.recording_runtime_state import (
     RecordingTextStoreAdapter,
-    recording_text_store,
+    build_recording_text_store_adapter,
 )
 from speech_translate.utils.translate.language import get_whisper_lang_name, verify_language_in_key
 
@@ -114,7 +114,7 @@ class RecordingTextState:
         text_store: RecordingTextStoreAdapter | None = None,
     ):
         self._shared = shared_runtime_state or shared_state
-        self._text_store = text_store or recording_text_store
+        self._text_store = text_store or build_recording_text_store_adapter()
 
     def transcribed_sentences(self) -> list[object]:
         return self._text_store.transcribed_sentences()
@@ -159,7 +159,15 @@ class RecordingTextState:
         self._shared.prev_tl_res = result
 
 
-text_state = RecordingTextState()
+def build_recording_text_state(
+    *,
+    shared_runtime_state: RealtimeSharedState | None = None,
+    text_store: RecordingTextStoreAdapter | None = None,
+) -> RecordingTextState:
+    return RecordingTextState(
+        shared_runtime_state=shared_runtime_state,
+        text_store=text_store or build_recording_text_store_adapter(),
+    )
 
 
 class RecordingStatusEmitter:
@@ -217,7 +225,7 @@ class TranslationDispatcher:
         self._stable_tl = stable_tl
         self._whisper_args = whisper_args
         self._record_status_updater = record_status_updater
-        self._text_state = runtime_text_state or text_state
+        self._text_state = runtime_text_state or build_recording_text_state()
         self._queue: Queue[TranslationTask] = Queue()
         self._lock = Lock()
         self._latest_api_task: TranslationTask | None = None
@@ -323,7 +331,7 @@ class BufferStateReducer:
         self._max_sentences = max_sentences
         self._separator = separator
         self._translator = translator
-        self._text_state = runtime_text_state or text_state
+        self._text_state = runtime_text_state or build_recording_text_state()
 
     def reduce_sentences(self) -> None:
         previous_tc = self._text_state.previous_transcribed_result()
@@ -350,7 +358,7 @@ class BufferStateReducer:
 
 
 def _resolve_live_input_source_language(lang_source: str, engine: str, runtime_text_state: RecordingTextState | None = None) -> str:
-    runtime_text_state = runtime_text_state or text_state
+    runtime_text_state = runtime_text_state or build_recording_text_state()
     source_lang = lang_source
     detected_lang = runtime_text_state.detected_language()
     if detected_lang and detected_lang != "~":
@@ -399,7 +407,7 @@ def run_whisper_tl(
     settings: RecordingSettingsAdapter | None = None,
     **whisper_args,
 ):
-    runtime_text_state = runtime_text_state or text_state
+    runtime_text_state = runtime_text_state or build_recording_text_state()
     settings = settings or _get_recording_settings()
     cache = settings.cache
     try:
@@ -428,7 +436,7 @@ def tl_api(
     runtime_text_state: RecordingTextState | None = None,
     settings: RecordingSettingsAdapter | None = None,
 ):
-    runtime_text_state = runtime_text_state or text_state
+    runtime_text_state = runtime_text_state or build_recording_text_state()
     settings = settings or _get_recording_settings()
     cache = settings.cache
     try:

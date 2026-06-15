@@ -15,11 +15,11 @@ from speech_translate.utils.audio.record_runtime import (
     RecordingSettingsAdapter,
     RecordingTextState,
     _build_full_transcribed_text,
+    build_recording_text_state,
     _enforce_sentence_limits,
     shared_state,
-    text_state,
 )
-from speech_translate.utils.audio.recording_runtime_state import recording_runtime_state
+from speech_translate.utils.audio.recording_runtime_state import build_recording_runtime_state_adapter
 from speech_translate.utils.audio.record_types import (
     AudioTarget,
     HallucinationFilters,
@@ -162,8 +162,8 @@ def commit_realtime_transcription(
     runtime_text_state: RecordingTextState | None = None,
     set_current_status=None,
 ) -> None:
-    runtime_text_state = runtime_text_state or text_state
-    set_current_status = set_current_status or recording_runtime_state.set_current_status
+    runtime_text_state = runtime_text_state or build_recording_text_state()
+    set_current_status = set_current_status or build_recording_runtime_state_adapter().set_current_status
     text = result.text.strip() if result else ""
     runtime_text_state.set_detected_language(result.language if result else "~")
 
@@ -292,7 +292,7 @@ def apply_smart_split(
     utc_now,
     runtime_text_state: RecordingTextState | None = None,
 ) -> bool:
-    runtime_text_state = runtime_text_state or text_state
+    runtime_text_state = runtime_text_state or build_recording_text_state()
     split_outcome = build_smart_split_outcome(
         previous_result,
         session_state.last_sample,
@@ -352,7 +352,7 @@ def break_buffer_and_update_state(
     utc_now,
     runtime_text_state: RecordingTextState | None = None,
 ) -> None:
-    runtime_text_state = runtime_text_state or text_state
+    runtime_text_state = runtime_text_state or build_recording_text_state()
     logger.info(f"Buffer break [{reason}] | bytes={len(session_state.last_sample)} dur={session_state.duration_seconds:.2f}s")
 
     preserved_tc = (

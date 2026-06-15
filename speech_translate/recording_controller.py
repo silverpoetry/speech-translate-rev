@@ -11,8 +11,8 @@ from speech_translate.ui_protocol import UI_SECTION_TASK
 from speech_translate.utils.audio.recording_runtime_state import (
     RecordingRuntimeStateAdapter,
     RecordingTextStoreAdapter,
-    recording_runtime_state,
-    recording_text_store,
+    build_recording_runtime_state_adapter,
+    build_recording_text_store_adapter,
 )
 from speech_translate.utils.types import SettingDict
 from speech_translate.utils.whisper.helper import model_keys
@@ -70,8 +70,8 @@ class RecordingSessionController:
         self.bridge = bridge
         self.whisper_loader_getter = whisper_loader_getter
         self.shutdown_selenium_fn = shutdown_selenium_fn
-        self.runtime_state = runtime_state or recording_runtime_state
-        self.text_store = text_store or recording_text_store
+        self.runtime_state = runtime_state or build_recording_runtime_state_adapter()
+        self.text_store = text_store or build_recording_text_store_adapter()
         self._lock = RLock()
         self.record_worker_thread: Optional[Thread] = None
         self.recording_state: JsonDict = dict(DEFAULT_RECORDING_STATE)

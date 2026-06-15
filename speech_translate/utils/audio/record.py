@@ -29,15 +29,15 @@ from speech_translate.utils.audio.record_runtime import (
     _normalize_translation_result_units,
     _resolve_live_input_source_language,
     _result_text,
+    build_recording_text_state,
     run_whisper_tl,
     shared_state,
-    text_state,
     tl_api,
 )
 from speech_translate.utils.audio import record_streaming as streaming_module
 from speech_translate.utils.audio.recording_runtime_state import (
     RecordingRuntimeStateAdapter,
-    recording_runtime_state,
+    build_recording_runtime_state_adapter,
 )
 from speech_translate.utils.audio.record_streaming import StreamingStateAdapter
 from speech_translate.utils.audio.record_types import (
@@ -96,7 +96,7 @@ def _recording_settings_snapshot(settings_snapshot: Mapping[str, object] | None 
 
 @dataclass
 class RecordingSessionControl:
-    runtime_state: RecordingRuntimeStateAdapter = field(default_factory=lambda: recording_runtime_state)
+    runtime_state: RecordingRuntimeStateAdapter = field(default_factory=build_recording_runtime_state_adapter)
 
     def is_recording(self) -> bool:
         return self.runtime_state.is_recording_active()
@@ -295,7 +295,7 @@ def _build_recording_sentence_count_text(
     max_sentences: int,
     runtime_text_state: RecordingTextState | None = None,
 ) -> str:
-    runtime_text_state = runtime_text_state or text_state
+    runtime_text_state = runtime_text_state or build_recording_text_state()
     sentence_count_text = f"{len(runtime_text_state.transcribed_sentences()) or len(runtime_text_state.translated_sentences()) or '0'}"
     if not sentence_limitless:
         sentence_count_text += f"/{max_sentences}"
@@ -314,7 +314,7 @@ def _run_recording_status_loop(
     runtime_text_state: RecordingTextState | None = None,
 ) -> None:
     control = control or recording_control
-    runtime_text_state = runtime_text_state or text_state
+    runtime_text_state = runtime_text_state or build_recording_text_state()
     while control.is_recording():
         if session_state.paused:
             sleep(0.1)
@@ -763,7 +763,7 @@ def _build_recording_session_services(
     runtime_text_state: RecordingTextState | None = None,
 ) -> RecordingSessionServices:
     control = control or recording_control
-    runtime_text_state = runtime_text_state or text_state
+    runtime_text_state = runtime_text_state or build_recording_text_state()
     runtime = RecordingRuntime(
         taskname=config.taskname,
         device=device,
@@ -832,7 +832,7 @@ def _initialize_recording_session_lifecycle(
     runtime_text_state: RecordingTextState | None = None,
 ) -> RecordingSessionLifecycle:
     control = control or recording_control
-    runtime_text_state = runtime_text_state or text_state
+    runtime_text_state = runtime_text_state or build_recording_text_state()
     session_state = RealtimeSessionState()
     control.set_current_status("▶️ Recording (Waiting for speech)")
     runtime_text_state.set_detected_language("~")
@@ -1007,7 +1007,7 @@ def _commit_realtime_transcription(
         is_tl=is_tl,
         separator=separator,
         translator=translator,
-        runtime_text_state=runtime_text_state or text_state,
+        runtime_text_state=runtime_text_state or build_recording_text_state(),
         set_current_status=set_current_status or recording_control.set_current_status,
     )
 
@@ -1049,7 +1049,7 @@ def _apply_smart_split(
         separator=separator,
         translator=translator,
         utc_now=_utc_now,
-        runtime_text_state=runtime_text_state or text_state,
+        runtime_text_state=runtime_text_state or build_recording_text_state(),
     )
 
 
@@ -1081,7 +1081,7 @@ def _break_buffer_and_update_state(
         translator=translator,
         buffer_reducer=buffer_reducer,
         utc_now=_utc_now,
-        runtime_text_state=runtime_text_state or text_state,
+        runtime_text_state=runtime_text_state or build_recording_text_state(),
     )
 
 # =========================================================================

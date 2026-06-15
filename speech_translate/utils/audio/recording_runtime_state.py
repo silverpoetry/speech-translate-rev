@@ -6,6 +6,7 @@ from typing import Callable
 from speech_translate.live_text_service import LiveTextRenderer
 from speech_translate.runtime_registry import bridge_state_registry, get_current_bridge
 
+
 def _get_recording_bridge_state() -> object | None:
     try:
         return bridge_state_registry.get()
@@ -162,13 +163,32 @@ class RecordingTextStoreAdapter:
         self._state().auto_detected_lang = language
 
 
-recording_runtime_state = RecordingRuntimeStateAdapter()
-recording_text_store = RecordingTextStoreAdapter()
+def build_recording_runtime_state_adapter(
+    *,
+    state: object | None = None,
+    state_provider: Callable[[], object] = _get_recording_runtime_state,
+) -> RecordingRuntimeStateAdapter:
+    return RecordingRuntimeStateAdapter(state=state, state_provider=state_provider)
+
+
+def build_recording_text_store_adapter(
+    *,
+    state: object | None = None,
+    state_provider: Callable[[], object] = _get_recording_text_state,
+    bridge_getter: Callable[[], object | None] = get_current_bridge,
+    renderer: LiveTextRenderer | None = None,
+) -> RecordingTextStoreAdapter:
+    return RecordingTextStoreAdapter(
+        state=state,
+        state_provider=state_provider,
+        bridge_getter=bridge_getter,
+        renderer=renderer,
+    )
 
 
 __all__ = [
     "RecordingRuntimeStateAdapter",
     "RecordingTextStoreAdapter",
-    "recording_runtime_state",
-    "recording_text_store",
+    "build_recording_runtime_state_adapter",
+    "build_recording_text_store_adapter",
 ]

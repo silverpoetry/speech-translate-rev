@@ -69,12 +69,23 @@ class DownloadCancellationAdapter:
         setattr(self._resolve_state(), "cancel_dl", False)
 
 
-download_bridge = DownloadBridgeAdapter()
-download_cancellation = DownloadCancellationAdapter()
+def build_download_bridge_adapter(
+    *,
+    bridge: Any | None = None,
+    bridge_getter: Callable[[], Any | None] = get_current_bridge,
+) -> DownloadBridgeAdapter:
+    return DownloadBridgeAdapter(bridge=bridge, bridge_getter=bridge_getter)
+
+
+def build_download_cancellation_adapter(
+    *,
+    state: object | None = None,
+) -> DownloadCancellationAdapter:
+    return DownloadCancellationAdapter(state=state)
 
 
 def _build_bridge_task_reporter(bridge: Any | None = None, bridge_adapter: DownloadBridgeAdapter | None = None) -> TaskReporter:
-    bridge_adapter = bridge_adapter or DownloadBridgeAdapter(bridge=bridge)
+    bridge_adapter = bridge_adapter or build_download_bridge_adapter(bridge=bridge)
     web_bridge = bridge_adapter.resolve()
     if web_bridge is None:
         return TaskReporter()
@@ -104,8 +115,8 @@ def _build_download_execution_hooks(
     cancellation_adapter: DownloadCancellationAdapter | None = None,
     callback_starter: Callable[[Callable | None], None] = start_optional_callback,
 ) -> DownloadExecutionHooks:
-    bridge_adapter = bridge_adapter or DownloadBridgeAdapter(bridge=bridge)
-    cancellation_adapter = cancellation_adapter or download_cancellation
+    bridge_adapter = bridge_adapter or build_download_bridge_adapter(bridge=bridge)
+    cancellation_adapter = cancellation_adapter or build_download_cancellation_adapter()
     return DownloadExecutionHooks(
         reporter=reporter or _build_bridge_task_reporter(bridge_adapter=bridge_adapter),
         cancel_requested=cancel_requested or cancellation_adapter.cancel_requested,
