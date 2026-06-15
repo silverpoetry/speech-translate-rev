@@ -14,10 +14,18 @@ from speech_translate.controller_protocols import (
     ShutdownSeleniumFn,
 )
 from speech_translate.log_helpers import logger
+from speech_translate.runtime_registry import bridge_state_registry
 from speech_translate.ui_protocol import TASK_SOURCE_IMPORT, UI_SECTION_IMPORT
 from speech_translate.webview_runtime import create_file_dialog
 from speech_translate.utils.whisper.helper import model_keys, model_select_dict
-from speech_translate.linker import bc
+
+
+def _get_import_queue_recording_state():
+    return bridge_state_registry.get().recording_runtime
+
+
+def _get_import_queue_file_state():
+    return bridge_state_registry.get().file_runtime
 
 
 MEDIA_FILE_TYPES = [
@@ -62,25 +70,32 @@ class ImportStartContext:
 
 @dataclass
 class ImportQueueProcessRuntime:
-    state: object = bc
+    recording_state: object | None = None
+    file_state: object | None = None
+
+    def _resolve_recording_state(self) -> object:
+        return _get_import_queue_recording_state() if self.recording_state is None else self.recording_state
+
+    def _resolve_file_state(self) -> object:
+        return _get_import_queue_file_state() if self.file_state is None else self.file_state
 
     def is_recording_active(self) -> bool:
-        return bool(getattr(self.state, "recording", False))
+        return bool(getattr(self._resolve_recording_state(), "recording", False))
 
     def is_file_processing_active(self) -> bool:
-        return bool(getattr(self.state, "file_processing", False))
+        return bool(getattr(self._resolve_file_state(), "file_processing", False))
 
     def enable_file_processing(self) -> None:
-        self.state.enable_file_process()
+        setattr(self._resolve_file_state(), "file_processing", True)
 
     def disable_file_processing(self) -> None:
-        self.state.disable_file_process()
+        setattr(self._resolve_file_state(), "file_processing", False)
 
     def transcribed_count(self) -> int:
-        return int(getattr(self.state, "file_tced_counter", 0))
+        return int(getattr(self._resolve_file_state(), "file_tced_counter", 0))
 
     def translated_count(self) -> int:
-        return int(getattr(self.state, "file_tled_counter", 0))
+        return int(getattr(self._resolve_file_state(), "file_tled_counter", 0))
 
 
 class ImportQueueController:

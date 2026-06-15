@@ -141,6 +141,10 @@ def _load_model_cached(
     logger.debug(f"Model cache miss: backend={cache_key.backend} model={model_name}; loading model")
     stable_whisper_api = runtime.stable_whisper_api
     if use_faster_whisper:
+        if _is_faster_whisper_model_cached(model_name, model_args.get("download_root", get_default_download_root())):
+            model_args = dict(model_args)
+            model_args["local_files_only"] = True
+    if use_faster_whisper:
         loaded = stable_whisper_api.load_faster_whisper(model_name, **model_args)
     else:
         loaded = stable_whisper_api.load_model(model_name, **model_args)
@@ -438,6 +442,15 @@ def _resolve_model_download_root(setting_cache: SettingDict) -> str:
     if setting_cache["dir_model"] != "auto":
         return setting_cache["dir_model"]
     return get_default_download_root()
+
+
+def _is_faster_whisper_model_cached(model_name: str, download_root: str) -> bool:
+    try:
+        from speech_translate.utils.whisper.download import verify_model_faster_whisper
+
+        return bool(verify_model_faster_whisper(model_name, download_root))
+    except Exception:
+        return False
 
 
 def _resolve_model_device(setting_cache: SettingDict, *, cuda_available: bool) -> str:

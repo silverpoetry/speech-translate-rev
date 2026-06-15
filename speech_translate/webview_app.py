@@ -6,14 +6,14 @@ from typing import Callable
 from speech_translate._logging import init_logging
 from speech_translate._path import dir_debug
 from speech_translate.app_startup_controller import AppStartupController
-from speech_translate.controller_protocols import JsonDict, TrayLike, WebviewWindowLike
+from speech_translate.controller_protocols import JsonDict, SettingsStore, TrayLike, WebviewWindowLike
 from speech_translate.detached_window_controller import DetachedWindowController
 from speech_translate.detached_windows import DetachedWindowManager
 from speech_translate.import_queue_manager import ImportQueueController
-from speech_translate.linker import sj
 from speech_translate.main_window_controller import MainWindowController
 from speech_translate.model_manager import ModelManagerController
 from speech_translate.recording_controller import RecordingSessionController
+from speech_translate.runtime_registry import settings_registry
 from speech_translate.runtime_bootstrap import add_ffmpeg_to_path, get_whisper_load_api, install_no_console_popen
 from speech_translate.state_view_builder import StateViewBuilder
 from speech_translate.system_settings_controller import DEFAULT_PATH_CONFIG, SystemSettingsController
@@ -49,20 +49,25 @@ def configure_runtime_bootstrap() -> None:
     install_no_console_popen()
 
 
-def build_web_bridge_dependencies(bridge: "WebBridge") -> WebBridgeDependencies:
-    main_window_controller = MainWindowController(bridge, sj)
-    model_manager_controller = ModelManagerController(bridge, sj, get_whisper_load_api)
+def _get_default_settings() -> SettingsStore:
+    return settings_registry.get()
+
+
+def build_web_bridge_dependencies(bridge: "WebBridge", settings: SettingsStore | None = None) -> WebBridgeDependencies:
+    settings = settings or _get_default_settings()
+    main_window_controller = MainWindowController(bridge, settings)
+    model_manager_controller = ModelManagerController(bridge, settings, get_whisper_load_api)
     import_queue_controller = ImportQueueController(
         bridge,
-        sj,
+        settings,
         shutdown_selenium_translator,
         model_manager_controller,
     )
     recording_controller = RecordingSessionController(bridge, get_whisper_load_api, shutdown_selenium_translator)
-    state_view_builder = StateViewBuilder(bridge, sj)
-    system_settings_controller = SystemSettingsController(bridge, sj, _default_path_config())
-    detached_window_manager = DetachedWindowManager(bridge, sj)
-    detached_window_controller = DetachedWindowController(bridge, sj, detached_window_manager)
+    state_view_builder = StateViewBuilder(bridge, settings)
+    system_settings_controller = SystemSettingsController(bridge, settings, _default_path_config())
+    detached_window_manager = DetachedWindowManager(bridge, settings)
+    detached_window_controller = DetachedWindowController(bridge, settings, detached_window_manager)
     return WebBridgeDependencies(
         main_window_controller=main_window_controller,
         model_manager_controller=model_manager_controller,
@@ -86,11 +91,13 @@ class WebBridge(WebBridgeFacadeMixin, WebTaskBridge):
         *,
         dependencies_builder: Callable[["WebBridge"], WebBridgeDependencies] = build_web_bridge_dependencies,
         bootstrapper: BridgeBootstrapper | None = configure_runtime_bootstrap,
+        settings: SettingsStore | None = None,
     ) -> None:
-        super().__init__()
+        self.settings = settings or _get_default_settings()
+        super().__init__(settings=self.settings)
         if bootstrapper is not None:
             bootstrapper()
-        dependencies = dependencies_builder(self)
+        dependencies = dependencies_builder(self, self.settings)
         self.main_window_controller = dependencies.main_window_controller
         self.model_manager_controller = dependencies.model_manager_controller
         self.import_queue_controller = dependencies.import_queue_controller
@@ -127,5 +134,10 @@ class WebBridge(WebBridgeFacadeMixin, WebTaskBridge):
 
 
 def main(with_log_init: bool = True) -> None:
-    startup_controller = AppStartupController(WebBridge, add_ffmpeg_to_path)
+    settings = _get_default_settings()
+    startup_controller = AppStartupController(
+        lambda: WebBridge(settings=settings),
+        add_ffmpeg_to_path,
+        settings=settings,
+    )
     startup_controller.start(with_log_init=with_log_init, log_initializer=init_logging)

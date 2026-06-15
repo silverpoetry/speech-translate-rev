@@ -60,6 +60,8 @@ from speech_translate.utils.audio.record import (
     _result_text,
     record_session,
 )
+from speech_translate.bridge_runtime_state import BridgeLiveTextRuntime, BridgeRecordingRuntime
+from speech_translate.runtime_registry import bridge_state_registry
 
 
 class FakeResult:
@@ -242,6 +244,14 @@ class FakeStreamingStateAdapter:
     def set_current_status(self, status: str) -> None:
         self.statuses.append(status)
 
+    def current_status(self) -> str:
+        return self.statuses[-1] if self.statuses else ""
+
+
+class FakeSettingsStore:
+    def __init__(self, cache: dict[str, object]) -> None:
+        self.cache = dict(cache)
+
 
 class FakeLock:
     def __enter__(self):
@@ -264,6 +274,31 @@ class FakeTensor:
 
 
 class AudioRecordHelpersTests(unittest.TestCase):
+    def test_recording_runtime_state_default_provider_reads_bridge_substates(self) -> None:
+        from speech_translate.utils.audio.recording_runtime_state import RecordingRuntimeStateAdapter, RecordingTextStoreAdapter
+
+        previous_bridge_state = bridge_state_registry.state
+        fake_bridge = type(
+            "FakeBridgeState",
+            (),
+            {
+                "recording_runtime": BridgeRecordingRuntime(recording=True, current_rec_status="busy"),
+                "live_text": BridgeLiveTextRuntime(auto_detected_lang="ja", tc_sentences=["a"], tl_sentences=["b"]),
+            },
+        )()
+        try:
+            bridge_state_registry.set(fake_bridge)
+
+            runtime_state = RecordingRuntimeStateAdapter()
+            text_store = RecordingTextStoreAdapter()
+            self.assertTrue(runtime_state.is_recording_active())
+            self.assertEqual(runtime_state.current_status(), "busy")
+            self.assertEqual(text_store.detected_language(), "ja")
+            self.assertEqual(text_store.transcribed_sentences(), ["a"])
+            self.assertEqual(text_store.translated_sentences(), ["b"])
+        finally:
+            bridge_state_registry.set(previous_bridge_state)
+
     def test_result_text_supports_result_object_and_string(self) -> None:
         self.assertEqual(_result_text(FakeResult(" hello ")), "hello")
         self.assertEqual(_result_text(" world "), "world")
@@ -424,33 +459,30 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(payload["sentences"], "3/5")
 
     def test_build_recording_session_config_reads_runtime_settings(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
-        previous_cache = dict(record_module.sj.cache)
-        try:
-            record_module.sj.cache["transcribe_rate"] = 750
-            record_module.sj.cache["max_buffer_mic"] = 12
-            record_module.sj.cache["max_sentences_mic"] = 7
-            record_module.sj.cache["mic_no_limit"] = True
-            record_module.sj.cache["threshold_enable_mic"] = False
-            record_module.sj.cache["threshold_db_mic"] = -18
-            record_module.sj.cache["threshold_auto_mic"] = False
-            record_module.sj.cache["threshold_auto_silero_mic"] = False
-            record_module.sj.cache["threshold_silero_mic_min"] = 0.6
-            record_module.sj.cache["auto_break_buffer_mic"] = False
-            record_module.sj.cache["use_temp"] = True
-            record_module.sj.cache["separate_with"] = repr(" | ")
-
-            config = _build_recording_session_config(
-                rec_type="mic",
-                lang_source="Auto Detect",
-                engine="Whisper",
-                is_tc=True,
-                is_tl=True,
-            )
-        finally:
-            record_module.sj.cache.clear()
-            record_module.sj.cache.update(previous_cache)
+        settings_snapshot = {
+            "transcribe_rate": 750,
+            "max_buffer_mic": 12,
+            "max_sentences_mic": 7,
+            "mic_no_limit": True,
+            "min_input_length_mic": 0.4,
+            "keep_temp": False,
+            "threshold_enable_mic": False,
+            "threshold_db_mic": -18,
+            "threshold_auto_mic": False,
+            "threshold_auto_silero_mic": False,
+            "threshold_silero_mic_min": 0.6,
+            "auto_break_buffer_mic": False,
+            "use_temp": True,
+            "separate_with": repr(" | "),
+        }
+        config = _build_recording_session_config(
+            rec_type="mic",
+            lang_source="Auto Detect",
+            engine="Whisper",
+            is_tc=True,
+            is_tl=True,
+            settings_snapshot=settings_snapshot,
+        )
 
         self.assertEqual(config.transcribe_rate.total_seconds(), 0.75)
         self.assertEqual(config.max_buffer_s, 12)
@@ -471,17 +503,17 @@ class AudioRecordHelpersTests(unittest.TestCase):
         previous_get_model = record_module.get_model
         previous_get_tc_args = record_module.get_tc_args
         previous_get_filter = record_module.get_hallucination_filter
-        previous_cache = dict(record_module.sj.cache)
         try:
-            record_module.sj.cache["enable_initial_prompt"] = False
-            record_module.sj.cache["use_faster_whisper"] = True
-            record_module.sj.cache["filter_rec"] = True
-            record_module.sj.cache["path_filter_rec"] = "filters.txt"
-
             record_module.get_model_args = lambda cache: {"device": "cpu"}
             record_module.get_model = lambda *args, **kwargs: (None, None, lambda *a, **k: FakeResult("tc"), lambda *a, **k: FakeResult("tl"), {"foo": "bar"})
             record_module.get_tc_args = lambda to_args, cache: {"demucs": True, "vad": True}
             record_module.get_hallucination_filter = lambda *args, **kwargs: {"english": ["x"]}
+            settings_snapshot = {
+                "enable_initial_prompt": False,
+                "use_faster_whisper": True,
+                "filter_rec": True,
+                "path_filter_rec": "filters.txt",
+            }
 
             config = _build_recording_session_config(
                 rec_type="mic",
@@ -489,6 +521,22 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 engine="Whisper",
                 is_tc=True,
                 is_tl=True,
+                settings_snapshot={
+                    "transcribe_rate": 1000,
+                    "max_buffer_mic": 10,
+                    "max_sentences_mic": 5,
+                    "mic_no_limit": False,
+                    "min_input_length_mic": 0.4,
+                    "keep_temp": False,
+                    "threshold_enable_mic": True,
+                    "threshold_db_mic": -20,
+                    "threshold_auto_mic": True,
+                    "threshold_auto_silero_mic": True,
+                    "threshold_silero_mic_min": 0.75,
+                    "auto_break_buffer_mic": True,
+                    "use_temp": False,
+                    "separate_with": repr("\n"),
+                },
             )
             runtime = _load_recording_model_runtime(
                 config=config,
@@ -497,14 +545,13 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 engine="Whisper",
                 is_tc=True,
                 is_tl=True,
+                settings_snapshot=settings_snapshot,
             )
         finally:
             record_module.get_model_args = previous_get_model_args
             record_module.get_model = previous_get_model
             record_module.get_tc_args = previous_get_tc_args
             record_module.get_hallucination_filter = previous_get_filter
-            record_module.sj.cache.clear()
-            record_module.sj.cache.update(previous_cache)
 
         self.assertTrue(runtime.use_temp)
         self.assertTrue(runtime.demucs_enabled)
@@ -726,19 +773,19 @@ class AudioRecordHelpersTests(unittest.TestCase):
             ),
         )
 
-        previous_stream = record_module.bc.stream
         previous_record_cb = record_module.record_cb
+        state_adapter = FakeStreamingStateAdapter()
         try:
             record_module.record_cb = lambda *args, **kwargs: "cb"
-            _open_recording_stream(p=owner, stream_runtime=runtime)
+            _open_recording_stream(p=owner, stream_runtime=runtime, state_adapter=state_adapter)
         finally:
-            record_module.bc.stream = previous_stream
             record_module.record_cb = previous_record_cb
 
         self.assertEqual(owner.calls[0]["channels"], 1)
         self.assertEqual(owner.calls[0]["rate"], 44100)
         self.assertEqual(owner.calls[0]["input_device_index"], 5)
         self.assertEqual(owner.calls[0]["stream_callback"](), "cb")
+        self.assertEqual(state_adapter.stream, "stream")
 
     def test_open_recording_stream_supports_injected_state_adapter(self) -> None:
         from speech_translate.utils.audio import record_streaming as streaming_module
@@ -782,11 +829,8 @@ class AudioRecordHelpersTests(unittest.TestCase):
     def test_build_recording_session_services_wires_runtime_translator_and_reducer(self) -> None:
         from speech_translate.utils.audio import record as record_module
 
-        previous_cache = dict(record_module.sj.cache)
         previous_dispatcher = record_module.TranslationDispatcher
         try:
-            record_module.sj.cache["keep_temp"] = True
-
             class DispatcherSpy:
                 def __init__(self, **kwargs) -> None:
                     self.kwargs = kwargs
@@ -798,6 +842,22 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 engine="Whisper",
                 is_tc=True,
                 is_tl=True,
+                settings_snapshot={
+                    "transcribe_rate": 1000,
+                    "max_buffer_mic": 10,
+                    "max_sentences_mic": 5,
+                    "mic_no_limit": False,
+                    "min_input_length_mic": 0.4,
+                    "keep_temp": True,
+                    "threshold_enable_mic": True,
+                    "threshold_db_mic": -20,
+                    "threshold_auto_mic": True,
+                    "threshold_auto_silero_mic": True,
+                    "threshold_silero_mic_min": 0.75,
+                    "auto_break_buffer_mic": True,
+                    "use_temp": False,
+                    "separate_with": repr("\n"),
+                },
             )
 
             class RuntimeStub:
@@ -818,8 +878,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 t_start=12.0,
             )
         finally:
-            record_module.sj.cache.clear()
-            record_module.sj.cache.update(previous_cache)
             record_module.TranslationDispatcher = previous_dispatcher
 
         self.assertIsInstance(services, RecordingSessionServices)
@@ -834,12 +892,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
         from speech_translate.utils.audio import record as record_module
 
         previous_build_services = record_module._build_recording_session_services
-        previous_status = record_module.bc.current_rec_status
-        previous_auto_lang = record_module.bc.auto_detected_lang
-        previous_tc_sentences = list(record_module.bc.tc_sentences)
-        previous_tl_sentences = list(record_module.bc.tl_sentences)
-        previous_prev_tc = record_module.shared_state.prev_tc_res
-        previous_prev_tl = record_module.shared_state.prev_tl_res
         try:
             runtime = RecordingRuntime(
                 taskname="Transcribe & Translate",
@@ -864,12 +916,14 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 buffer_reducer=object(),
             )
             record_module._build_recording_session_services = lambda **kwargs: services
-            record_module.bc.current_rec_status = "busy"
-            record_module.bc.auto_detected_lang = "en"
-            record_module.bc.tc_sentences = ["old"]
-            record_module.bc.tl_sentences = ["old-tl"]
-            record_module.shared_state.prev_tc_res = "prev"
-            record_module.shared_state.prev_tl_res = "prev-tl"
+            control = FakeRecordingSessionControl(status="busy")
+            runtime_text_state = FakeRuntimeTextState(
+                tc_sentences=["old"],
+                tl_sentences=["old-tl"],
+                detected_language="en",
+                prev_tc_res="prev",
+                prev_tl_res="prev-tl",
+            )
 
             class ModelRuntimeStub:
                 pass
@@ -905,24 +959,22 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 is_tc=True,
                 is_tl=True,
                 t_start=2.0,
+                control=control,
+                runtime_text_state=runtime_text_state,
             )
-            observed_auto_lang = record_module.bc.auto_detected_lang
-            observed_tc_sentences = list(record_module.bc.tc_sentences)
-            observed_tl_sentences = list(record_module.bc.tl_sentences)
-            observed_prev_tc = record_module.shared_state.prev_tc_res
-            observed_prev_tl = record_module.shared_state.prev_tl_res
+            observed_status = control.current_status()
+            observed_auto_lang = runtime_text_state.detected_language()
+            observed_tc_sentences = list(runtime_text_state.transcribed_sentences())
+            observed_tl_sentences = list(runtime_text_state.translated_sentences())
+            observed_prev_tc = runtime_text_state.previous_transcribed_result()
+            observed_prev_tl = runtime_text_state.previous_translated_result()
             observed_tc_lock = lifecycle.session_state.transcription_lock
         finally:
             record_module._build_recording_session_services = previous_build_services
-            record_module.bc.current_rec_status = previous_status
-            record_module.bc.auto_detected_lang = previous_auto_lang
-            record_module.bc.tc_sentences = previous_tc_sentences
-            record_module.bc.tl_sentences = previous_tl_sentences
-            record_module.shared_state.prev_tc_res = previous_prev_tc
-            record_module.shared_state.prev_tl_res = previous_prev_tl
 
         self.assertIsInstance(lifecycle, RecordingSessionLifecycle)
         self.assertEqual(lifecycle.session_state.last_sample, b"")
+        self.assertEqual(observed_status, "▶️ Recording (Waiting for speech)")
         self.assertEqual(observed_auto_lang, "~")
         self.assertEqual(observed_tc_sentences, [])
         self.assertEqual(observed_tl_sentences, [])
@@ -999,11 +1051,9 @@ class AudioRecordHelpersTests(unittest.TestCase):
         calls = []
         previous_start_translation = record_module._start_translation_dispatcher_thread
         previous_start_status = record_module._start_recording_status_thread
-        previous_status = record_module.bc.current_rec_status
         try:
-            record_module._start_translation_dispatcher_thread = lambda translator: calls.append(("translation", translator))
+            record_module._start_translation_dispatcher_thread = lambda translator, control=None: calls.append(("translation", translator, control))
             record_module._start_recording_status_thread = lambda *args, **kwargs: calls.append(("status", kwargs))
-            record_module.bc.current_rec_status = "Recording"
 
             runtime = RecordingRuntime(
                 taskname="Transcribe",
@@ -1022,10 +1072,18 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 lang_target_display="Chinese",
             )
             bridge = FakeWebBridge()
-            emitter = RecordingStatusEmitter(runtime)
-            previous_bridge = record_module.bc.web_bridge
-            record_module.bc.web_bridge = bridge
             control = FakeRecordingSessionControl(status="Recording")
+            emitter = RecordingStatusEmitter(
+                runtime,
+                bridge_adapter=type(
+                    "InjectedBridgeAdapter",
+                    (),
+                    {
+                        "update_task_message": lambda _self, message: bridge.update_task_message(message),
+                        "set_recording_state": lambda _self, payload: bridge.set_recording_state(payload),
+                    },
+                )(),
+            )
             services = RecordingSessionServices(
                 runtime=runtime,
                 status_emitter=emitter,
@@ -1042,15 +1100,15 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 max_buffer_s=10,
                 max_sentences=4,
                 sentence_limitless=False,
+                control=control,
             )
         finally:
             record_module._start_translation_dispatcher_thread = previous_start_translation
             record_module._start_recording_status_thread = previous_start_status
-            record_module.bc.current_rec_status = previous_status
-            record_module.bc.web_bridge = previous_bridge
 
         self.assertEqual(bridge.messages, ["Recording"])
         self.assertEqual(calls[0][0], "translation")
+        self.assertIs(calls[0][2], control)
         self.assertEqual(calls[1][0], "status")
         self.assertEqual(calls[1][1]["max_sentences"], 4)
 
@@ -1064,8 +1122,8 @@ class AudioRecordHelpersTests(unittest.TestCase):
         previous_build_services = record_module._build_recording_session_services
         previous_start_support_threads = record_module._start_recording_session_support_threads
         previous_open_stream = record_module._open_recording_stream
+        previous_run_loop = record_module._run_recording_session_loop
         previous_finalize = record_module._finalize_recording_session
-        previous_recording = record_module.bc.recording
         observed = {}
         try:
             class ConfigStub:
@@ -1150,8 +1208,8 @@ class AudioRecordHelpersTests(unittest.TestCase):
             )
             record_module._start_recording_session_support_threads = lambda **kwargs: None
             record_module._open_recording_stream = lambda **kwargs: None
+            record_module._run_recording_session_loop = lambda **kwargs: None
             record_module._finalize_recording_session = lambda *args, **kwargs: None
-            record_module.bc.recording = False
 
             record_session("English", "Chinese", "Whisper", "base", "mic", True, False)
         finally:
@@ -1162,8 +1220,8 @@ class AudioRecordHelpersTests(unittest.TestCase):
             record_module._build_recording_session_services = previous_build_services
             record_module._start_recording_session_support_threads = previous_start_support_threads
             record_module._open_recording_stream = previous_open_stream
+            record_module._run_recording_session_loop = previous_run_loop
             record_module._finalize_recording_session = previous_finalize
-            record_module.bc.recording = previous_recording
 
         self.assertTrue(observed["use_temp_seen"])
         self.assertFalse(observed["settings_snapshot_use_temp"])
@@ -1178,7 +1236,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
         previous_build_stream = record_module._build_recording_stream_runtime
         previous_finalize = record_module._finalize_recording_session
         previous_empty_torch_cuda_cache = record_module.empty_torch_cuda_cache
-        previous_recording = record_module.bc.recording
         finalized = []
         try:
             class ConfigStub:
@@ -1195,7 +1252,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
             record_module._build_recording_stream_runtime = lambda **kwargs: (_ for _ in ()).throw(RuntimeError("boom"))
             record_module._finalize_recording_session = lambda *args, **kwargs: finalized.append((args, kwargs))
             record_module.empty_torch_cuda_cache = lambda: None
-            record_module.bc.recording = False
 
             record_session("English", "Chinese", "Whisper", "base", "mic", True, False)
         finally:
@@ -1205,7 +1261,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
             record_module._build_recording_stream_runtime = previous_build_stream
             record_module._finalize_recording_session = previous_finalize
             record_module.empty_torch_cuda_cache = previous_empty_torch_cuda_cache
-            record_module.bc.recording = previous_recording
 
         self.assertEqual(finalized[0][0][0], py_audio)
         self.assertIsInstance(finalized[0][0][1], RecordingSessionFinalizeContext)
@@ -1214,14 +1269,8 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertTrue(finalized[0][0][1].keep_temp)
 
     def test_resolve_live_input_source_language_prefers_detected_supported_language(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
-        previous_auto_lang = record_module.bc.auto_detected_lang
-        try:
-            record_module.bc.auto_detected_lang = "en"
-            resolved = _resolve_live_input_source_language("Auto Detect", "Google Translate")
-        finally:
-            record_module.bc.auto_detected_lang = previous_auto_lang
+        runtime_text_state = FakeRuntimeTextState(detected_language="en")
+        resolved = _resolve_live_input_source_language("Auto Detect", "Google Translate", runtime_text_state)
 
         self.assertEqual(resolved, "english")
 
@@ -1234,17 +1283,12 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(merged, ["hello world", "!"])
 
     def test_build_recording_sentence_count_text_includes_limit_when_enabled(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
-        previous_tc = list(record_module.bc.tc_sentences)
-        previous_tl = list(record_module.bc.tl_sentences)
-        try:
-            record_module.bc.tc_sentences = ["a", "b"]
-            record_module.bc.tl_sentences = []
-            count_text = _build_recording_sentence_count_text(sentence_limitless=False, max_sentences=5)
-        finally:
-            record_module.bc.tc_sentences = previous_tc
-            record_module.bc.tl_sentences = previous_tl
+        runtime_text_state = FakeRuntimeTextState(tc_sentences=["a", "b"], tl_sentences=[])
+        count_text = _build_recording_sentence_count_text(
+            sentence_limitless=False,
+            max_sentences=5,
+            runtime_text_state=runtime_text_state,
+        )
 
         self.assertEqual(count_text, "2/5")
 
@@ -1262,17 +1306,9 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(removed, ["temp.wav"])
 
     def test_drain_pending_audio_appends_all_buffered_chunks(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
-        previous_queue = record_module.bc.data_queue
-        try:
-            record_module.bc.data_queue = record_module.Queue()
-            record_module.bc.data_queue.put(b"ab")
-            record_module.bc.data_queue.put(b"cd")
-            state = RealtimeSessionState(last_sample=b"")
-            _drain_pending_audio(state)
-        finally:
-            record_module.bc.data_queue = previous_queue
+        state = RealtimeSessionState(last_sample=b"")
+        control = FakeRecordingSessionControl(queue_items=[b"ab", b"cd"])
+        _drain_pending_audio(state, control=control)
 
         self.assertEqual(state.last_sample, b"abcd")
 
@@ -1362,25 +1398,22 @@ class AudioRecordHelpersTests(unittest.TestCase):
         previous_execute = record_module._execute_recording_iteration
         previous_cleanup = record_module._cleanup_processed_audio_target
         previous_break = record_module._break_buffer_and_update_state
-        previous_recording = record_module.bc.recording
-        previous_status = record_module.bc.current_rec_status
         calls = []
+        control = FakeRecordingSessionControl(recording=True, status="busy")
         try:
             record_module._consume_record_loop_input = lambda *args, **kwargs: b"abc"
             record_module._advance_recording_buffer = lambda session_state, data, **kwargs: True
             record_module._build_record_audio_target = lambda *args, **kwargs: "temp.wav"
 
             def fake_execute(**kwargs):
-                record_module.bc.current_rec_status = "▶️ Recording ⟳ Transcribing Audio"
+                control.set_current_status("▶️ Recording ⟳ Transcribing Audio")
                 kwargs["session_state"].duration_seconds = 1.0
-                record_module.bc.recording = False
+                control.set_recording(False)
                 return True
 
             record_module._execute_recording_iteration = fake_execute
             record_module._cleanup_processed_audio_target = lambda *args, **kwargs: calls.append(("cleanup", args[0]))
             record_module._break_buffer_and_update_state = lambda **kwargs: calls.append(("break", kwargs["reason"]))
-            record_module.bc.recording = True
-            record_module.bc.current_rec_status = "busy"
 
             lifecycle = RecordingSessionLifecycle(
                 session_state=RealtimeSessionState(),
@@ -1442,8 +1475,9 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 is_tc=True,
                 is_tl=False,
                 rec_type="mic",
+                control=control,
             )
-            observed_status = record_module.bc.current_rec_status
+            observed_status = control.current_status()
         finally:
             record_module._consume_record_loop_input = previous_consume
             record_module._advance_recording_buffer = previous_advance
@@ -1451,8 +1485,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
             record_module._execute_recording_iteration = previous_execute
             record_module._cleanup_processed_audio_target = previous_cleanup
             record_module._break_buffer_and_update_state = previous_break
-            record_module.bc.recording = previous_recording
-            record_module.bc.current_rec_status = previous_status
 
         self.assertEqual(calls, [("cleanup", "temp.wav")])
         self.assertEqual(observed_status, "▶️ Recording")
@@ -1554,7 +1586,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
         from speech_translate.utils.audio import record as record_module
 
         previous_remove = record_module.remove_segments_by_str
-        previous_filter_rec = record_module.sj.cache["filter_rec"]
         captured = {}
 
         def fake_remove(result, filters, *args):
@@ -1562,17 +1593,26 @@ class AudioRecordHelpersTests(unittest.TestCase):
             return result
 
         try:
-            record_module.sj.cache["filter_rec"] = True
             record_module.remove_segments_by_str = fake_remove
             filtered = _filter_realtime_transcription_result(
                 FakeResult("hello", language="en"),
                 hallucination_filters={"english": ["x"]},
                 auto=False,
                 configured_language="english",
+                settings=FakeSettingsStore(
+                    {
+                        "filter_rec": True,
+                        "filter_rec_case_sensitive": False,
+                        "filter_rec_strip": True,
+                        "filter_rec_ignore_punctuations": False,
+                        "filter_rec_exact_match": False,
+                        "filter_rec_similarity": 1.0,
+                        "debug_realtime_record": False,
+                    }
+                ),
             )
         finally:
             record_module.remove_segments_by_str = previous_remove
-            record_module.sj.cache["filter_rec"] = previous_filter_rec
 
         self.assertIsNotNone(filtered)
         self.assertEqual(captured["filters"], ["x"])
@@ -1581,7 +1621,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
         from speech_translate.utils.audio import record as record_module
 
         previous_remove = record_module.remove_segments_by_str
-        previous_filter_rec = record_module.sj.cache["filter_rec"]
         captured = {}
 
         def fake_remove(result, filters, *args):
@@ -1589,54 +1628,49 @@ class AudioRecordHelpersTests(unittest.TestCase):
             return result
 
         try:
-            record_module.sj.cache["filter_rec"] = True
             record_module.remove_segments_by_str = fake_remove
             filtered = _filter_realtime_transcription_result(
                 FakeResult("hello", language="en"),
                 hallucination_filters={"english": ["y"]},
                 auto=True,
                 configured_language=None,
+                settings=FakeSettingsStore(
+                    {
+                        "filter_rec": True,
+                        "filter_rec_case_sensitive": False,
+                        "filter_rec_strip": True,
+                        "filter_rec_ignore_punctuations": False,
+                        "filter_rec_exact_match": False,
+                        "filter_rec_similarity": 1.0,
+                        "debug_realtime_record": False,
+                    }
+                ),
             )
         finally:
             record_module.remove_segments_by_str = previous_remove
-            record_module.sj.cache["filter_rec"] = previous_filter_rec
 
         self.assertIsNotNone(filtered)
         self.assertEqual(captured["filters"], ["y"])
 
     def test_commit_realtime_transcription_updates_state_and_dispatches(self) -> None:
-        from speech_translate.utils.audio import record as record_module
+        from speech_translate.utils.audio import record_processing as processing_module
 
         translator = FakeTranslator()
-        previous_prev_tc = record_module.shared_state.prev_tc_res
-        previous_auto_lang = record_module.bc.auto_detected_lang
-        previous_tc_sentences = list(record_module.bc.tc_sentences)
-        previous_update_tc = getattr(record_module.bc, "update_tc", None)
-        previous_status = record_module.bc.current_rec_status
-        tc_updates = []
-        try:
-            record_module.shared_state.prev_tc_res = ""
-            record_module.bc.auto_detected_lang = "~"
-            record_module.bc.tc_sentences = []
-            record_module.bc.current_rec_status = "busy"
-            record_module.bc.update_tc = lambda result, separator: tc_updates.append((result, separator))
+        runtime_text_state = FakeRuntimeTextState(tc_sentences=[])
+        statuses = []
+        processing_module.commit_realtime_transcription(
+            FakeResult("hello", language="en"),
+            audio_target="audio",
+            is_tl=True,
+            separator="<br />",
+            translator=translator,
+            runtime_text_state=runtime_text_state,
+            set_current_status=statuses.append,
+        )
 
-            _commit_realtime_transcription(
-                FakeResult("hello", language="en"),
-                audio_target="audio",
-                is_tl=True,
-                separator="<br />",
-                translator=translator,
-            )
-        finally:
-            record_module.shared_state.prev_tc_res = previous_prev_tc
-            record_module.bc.auto_detected_lang = previous_auto_lang
-            record_module.bc.tc_sentences = previous_tc_sentences
-            record_module.bc.current_rec_status = previous_status
-            if previous_update_tc is not None:
-                record_module.bc.update_tc = previous_update_tc
-
-        self.assertEqual(tc_updates[-1][1], "<br />")
+        self.assertEqual(runtime_text_state.detected_language(), "en")
+        self.assertEqual(runtime_text_state.tc_updates[-1][1], "<br />")
+        self.assertEqual(statuses[-1], "▶️ Recording ⟳ Translating text")
         self.assertEqual(translator.calls[-1], ("audio", "hello"))
 
     def test_commit_realtime_transcription_supports_injected_text_state_and_status_setter(self) -> None:
@@ -1746,32 +1780,23 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(meter_state.last_db, -10.0)
 
     def test_update_realtime_queue_state_tracks_silence_edges(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
-        previous_queue = record_module.bc.data_queue
-        previous_status = record_module.bc.current_rec_status
-        try:
-            record_module.bc.data_queue = record_module.Queue()
-            record_module.bc.current_rec_status = "busy"
-            ctx = RealtimeCallbackContext(
-                sample_rate=16000,
-                frame_duration_ms=30,
-                threshold_enable=True,
-                threshold_db=-20.0,
-                threshold_auto=False,
-                use_silero=False,
-                silero_min_conf=0.75,
-                vad_checked=True,
-                num_of_channels=1,
-                samp_width=2,
-                use_temp=False,
-            )
-            _update_realtime_queue_state(ctx, is_speech=True, data_to_queue=b"abc")
-            queued = record_module.bc.data_queue.get_nowait()
-            _update_realtime_queue_state(ctx, is_speech=False, data_to_queue=b"")
-        finally:
-            record_module.bc.data_queue = previous_queue
-            record_module.bc.current_rec_status = previous_status
+        ctx = RealtimeCallbackContext(
+            sample_rate=16000,
+            frame_duration_ms=30,
+            threshold_enable=True,
+            threshold_db=-20.0,
+            threshold_auto=False,
+            use_silero=False,
+            silero_min_conf=0.75,
+            vad_checked=True,
+            num_of_channels=1,
+            samp_width=2,
+            use_temp=False,
+        )
+        state_adapter = FakeStreamingStateAdapter()
+        _update_realtime_queue_state(ctx, is_speech=True, data_to_queue=b"abc", state_adapter=state_adapter)
+        queued = state_adapter.queued[-1]
+        _update_realtime_queue_state(ctx, is_speech=False, data_to_queue=b"", state_adapter=state_adapter)
 
         self.assertEqual(queued, b"abc")
         self.assertTrue(ctx.is_silence)
@@ -1875,6 +1900,8 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(dispatcher._latest_api_task.text, "world")
 
     def test_recording_status_emitter_updates_bridge(self) -> None:
+        from speech_translate.utils.audio.record_runtime import RecordingBridgeAdapter
+
         runtime = RecordingRuntime(
             taskname="Transcribe",
             device="mic",
@@ -1892,15 +1919,8 @@ class AudioRecordHelpersTests(unittest.TestCase):
             lang_target_display="Chinese",
         )
         bridge = FakeWebBridge()
-        from speech_translate.utils.audio import record as record_module
-
-        previous_bridge = record_module.bc.web_bridge
-        try:
-            record_module.bc.web_bridge = bridge
-            emitter = RecordingStatusEmitter(runtime)
-            emitter.emit(status="Recording", timer="00:00:01", buffer_text="1.0/10.0 sec", sentences="2/5")
-        finally:
-            record_module.bc.web_bridge = previous_bridge
+        emitter = RecordingStatusEmitter(runtime, bridge_adapter=RecordingBridgeAdapter(bridge=bridge))
+        emitter.emit(status="Recording", timer="00:00:01", buffer_text="1.0/10.0 sec", sentences="2/5")
 
         self.assertEqual(bridge.messages, ["Recording"])
         self.assertEqual(bridge.states[-1]["status"], "Recording")
@@ -1955,36 +1975,24 @@ class AudioRecordHelpersTests(unittest.TestCase):
             translator=translator,
         )
 
-        previous_tc_sentences = list(record_module.bc.tc_sentences)
-        previous_tl_sentences = list(record_module.bc.tl_sentences)
-        previous_prev_tc = record_module.shared_state.prev_tc_res
-        previous_prev_tl = record_module.shared_state.prev_tl_res
-        previous_update_tc = getattr(record_module.bc, "update_tc", None)
-        previous_update_tl = getattr(record_module.bc, "update_tl", None)
+        runtime_text_state = FakeRuntimeTextState(tc_sentences=["old"], tl_sentences=[])
+        runtime_text_state.set_previous_transcribed_result(FakeResult("new"))
+        runtime_text_state.set_previous_translated_result(FakeResult("translated"))
 
-        tc_updates = []
-        tl_updates = []
-        try:
-            record_module.bc.tc_sentences = ["old"]
-            record_module.bc.tl_sentences = []
-            record_module.shared_state.prev_tc_res = FakeResult("new")
-            record_module.shared_state.prev_tl_res = FakeResult("translated")
-            record_module.bc.update_tc = lambda result, separator: tc_updates.append((result, separator))
-            record_module.bc.update_tl = lambda result, separator: tl_updates.append((result, separator))
+        reducer = BufferStateReducer(
+            is_tc=True,
+            is_tl=True,
+            tl_engine_whisper=True,
+            sentence_limitless=False,
+            max_sentences=2,
+            separator="<br />",
+            translator=translator,
+            runtime_text_state=runtime_text_state,
+        )
+        reducer.reduce_sentences()
 
-            reducer.reduce_sentences()
-        finally:
-            record_module.bc.tc_sentences = previous_tc_sentences
-            record_module.bc.tl_sentences = previous_tl_sentences
-            record_module.shared_state.prev_tc_res = previous_prev_tc
-            record_module.shared_state.prev_tl_res = previous_prev_tl
-            if previous_update_tc is not None:
-                record_module.bc.update_tc = previous_update_tc
-            if previous_update_tl is not None:
-                record_module.bc.update_tl = previous_update_tl
-
-        self.assertEqual(tc_updates[-1][1], "<br />")
-        self.assertEqual(tl_updates[-1][1], "<br />")
+        self.assertEqual(runtime_text_state.tc_updates[-1][1], "<br />")
+        self.assertEqual(runtime_text_state.tl_updates[-1][1], "<br />")
         self.assertEqual(translator.calls[-1], (None, "old\nnew"))
 
     def test_buffer_state_reducer_can_use_injected_text_state(self) -> None:
@@ -2068,7 +2076,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(outcome.post_audio_bytes, b"89ABCDEFGHIJ")
 
     def test_apply_smart_split_updates_session_and_dispatches(self) -> None:
-        from speech_translate.utils.audio import record as record_module
+        from speech_translate.utils.audio import record_processing as processing_module
 
         result = FakeSmartResult(
             [
@@ -2085,38 +2093,28 @@ class AudioRecordHelpersTests(unittest.TestCase):
         session_state = RealtimeSessionState(last_sample=b"0123456789ABCDEFGHIJ", duration_seconds=20.0)
         translator = FakeTranslator()
 
-        previous_tc_sentences = list(record_module.bc.tc_sentences)
-        previous_prev_tc = record_module.shared_state.prev_tc_res
-        previous_update_tc = getattr(record_module.bc, "update_tc", None)
-        tc_updates = []
-        try:
-            record_module.bc.tc_sentences = []
-            record_module.shared_state.prev_tc_res = result
-            record_module.bc.update_tc = lambda current, separator: tc_updates.append((current, separator))
-            session_state.prev_tc_buffer_seconds = 8.0
+        runtime_text_state = FakeRuntimeTextState(tc_sentences=[], prev_tc_res=result)
+        session_state.prev_tc_buffer_seconds = 8.0
 
-            applied = _apply_smart_split(
-                session_state=session_state,
-                previous_result=result,
-                sr_divider=1,
-                samp_width=1,
-                num_of_channels=1,
-                sentence_limitless=False,
-                max_sentences=5,
-                separator="<br />",
-                translator=translator,
-            )
-        finally:
-            record_module.bc.tc_sentences = previous_tc_sentences
-            record_module.shared_state.prev_tc_res = previous_prev_tc
-            if previous_update_tc is not None:
-                record_module.bc.update_tc = previous_update_tc
+        applied = processing_module.apply_smart_split(
+            session_state=session_state,
+            previous_result=result,
+            sr_divider=1,
+            samp_width=1,
+            num_of_channels=1,
+            sentence_limitless=False,
+            max_sentences=5,
+            separator="<br />",
+            translator=translator,
+            utc_now=lambda: timedelta(seconds=0),
+            runtime_text_state=runtime_text_state,
+        )
 
         self.assertTrue(applied)
         self.assertEqual(session_state.last_sample, b"89ABCDEFGHIJ")
         self.assertEqual(session_state.duration_seconds, 12.0)
         self.assertIsNotNone(session_state.next_transcribe_time)
-        self.assertEqual(tc_updates[-1][1], "<br />")
+        self.assertEqual(runtime_text_state.tc_updates[-1][1], "<br />")
         self.assertEqual(translator.calls[-1][1], "alpha\nbeta")
 
     def test_apply_smart_split_supports_injected_text_state(self) -> None:

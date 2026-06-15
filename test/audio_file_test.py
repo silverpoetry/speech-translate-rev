@@ -11,11 +11,13 @@ to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
 from speech_translate.utils.audio.file import (
+    FileEnvironmentAdapter,
     FileBatchStatusContext,
     FileExportPlan,
     FileProcessRuntime,
     FileProcessingStateAdapter,
     FileResultQueueAdapter,
+    FileSettingsAdapter,
     FileUiBridgeAdapter,
     WorkerFailure,
     _execute_monitored_queue_task,
@@ -27,10 +29,14 @@ from speech_translate.utils.audio.file import (
     _build_mod_result_runtime,
     _build_process_file_runtime,
     _build_translate_result_runtime,
+    _get_file_environment,
     _is_file_status_completed,
     _save_export_plan_metadata,
     process_file,
 )
+from speech_translate.bridge_runtime_state import BridgeVisualRuntime
+from speech_translate.runtime_registry import bridge_state_registry
+
 class FakeFileStatusBridge:
     def __init__(self, *, should_fail: bool = False) -> None:
         self.should_fail = should_fail
@@ -122,6 +128,17 @@ class FakeProcessingStateAdapter:
 
 
 class AudioFileHelpersTests(unittest.TestCase):
+    def test_get_file_environment_reads_visual_runtime_ffmpeg_state(self) -> None:
+        previous_bridge_state = bridge_state_registry.state
+        fake_bridge = type("FakeBridgeState", (), {"visual": BridgeVisualRuntime(has_ffmpeg=True)})()
+        try:
+            bridge_state_registry.set(fake_bridge)
+            environment = _get_file_environment()
+        finally:
+            bridge_state_registry.set(previous_bridge_state)
+
+        self.assertTrue(environment.has_ffmpeg)
+
     def test_build_process_file_runtime_collects_shared_runtime_state(self) -> None:
         fake_stable_tc = object()
         fake_stable_tl = object()
@@ -437,12 +454,13 @@ class AudioFileHelpersTests(unittest.TestCase):
             ui_bridge=ui_bridge,
             result_queue=result_queue,
             processing_state=processing_state,
+            settings=FileSettingsAdapter(cache={"auto_open_dir_export": True, "export_format": "{file}", "export_to": ["txt"]}),
+            environment=FileEnvironmentAdapter(has_ffmpeg=True),
         )
         with (
             patch("speech_translate.utils.audio.file._build_process_file_runtime", return_value=runtime),
             patch("speech_translate.utils.audio.file.empty_torch_cuda_cache"),
             patch("speech_translate.utils.audio.file.time", return_value=1.0),
-            patch.dict("speech_translate.utils.audio.file.sj.cache", {"auto_open_dir_export": True}, clear=False),
         ):
             process_file(
                 ["a.wav"],

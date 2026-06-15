@@ -7,8 +7,8 @@ import re
 from threading import Lock
 from typing import Sequence
 
-from speech_translate.controller_protocols import JsonDict, TaskTable, TaskTableRow, TrayLike, WebviewWindowLike
-from speech_translate.linker import sj
+from speech_translate.controller_protocols import JsonDict, SettingsStore, TaskTable, TaskTableRow, TrayLike, WebviewWindowLike
+from speech_translate.runtime_registry import settings_registry
 from speech_translate.ui_protocol import TASK_SOURCE_GENERAL, UI_EVENT_NAME, UI_SECTION_LIVE, UI_SECTION_TASK
 
 
@@ -25,8 +25,13 @@ class TaskState:
     progress_source: str = ""
 
 
+def _get_default_settings() -> SettingsStore:
+    return settings_registry.get()
+
+
 class WebTaskBridge:
-    def __init__(self):
+    def __init__(self, settings: SettingsStore | None = None):
+        self.settings = settings or _get_default_settings()
         self.task_state = TaskState()
         self.live_state: JsonDict = {
             "main_transcribed_html": "",
@@ -203,4 +208,4 @@ class WebTaskBridge:
             return dict(self.live_state)
 
     def get_settings_snapshot(self) -> JsonDict:
-        return dict(sj.cache)
+        return dict(self.settings.cache)

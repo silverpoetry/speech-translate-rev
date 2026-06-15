@@ -9,7 +9,7 @@ import os
 
 from speech_translate._logging import logger
 from speech_translate._path import dir_alignment, dir_export, dir_refinement, dir_translate
-from speech_translate.linker import bc, sj
+from speech_translate.runtime_registry import bridge_state_registry, settings_registry
 from speech_translate.runtime_deps import empty_torch_cuda_cache, get_stable_whisper, get_whisper_to_language_code
 from speech_translate.web_bridge_runtime import WebBridgeRegistry, web_bridge_registry
 from speech_translate.utils.translate.language import get_whisper_lang_name, get_whisper_lang_similar
@@ -48,74 +48,119 @@ class FileUiBridgeAdapter:
             bridge.sync_file_status(index, status, is_completed)
 
 
+@dataclass(frozen=True)
+class FileSettingsAdapter:
+    cache: Mapping[str, object]
+
+
+@dataclass(frozen=True)
+class FileEnvironmentAdapter:
+    has_ffmpeg: bool = False
+
+
 @dataclass
 class FileResultQueueAdapter:
-    state: object = bc
+    state: object | None = None
 
     def get(self):
+        if self.state is None:
+            raise RuntimeError("file result queue state is not configured")
         return self.state.data_queue.get()
 
     def put(self, payload) -> None:
+        if self.state is None:
+            raise RuntimeError("file result queue state is not configured")
         self.state.data_queue.put(payload)
 
 
 @dataclass
 class FileProcessingStateAdapter:
-    state: object = bc
+    state: object | None = None
 
     def is_file_processing(self) -> bool:
-        return bool(self.state.file_processing)
+        return bool(self.state.file_processing) if self.state is not None else False
 
     def is_transcribing_file(self) -> bool:
-        return bool(self.state.transcribing_file)
+        return bool(self.state.transcribing_file) if self.state is not None else False
 
     def is_translating_file(self) -> bool:
-        return bool(self.state.translating_file)
+        return bool(self.state.translating_file) if self.state is not None else False
 
     def reset_file_counts(self) -> None:
+        if self.state is None:
+            return
         self.state.file_tced_counter = 0
         self.state.file_tled_counter = 0
 
     def increment_transcribed_count(self) -> None:
-        self.state.file_tced_counter += 1
+        if self.state is not None:
+            self.state.file_tced_counter += 1
 
     def increment_translated_count(self) -> None:
-        self.state.file_tled_counter += 1
+        if self.state is not None:
+            self.state.file_tled_counter += 1
 
     def transcribed_count(self) -> int:
-        return int(getattr(self.state, "file_tced_counter", 0))
+        return int(getattr(self.state, "file_tced_counter", 0)) if self.state is not None else 0
 
     def translated_count(self) -> int:
-        return int(getattr(self.state, "file_tled_counter", 0))
+        return int(getattr(self.state, "file_tled_counter", 0)) if self.state is not None else 0
 
     def enable_file_tc(self) -> None:
-        self.state.enable_file_tc()
+        if self.state is not None:
+            self.state.enable_file_tc()
 
     def enable_file_tl(self) -> None:
-        self.state.enable_file_tl()
+        if self.state is not None:
+            self.state.enable_file_tl()
 
     def disable_file_tc(self) -> None:
-        self.state.disable_file_tc()
+        if self.state is not None:
+            self.state.disable_file_tc()
 
     def disable_file_tl(self) -> None:
-        self.state.disable_file_tl()
+        if self.state is not None:
+            self.state.disable_file_tl()
 
     def disable_file_process(self) -> None:
-        self.state.disable_file_process()
+        if self.state is not None:
+            self.state.disable_file_process()
 
     def reset_mod_counter(self) -> None:
-        self.state.mod_file_counter = 0
+        if self.state is not None:
+            self.state.mod_file_counter = 0
 
     def increment_mod_counter(self) -> None:
-        self.state.mod_file_counter += 1
+        if self.state is not None:
+            self.state.mod_file_counter += 1
 
     def mod_counter(self) -> int:
-        return int(getattr(self.state, "mod_file_counter", 0))
+        return int(getattr(self.state, "mod_file_counter", 0)) if self.state is not None else 0
+
+
+def _get_file_settings_store():
+    return FileSettingsAdapter(cache=settings_registry.get().cache)
+
+
+def _get_file_runtime_state():
+    return bridge_state_registry.get().file_runtime
+
+
+def _get_file_recording_runtime_state():
+    return bridge_state_registry.get().recording_runtime
+
+
+def _get_file_visual_runtime_state():
+    return bridge_state_registry.get().visual
+
+
+def _get_file_environment():
+    return FileEnvironmentAdapter(has_ffmpeg=bool(getattr(_get_file_visual_runtime_state(), "has_ffmpeg", False)))
 
 
 file_ui_bridge = FileUiBridgeAdapter()
-file_result_queue = FileResultQueueAdapter()
-file_processing_state = FileProcessingStateAdapter()
+file_result_queue = FileResultQueueAdapter(state=_get_file_recording_runtime_state())
+file_processing_state = FileProcessingStateAdapter(state=_get_file_runtime_state())
 
 
 def _get_whisper_runtime_api():
@@ -249,6 +294,8 @@ class FileProcessRuntime:
     ui_bridge: FileUiBridgeAdapter
     result_queue: FileResultQueueAdapter
     processing_state: FileProcessingStateAdapter
+    settings: FileSettingsAdapter
+    environment: FileEnvironmentAdapter
 
 
 @dataclass(frozen=True)
@@ -266,6 +313,7 @@ class FileModRuntime:
     ui_bridge: FileUiBridgeAdapter
     result_queue: FileResultQueueAdapter
     processing_state: FileProcessingStateAdapter
+    settings: FileSettingsAdapter
 
 
 @dataclass(frozen=True)
@@ -279,6 +327,7 @@ class FileResultTranslateRuntime:
     started_at: float
     ui_bridge: FileUiBridgeAdapter
     processing_state: FileProcessingStateAdapter
+    settings: FileSettingsAdapter
 
 def _build_combined_status(
     index: int,
@@ -424,10 +473,14 @@ def _build_process_file_runtime(
     ui_bridge: FileUiBridgeAdapter | None = None,
     result_queue: FileResultQueueAdapter | None = None,
     processing_state: FileProcessingStateAdapter | None = None,
+    settings: FileSettingsAdapter | None = None,
+    environment: FileEnvironmentAdapter | None = None,
 ) -> FileProcessRuntime:
     ui_bridge = ui_bridge or file_ui_bridge
     result_queue = result_queue or file_result_queue
     processing_state = processing_state or file_processing_state
+    settings = settings or FileSettingsAdapter(cache=setting_cache)
+    environment = environment or _get_file_environment()
     tl_engine_whisper = engine in model_values
     stable_tc = stable_tl = None
     to_args = None
@@ -469,6 +522,8 @@ def _build_process_file_runtime(
         ui_bridge=ui_bridge,
         result_queue=result_queue,
         processing_state=processing_state,
+        settings=settings,
+        environment=environment,
     )
 
 
@@ -480,10 +535,12 @@ def _build_mod_result_runtime(
     ui_bridge: FileUiBridgeAdapter | None = None,
     result_queue: FileResultQueueAdapter | None = None,
     processing_state: FileProcessingStateAdapter | None = None,
+    settings: FileSettingsAdapter | None = None,
 ) -> FileModRuntime:
     ui_bridge = ui_bridge or file_ui_bridge
     result_queue = result_queue or file_result_queue
     processing_state = processing_state or file_processing_state
+    settings = settings or FileSettingsAdapter(cache=setting_cache)
     action = "Refinement" if mode == "refinement" else "Alignment"
     stable_whisper = get_stable_whisper()
     model = stable_whisper.load_model(model_name_tc, **get_model_args(setting_cache))
@@ -503,6 +560,7 @@ def _build_mod_result_runtime(
         ui_bridge=ui_bridge,
         result_queue=result_queue,
         processing_state=processing_state,
+        settings=settings,
     )
 
 
@@ -512,9 +570,11 @@ def _build_translate_result_runtime(
     setting_cache: Mapping[str, object],
     ui_bridge: FileUiBridgeAdapter | None = None,
     processing_state: FileProcessingStateAdapter | None = None,
+    settings: FileSettingsAdapter | None = None,
 ) -> FileResultTranslateRuntime:
     ui_bridge = ui_bridge or file_ui_bridge
     processing_state = processing_state or file_processing_state
+    settings = settings or FileSettingsAdapter(cache=setting_cache)
     slice_start, slice_end = _resolve_slice_bounds(setting_cache)
     api_kwargs = (
         {"libre_link": setting_cache["libre_link"], "libre_api_key": setting_cache["libre_api_key"]}
@@ -531,6 +591,7 @@ def _build_translate_result_runtime(
         started_at=time(),
         ui_bridge=ui_bridge,
         processing_state=processing_state,
+        settings=settings,
     )
 
 def _monitor_thread(thread: Thread, check_cancel: Callable[[], bool]) -> None:
@@ -576,14 +637,24 @@ def _execute_monitored_queue_task(
 # ATOMIC EXECUTORS
 # =========================================================================
 
-def run_whisper(func, audio: str | None, task: str, fail_status: WorkerFailure, *, result_queue: FileResultQueueAdapter | None = None, **kwargs) -> None:
+def run_whisper(
+    func,
+    audio: str | None,
+    task: str,
+    fail_status: WorkerFailure,
+    *,
+    result_queue: FileResultQueueAdapter | None = None,
+    environment: FileEnvironmentAdapter | None = None,
+    **kwargs,
+) -> None:
     result_queue = result_queue or file_result_queue
+    environment = environment or _get_file_environment()
     try:
         result = func(audio, task=task, **kwargs)
         result_queue.put(result)
     except Exception as e:
         fail_status.capture(e)
-        if "The system cannot find the file specified" in str(e) and not bc.has_ffmpeg:
+        if "The system cannot find the file specified" in str(e) and not environment.has_ffmpeg:
             fail_status.error = Exception("FFmpeg not found in system path. Please install FFmpeg.")
 
 def run_translate_api(
@@ -592,12 +663,22 @@ def run_translate_api(
     lang_source: str,
     lang_target: str,
     fail_status: WorkerFailure,
+    settings: FileSettingsAdapter,
     **kwargs,
 ) -> None:
     try:
         segment_texts = [segment.text for segment in query.segments]
-        query.language = lang_target 
-        _success, result = translate(engine, segment_texts, lang_source, lang_target, get_proxies(sj.cache["http_proxy"], sj.cache["https_proxy"]), sj.cache["debug_translate"], **kwargs)
+        query.language = lang_target
+        cache = settings.cache
+        _success, result = translate(
+            engine,
+            segment_texts,
+            lang_source,
+            lang_target,
+            get_proxies(cache["http_proxy"], cache["https_proxy"]),
+            cache["debug_translate"],
+            **kwargs,
+        )
 
         for segment in query.segments:
             if not result: return
@@ -647,10 +728,13 @@ def _cancellable_tc(
     status_context: FileBatchStatusContext,
     processing_state: FileProcessingStateAdapter | None = None,
     result_queue: FileResultQueueAdapter | None = None,
+    settings: FileSettingsAdapter,
+    environment: FileEnvironmentAdapter,
     **kwargs,
 ):
     processing_state = processing_state or file_processing_state
     result_queue = result_queue or file_result_queue
+    cache = settings.cache
     start = time()
     try:
         _update_status(status_context, "tc", index, "Transcribing please wait...")
@@ -664,25 +748,25 @@ def _cancellable_tc(
             run_whisper,
             cancel_check=processing_state.is_transcribing_file,
             args=(tc_func, file_path, "transcribe", fail_status),
-            kwargs={**kwargs, "result_queue": result_queue},
+            kwargs={**kwargs, "result_queue": result_queue, "environment": environment},
             fail_status=fail_status,
             result_queue=result_queue,
         )
-        if sj.cache["filter_file_import"]:
-            try: result = remove_segments_by_str(result, filters.get(get_whisper_lang_name(result.language) if auto else get_whisper_lang_similar(lang_source), []), sj.cache["filter_file_import_case_sensitive"], sj.cache["filter_file_import_strip"], sj.cache["filter_file_import_ignore_punctuations"], sj.cache["filter_file_import_exact_match"], sj.cache["filter_file_import_similarity"])
+        if cache["filter_file_import"]:
+            try: result = remove_segments_by_str(result, filters.get(get_whisper_lang_name(result.language) if auto else get_whisper_lang_similar(lang_source), []), cache["filter_file_import_case_sensitive"], cache["filter_file_import_strip"], cache["filter_file_import_ignore_punctuations"], cache["filter_file_import_exact_match"], cache["filter_file_import_similarity"])
             except Exception: pass
 
-        if sj.cache["remove_repetition_file_import"]: result = result.remove_repetition(sj.cache["remove_repetition_amount"])
+        if cache["remove_repetition_file_import"]: result = result.remove_repetition(cache["remove_repetition_amount"])
 
         if is_tc:
             if result.text.strip():
                 processing_state.increment_transcribed_count()
                 stable_whisper = get_stable_whisper()
                 save_output_stable_ts(
-                    split_res(stable_whisper.WhisperResult(result.to_dict()), sj.cache),
+                    split_res(stable_whisper.WhisperResult(result.to_dict()), cache),
                     tc_export_plan.save_base_path,
-                    sj.cache["export_to"],
-                    sj,
+                    cache["export_to"],
+                    settings,
                     source_media_path=file_path,
                 )
             else:
@@ -696,7 +780,7 @@ def _cancellable_tc(
             Thread(
                 target=_cancellable_tl,
                 args=[tl_query, lang_source, lang_target, tl_func, engine, export_plan, index, file_path, filters],
-                kwargs={**kwargs, "status_context": status_context, "processing_state": processing_state, "result_queue": result_queue},
+                kwargs={**kwargs, "status_context": status_context, "processing_state": processing_state, "result_queue": result_queue, "settings": settings, "environment": environment},
                 daemon=True,
             ).start()
             
@@ -720,10 +804,13 @@ def _cancellable_tl(
     status_context: FileBatchStatusContext,
     processing_state: FileProcessingStateAdapter | None = None,
     result_queue: FileResultQueueAdapter | None = None,
+    settings: FileSettingsAdapter,
+    environment: FileEnvironmentAdapter,
     **kwargs,
 ):
     processing_state = processing_state or file_processing_state
     result_queue = result_queue or file_result_queue
+    cache = settings.cache
     start = time()
     try:
         _update_status(status_context, "tl", index, "Translating please wait...")
@@ -738,22 +825,22 @@ def _cancellable_tl(
                 run_whisper,
                 cancel_check=processing_state.is_translating_file,
                 args=(tl_func, query, "translate", fail_status),
-                kwargs={**kwargs, "result_queue": result_queue},
+                kwargs={**kwargs, "result_queue": result_queue, "environment": environment},
                 fail_status=fail_status,
                 result_queue=result_queue,
             )
-            if sj.cache["filter_file_import"]:
-                try: result = remove_segments_by_str(result, filters.get("english", []), sj.cache["filter_file_import_case_sensitive"], sj.cache["filter_file_import_strip"], sj.cache["filter_file_import_ignore_punctuations"], sj.cache["filter_file_import_exact_match"], sj.cache["filter_file_import_similarity"])
+            if cache["filter_file_import"]:
+                try: result = remove_segments_by_str(result, filters.get("english", []), cache["filter_file_import_case_sensitive"], cache["filter_file_import_strip"], cache["filter_file_import_ignore_punctuations"], cache["filter_file_import_exact_match"], cache["filter_file_import_similarity"])
                 except Exception: pass
-            if sj.cache["remove_repetition_file_import"]: result = result.remove_repetition(sj.cache["remove_repetition_amount"])
+            if cache["remove_repetition_file_import"]: result = result.remove_repetition(cache["remove_repetition_amount"])
         else:
             if not getattr(query, "text", "").strip():
                 return _update_status(status_context, "tl", index, "TL Fail! Empty text")
-            api_kwargs = {"libre_link": sj.cache["libre_link"], "libre_api_key": sj.cache["libre_api_key"]} if engine == "LibreTranslate" else {}
+            api_kwargs = {"libre_link": cache["libre_link"], "libre_api_key": cache["libre_api_key"]} if engine == "LibreTranslate" else {}
             _run_monitored_worker(
                 run_translate_api,
                 cancel_check=processing_state.is_translating_file,
-                args=(query, engine, lang_source, lang_target, fail_status),
+                args=(query, engine, lang_source, lang_target, fail_status, settings),
                 kwargs=api_kwargs,
             )
             fail_status.raise_if_failed()
@@ -763,7 +850,7 @@ def _cancellable_tl(
             return _update_status(status_context, "tl", index, "TL Fail! Empty text")
 
         processing_state.increment_translated_count()
-        save_output_stable_ts(split_res(result, sj.cache), tl_export_plan.save_base_path, sj.cache["export_to"], sj, source_media_path=media_path)
+        save_output_stable_ts(split_res(result, cache), tl_export_plan.save_base_path, cache["export_to"], settings, source_media_path=media_path)
         _update_status(status_context, "tl", index, "Translated")
         _save_export_plan_metadata(export_plan, {"translate_time": time() - start, "translate_success": True})
 
@@ -787,22 +874,28 @@ def process_file(
     ui_bridge: FileUiBridgeAdapter | None = None,
     result_queue: FileResultQueueAdapter | None = None,
     processing_state: FileProcessingStateAdapter | None = None,
+    settings: FileSettingsAdapter | None = None,
+    environment: FileEnvironmentAdapter | None = None,
     open_dir_fn: Callable[[str], None] = start_file,
 ) -> None:
     try:
         ui_bridge = ui_bridge or file_ui_bridge
         result_queue = result_queue or file_result_queue
         processing_state = processing_state or file_processing_state
+        settings = settings or _get_file_settings_store()
+        environment = environment or _get_file_environment()
         runtime = _build_process_file_runtime(
             model_name_tc=model_name_tc,
             lang_source=lang_source,
             engine=engine,
             is_tc=is_tc,
             is_tl=is_tl,
-            setting_cache=sj.cache,
+            setting_cache=settings.cache,
             ui_bridge=ui_bridge,
             result_queue=result_queue,
             processing_state=processing_state,
+            settings=settings,
+            environment=environment,
         )
         status_context = runtime.status_context
         processing_state.reset_file_counts()
@@ -821,7 +914,7 @@ def process_file(
             logger.info(f"Loop entered for file: {file}")
             file_name = _slice_display_name(file, start=runtime.slice_start, end=runtime.slice_end)
             base_name = _build_base_export_name(
-                datetime.now().strftime(sj.cache["export_format"]),
+                datetime.now().strftime(runtime.settings.cache["export_format"]),
                 file_name,
                 lang_source,
                 lang_target,
@@ -839,14 +932,14 @@ def process_file(
                 Thread(
                     target=_cancellable_tl,
                     args=[file, lang_source, lang_target, runtime.stable_tl, engine, export_plan, i, file, runtime.filters],
-                    kwargs={**runtime.whisper_args, "status_context": status_context, "processing_state": processing_state, "result_queue": result_queue},
+                    kwargs={**runtime.whisper_args, "status_context": status_context, "processing_state": processing_state, "result_queue": result_queue, "settings": runtime.settings, "environment": runtime.environment},
                     daemon=True,
                 ).start()
             else:
                 tc_thread = Thread(
                     target=_cancellable_tc,
                     args=[file, lang_source, lang_target, model_name_tc, runtime.stable_tc, runtime.stable_tl, lang_source == "auto detect", is_tc, is_tl, engine, export_plan, i, runtime.filters],
-                    kwargs={**runtime.whisper_args, "status_context": status_context, "processing_state": processing_state, "result_queue": result_queue},
+                    kwargs={**runtime.whisper_args, "status_context": status_context, "processing_state": processing_state, "result_queue": result_queue, "settings": runtime.settings, "environment": runtime.environment},
                     daemon=True,
                 )
                 tc_thread.start()
@@ -856,7 +949,7 @@ def process_file(
             sleep(0.5)
 
         logger.info(f"Process FILE completed in {time() - runtime.started_at:.2f}s")
-        if (processing_state.transcribed_count() > 0 or processing_state.translated_count() > 0) and sj.cache["auto_open_dir_export"]:
+        if (processing_state.transcribed_count() > 0 or processing_state.translated_count() > 0) and runtime.settings.cache["auto_open_dir_export"]:
             open_dir_fn(runtime.export_dir)
 
     except Exception as e:
@@ -876,19 +969,22 @@ def mod_result(
     ui_bridge: FileUiBridgeAdapter | None = None,
     result_queue: FileResultQueueAdapter | None = None,
     processing_state: FileProcessingStateAdapter | None = None,
+    settings: FileSettingsAdapter | None = None,
     open_dir_fn: Callable[[str], None] = start_file,
 ):
     try:
         ui_bridge = ui_bridge or file_ui_bridge
         result_queue = result_queue or file_result_queue
         processing_state = processing_state or file_processing_state
+        settings = settings or _get_file_settings_store()
         runtime = _build_mod_result_runtime(
             model_name_tc=model_name_tc,
             mode=mode,
-            setting_cache=sj.cache,
+            setting_cache=settings.cache,
             ui_bridge=ui_bridge,
             result_queue=result_queue,
             processing_state=processing_state,
+            settings=settings,
         )
         status_context = runtime.status_context
         processing_state.reset_mod_counter()
@@ -905,7 +1001,7 @@ def mod_result(
             audio_path, mod_path = file_data[0], file_data[1]
             file_name = _slice_display_name(audio_path, start=runtime.slice_start, end=runtime.slice_end)
             base_name = _build_base_export_name(
-                datetime.now().strftime(sj.cache["export_format"]),
+                datetime.now().strftime(runtime.settings.cache["export_format"]),
                 file_name,
                 "",
                 "",
@@ -937,7 +1033,7 @@ def mod_result(
                     if "'NoneType'" in str(e) and mode == "refinement":
                         try:
                             _update_status(status_context, "mod", i, "Re-transcribing...")
-                            res = runtime.model.transcribe(audio_path, **get_tc_args(runtime.model.transcribe, sj.cache))
+                            res = runtime.model.transcribe(audio_path, **get_tc_args(runtime.model.transcribe, runtime.settings.cache))
                             res = runtime.mod_func(audio_path, res, **mod_args)
                             runtime.result_queue.put(res)
                         except Exception as ee:
@@ -958,10 +1054,10 @@ def mod_result(
                 _update_status(status_context, "mod", i, "Failed")
                 continue
 
-            result = split_res(result, sj.cache)
+            result = split_res(result, runtime.settings.cache)
             if not result.language: result.language = mod_args.get("language", "auto")
 
-            save_output_stable_ts(result, export_plan.save_base_path, sj.cache["export_to"], sj)
+            save_output_stable_ts(result, export_plan.save_base_path, runtime.settings.cache["export_to"], runtime.settings)
             processing_state.increment_mod_counter()
             _update_status(status_context, "mod", i, runtime.action)
             _save_export_plan_metadata(export_plan, {"meta_written_at": str(datetime.now()), "task": f"Mod Result ({mode})", "time": time() - runtime.started_at})
@@ -970,7 +1066,7 @@ def mod_result(
             sleep(0.5)
 
         logger.info(f"Process MOD completed in {time() - runtime.started_at:.2f}s")
-        if processing_state.mod_counter() > 0 and sj.cache.get(f"auto_open_dir_{mode}", True):
+        if processing_state.mod_counter() > 0 and runtime.settings.cache.get(f"auto_open_dir_{mode}", True):
             open_dir_fn(runtime.export_dir)
 
     except Exception as e:
@@ -987,16 +1083,19 @@ def translate_result(
     *,
     ui_bridge: FileUiBridgeAdapter | None = None,
     processing_state: FileProcessingStateAdapter | None = None,
+    settings: FileSettingsAdapter | None = None,
     open_dir_fn: Callable[[str], None] = start_file,
 ):
     try:
         ui_bridge = ui_bridge or file_ui_bridge
         processing_state = processing_state or file_processing_state
+        settings = settings or _get_file_settings_store()
         runtime = _build_translate_result_runtime(
             engine=engine,
-            setting_cache=sj.cache,
+            setting_cache=settings.cache,
             ui_bridge=ui_bridge,
             processing_state=processing_state,
+            settings=settings,
         )
         status_context = runtime.status_context
         processing_state.reset_mod_counter()
@@ -1019,7 +1118,7 @@ def translate_result(
             lang_src = to_language_name(result.language) or "auto"
             file_name = _slice_display_name(file_path, start=runtime.slice_start, end=runtime.slice_end)
             base_name = _build_base_export_name(
-                datetime.now().strftime(sj.cache["export_format"]),
+                datetime.now().strftime(runtime.settings.cache["export_format"]),
                 file_name,
                 lang_src,
                 lang_target,
@@ -1046,7 +1145,7 @@ def translate_result(
                 continue
 
             processing_state.increment_mod_counter()
-            save_output_stable_ts(split_res(result, sj.cache), export_plan.save_base_path, sj.cache["export_to"], sj, source_media_path=file_path)
+            save_output_stable_ts(split_res(result, runtime.settings.cache), export_plan.save_base_path, runtime.settings.cache["export_to"], runtime.settings, source_media_path=file_path)
             _update_status(status_context, "mod", i, "Translated")
             _save_export_plan_metadata(export_plan, {"meta_written_at": str(datetime.now()), "task": "Translate JSON", "time": time() - runtime.started_at})
 
@@ -1054,7 +1153,7 @@ def translate_result(
             sleep(0.5)
 
         logger.info(f"Process TL JSON completed in {time() - runtime.started_at:.2f}s")
-        if processing_state.mod_counter() > 0 and sj.cache["auto_open_dir_translate"]:
+        if processing_state.mod_counter() > 0 and runtime.settings.cache["auto_open_dir_translate"]:
             open_dir_fn(runtime.export_dir)
 
     except Exception as e:

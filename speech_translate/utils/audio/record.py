@@ -7,17 +7,18 @@ from shlex import quote
 from threading import Lock, Thread
 from time import gmtime, sleep, strftime, time
 
-from typing import Mapping, cast
+from typing import Callable, Mapping, cast
 
 from speech_translate._constants import WHISPER_SR
 from speech_translate._logging import logger
-from speech_translate.linker import bc, sj
+from speech_translate.runtime_registry import settings_registry
 from speech_translate.runtime_deps import empty_torch_cuda_cache, get_whisper_to_language_code
 from speech_translate.utils.audio.audio import get_db, get_speech_webrtc, resample_sr, to_silero
 from speech_translate.utils.audio.device import get_device_details, get_pyaudio_module
 from speech_translate.utils.audio import record_processing as processing_module
 from speech_translate.utils.audio.record_runtime import (
     BufferStateReducer,
+    RecordingSettingsAdapter,
     RecordingStatusEmitter,
     RecordingTextState,
     TranslationDispatcher,
@@ -38,6 +39,7 @@ from speech_translate.utils.audio.recording_runtime_state import (
     RecordingRuntimeStateAdapter,
     recording_runtime_state,
 )
+from speech_translate.utils.audio.record_streaming import StreamingStateAdapter
 from speech_translate.utils.audio.record_types import (
     AudioTarget,
     RecordingSessionBootstrap,
@@ -65,9 +67,6 @@ from ..whisper.result import remove_segments_by_str
 
 _build_smart_split_outcome = processing_module.build_smart_split_outcome
 
-# Compatibility export for tests and legacy monkey-patching; production code
-# should use recording_runtime_state / recording_control instead of bc directly.
-
 
 def _get_whisper_runtime_api():
     from speech_translate.utils.whisper import load as whisper_load_api
@@ -87,8 +86,12 @@ def get_tc_args(*args, **kwargs):
     return _get_whisper_runtime_api().get_tc_args(*args, **kwargs)
 
 
+def _get_recording_settings_store() -> RecordingSettingsAdapter:
+    return RecordingSettingsAdapter(cache=settings_registry.get().cache)
+
+
 def _recording_settings_snapshot(settings_snapshot: Mapping[str, object] | None = None) -> Mapping[str, object]:
-    return sj.cache if settings_snapshot is None else settings_snapshot
+    return _get_recording_settings_store().cache if settings_snapshot is None else settings_snapshot
 
 
 @dataclass
@@ -731,8 +734,18 @@ def _build_recording_stream_runtime(
     )
 
 
-def _open_recording_stream(*, p, stream_runtime: RecordingStreamRuntime) -> None:
-    streaming_module.open_recording_stream(p=p, stream_runtime=stream_runtime, record_cb=record_cb)
+def _open_recording_stream(
+    *,
+    p,
+    stream_runtime: RecordingStreamRuntime,
+    state_adapter: StreamingStateAdapter | None = None,
+) -> None:
+    streaming_module.open_recording_stream(
+        p=p,
+        stream_runtime=stream_runtime,
+        record_cb=record_cb,
+        state_adapter=state_adapter,
+    )
 
 
 def _build_recording_session_services(
@@ -902,8 +915,19 @@ def _detect_realtime_speech(ctx: RealtimeCallbackContext, in_data: bytes, resamp
     )
 
 
-def _update_realtime_queue_state(ctx: RealtimeCallbackContext, *, is_speech: bool, data_to_queue: bytes) -> None:
-    streaming_module.update_realtime_queue_state(ctx, is_speech=is_speech, data_to_queue=data_to_queue)
+def _update_realtime_queue_state(
+    ctx: RealtimeCallbackContext,
+    *,
+    is_speech: bool,
+    data_to_queue: bytes,
+    state_adapter: StreamingStateAdapter | None = None,
+) -> None:
+    streaming_module.update_realtime_queue_state(
+        ctx,
+        is_speech=is_speech,
+        data_to_queue=data_to_queue,
+        state_adapter=state_adapter,
+    )
 
 
 def _handle_record_callback_error(ctx: RealtimeCallbackContext | None, exc: Exception) -> None:
@@ -954,6 +978,7 @@ def _filter_realtime_transcription_result(
     hallucination_filters: dict[str, object],
     auto: bool,
     configured_language: str | None,
+    settings: RecordingSettingsAdapter | None = None,
 ) -> TranscriptionResultLike | None:
     return processing_module.filter_realtime_transcription_result(
         result,
@@ -961,6 +986,7 @@ def _filter_realtime_transcription_result(
         auto=auto,
         configured_language=configured_language,
         get_whisper_lang_name=get_whisper_lang_name,
+        settings=settings,
         remove_segments_by_str_fn=remove_segments_by_str,
     )
 
@@ -972,6 +998,8 @@ def _commit_realtime_transcription(
     is_tl: bool,
     separator: str,
     translator: TranslationDispatcher,
+    runtime_text_state: RecordingTextState | None = None,
+    set_current_status=None,
 ) -> None:
     processing_module.commit_realtime_transcription(
         result,
@@ -979,8 +1007,8 @@ def _commit_realtime_transcription(
         is_tl=is_tl,
         separator=separator,
         translator=translator,
-        runtime_text_state=text_state,
-        set_current_status=recording_control.set_current_status,
+        runtime_text_state=runtime_text_state or text_state,
+        set_current_status=set_current_status or recording_control.set_current_status,
     )
 
 
@@ -1008,6 +1036,7 @@ def _apply_smart_split(
     max_sentences: int,
     separator: str,
     translator: TranslationDispatcher,
+    runtime_text_state: RecordingTextState | None = None,
 ) -> bool:
     return processing_module.apply_smart_split(
         session_state=session_state,
@@ -1020,7 +1049,7 @@ def _apply_smart_split(
         separator=separator,
         translator=translator,
         utc_now=_utc_now,
-        runtime_text_state=text_state,
+        runtime_text_state=runtime_text_state or text_state,
     )
 
 
@@ -1037,6 +1066,7 @@ def _break_buffer_and_update_state(
     separator: str,
     translator: TranslationDispatcher,
     buffer_reducer: BufferStateReducer,
+    runtime_text_state: RecordingTextState | None = None,
 ) -> None:
     processing_module.break_buffer_and_update_state(
         reason=reason,
@@ -1051,7 +1081,7 @@ def _break_buffer_and_update_state(
         translator=translator,
         buffer_reducer=buffer_reducer,
         utc_now=_utc_now,
-        runtime_text_state=text_state,
+        runtime_text_state=runtime_text_state or text_state,
     )
 
 # =========================================================================
@@ -1065,7 +1095,7 @@ def record_session(
     rec_type = "speaker" if speaker else "mic"
     p = None
     lifecycle: RecordingSessionLifecycle | None = None
-    settings_snapshot = dict(sj.cache)
+    settings_snapshot = dict(_get_recording_settings_store().cache)
 
     try:
         p = get_pyaudio_module().PyAudio()

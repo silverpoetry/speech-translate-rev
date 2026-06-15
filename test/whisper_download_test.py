@@ -9,7 +9,8 @@ import unittest
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
-from speech_translate.linker import bc
+from speech_translate.bridge_runtime_state import BridgeDownloadRuntime
+from speech_translate.runtime_registry import bridge_state_registry
 from speech_translate.utils.whisper.download import (
     DownloadBridgeAdapter,
     DownloadCancellationAdapter,
@@ -93,6 +94,18 @@ class FakeBridgeRegistry:
 
 
 class WhisperDownloadTests(unittest.TestCase):
+    def test_download_cancellation_adapter_default_provider_reads_download_runtime(self) -> None:
+        from speech_translate.utils.whisper.download import DownloadCancellationAdapter
+
+        previous_bridge_state = bridge_state_registry.state
+        fake_bridge = type("FakeBridgeState", (), {"download": BridgeDownloadRuntime(cancel_dl=True)})()
+        try:
+            bridge_state_registry.set(fake_bridge)
+            adapter = DownloadCancellationAdapter()
+            self.assertTrue(adapter.cancel_requested())
+        finally:
+            bridge_state_registry.set(previous_bridge_state)
+
     def test_build_bridge_task_reporter_supports_injected_bridge_adapter(self) -> None:
         bridge = FakeDownloadBridge()
         reporter = _build_bridge_task_reporter(bridge_adapter=DownloadBridgeAdapter(bridge=bridge))
@@ -171,13 +184,14 @@ class WhisperDownloadTests(unittest.TestCase):
 
         previous_urlopen = download_module.urllib.request.urlopen
         previous_callback_starter = download_module.start_optional_callback
-        previous_cancel = bc.cancel_dl
+        previous_bridge_state = bridge_state_registry.state
         cancelled = []
         reporter_events = []
+        fake_bridge = type("FakeBridgeState", (), {"download": BridgeDownloadRuntime(cancel_dl=True)})()
         try:
             download_module.urllib.request.urlopen = lambda _url: FakeUrlResponse()
             download_module.start_optional_callback = lambda callback: callback() if callback is not None else None
-            bc.cancel_dl = True
+            bridge_state_registry.set(fake_bridge)
 
             with tempfile.TemporaryDirectory() as temp_dir:
                 result = whisper_download_headless(
@@ -195,7 +209,7 @@ class WhisperDownloadTests(unittest.TestCase):
         finally:
             download_module.urllib.request.urlopen = previous_urlopen
             download_module.start_optional_callback = previous_callback_starter
-            bc.cancel_dl = previous_cancel
+            bridge_state_registry.set(previous_bridge_state)
 
         self.assertFalse(result)
         self.assertEqual(cancelled, ["cancelled"])

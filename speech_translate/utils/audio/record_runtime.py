@@ -6,7 +6,7 @@ from queue import Empty, Queue
 from threading import Lock
 
 from speech_translate._logging import logger
-from speech_translate.linker import sj
+from speech_translate.runtime_registry import bridge_state_registry, settings_registry
 from speech_translate.web_bridge_runtime import WebBridgeRegistry, web_bridge_registry
 from speech_translate.utils.audio.record_types import (
     AudioTarget,
@@ -27,6 +27,15 @@ from speech_translate.utils.translate.language import get_whisper_lang_name, ver
 from ..helper import get_proxies, unique_rec_list
 from ..translate.translator import translate
 from ..whisper.result import remove_segments_by_str
+
+
+@dataclass(frozen=True)
+class RecordingSettingsAdapter:
+    cache: dict[str, object]
+
+
+def _get_recording_settings():
+    return RecordingSettingsAdapter(cache=settings_registry.get().cache)
 
 
 def _enforce_sentence_limits(sentences: list, is_limitless: bool, max_sentences: int) -> list:
@@ -388,16 +397,19 @@ def run_whisper_tl(
     separator: str,
     hallucination_filters: HallucinationFilters,
     runtime_text_state: RecordingTextState | None = None,
+    settings: RecordingSettingsAdapter | None = None,
     **whisper_args,
 ):
     runtime_text_state = runtime_text_state or text_state
+    settings = settings or _get_recording_settings()
+    cache = settings.cache
     try:
         result = stable_tl(audio, task="translate", **whisper_args)
-        if sj.cache["filter_rec"]:
+        if cache["filter_rec"]:
             result = remove_segments_by_str(
-                result, hallucination_filters.get("english", []), sj.cache["filter_rec_case_sensitive"],
-                sj.cache["filter_rec_strip"], sj.cache["filter_rec_ignore_punctuations"],
-                sj.cache["filter_rec_exact_match"], sj.cache["filter_rec_similarity"], False
+                result, hallucination_filters.get("english", []), cache["filter_rec_case_sensitive"],
+                cache["filter_rec_strip"], cache["filter_rec_ignore_punctuations"],
+                cache["filter_rec_exact_match"], cache["filter_rec_similarity"], False
             )
         text = result.text.strip()
         runtime_text_state.set_detected_language(result.language or "~")
@@ -415,8 +427,11 @@ def tl_api(
     engine: str,
     separator: str,
     runtime_text_state: RecordingTextState | None = None,
+    settings: RecordingSettingsAdapter | None = None,
 ):
     runtime_text_state = runtime_text_state or text_state
+    settings = settings or _get_recording_settings()
+    cache = settings.cache
     try:
         source_units = [line.strip() for line in text.splitlines() if line.strip()]
         if not source_units:
@@ -426,14 +441,14 @@ def tl_api(
         source_lang = _resolve_live_input_source_language(lang_source, engine, runtime_text_state)
 
         if engine == "LibreTranslate":
-            kwargs.update({"libre_link": sj.cache["libre_link"], "libre_api_key": sj.cache["libre_api_key"]})
+            kwargs.update({"libre_link": cache["libre_link"], "libre_api_key": cache["libre_api_key"]})
 
         success, result = translate(
             engine,
             source_units,
             source_lang,
             lang_target,
-            get_proxies(sj.cache["http_proxy"], sj.cache["https_proxy"]),
+            get_proxies(cache["http_proxy"], cache["https_proxy"]),
             False,
             **kwargs,
         )

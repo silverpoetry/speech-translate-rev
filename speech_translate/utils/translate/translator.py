@@ -1,8 +1,8 @@
 # pylint: disable=protected-access, redefined-outer-name, import-outside-toplevel, invalid-name
 from typing import Dict, List
 
-from speech_translate.linker import sj
 from speech_translate.log_helpers import logger
+from speech_translate.runtime_registry import settings_registry
 
 from ..helper import get_similar_keys
 from .language import GOOGLE_KEY_VAL, LIBRE_KEY_VAL, MYMEMORY_KEY_VAL
@@ -80,8 +80,12 @@ def _create_selenium_translator(config):
     return SeleniumWebTranslator(config)
 
 
+def _get_translator_settings_snapshot():
+    return settings_registry.get().cache
+
+
 _selenium_translator_manager = SeleniumTranslatorManager(
-    settings_snapshot_provider=lambda: sj.cache,
+    settings_snapshot_provider=_get_translator_settings_snapshot,
     translator_factory=_create_selenium_translator,
     logger_instance=logger,
 )

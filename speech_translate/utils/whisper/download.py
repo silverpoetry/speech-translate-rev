@@ -9,8 +9,8 @@ from pathlib import Path
 from time import time
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
-from speech_translate.linker import bc
 from speech_translate.log_helpers import logger
+from speech_translate.runtime_registry import bridge_state_registry
 from speech_translate.runtime_deps import (
     get_faster_whisper_model_registry,
     get_huggingface_hub,
@@ -52,15 +52,22 @@ class DownloadBridgeAdapter:
         return self.bridge_registry.get() if self.bridge is None else self.bridge
 
 
+def _get_download_runtime_state():
+    return bridge_state_registry.get().download
+
+
 @dataclass(frozen=True)
 class DownloadCancellationAdapter:
-    state: object = bc
+    state: object | None = None
+
+    def _resolve_state(self) -> object:
+        return _get_download_runtime_state() if self.state is None else self.state
 
     def cancel_requested(self) -> bool:
-        return bool(self.state.cancel_dl)
+        return bool(self._resolve_state().cancel_dl)
 
     def clear_cancel_requested(self) -> None:
-        setattr(self.state, "cancel_dl", False)
+        setattr(self._resolve_state(), "cancel_dl", False)
 
 
 download_bridge = DownloadBridgeAdapter()

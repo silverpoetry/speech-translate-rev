@@ -7,10 +7,10 @@ from typing import cast
 from speech_translate._constants import WHISPER_SR
 from speech_translate._logging import logger
 from speech_translate._path import dir_silero_vad
-from speech_translate.linker import sj
+from speech_translate.runtime_registry import settings_registry
 from speech_translate.runtime_deps import get_torch, get_torchaudio, get_webrtcvad
 from speech_translate.utils.audio.audio import get_db, get_frame_duration, get_speech_webrtc, to_silero
-from speech_translate.utils.audio.device import get_device_details, get_pyaudio_module
+from speech_translate.utils.audio.device import AudioDeviceSettings, get_device_details, get_pyaudio_module
 from speech_translate.utils.audio.record_runtime import shared_state
 from speech_translate.utils.audio.recording_runtime_state import (
     RecordingRuntimeStateAdapter,
@@ -61,8 +61,16 @@ callback_context_store = CallbackContextStore()
 streaming_state = StreamingStateAdapter()
 
 
+def _get_recording_settings():
+    return AudioDeviceSettings(cache=settings_registry.get().cache)
+
+
 def _recording_settings_snapshot(settings_snapshot=None):
-    return sj.cache if settings_snapshot is None else settings_snapshot
+    return _get_recording_settings().cache if settings_snapshot is None else settings_snapshot
+
+
+def _recording_device_settings(settings_snapshot=None) -> AudioDeviceSettings:
+    return AudioDeviceSettings(cache=_recording_settings_snapshot(settings_snapshot))
 
 
 def _sync_legacy_callback_context(store: CallbackContextStore) -> None:
@@ -156,7 +164,7 @@ def build_recording_stream_runtime(
     callback_context_store_instance: CallbackContextStore | None = None,
 ) -> RecordingStreamRuntime:
     settings_snapshot = _recording_settings_snapshot(settings_snapshot)
-    success, detail = get_device_details_fn(rec_type, sj, p)
+    success, detail = get_device_details_fn(rec_type, _recording_device_settings(settings_snapshot), p)
     if not success:
         raise Exception("Failed to get device details")
 

@@ -74,6 +74,27 @@ class WhisperLoadTests(unittest.TestCase):
         self.assertIs(first, second)
         self.assertEqual(self.load_calls, [("small", {"device": "cpu"})])
 
+    def test_load_model_cached_forces_local_files_only_for_faster_whisper_when_available(self) -> None:
+        previous_cached = whisper_load._is_faster_whisper_model_cached
+        try:
+            whisper_load._is_faster_whisper_model_cached = lambda *_args, **_kwargs: True
+            model = whisper_load._load_model_cached("tiny", True, download_root="D:\\models")
+        finally:
+            whisper_load._is_faster_whisper_model_cached = previous_cached
+
+        self.assertEqual(model.name, "tiny")
+        self.assertEqual(self.load_faster_calls[0][1]["local_files_only"], True)
+
+    def test_load_model_cached_does_not_force_local_files_only_when_faster_whisper_missing(self) -> None:
+        previous_cached = whisper_load._is_faster_whisper_model_cached
+        try:
+            whisper_load._is_faster_whisper_model_cached = lambda *_args, **_kwargs: False
+            whisper_load._load_model_cached("tiny", True, download_root="D:\\models")
+        finally:
+            whisper_load._is_faster_whisper_model_cached = previous_cached
+
+        self.assertNotIn("local_files_only", self.load_faster_calls[0][1])
+
     def test_build_whisper_load_runtime_collects_runtime_dependencies(self) -> None:
         runtime = whisper_load._build_whisper_load_runtime()
 

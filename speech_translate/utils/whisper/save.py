@@ -4,7 +4,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-from typing import List, Optional, Protocol, Union
+from typing import List, Mapping, Optional, Protocol, Union
 
 from speech_translate.log_helpers import logger
 from speech_translate.utils.types import StableTsResultDict
@@ -23,6 +23,10 @@ class WhisperResultLike(Protocol):
 
     def to_dict(self) -> StableTsResultDict:
         ...
+
+
+class WhisperSaveSettings(Protocol):
+    cache: Mapping[str, object]
 
 
 def _is_whisper_result_like(value: object) -> bool:
@@ -105,16 +109,16 @@ def _next_available_path(base_path: str, extension: str) -> str:
         idx += 1
 
 
-def _save_temp_srt(result: Union[WhisperResultLike, StableTsResultDict], sj) -> str:
+def _save_temp_srt(result: Union[WhisperResultLike, StableTsResultDict], settings: WhisperSaveSettings) -> str:
     temp_dir = tempfile.mkdtemp(prefix="st_subtitle_")
     temp_base = os.path.join(temp_dir, "subtitle")
     save_method = getattr(result, "to_srt_vtt")
     kwargs_to_pass = {
         "save_path": temp_base,
-        "segment_level": sj.cache["segment_level"],
-        "word_level": sj.cache["word_level"],
+        "segment_level": settings.cache["segment_level"],
+        "word_level": settings.cache["word_level"],
     }
-    args = parse_args_stable_ts(sj.cache["whisper_args"], "save", save_method, **kwargs_to_pass)
+    args = parse_args_stable_ts(settings.cache["whisper_args"], "save", save_method, **kwargs_to_pass)
     args.pop("success", None)
     save_method(**args)
     return temp_base + ".srt"
@@ -131,7 +135,7 @@ def _export_fast_mp4_with_subtitle(
     result: Union[WhisperResultLike, StableTsResultDict],
     outname: str,
     media_path: Optional[str],
-    sj,
+    settings: WhisperSaveSettings,
 ) -> None:
     if not media_path or not os.path.exists(media_path):
         logger.warning("Skip MP4 export: source media path is missing or does not exist")
@@ -144,7 +148,7 @@ def _export_fast_mp4_with_subtitle(
 
     temp_dir = None
     try:
-        srt_path = _save_temp_srt(result, sj)
+        srt_path = _save_temp_srt(result, settings)
         temp_dir = os.path.dirname(srt_path)
         output_mp4 = _next_available_path(outname, "mp4")
 
@@ -225,7 +229,7 @@ def _export_fast_mp4_with_subtitle(
 
 
 def save_output_stable_ts(
-    result: Union[WhisperResultLike, StableTsResultDict], outname, output_formats: List, sj,
+    result: Union[WhisperResultLike, StableTsResultDict], outname, output_formats: List, settings: WhisperSaveSettings,
     source_media_path: Optional[str] = None
 ):
     output_formats_methods = {
@@ -243,7 +247,7 @@ def save_output_stable_ts(
     for f_format in output_formats:
         if f_format == "mp4":
             logger.debug("Saving to mp4")
-            _export_fast_mp4_with_subtitle(result, outname, source_media_path, sj)
+            _export_fast_mp4_with_subtitle(result, outname, source_media_path, settings)
             continue
 
         outname = fname_dupe_check(outname, f_format)
@@ -265,8 +269,8 @@ def save_output_stable_ts(
             save_method = getattr(result, output_formats_methods[f_format])
             kwargs_to_pass = {
                 "save_path": outname,
-                "segment_level": sj.cache["segment_level"],
-                "word_level": sj.cache["word_level"]
+                "segment_level": settings.cache["segment_level"],
+                "word_level": settings.cache["word_level"]
             }
             if f_format == "vtt":
                 kwargs_to_pass["vtt"] = True
@@ -286,6 +290,6 @@ def save_output_stable_ts(
                     logger.warning("Somehow both word level and segment level is False ??, setting segment level to True")
                     kwargs_to_pass["word_level"] = True
 
-            args = parse_args_stable_ts(sj.cache["whisper_args"], "save", save_method, **kwargs_to_pass)
+            args = parse_args_stable_ts(settings.cache["whisper_args"], "save", save_method, **kwargs_to_pass)
             args.pop('success')  # no need to check, because it probably have been checked before since this is the last step
             save_method(**args)  # run the method

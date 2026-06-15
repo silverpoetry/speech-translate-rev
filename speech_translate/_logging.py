@@ -3,7 +3,6 @@ import re
 import sys
 from time import strftime
 
-from speech_translate.linker import bc
 from speech_translate.log_helpers import logger
 
 from ._constants import LOG_FORMAT

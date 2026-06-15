@@ -52,6 +52,17 @@ class TranslatorFacadeTests(unittest.TestCase):
         self.assertFalse(success)
         self.assertEqual(result, "Error: deep_translator is unavailable")
 
+    def test_selenium_manager_settings_provider_is_lazy_callable(self) -> None:
+        previous_provider = translator_module._selenium_translator_manager._settings_snapshot_provider
+        try:
+            translator_module._selenium_translator_manager._settings_snapshot_provider = lambda: {"selenium_compact_level": 1}
+            self.assertEqual(
+                translator_module._selenium_translator_manager._settings_snapshot_provider(),
+                {"selenium_compact_level": 1},
+            )
+        finally:
+            translator_module._selenium_translator_manager._settings_snapshot_provider = previous_provider
+
 
 if __name__ == "__main__":
     unittest.main()

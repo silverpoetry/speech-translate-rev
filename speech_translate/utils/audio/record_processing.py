@@ -9,9 +9,10 @@ import numpy as np
 from speech_translate._constants import WHISPER_SR
 from speech_translate._logging import logger
 from speech_translate._path import dir_temp
-from speech_translate.linker import sj
+from speech_translate.runtime_registry import settings_registry
 from speech_translate.runtime_deps import torch_from_numpy
 from speech_translate.utils.audio.record_runtime import (
+    RecordingSettingsAdapter,
     RecordingTextState,
     _build_full_transcribed_text,
     _enforce_sentence_limits,
@@ -34,6 +35,10 @@ from ..whisper.result import remove_segments_by_str
 
 if False:
     from speech_translate.utils.audio.record_runtime import BufferStateReducer, TranslationDispatcher
+
+
+def _get_recording_processing_settings():
+    return RecordingSettingsAdapter(cache=settings_registry.get().cache)
 
 
 def save_to_temp(audio_bytes: bytes, channels: int, samp_width: int, sr: int) -> str:
@@ -121,9 +126,12 @@ def filter_realtime_transcription_result(
     auto: bool,
     configured_language: str | None,
     get_whisper_lang_name,
+    settings: RecordingSettingsAdapter | None = None,
     remove_segments_by_str_fn=remove_segments_by_str,
 ) -> TranscriptionResultLike | None:
-    if not (sj.cache["filter_rec"] and result):
+    settings = settings or _get_recording_processing_settings()
+    cache = settings.cache
+    if not (cache["filter_rec"] and result):
         return result
 
     try:
@@ -133,12 +141,12 @@ def filter_realtime_transcription_result(
         return remove_segments_by_str_fn(
             result,
             hallucination_filters.get(filter_language, []),
-            sj.cache["filter_rec_case_sensitive"],
-            sj.cache["filter_rec_strip"],
-            sj.cache["filter_rec_ignore_punctuations"],
-            sj.cache["filter_rec_exact_match"],
-            sj.cache["filter_rec_similarity"],
-            sj.cache["debug_realtime_record"],
+            cache["filter_rec_case_sensitive"],
+            cache["filter_rec_strip"],
+            cache["filter_rec_ignore_punctuations"],
+            cache["filter_rec_exact_match"],
+            cache["filter_rec_similarity"],
+            cache["debug_realtime_record"],
         )
     except Exception:
         return result

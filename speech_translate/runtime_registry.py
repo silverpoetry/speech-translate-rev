@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Callable
+
+from speech_translate.controller_protocols import SettingsStore
+
+
+def _get_default_bridge_state() -> object:
+    from speech_translate.app_runtime import bc
+
+    return bc
+
+
+def _get_default_settings_store() -> SettingsStore:
+    from speech_translate.settings_runtime import sj
+
+    return sj
+
+
+@dataclass
+class BridgeStateRegistry:
+    state: object | None = None
+    state_provider: Callable[[], object] = _get_default_bridge_state
+
+    def get(self) -> object:
+        return self.state if self.state is not None else self.state_provider()
+
+    def set(self, state: object) -> None:
+        self.state = state
+
+
+@dataclass
+class SettingsRegistry:
+    settings: SettingsStore | None = None
+    settings_provider: Callable[[], SettingsStore] = _get_default_settings_store
+
+    def get(self) -> SettingsStore:
+        return self.settings if self.settings is not None else self.settings_provider()
+
+    def set(self, settings: SettingsStore) -> None:
+        self.settings = settings
+
+
+bridge_state_registry = BridgeStateRegistry()
+settings_registry = SettingsRegistry()
+
+
+__all__ = [
+    "BridgeStateRegistry",
+    "SettingsRegistry",
+    "bridge_state_registry",
+    "settings_registry",
+]

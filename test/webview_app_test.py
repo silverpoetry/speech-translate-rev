@@ -10,6 +10,14 @@ sys.path.append(to_add)
 from speech_translate.webview_app import WebBridge, WebBridgeDependencies
 
 
+class FakeSettings:
+    def __init__(self) -> None:
+        self.cache = {"alpha": 1}
+
+    def save_key(self, key: str, value: object) -> None:
+        self.cache[key] = value
+
+
 class FakeController:
     def __init__(self) -> None:
         self.first_state_logged = False
@@ -49,9 +57,11 @@ class FakeDependenciesBuilder:
         self.system_settings_controller = FakeController()
         self.detached_window_manager = object()
         self.detached_window_controller = FakeController()
+        self.received_settings = None
 
-    def __call__(self, bridge: WebBridge) -> WebBridgeDependencies:
+    def __call__(self, bridge: WebBridge, settings) -> WebBridgeDependencies:
         _ = bridge
+        self.received_settings = settings
         return WebBridgeDependencies(
             main_window_controller=self.main_window_controller,
             model_manager_controller=self.model_manager_controller,
@@ -68,19 +78,23 @@ class WebviewAppTests(unittest.TestCase):
     def test_web_bridge_uses_injected_dependencies_and_bootstrapper(self) -> None:
         bootstrap_calls = []
         deps_builder = FakeDependenciesBuilder()
+        settings = FakeSettings()
 
         bridge = WebBridge(
             dependencies_builder=deps_builder,
             bootstrapper=lambda: bootstrap_calls.append("boot"),
+            settings=settings,
         )
 
         self.assertEqual(bootstrap_calls, ["boot"])
         self.assertIs(bridge.main_window_controller, deps_builder.main_window_controller)
         self.assertEqual(deps_builder.state_view_builder.scan_started, 1)
+        self.assertIs(deps_builder.received_settings, settings)
+        self.assertEqual(bridge.get_settings_snapshot(), {"alpha": 1})
 
     def test_get_state_logs_first_marker_once(self) -> None:
         deps_builder = FakeDependenciesBuilder()
-        bridge = WebBridge(dependencies_builder=deps_builder, bootstrapper=None)
+        bridge = WebBridge(dependencies_builder=deps_builder, bootstrapper=None, settings=FakeSettings())
 
         self.assertEqual(bridge.get_state(), {"ok": True})
         self.assertEqual(bridge.get_state(), {"ok": True})
@@ -91,7 +105,7 @@ class WebviewAppTests(unittest.TestCase):
 
     def test_update_task_message_notifies_model_manager(self) -> None:
         deps_builder = FakeDependenciesBuilder()
-        bridge = WebBridge(dependencies_builder=deps_builder, bootstrapper=None)
+        bridge = WebBridge(dependencies_builder=deps_builder, bootstrapper=None, settings=FakeSettings())
 
         bridge.update_task_message("loading", source="model-load")
 

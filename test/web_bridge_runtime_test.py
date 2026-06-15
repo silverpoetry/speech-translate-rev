@@ -26,6 +26,17 @@ class WebBridgeRuntimeTests(unittest.TestCase):
         self.assertIs(state.web_bridge, bridge)
         self.assertIs(registry.get(), bridge)
 
+    def test_registry_can_resolve_bridge_state_lazily(self) -> None:
+        state = DummyState()
+        calls = []
+        registry = WebBridgeRegistry(state_provider=lambda: calls.append("resolved") or state)
+
+        self.assertIsNone(registry.get())
+        registry.set("bridge")
+
+        self.assertEqual(calls, ["resolved", "resolved"])
+        self.assertEqual(state.web_bridge, "bridge")
+
 
 if __name__ == "__main__":
     unittest.main()

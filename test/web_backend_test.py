@@ -11,6 +11,14 @@ from speech_translate.ui_protocol import TASK_SOURCE_GENERAL, UI_SECTION_TASK
 from speech_translate.web_backend import WebTaskBridge
 
 
+class FakeSettings:
+    def __init__(self) -> None:
+        self.cache = {"alpha": 1}
+
+    def save_key(self, key: str, value: object) -> None:
+        self.cache[key] = value
+
+
 class FakeWindow:
     def __init__(self) -> None:
         self.scripts = []
@@ -21,7 +29,8 @@ class FakeWindow:
 
 class WebTaskBridgeTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.bridge = WebTaskBridge()
+        self.settings = FakeSettings()
+        self.bridge = WebTaskBridge(settings=self.settings)
         self.window = FakeWindow()
         self.bridge.bind_window(self.window)
 
@@ -80,6 +89,9 @@ class WebTaskBridgeTests(unittest.TestCase):
         state = self.bridge.snapshot_live_state()
         self.assertEqual(state["main_transcribed_text"], "A<B&>\n")
         self.assertIn("&lt;B&amp;&gt;", state["main_transcribed_html"])
+
+    def test_get_settings_snapshot_uses_injected_store(self) -> None:
+        self.assertEqual(self.bridge.get_settings_snapshot(), {"alpha": 1})
 
 
 if __name__ == "__main__":

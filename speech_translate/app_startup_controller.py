@@ -10,9 +10,9 @@ from typing import Callable
 from speech_translate._constants import APP_NAME
 from speech_translate._version import __version__
 from speech_translate.app_tray import AppTray
-from speech_translate.controller_protocols import FfmpegPathAdder, StartupBridge, WebviewLoader
-from speech_translate.linker import sj
+from speech_translate.controller_protocols import FfmpegPathAdder, SettingsStore, StartupBridge, WebviewLoader
 from speech_translate.log_helpers import logger
+from speech_translate.runtime_registry import settings_registry
 from speech_translate.web_bridge_runtime import WebBridgeRegistry, web_bridge_registry
 from speech_translate.webview_runtime import load_webview_runtime
 from speech_translate.window_geometry import resolve_window_placement
@@ -26,6 +26,10 @@ class StartupContext:
     raw_main_size: str
 
 
+def _get_default_settings() -> SettingsStore:
+    return settings_registry.get()
+
+
 class AppStartupController:
     """Owns process bootstrap, main-window creation, and pywebview start orchestration."""
 
@@ -35,11 +39,13 @@ class AppStartupController:
         ffmpeg_path_adder: FfmpegPathAdder,
         webview_loader: WebviewLoader = load_webview_runtime,
         bridge_registry: WebBridgeRegistry = web_bridge_registry,
+        settings: SettingsStore | None = None,
     ):
         self.bridge_factory = bridge_factory
         self.ffmpeg_path_adder = ffmpeg_path_adder
         self.webview_loader = webview_loader
         self.bridge_registry = bridge_registry
+        self.settings = settings or _get_default_settings()
 
     def install_signal_handler(self) -> None:
         def signal_handler(_sig, _frame):
@@ -54,9 +60,9 @@ class AppStartupController:
         return str(Path(__file__).with_name("web") / "index.html")
 
     def prepare_main_window_size(self) -> str:
-        raw_main_size = str(sj.cache.get("mw_size", "980x620") or "980x620").strip()
+        raw_main_size = str(self.settings.cache.get("mw_size", "980x620") or "980x620").strip()
         if raw_main_size == "1140x680":
-            sj.save_key("mw_size", "980x620")
+            self.settings.save_key("mw_size", "980x620")
             raw_main_size = "980x620"
         return raw_main_size
 
@@ -70,7 +76,7 @@ class AppStartupController:
 
     def _initialize_logging(self, *, with_log_init: bool, log_initializer: Callable[[str], None] | None) -> None:
         if with_log_init and log_initializer is not None:
-            log_initializer(sj.cache["log_level"])
+            log_initializer(str(self.settings.cache["log_level"]))
 
     def _log_runtime_banner(self) -> None:
         logger.info(f"App Version: {__version__} - TIME: {strftime('%Y-%m-%d %H:%M:%S')}")

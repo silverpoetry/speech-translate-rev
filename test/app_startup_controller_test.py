@@ -50,6 +50,16 @@ class FakeWindow:
     pass
 
 
+class FakeSettings:
+    def __init__(self, cache: dict[str, object]) -> None:
+        self.cache = dict(cache)
+        self.saved = []
+
+    def save_key(self, key: str, value: object) -> None:
+        self.saved.append((key, value))
+        self.cache[key] = value
+
+
 class FakeWebview:
     def __init__(self) -> None:
         self.create_calls = []
@@ -71,20 +81,22 @@ class AppStartupControllerTests(unittest.TestCase):
         self.ffmpeg_calls = []
         self.log_levels = []
         self.bridge_registry = FakeBridgeRegistry()
+        self.settings = FakeSettings({"log_level": "INFO", "mw_size": "980x620"})
         self.controller = AppStartupController(
             bridge_factory=lambda: self.bridge,
             ffmpeg_path_adder=lambda weak=False: self.ffmpeg_calls.append(weak) or True,
             webview_loader=lambda: self.fake_webview,
             bridge_registry=self.bridge_registry,
+            settings=self.settings,
         )
 
     def test_prepare_main_window_size_migrates_legacy_default(self) -> None:
-        with patch("speech_translate.app_startup_controller.sj.cache", {"mw_size": "1140x680"}), patch(
-            "speech_translate.app_startup_controller.sj.save_key"
-        ) as save_key:
-            result = self.controller.prepare_main_window_size()
+        self.settings.cache["mw_size"] = "1140x680"
+
+        result = self.controller.prepare_main_window_size()
+
         self.assertEqual(result, "980x620")
-        save_key.assert_called_once_with("mw_size", "980x620")
+        self.assertEqual(self.settings.saved, [("mw_size", "980x620")])
 
     def test_start_bootstraps_bridge_and_window(self) -> None:
         fake_tray_calls = []
@@ -93,9 +105,7 @@ class AppStartupControllerTests(unittest.TestCase):
             def __init__(self, bridge):
                 fake_tray_calls.append(bridge)
 
-        with patch("speech_translate.app_startup_controller.sj.cache", {"log_level": "INFO", "mw_size": "980x620"}), patch(
-            "speech_translate.app_startup_controller.AppTray", FakeTray
-        ):
+        with patch("speech_translate.app_startup_controller.AppTray", FakeTray):
             self.controller.start(with_log_init=True, log_initializer=lambda level: self.log_levels.append(level))
 
         self.assertEqual(self.log_levels, ["INFO"])
@@ -107,8 +117,7 @@ class AppStartupControllerTests(unittest.TestCase):
         self.assertIs(self.bridge_registry.bridge, self.bridge)
 
     def test_start_disables_tray_when_flag_present(self) -> None:
-        with patch("speech_translate.app_startup_controller.sj.cache", {"log_level": "INFO", "mw_size": "980x620"}), patch(
-            "speech_translate.app_startup_controller.sys.argv",
+        with patch("speech_translate.app_startup_controller.sys.argv",
             ["app.py", "--no-tray"],
         ), patch("speech_translate.app_startup_controller.AppTray") as fake_tray:
             self.controller.start(with_log_init=False, log_initializer=None)
@@ -116,8 +125,7 @@ class AppStartupControllerTests(unittest.TestCase):
         fake_tray.assert_not_called()
 
     def test_start_enables_debug_mode_when_flag_present(self) -> None:
-        with patch("speech_translate.app_startup_controller.sj.cache", {"log_level": "INFO", "mw_size": "980x620"}), patch(
-            "speech_translate.app_startup_controller.sys.argv",
+        with patch("speech_translate.app_startup_controller.sys.argv",
             ["app.py", "--debug-webview"],
         ), patch("speech_translate.app_startup_controller.AppTray"):
             self.controller.start(with_log_init=False, log_initializer=None)

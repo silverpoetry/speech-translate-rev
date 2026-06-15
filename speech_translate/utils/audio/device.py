@@ -1,5 +1,5 @@
 from platform import system
-from typing import Any, Literal
+from typing import Any, Mapping, Literal
 
 from speech_translate.log_helpers import logger
 
@@ -25,6 +25,22 @@ def get_pyaudio_module() -> Any:
     return _require_pyaudio()
 
 
+class AudioDeviceSettings:
+    def __init__(self, cache: Mapping[str, object]) -> None:
+        self.cache = cache
+
+
+def _coerce_audio_device_settings(settings: object) -> AudioDeviceSettings:
+    if isinstance(settings, AudioDeviceSettings):
+        return settings
+
+    cache = getattr(settings, "cache", settings)
+    if not isinstance(cache, Mapping):
+        raise TypeError("Audio device settings must expose a mapping-like cache")
+
+    return AudioDeviceSettings(cache=cache)
+
+
 def get_channel_int(channel_string: str):
     if channel_string.isdigit():
         return int(channel_string)
@@ -36,7 +52,7 @@ def get_channel_int(channel_string: str):
         raise ValueError("Invalid channel string")
 
 
-def get_device_details(device_type: Literal["speaker", "mic"], sj, p, debug: bool = True):
+def get_device_details(device_type: Literal["speaker", "mic"], settings, p, debug: bool = True):
     """
     Function to get the device detail, chunk size, sample rate, and number of channels.
 
@@ -44,8 +60,8 @@ def get_device_details(device_type: Literal["speaker", "mic"], sj, p, debug: boo
     ----
     deviceType: "mic" | "speaker"
         Device type
-    sj: dict
-        setting object
+    settings
+        settings object exposing a mapping-like `cache`
     p: pyaudio.PyAudio
         PyAudio object
 
@@ -57,7 +73,8 @@ def get_device_details(device_type: Literal["speaker", "mic"], sj, p, debug: boo
         device detail, chunk size, sample rate, and number of channels
     """
     try:
-        device = sj.cache[device_type]
+        cache = _coerce_audio_device_settings(settings).cache
+        device = str(cache[device_type])
 
         # get the id in device string [ID: deviceIndex,hostIndex]
         device_id = device.split("[ID: ")[1]  # first get the id bracket
@@ -83,16 +100,16 @@ def get_device_details(device_type: Literal["speaker", "mic"], sj, p, debug: boo
                         "num_of_channels": 0,
                     }
 
-        chunk_size = int(sj.cache[f"chunk_size_{device_type}"])
-        if sj.cache[f"auto_sample_rate_{device_type}"]:
+        chunk_size = int(cache[f"chunk_size_{device_type}"])
+        if cache[f"auto_sample_rate_{device_type}"]:
             sample_rate = int(device_detail["defaultSampleRate"])
         else:
-            sample_rate = int(sj.cache[f"sample_rate_{device_type}"])
+            sample_rate = int(cache[f"sample_rate_{device_type}"])
 
-        if sj.cache[f"auto_channels_{device_type}"]:
+        if cache[f"auto_channels_{device_type}"]:
             num_of_channels = str(device_detail["maxInputChannels"])
         else:
-            num_of_channels = str(sj.cache[f"channels_{device_type}"])
+            num_of_channels = str(cache[f"channels_{device_type}"])
 
         num_of_channels = get_channel_int(num_of_channels)
 

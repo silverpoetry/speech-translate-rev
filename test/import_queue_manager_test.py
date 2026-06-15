@@ -9,6 +9,8 @@ to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
 from speech_translate.import_queue_manager import ImportQueueController
+from speech_translate.bridge_runtime_state import BridgeFileRuntime, BridgeRecordingRuntime
+from speech_translate.runtime_registry import bridge_state_registry
 from speech_translate.ui_protocol import TASK_SOURCE_IMPORT, UI_SECTION_IMPORT
 
 
@@ -140,6 +142,29 @@ class FakeProcessRuntime:
 
 
 class ImportQueueControllerTests(unittest.TestCase):
+    def test_import_process_runtime_default_provider_reads_bridge_substates(self) -> None:
+        from speech_translate.import_queue_manager import ImportQueueProcessRuntime
+
+        previous_bridge_state = bridge_state_registry.state
+        fake_bridge = type(
+            "FakeBridgeState",
+            (),
+            {
+                "recording_runtime": BridgeRecordingRuntime(recording=True),
+                "file_runtime": BridgeFileRuntime(file_processing=True, file_tced_counter=3, file_tled_counter=4),
+            },
+        )()
+        try:
+            bridge_state_registry.set(fake_bridge)
+
+            runtime = ImportQueueProcessRuntime()
+            self.assertTrue(runtime.is_recording_active())
+            self.assertTrue(runtime.is_file_processing_active())
+            self.assertEqual(runtime.transcribed_count(), 3)
+            self.assertEqual(runtime.translated_count(), 4)
+        finally:
+            bridge_state_registry.set(previous_bridge_state)
+
     def setUp(self) -> None:
         self.bridge = FakeBridge()
         self.settings = FakeSettings()
