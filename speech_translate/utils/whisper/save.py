@@ -9,7 +9,7 @@ from typing import List, Optional, Protocol, Union
 from speech_translate.log_helpers import logger
 from speech_translate.utils.types import StableTsResultDict
 
-from .load import parse_args_stable_ts
+from .stable_args import parse_args_stable_ts
 
 
 class WhisperSegmentLike(Protocol):
