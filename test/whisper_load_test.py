@@ -74,6 +74,14 @@ class WhisperLoadTests(unittest.TestCase):
         self.assertIs(first, second)
         self.assertEqual(self.load_calls, [("small", {"device": "cpu"})])
 
+    def test_build_whisper_load_runtime_collects_runtime_dependencies(self) -> None:
+        runtime = whisper_load._build_whisper_load_runtime()
+
+        self.assertTrue(hasattr(runtime.stable_whisper_api, "load_model"))
+        self.assertTrue(hasattr(runtime.stable_whisper_api, "load_faster_whisper"))
+        self.assertTrue(hasattr(runtime.torch_api, "set_num_threads"))
+        self.assertIsNotNone(runtime.faster_whisper_model_type)
+
     def test_load_model_variant_selects_backend_specific_runner(self) -> None:
         whisper_model, whisper_runner = whisper_load._load_model_variant("small", False, device="cpu")
         faster_model, faster_runner = whisper_load._load_model_variant("base", True, device="cpu")
@@ -173,6 +181,52 @@ class WhisperLoadTests(unittest.TestCase):
 
         self.assertEqual(result, {"device": "cpu"})
         self.assertEqual(self.thread_calls, [4])
+
+    def test_get_model_args_falls_back_to_default_download_root_and_auto_device(self) -> None:
+        previous_parser = whisper_load.parse_args_stable_ts
+        previous_default_download_root = whisper_load.get_default_download_root
+        try:
+            whisper_load.parse_args_stable_ts = lambda *_args, **_kwargs: {"success": True}
+            whisper_load.get_default_download_root = lambda: "D:\\default-models"
+            setting_cache = {
+                "use_faster_whisper": False,
+                "whisper_args": "",
+                "dir_model": "auto",
+                "model_device_preference": "invalid-value",
+            }
+
+            result = whisper_load.get_model_args(setting_cache)
+        finally:
+            whisper_load.parse_args_stable_ts = previous_parser
+            whisper_load.get_default_download_root = previous_default_download_root
+
+        self.assertEqual(result["download_root"], "D:\\default-models")
+        self.assertEqual(result["device"], "cpu")
+
+    def test_get_model_args_preserves_explicit_cuda_preference_when_available(self) -> None:
+        previous_parser = whisper_load.parse_args_stable_ts
+        previous_runtime_builder = whisper_load._build_whisper_load_runtime
+        try:
+            whisper_load.parse_args_stable_ts = lambda *_args, **_kwargs: {"success": True}
+            whisper_load._build_whisper_load_runtime = lambda: whisper_load.WhisperLoadRuntime(
+                stable_whisper_api=type("StableApi", (), {"load_model": lambda *_args, **_kwargs: None})(),
+                torch_api=type("TorchApi", (), {"cuda": type("Cuda", (), {"is_available": staticmethod(lambda: True)})()})(),
+                faster_whisper_model_type=object(),
+            )
+            setting_cache = {
+                "use_faster_whisper": False,
+                "whisper_args": "",
+                "dir_model": "D:\\models",
+                "model_device_preference": "cuda",
+            }
+
+            result = whisper_load.get_model_args(setting_cache)
+        finally:
+            whisper_load.parse_args_stable_ts = previous_parser
+            whisper_load._build_whisper_load_runtime = previous_runtime_builder
+
+        self.assertEqual(result["download_root"], "D:\\models")
+        self.assertEqual(result["device"], "cuda")
 
 
 if __name__ == "__main__":
