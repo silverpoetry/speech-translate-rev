@@ -28,6 +28,94 @@ StageKey = Literal["tc", "tl", "mod"]
 StatusMap = Dict[int, str]
 
 
+@dataclass
+class FileUiBridgeAdapter:
+    bridge: object | None = None
+
+    def _resolve_bridge(self):
+        return bc.web_bridge if self.bridge is None else self.bridge
+
+    def init_file_batch(self, task_name: str, files: list[object]) -> None:
+        bridge = self._resolve_bridge()
+        if bridge is not None:
+            bridge.init_file_batch(task_name, files)
+
+    def sync_file_status(self, index: int, status: str, is_completed: bool) -> None:
+        bridge = self._resolve_bridge()
+        if bridge is not None:
+            bridge.sync_file_status(index, status, is_completed)
+
+
+@dataclass
+class FileResultQueueAdapter:
+    state: object = bc
+
+    def get(self):
+        return self.state.data_queue.get()
+
+    def put(self, payload) -> None:
+        self.state.data_queue.put(payload)
+
+
+@dataclass
+class FileProcessingStateAdapter:
+    state: object = bc
+
+    def is_file_processing(self) -> bool:
+        return bool(self.state.file_processing)
+
+    def is_transcribing_file(self) -> bool:
+        return bool(self.state.transcribing_file)
+
+    def is_translating_file(self) -> bool:
+        return bool(self.state.translating_file)
+
+    def reset_file_counts(self) -> None:
+        self.state.file_tced_counter = 0
+        self.state.file_tled_counter = 0
+
+    def increment_transcribed_count(self) -> None:
+        self.state.file_tced_counter += 1
+
+    def increment_translated_count(self) -> None:
+        self.state.file_tled_counter += 1
+
+    def transcribed_count(self) -> int:
+        return int(getattr(self.state, "file_tced_counter", 0))
+
+    def translated_count(self) -> int:
+        return int(getattr(self.state, "file_tled_counter", 0))
+
+    def enable_file_tc(self) -> None:
+        self.state.enable_file_tc()
+
+    def enable_file_tl(self) -> None:
+        self.state.enable_file_tl()
+
+    def disable_file_tc(self) -> None:
+        self.state.disable_file_tc()
+
+    def disable_file_tl(self) -> None:
+        self.state.disable_file_tl()
+
+    def disable_file_process(self) -> None:
+        self.state.disable_file_process()
+
+    def reset_mod_counter(self) -> None:
+        self.state.mod_file_counter = 0
+
+    def increment_mod_counter(self) -> None:
+        self.state.mod_file_counter += 1
+
+    def mod_counter(self) -> int:
+        return int(getattr(self.state, "mod_file_counter", 0))
+
+
+file_ui_bridge = FileUiBridgeAdapter()
+file_result_queue = FileResultQueueAdapter()
+file_processing_state = FileProcessingStateAdapter()
+
+
 def _get_whisper_runtime_api():
     from speech_translate.utils.whisper import load as whisper_load_api
 
@@ -65,6 +153,7 @@ class FileBatchStatusContext:
     is_tc: bool = False
     is_tl: bool = False
     is_mod: bool = False
+    ui_bridge: FileUiBridgeAdapter | None = None
     tc_status: StatusMap | None = None
     tl_status: StatusMap | None = None
     mod_status: StatusMap | None = None
@@ -118,10 +207,9 @@ class FileBatchStatusContext:
         return any(self.is_active(index) for index in range(item_count))
 
     def sync_ui(self, index: int) -> None:
-        if not bc.web_bridge:
-            return
         combined_status = self.combined_status(index)
-        bc.web_bridge.sync_file_status(index, combined_status, self.is_completed(index, combined_status))
+        bridge_adapter = self.ui_bridge or file_ui_bridge
+        bridge_adapter.sync_file_status(index, combined_status, self.is_completed(index, combined_status))
 
     def update_status(self, stage: StageKey, index: int, msg: str) -> None:
         self.status_map(stage)[index] = msg
@@ -156,6 +244,9 @@ class FileProcessRuntime:
     filters: dict[str, object]
     taskname: str
     started_at: float
+    ui_bridge: FileUiBridgeAdapter
+    result_queue: FileResultQueueAdapter
+    processing_state: FileProcessingStateAdapter
 
 
 @dataclass(frozen=True)
@@ -170,6 +261,9 @@ class FileModRuntime:
     mod_func: Callable
     mod_args: dict[str, object]
     started_at: float
+    ui_bridge: FileUiBridgeAdapter
+    result_queue: FileResultQueueAdapter
+    processing_state: FileProcessingStateAdapter
 
 
 @dataclass(frozen=True)
@@ -181,6 +275,8 @@ class FileResultTranslateRuntime:
     stable_whisper_api: object
     api_kwargs: dict[str, object]
     started_at: float
+    ui_bridge: FileUiBridgeAdapter
+    processing_state: FileProcessingStateAdapter
 
 def _build_combined_status(
     index: int,
@@ -323,7 +419,13 @@ def _build_process_file_runtime(
     is_tc: bool,
     is_tl: bool,
     setting_cache: Mapping[str, object],
+    ui_bridge: FileUiBridgeAdapter | None = None,
+    result_queue: FileResultQueueAdapter | None = None,
+    processing_state: FileProcessingStateAdapter | None = None,
 ) -> FileProcessRuntime:
+    ui_bridge = ui_bridge or file_ui_bridge
+    result_queue = result_queue or file_result_queue
+    processing_state = processing_state or file_processing_state
     tl_engine_whisper = engine in model_values
     stable_tc = stable_tl = None
     to_args = None
@@ -351,7 +453,7 @@ def _build_process_file_runtime(
     )
     slice_start, slice_end = _resolve_slice_bounds(setting_cache)
     return FileProcessRuntime(
-        status_context=FileBatchStatusContext(is_tc=is_tc, is_tl=is_tl, is_mod=False),
+        status_context=FileBatchStatusContext(is_tc=is_tc, is_tl=is_tl, is_mod=False, ui_bridge=ui_bridge),
         export_dir=_resolve_process_export_dir(setting_cache),
         slice_start=slice_start,
         slice_end=slice_end,
@@ -362,6 +464,9 @@ def _build_process_file_runtime(
         filters=filters,
         taskname=taskname,
         started_at=time(),
+        ui_bridge=ui_bridge,
+        result_queue=result_queue,
+        processing_state=processing_state,
     )
 
 
@@ -370,14 +475,20 @@ def _build_mod_result_runtime(
     model_name_tc: str,
     mode: Literal["refinement", "alignment"],
     setting_cache: Mapping[str, object],
+    ui_bridge: FileUiBridgeAdapter | None = None,
+    result_queue: FileResultQueueAdapter | None = None,
+    processing_state: FileProcessingStateAdapter | None = None,
 ) -> FileModRuntime:
+    ui_bridge = ui_bridge or file_ui_bridge
+    result_queue = result_queue or file_result_queue
+    processing_state = processing_state or file_processing_state
     action = "Refinement" if mode == "refinement" else "Alignment"
     stable_whisper = get_stable_whisper()
     model = stable_whisper.load_model(model_name_tc, **get_model_args(setting_cache))
     mod_func = model.refine if mode == "refinement" else model.align
     slice_start, slice_end = _resolve_slice_bounds(setting_cache)
     return FileModRuntime(
-        status_context=FileBatchStatusContext(is_tc=False, is_tl=False, is_mod=True),
+        status_context=FileBatchStatusContext(is_tc=False, is_tl=False, is_mod=True, ui_bridge=ui_bridge),
         action=action,
         export_dir=_resolve_mod_export_dir(setting_cache, action=action),
         slice_start=slice_start,
@@ -387,6 +498,9 @@ def _build_mod_result_runtime(
         mod_func=mod_func,
         mod_args=get_tc_args(mod_func, setting_cache, mode="refine" if mode == "refinement" else "align"),
         started_at=time(),
+        ui_bridge=ui_bridge,
+        result_queue=result_queue,
+        processing_state=processing_state,
     )
 
 
@@ -394,7 +508,11 @@ def _build_translate_result_runtime(
     *,
     engine: str,
     setting_cache: Mapping[str, object],
+    ui_bridge: FileUiBridgeAdapter | None = None,
+    processing_state: FileProcessingStateAdapter | None = None,
 ) -> FileResultTranslateRuntime:
+    ui_bridge = ui_bridge or file_ui_bridge
+    processing_state = processing_state or file_processing_state
     slice_start, slice_end = _resolve_slice_bounds(setting_cache)
     api_kwargs = (
         {"libre_link": setting_cache["libre_link"], "libre_api_key": setting_cache["libre_api_key"]}
@@ -402,13 +520,15 @@ def _build_translate_result_runtime(
         else {}
     )
     return FileResultTranslateRuntime(
-        status_context=FileBatchStatusContext(is_tc=False, is_tl=False, is_mod=True),
+        status_context=FileBatchStatusContext(is_tc=False, is_tl=False, is_mod=True, ui_bridge=ui_bridge),
         export_dir=_resolve_translate_result_export_dir(setting_cache),
         slice_start=slice_start,
         slice_end=slice_end,
         stable_whisper_api=get_stable_whisper(),
         api_kwargs=api_kwargs,
         started_at=time(),
+        ui_bridge=ui_bridge,
+        processing_state=processing_state,
     )
 
 def _monitor_thread(thread: Thread, check_cancel: Callable[[], bool]) -> None:
@@ -439,23 +559,26 @@ def _execute_monitored_queue_task(
     kwargs: Mapping[str, object] | None = None,
     fail_status: WorkerFailure | None = None,
     raise_failure: bool = True,
+    result_queue: FileResultQueueAdapter | None = None,
 ):
+    result_queue = result_queue or file_result_queue
     _run_monitored_worker(target, cancel_check=cancel_check, args=args, kwargs=kwargs)
     if fail_status is not None:
         if raise_failure:
             fail_status.raise_if_failed()
         elif fail_status.failed:
             return None
-    return bc.data_queue.get()
+    return result_queue.get()
 
 # =========================================================================
 # ATOMIC EXECUTORS
 # =========================================================================
 
-def run_whisper(func, audio: str | None, task: str, fail_status: WorkerFailure, **kwargs) -> None:
+def run_whisper(func, audio: str | None, task: str, fail_status: WorkerFailure, *, result_queue: FileResultQueueAdapter | None = None, **kwargs) -> None:
+    result_queue = result_queue or file_result_queue
     try:
         result = func(audio, task=task, **kwargs)
-        bc.data_queue.put(result)
+        result_queue.put(result)
     except Exception as e:
         fail_status.capture(e)
         if "The system cannot find the file specified" in str(e) and not bc.has_ffmpeg:
@@ -520,8 +643,12 @@ def _cancellable_tc(
     filters,
     *,
     status_context: FileBatchStatusContext,
+    processing_state: FileProcessingStateAdapter | None = None,
+    result_queue: FileResultQueueAdapter | None = None,
     **kwargs,
 ):
+    processing_state = processing_state or file_processing_state
+    result_queue = result_queue or file_result_queue
     start = time()
     try:
         _update_status(status_context, "tc", index, "Transcribing please wait...")
@@ -533,10 +660,11 @@ def _cancellable_tc(
 
         result = _execute_monitored_queue_task(
             run_whisper,
-            cancel_check=lambda: bc.transcribing_file,
+            cancel_check=processing_state.is_transcribing_file,
             args=(tc_func, file_path, "transcribe", fail_status),
-            kwargs=kwargs,
+            kwargs={**kwargs, "result_queue": result_queue},
             fail_status=fail_status,
+            result_queue=result_queue,
         )
         if sj.cache["filter_file_import"]:
             try: result = remove_segments_by_str(result, filters.get(get_whisper_lang_name(result.language) if auto else get_whisper_lang_similar(lang_source), []), sj.cache["filter_file_import_case_sensitive"], sj.cache["filter_file_import_strip"], sj.cache["filter_file_import_ignore_punctuations"], sj.cache["filter_file_import_exact_match"], sj.cache["filter_file_import_similarity"])
@@ -546,7 +674,7 @@ def _cancellable_tc(
 
         if is_tc:
             if result.text.strip():
-                bc.file_tced_counter += 1
+                processing_state.increment_transcribed_count()
                 stable_whisper = get_stable_whisper()
                 save_output_stable_ts(
                     split_res(stable_whisper.WhisperResult(result.to_dict()), sj.cache),
@@ -566,7 +694,7 @@ def _cancellable_tc(
             Thread(
                 target=_cancellable_tl,
                 args=[tl_query, lang_source, lang_target, tl_func, engine, export_plan, index, file_path, filters],
-                kwargs={**kwargs, "status_context": status_context},
+                kwargs={**kwargs, "status_context": status_context, "processing_state": processing_state, "result_queue": result_queue},
                 daemon=True,
             ).start()
             
@@ -588,8 +716,12 @@ def _cancellable_tl(
     filters,
     *,
     status_context: FileBatchStatusContext,
+    processing_state: FileProcessingStateAdapter | None = None,
+    result_queue: FileResultQueueAdapter | None = None,
     **kwargs,
 ):
+    processing_state = processing_state or file_processing_state
+    result_queue = result_queue or file_result_queue
     start = time()
     try:
         _update_status(status_context, "tl", index, "Translating please wait...")
@@ -602,10 +734,11 @@ def _cancellable_tl(
         if engine in model_values:
             result = _execute_monitored_queue_task(
                 run_whisper,
-                cancel_check=lambda: bc.translating_file,
+                cancel_check=processing_state.is_translating_file,
                 args=(tl_func, query, "translate", fail_status),
-                kwargs=kwargs,
+                kwargs={**kwargs, "result_queue": result_queue},
                 fail_status=fail_status,
+                result_queue=result_queue,
             )
             if sj.cache["filter_file_import"]:
                 try: result = remove_segments_by_str(result, filters.get("english", []), sj.cache["filter_file_import_case_sensitive"], sj.cache["filter_file_import_strip"], sj.cache["filter_file_import_ignore_punctuations"], sj.cache["filter_file_import_exact_match"], sj.cache["filter_file_import_similarity"])
@@ -617,7 +750,7 @@ def _cancellable_tl(
             api_kwargs = {"libre_link": sj.cache["libre_link"], "libre_api_key": sj.cache["libre_api_key"]} if engine == "LibreTranslate" else {}
             _run_monitored_worker(
                 run_translate_api,
-                cancel_check=lambda: bc.translating_file,
+                cancel_check=processing_state.is_translating_file,
                 args=(query, engine, lang_source, lang_target, fail_status),
                 kwargs=api_kwargs,
             )
@@ -627,7 +760,7 @@ def _cancellable_tl(
         if not getattr(result, "text", "").strip():
             return _update_status(status_context, "tl", index, "TL Fail! Empty text")
 
-        bc.file_tled_counter += 1
+        processing_state.increment_translated_count()
         save_output_stable_ts(split_res(result, sj.cache), tl_export_plan.save_base_path, sj.cache["export_to"], sj, source_media_path=media_path)
         _update_status(status_context, "tl", index, "Translated")
         _save_export_plan_metadata(export_plan, {"translate_time": time() - start, "translate_success": True})
@@ -640,8 +773,24 @@ def _cancellable_tl(
 # PUBLIC BATCH APIS
 # =========================================================================
 
-def process_file(data_files: List[str], model_name_tc: str, lang_source: str, lang_target: str, is_tc: bool, is_tl: bool, engine: str) -> None:
+def process_file(
+    data_files: List[str],
+    model_name_tc: str,
+    lang_source: str,
+    lang_target: str,
+    is_tc: bool,
+    is_tl: bool,
+    engine: str,
+    *,
+    ui_bridge: FileUiBridgeAdapter | None = None,
+    result_queue: FileResultQueueAdapter | None = None,
+    processing_state: FileProcessingStateAdapter | None = None,
+    open_dir_fn: Callable[[str], None] = start_file,
+) -> None:
     try:
+        ui_bridge = ui_bridge or file_ui_bridge
+        result_queue = result_queue or file_result_queue
+        processing_state = processing_state or file_processing_state
         runtime = _build_process_file_runtime(
             model_name_tc=model_name_tc,
             lang_source=lang_source,
@@ -649,21 +798,24 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
             is_tc=is_tc,
             is_tl=is_tl,
             setting_cache=sj.cache,
+            ui_bridge=ui_bridge,
+            result_queue=result_queue,
+            processing_state=processing_state,
         )
         status_context = runtime.status_context
-        bc.file_tced_counter = bc.file_tled_counter = 0
+        processing_state.reset_file_counts()
 
-        bc.enable_file_tc()
-        bc.enable_file_tl()
+        processing_state.enable_file_tc()
+        processing_state.enable_file_tl()
 
-        if bc.web_bridge:
-            bc.web_bridge.init_file_batch(f"Task: {runtime.taskname} with {model_name_tc}", data_files)
+        runtime.ui_bridge.init_file_batch(f"Task: {runtime.taskname} with {model_name_tc}", data_files)
 
         def is_still_active():
             return status_context.has_active_work(len(data_files))
 
         for i, file in enumerate(data_files):
-            if not bc.file_processing: break
+            if not processing_state.is_file_processing():
+                break
             logger.info(f"Loop entered for file: {file}")
             file_name = _slice_display_name(file, start=runtime.slice_start, end=runtime.slice_end)
             base_name = _build_base_export_name(
@@ -685,49 +837,68 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
                 Thread(
                     target=_cancellable_tl,
                     args=[file, lang_source, lang_target, runtime.stable_tl, engine, export_plan, i, file, runtime.filters],
-                    kwargs={**runtime.whisper_args, "status_context": status_context},
+                    kwargs={**runtime.whisper_args, "status_context": status_context, "processing_state": processing_state, "result_queue": result_queue},
                     daemon=True,
                 ).start()
             else:
                 tc_thread = Thread(
                     target=_cancellable_tc,
                     args=[file, lang_source, lang_target, model_name_tc, runtime.stable_tc, runtime.stable_tl, lang_source == "auto detect", is_tc, is_tl, engine, export_plan, i, runtime.filters],
-                    kwargs={**runtime.whisper_args, "status_context": status_context},
+                    kwargs={**runtime.whisper_args, "status_context": status_context, "processing_state": processing_state, "result_queue": result_queue},
                     daemon=True,
                 )
                 tc_thread.start()
                 tc_thread.join()
 
-        while bc.file_processing and is_still_active():
+        while processing_state.is_file_processing() and is_still_active():
             sleep(0.5)
 
         logger.info(f"Process FILE completed in {time() - runtime.started_at:.2f}s")
-        if (bc.file_tced_counter > 0 or bc.file_tled_counter > 0) and sj.cache["auto_open_dir_export"]:
-            start_file(runtime.export_dir)
+        if (processing_state.transcribed_count() > 0 or processing_state.translated_count() > 0) and sj.cache["auto_open_dir_export"]:
+            open_dir_fn(runtime.export_dir)
 
     except Exception as e:
         logger.error(f"Process FILE error: {e}")
     finally:
-        bc.disable_file_process()
-        bc.disable_file_tc()
-        bc.disable_file_tl()
+        processing_state.disable_file_process()
+        processing_state.disable_file_tc()
+        processing_state.disable_file_tl()
         empty_torch_cuda_cache()
 
 
-def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement", "alignment"]):
+def mod_result(
+    data_files: List,
+    model_name_tc: str,
+    mode: Literal["refinement", "alignment"],
+    *,
+    ui_bridge: FileUiBridgeAdapter | None = None,
+    result_queue: FileResultQueueAdapter | None = None,
+    processing_state: FileProcessingStateAdapter | None = None,
+    open_dir_fn: Callable[[str], None] = start_file,
+):
     try:
-        runtime = _build_mod_result_runtime(model_name_tc=model_name_tc, mode=mode, setting_cache=sj.cache)
+        ui_bridge = ui_bridge or file_ui_bridge
+        result_queue = result_queue or file_result_queue
+        processing_state = processing_state or file_processing_state
+        runtime = _build_mod_result_runtime(
+            model_name_tc=model_name_tc,
+            mode=mode,
+            setting_cache=sj.cache,
+            ui_bridge=ui_bridge,
+            result_queue=result_queue,
+            processing_state=processing_state,
+        )
         status_context = runtime.status_context
-        bc.mod_file_counter = 0
+        processing_state.reset_mod_counter()
 
-        if bc.web_bridge:
-            bc.web_bridge.init_file_batch(f"Task {mode} with {model_name_tc}", [f[0] for f in data_files])
+        runtime.ui_bridge.init_file_batch(f"Task {mode} with {model_name_tc}", [f[0] for f in data_files])
 
         def is_still_active():
             return status_context.has_active_work(len(data_files))
 
         for i, file_data in enumerate(data_files):
-            if not bc.file_processing: break
+            if not processing_state.is_file_processing():
+                break
 
             audio_path, mod_path = file_data[0], file_data[1]
             file_name = _slice_display_name(audio_path, start=runtime.slice_start, end=runtime.slice_end)
@@ -759,25 +930,26 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
                 try:
                     _update_status(status_context, "mod", i, f"Processing {mode}")
                     res = runtime.mod_func(audio_path, mod_src, **mod_args)
-                    bc.data_queue.put(res)
+                    runtime.result_queue.put(res)
                 except Exception as e:
                     if "'NoneType'" in str(e) and mode == "refinement":
                         try:
                             _update_status(status_context, "mod", i, "Re-transcribing...")
                             res = runtime.model.transcribe(audio_path, **get_tc_args(runtime.model.transcribe, sj.cache))
                             res = runtime.mod_func(audio_path, res, **mod_args)
-                            bc.data_queue.put(res)
+                            runtime.result_queue.put(res)
                         except Exception as ee:
-                            raise Exception(f"Re-transcribe failed: {ee}")
-                    else: raise e
+                            fail_status.capture(Exception(f"Re-transcribe failed: {ee}"))
+                    else:
+                        fail_status.capture(e)
 
             fail_status = WorkerFailure()
             result = _execute_monitored_queue_task(
-                run_whisper,
-                cancel_check=lambda: bc.file_processing,
-                args=(_run_mod, None, mode, fail_status),
+                _run_mod,
+                cancel_check=processing_state.is_file_processing,
                 fail_status=fail_status,
                 raise_failure=False,
+                result_queue=runtime.result_queue,
             )
 
             if fail_status.failed:
@@ -788,38 +960,53 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
             if not result.language: result.language = mod_args.get("language", "auto")
 
             save_output_stable_ts(result, export_plan.save_base_path, sj.cache["export_to"], sj)
-            bc.mod_file_counter += 1
+            processing_state.increment_mod_counter()
             _update_status(status_context, "mod", i, runtime.action)
             _save_export_plan_metadata(export_plan, {"meta_written_at": str(datetime.now()), "task": f"Mod Result ({mode})", "time": time() - runtime.started_at})
 
-        while bc.file_processing and is_still_active():
+        while processing_state.is_file_processing() and is_still_active():
             sleep(0.5)
 
         logger.info(f"Process MOD completed in {time() - runtime.started_at:.2f}s")
-        if bc.mod_file_counter > 0 and sj.cache.get(f"auto_open_dir_{mode}", True):
-            start_file(runtime.export_dir)
+        if processing_state.mod_counter() > 0 and sj.cache.get(f"auto_open_dir_{mode}", True):
+            open_dir_fn(runtime.export_dir)
 
     except Exception as e:
         logger.error(f"Process MOD error: {e}")
     finally:
-        bc.disable_file_process()
+        processing_state.disable_file_process()
         empty_torch_cuda_cache()
 
 
-def translate_result(data_files: List, engine: str, lang_target: str):
+def translate_result(
+    data_files: List,
+    engine: str,
+    lang_target: str,
+    *,
+    ui_bridge: FileUiBridgeAdapter | None = None,
+    processing_state: FileProcessingStateAdapter | None = None,
+    open_dir_fn: Callable[[str], None] = start_file,
+):
     try:
-        runtime = _build_translate_result_runtime(engine=engine, setting_cache=sj.cache)
+        ui_bridge = ui_bridge or file_ui_bridge
+        processing_state = processing_state or file_processing_state
+        runtime = _build_translate_result_runtime(
+            engine=engine,
+            setting_cache=sj.cache,
+            ui_bridge=ui_bridge,
+            processing_state=processing_state,
+        )
         status_context = runtime.status_context
-        bc.mod_file_counter = 0
+        processing_state.reset_mod_counter()
 
-        if bc.web_bridge:
-            bc.web_bridge.init_file_batch(f"Task Translate with {engine}", data_files)
+        runtime.ui_bridge.init_file_batch(f"Task Translate with {engine}", data_files)
 
         def is_still_active():
             return status_context.has_active_work(len(data_files))
 
         for i, file_path in enumerate(data_files):
-            if not bc.file_processing: break
+            if not processing_state.is_file_processing():
+                break
 
             try:
                 result = runtime.stable_whisper_api.WhisperResult(file_path)
@@ -847,7 +1034,7 @@ def translate_result(data_files: List, engine: str, lang_target: str):
             
             _run_monitored_worker(
                 run_translate_api,
-                cancel_check=lambda: bc.file_processing,
+                cancel_check=processing_state.is_file_processing,
                 args=(result, engine, lang_src, lang_target, fail_status),
                 kwargs=runtime.api_kwargs,
             )
@@ -856,20 +1043,20 @@ def translate_result(data_files: List, engine: str, lang_target: str):
                 _update_status(status_context, "mod", i, "Failed")
                 continue
 
-            bc.mod_file_counter += 1
+            processing_state.increment_mod_counter()
             save_output_stable_ts(split_res(result, sj.cache), export_plan.save_base_path, sj.cache["export_to"], sj, source_media_path=file_path)
             _update_status(status_context, "mod", i, "Translated")
             _save_export_plan_metadata(export_plan, {"meta_written_at": str(datetime.now()), "task": "Translate JSON", "time": time() - runtime.started_at})
 
-        while bc.file_processing and is_still_active():
+        while processing_state.is_file_processing() and is_still_active():
             sleep(0.5)
 
         logger.info(f"Process TL JSON completed in {time() - runtime.started_at:.2f}s")
-        if bc.mod_file_counter > 0 and sj.cache["auto_open_dir_translate"]:
-            start_file(runtime.export_dir)
+        if processing_state.mod_counter() > 0 and sj.cache["auto_open_dir_translate"]:
+            open_dir_fn(runtime.export_dir)
 
     except Exception as e:
         logger.error(f"Process TL JSON error: {e}")
     finally:
-        bc.disable_file_process()
+        processing_state.disable_file_process()
         empty_torch_cuda_cache()

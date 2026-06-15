@@ -13,6 +13,10 @@ sys.path.append(to_add)
 from speech_translate.utils.audio.file import (
     FileBatchStatusContext,
     FileExportPlan,
+    FileProcessRuntime,
+    FileProcessingStateAdapter,
+    FileResultQueueAdapter,
+    FileUiBridgeAdapter,
     WorkerFailure,
     _execute_monitored_queue_task,
     _apply_task_format,
@@ -25,14 +29,16 @@ from speech_translate.utils.audio.file import (
     _build_translate_result_runtime,
     _is_file_status_completed,
     _save_export_plan_metadata,
+    process_file,
 )
-from speech_translate.linker import bc
-
-
 class FakeFileStatusBridge:
     def __init__(self, *, should_fail: bool = False) -> None:
         self.should_fail = should_fail
         self.calls = []
+        self.batches = []
+
+    def init_file_batch(self, task_name: str, files) -> None:
+        self.batches.append((task_name, list(files)))
 
     def sync_file_status(self, index: int, status: str, is_completed: bool) -> None:
         self.calls.append((index, status, is_completed))
@@ -40,10 +46,88 @@ class FakeFileStatusBridge:
             raise RuntimeError("bridge failed")
 
 
+class FakeResultQueueAdapter:
+    def __init__(self) -> None:
+        self.values = Queue()
+
+    def get(self):
+        return self.values.get()
+
+    def put(self, payload) -> None:
+        self.values.put(payload)
+
+
+class FakeProcessingStateAdapter:
+    def __init__(self, *, file_processing: bool = True) -> None:
+        self.file_processing = file_processing
+        self.transcribing_file = True
+        self.translating_file = True
+        self.tc_enabled = 0
+        self.tl_enabled = 0
+        self.tc_disabled = 0
+        self.tl_disabled = 0
+        self.process_disabled = 0
+        self.tc_count = 0
+        self.tl_count = 0
+        self.mod_count = 0
+
+    def is_file_processing(self) -> bool:
+        return self.file_processing
+
+    def is_transcribing_file(self) -> bool:
+        return self.transcribing_file
+
+    def is_translating_file(self) -> bool:
+        return self.translating_file
+
+    def reset_file_counts(self) -> None:
+        self.tc_count = 0
+        self.tl_count = 0
+
+    def increment_transcribed_count(self) -> None:
+        self.tc_count += 1
+
+    def increment_translated_count(self) -> None:
+        self.tl_count += 1
+
+    def transcribed_count(self) -> int:
+        return self.tc_count
+
+    def translated_count(self) -> int:
+        return self.tl_count
+
+    def enable_file_tc(self) -> None:
+        self.tc_enabled += 1
+
+    def enable_file_tl(self) -> None:
+        self.tl_enabled += 1
+
+    def disable_file_tc(self) -> None:
+        self.tc_disabled += 1
+
+    def disable_file_tl(self) -> None:
+        self.tl_disabled += 1
+
+    def disable_file_process(self) -> None:
+        self.process_disabled += 1
+
+    def reset_mod_counter(self) -> None:
+        self.mod_count = 0
+
+    def increment_mod_counter(self) -> None:
+        self.mod_count += 1
+
+    def mod_counter(self) -> int:
+        return self.mod_count
+
+
 class AudioFileHelpersTests(unittest.TestCase):
     def test_build_process_file_runtime_collects_shared_runtime_state(self) -> None:
         fake_stable_tc = object()
         fake_stable_tl = object()
+        bridge_adapter = FileUiBridgeAdapter(FakeFileStatusBridge())
+        result_queue = FakeResultQueueAdapter()
+        processing_state = FakeProcessingStateAdapter()
         setting_cache = {
             "dir_export": "D:\\exports",
             "file_slice_start": "1",
@@ -71,6 +155,9 @@ class AudioFileHelpersTests(unittest.TestCase):
                 is_tc=True,
                 is_tl=False,
                 setting_cache=setting_cache,
+                ui_bridge=bridge_adapter,
+                result_queue=result_queue,
+                processing_state=processing_state,
             )
 
         self.assertEqual(runtime.export_dir, "D:\\exports")
@@ -84,6 +171,9 @@ class AudioFileHelpersTests(unittest.TestCase):
         self.assertIsNone(runtime.whisper_args["verbose"])
         self.assertEqual(runtime.filters, {"ban": ["uh"]})
         self.assertEqual(runtime.started_at, 42.0)
+        self.assertIs(runtime.ui_bridge, bridge_adapter)
+        self.assertIs(runtime.result_queue, result_queue)
+        self.assertIs(runtime.processing_state, processing_state)
 
     def test_build_mod_result_runtime_selects_mode_specific_dependencies(self) -> None:
         fake_model = Mock()
@@ -91,6 +181,9 @@ class AudioFileHelpersTests(unittest.TestCase):
         fake_model.align = Mock(name="align")
         fake_stable_whisper = Mock()
         fake_stable_whisper.load_model.return_value = fake_model
+        bridge_adapter = FileUiBridgeAdapter(FakeFileStatusBridge())
+        result_queue = FakeResultQueueAdapter()
+        processing_state = FakeProcessingStateAdapter()
         setting_cache = {
             "dir_export": "auto",
             "file_slice_start": "",
@@ -107,6 +200,9 @@ class AudioFileHelpersTests(unittest.TestCase):
                 model_name_tc="medium",
                 mode="alignment",
                 setting_cache=setting_cache,
+                ui_bridge=bridge_adapter,
+                result_queue=result_queue,
+                processing_state=processing_state,
             )
 
         self.assertEqual(runtime.action, "Alignment")
@@ -117,9 +213,14 @@ class AudioFileHelpersTests(unittest.TestCase):
         self.assertIs(runtime.mod_func, fake_model.align)
         self.assertEqual(runtime.mod_args, {"steps": 2})
         self.assertEqual(runtime.started_at, 84.0)
+        self.assertIs(runtime.ui_bridge, bridge_adapter)
+        self.assertIs(runtime.result_queue, result_queue)
+        self.assertIs(runtime.processing_state, processing_state)
 
     def test_build_translate_result_runtime_scopes_engine_specific_api_kwargs(self) -> None:
         fake_stable_whisper = object()
+        bridge_adapter = FileUiBridgeAdapter(FakeFileStatusBridge())
+        processing_state = FakeProcessingStateAdapter()
         setting_cache = {
             "dir_export": "D:\\exports",
             "file_slice_start": "2",
@@ -135,6 +236,8 @@ class AudioFileHelpersTests(unittest.TestCase):
             runtime = _build_translate_result_runtime(
                 engine="LibreTranslate",
                 setting_cache=setting_cache,
+                ui_bridge=bridge_adapter,
+                processing_state=processing_state,
             )
 
         self.assertEqual(os.path.normpath(runtime.export_dir), os.path.normpath("D:\\exports\\@translated"))
@@ -145,6 +248,8 @@ class AudioFileHelpersTests(unittest.TestCase):
             {"libre_link": "http://127.0.0.1:5000", "libre_api_key": "secret"},
         )
         self.assertEqual(runtime.started_at, 126.0)
+        self.assertIs(runtime.ui_bridge, bridge_adapter)
+        self.assertIs(runtime.processing_state, processing_state)
 
     def test_build_combined_status_merges_active_statuses(self) -> None:
         status = _build_combined_status(
@@ -257,29 +362,19 @@ class AudioFileHelpersTests(unittest.TestCase):
         self.assertIn('"time": 1.5', saved)
 
     def test_file_batch_status_context_updates_stage_status_and_syncs_bridge(self) -> None:
-        previous_bridge = bc.web_bridge
         bridge = FakeFileStatusBridge()
-        try:
-            bc.web_bridge = bridge
-            context = FileBatchStatusContext(is_tc=True, is_tl=True)
-            context.update_status("tc", 0, "Transcribed")
-            context.update_status("tl", 0, "Translated")
-        finally:
-            bc.web_bridge = previous_bridge
+        context = FileBatchStatusContext(is_tc=True, is_tl=True, ui_bridge=FileUiBridgeAdapter(bridge))
+        context.update_status("tc", 0, "Transcribed")
+        context.update_status("tl", 0, "Translated")
 
         self.assertEqual(context.tc_status[0], "Transcribed")
         self.assertEqual(context.tl_status[0], "Translated")
         self.assertEqual(bridge.calls[-1], (0, "Transcribed, Translated", True))
 
     def test_file_batch_status_context_suppresses_bridge_sync_errors(self) -> None:
-        previous_bridge = bc.web_bridge
         bridge = FakeFileStatusBridge(should_fail=True)
-        try:
-            bc.web_bridge = bridge
-            context = FileBatchStatusContext(is_mod=True)
-            context.update_status("mod", 3, "Processing")
-        finally:
-            bc.web_bridge = previous_bridge
+        context = FileBatchStatusContext(is_mod=True, ui_bridge=FileUiBridgeAdapter(bridge))
+        context.update_status("mod", 3, "Processing")
 
         self.assertEqual(context.mod_status[3], "Processing")
         self.assertEqual(bridge.calls[-1], (3, "Processing", False))
@@ -296,36 +391,80 @@ class AudioFileHelpersTests(unittest.TestCase):
         self.assertFalse(context.has_active_work(1))
 
     def test_execute_monitored_queue_task_returns_background_result(self) -> None:
-        previous_queue = bc.data_queue
-        try:
-            bc.data_queue = Queue()
-            result = _execute_monitored_queue_task(
-                lambda value: bc.data_queue.put(value),
-                cancel_check=lambda: True,
-                args=("done",),
-            )
-        finally:
-            bc.data_queue = previous_queue
+        result_queue = FakeResultQueueAdapter()
+        result = _execute_monitored_queue_task(
+            lambda value: result_queue.put(value),
+            cancel_check=lambda: True,
+            args=("done",),
+            result_queue=result_queue,
+        )
 
         self.assertEqual(result, "done")
 
     def test_execute_monitored_queue_task_can_preserve_per_item_failure_flow(self) -> None:
-        previous_queue = bc.data_queue
         fail_status = WorkerFailure()
-        try:
-            bc.data_queue = Queue()
-            result = _execute_monitored_queue_task(
-                lambda status: status.capture(RuntimeError("boom")),
-                cancel_check=lambda: True,
-                args=(fail_status,),
-                fail_status=fail_status,
-                raise_failure=False,
-            )
-        finally:
-            bc.data_queue = previous_queue
+        result_queue = FakeResultQueueAdapter()
+        result = _execute_monitored_queue_task(
+            lambda status: status.capture(RuntimeError("boom")),
+            cancel_check=lambda: True,
+            args=(fail_status,),
+            fail_status=fail_status,
+            raise_failure=False,
+            result_queue=result_queue,
+        )
 
         self.assertIsNone(result)
         self.assertTrue(fail_status.failed)
+
+    def test_process_file_supports_injected_runtime_adapters(self) -> None:
+        bridge = FakeFileStatusBridge()
+        ui_bridge = FileUiBridgeAdapter(bridge)
+        result_queue = FakeResultQueueAdapter()
+        processing_state = FakeProcessingStateAdapter(file_processing=False)
+        opened = []
+        runtime = FileProcessRuntime(
+            status_context=FileBatchStatusContext(is_tc=True, ui_bridge=ui_bridge),
+            export_dir="D:\\exports",
+            slice_start=None,
+            slice_end=None,
+            tl_engine_whisper=False,
+            stable_tc=object(),
+            stable_tl=object(),
+            whisper_args={},
+            filters={},
+            taskname="Transcribe",
+            started_at=1.0,
+            ui_bridge=ui_bridge,
+            result_queue=result_queue,
+            processing_state=processing_state,
+        )
+        with (
+            patch("speech_translate.utils.audio.file._build_process_file_runtime", return_value=runtime),
+            patch("speech_translate.utils.audio.file.empty_torch_cuda_cache"),
+            patch("speech_translate.utils.audio.file.time", return_value=1.0),
+            patch.dict("speech_translate.utils.audio.file.sj.cache", {"auto_open_dir_export": True}, clear=False),
+        ):
+            process_file(
+                ["a.wav"],
+                "small",
+                "English",
+                "Chinese",
+                True,
+                False,
+                "Google Translate",
+                ui_bridge=ui_bridge,
+                result_queue=result_queue,
+                processing_state=processing_state,
+                open_dir_fn=lambda target: opened.append(target),
+            )
+
+        self.assertEqual(bridge.batches, [("Task: Transcribe with small", ["a.wav"])])
+        self.assertEqual(processing_state.tc_enabled, 1)
+        self.assertEqual(processing_state.tl_enabled, 1)
+        self.assertEqual(processing_state.process_disabled, 1)
+        self.assertEqual(processing_state.tc_disabled, 1)
+        self.assertEqual(processing_state.tl_disabled, 1)
+        self.assertEqual(opened, [])
 
 
 if __name__ == "__main__":
