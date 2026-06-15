@@ -8,6 +8,7 @@ to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
 from speech_translate.model_manager import ModelManagerController
+from speech_translate.utils.whisper.download_runtime import DownloadProgressSnapshot
 
 
 class FakeSettings:
@@ -155,6 +156,69 @@ class ModelManagerControllerTests(unittest.TestCase):
         self.assertEqual(captured["engine"], "whisper")
         self.assertEqual(captured["model_key"], "tiny")
         self.assertEqual(self.controller.model_manager_model, "tiny")
+
+    def test_download_model_delegates_to_shared_download_api(self) -> None:
+        from speech_translate import model_manager as model_manager_module
+
+        class InlineThread:
+            def __init__(self, target, daemon=True):
+                self._target = target
+                self.daemon = daemon
+
+            def start(self):
+                self._target()
+
+        class FakeDownloadApi:
+            def __init__(self) -> None:
+                self.calls = []
+
+            def verify_model_whisper(self, model_key, model_dir):
+                return True
+
+            def verify_model_faster_whisper(self, model_key, model_dir):
+                return True
+
+            def download_model(self, model_key, **kwargs):
+                self.calls.append((model_key, kwargs))
+                kwargs["progress_callback"](
+                    DownloadProgressSnapshot(
+                        current_bytes=1024,
+                        total_bytes=2048,
+                        progress=42.0,
+                        speed_bytes_per_sec=512.0,
+                        speed_text="512 B/s",
+                        size_text="1.0 KB/2.0 KB",
+                        elapsed_seconds=2.0,
+                    )
+                )
+                kwargs["reporter"].update_task_message("Downloading test model")
+                kwargs["reporter"].update_task_progress(42.0)
+                return True
+
+        fake_download_api = FakeDownloadApi()
+        controller = ModelManagerController(
+            self.bridge,
+            self.settings,
+            lambda: None,
+            whisper_download_getter=lambda: fake_download_api,
+        )
+
+        previous_thread = model_manager_module.Thread
+        try:
+            model_manager_module.Thread = InlineThread
+            result = controller.download_model("small", engine="whisper")
+        finally:
+            model_manager_module.Thread = previous_thread
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(fake_download_api.calls[0][0], "small")
+        self.assertEqual(fake_download_api.calls[0][1]["progress_floor"], 5.0)
+        self.assertEqual(fake_download_api.calls[0][1]["progress_ceiling"], 90.0)
+        cached = controller.model_status_cache["whisper:small"]
+        self.assertTrue(cached["downloaded"])
+        self.assertFalse(cached["downloading"])
+        self.assertEqual(cached["progress"], 100.0)
+        self.assertIn(("finish", "Model downloaded: small (whisper)"), self.bridge.messages)
 
 
 if __name__ == "__main__":

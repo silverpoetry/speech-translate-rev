@@ -3,12 +3,17 @@ import hashlib
 import os
 import urllib.request
 from pathlib import Path
-from threading import Thread
-from time import sleep, time
+from time import time
 from typing import Dict, List, Literal, Optional, Union
 
 from speech_translate.log_helpers import logger
 from speech_translate.utils.whisper.paths import get_default_download_root
+from speech_translate.utils.whisper.download_runtime import (
+    TaskReporter,
+    build_download_progress_snapshot,
+    monitor_threaded_download,
+    start_optional_callback,
+)
 
 try:
     import huggingface_hub
@@ -27,6 +32,28 @@ except ModuleNotFoundError:  # pragma: no cover - optional runtime dependency fa
     requests = None  # type: ignore[assignment]
 
 from speech_translate.linker import bc
+from speech_translate.utils.helper import kill_thread
+
+
+def _build_bridge_task_reporter() -> TaskReporter:
+    web_bridge = bc.web_bridge
+    if web_bridge is None:
+        return TaskReporter()
+    return TaskReporter(
+        reset_task_state=lambda title: web_bridge.reset_task_state(title=title),
+        update_task_message=web_bridge.update_task_message,
+        update_task_progress=web_bridge.update_task_progress,
+        finish_task=web_bridge.finish_task,
+        update_task_error=web_bridge.update_task_error,
+    )
+
+
+def _get_requests_connection_error_types() -> tuple[type[BaseException], ...]:
+    exceptions_mod = getattr(requests, "exceptions", None)
+    connection_error = getattr(exceptions_mod, "ConnectionError", None)
+    if isinstance(connection_error, type) and issubclass(connection_error, BaseException):
+        return (connection_error,)
+    return ()
 
 
 def whisper_download_headless(
@@ -36,14 +63,20 @@ def whisper_download_headless(
     cancel_func,
     after_func,
     failed_func,
+    *,
+    reporter: TaskReporter | None = None,
+    progress_callback=None,
+    progress_floor: float = 0.0,
+    progress_ceiling: float = 100.0,
 ):
+    reporter = reporter or _build_bridge_task_reporter()
     os.makedirs(download_root, exist_ok=True)
     expected_sha256 = url.split("/")[-2]
     download_target = os.path.join(download_root, os.path.basename(url))
 
     if os.path.exists(download_target) and not os.path.isfile(download_target):
         logger.error(f"{download_target} exists and is not a regular file")
-        Thread(target=failed_func, daemon=True).start()
+        start_optional_callback(failed_func)
         return False
 
     if os.path.isfile(download_target):
@@ -54,12 +87,13 @@ def whisper_download_headless(
         else:
             logger.warning(f"{download_target} exists, but the SHA256 checksum does not match; re-downloading the file")
 
-    if bc.web_bridge is not None:
-        bc.web_bridge.reset_task_state(title="Downloading Whisper Model")
+    reporter.reset_task_state("Downloading Whisper Model")
 
-    downloading = True
     success = False
     msg = ""
+    started_at = 0.0
+    previous_bytes = 0
+    previous_time = 0.0
 
     try:
         with urllib.request.urlopen(url) as source, open(download_target, "wb") as output:
@@ -68,29 +102,43 @@ def whisper_download_headless(
             length_in_mb = length / 1024 / 1024
 
             bytes_read = 0
+            started_at = previous_time = time()
 
             while True:
                 if bc.cancel_dl:
                     logger.info("Download cancelled")
-                    downloading = False
                     bc.cancel_dl = False
-                    if bc.web_bridge is not None:
-                        bc.web_bridge.finish_task("Download Cancelled")
+                    reporter.finish_task("Download Cancelled")
+                    start_optional_callback(cancel_func)
                     return False
 
                 buffer = source.read(buffer_size)
                 if not buffer:
-                    downloading = False
                     break
 
                 output.write(buffer)
                 bytes_read += len(buffer)
-                percent = (bytes_read / length) * 100
-                mb_downloaded = bytes_read / 1024 / 1024
+                current_time = time()
+                snapshot = build_download_progress_snapshot(
+                    current_bytes=bytes_read,
+                    total_bytes=length,
+                    started_at=started_at,
+                    previous_bytes=previous_bytes,
+                    previous_time=previous_time,
+                    current_time=current_time,
+                    progress_floor=progress_floor,
+                    progress_ceiling=progress_ceiling,
+                    allow_time_fallback=False,
+                )
+                previous_bytes = bytes_read
+                previous_time = current_time
 
-                if bc.web_bridge is not None:
-                    bc.web_bridge.update_task_message(f"Downloading {model_name} model ({mb_downloaded:.2f}/{length_in_mb:.2f} MB)")
-                    bc.web_bridge.update_task_progress(percent)
+                reporter.update_task_message(
+                    f"Downloading {model_name} model ({bytes_read / 1024 / 1024:.2f}/{length_in_mb:.2f} MB)"
+                )
+                reporter.update_task_progress(snapshot.progress)
+                if progress_callback is not None:
+                    progress_callback(snapshot)
 
         model_bytes = open(download_target, "rb").read()
         if hashlib.sha256(model_bytes).hexdigest() != expected_sha256:
@@ -107,17 +155,13 @@ def whisper_download_headless(
     
     if success:
         logger.info("Download finished successfully")
-        if bc.web_bridge is not None:
-            bc.web_bridge.finish_task("Download Complete")
-        if after_func:
-            Thread(target=after_func, daemon=True).start()
+        reporter.finish_task("Download Complete")
+        start_optional_callback(after_func)
         return True
     else:
         logger.info("Download failed")
-        if bc.web_bridge is not None:
-            bc.web_bridge.update_task_error(f"Download failed: {msg}")
-        if failed_func:
-            Thread(target=failed_func, daemon=True).start()
+        reporter.update_task_error(f"Download failed: {msg}")
+        start_optional_callback(failed_func)
         return False
 
 
@@ -169,13 +213,22 @@ def snapshot_download(
         tqdm_class=tqdm_class,
     )
 
-from speech_translate.utils.helper import kill_thread
-
 def faster_whisper_download_headless(
-    model_name: str, repo_id: str, cache_dir: str, cancel_func, after_func, failed_func
+    model_name: str,
+    repo_id: str,
+    cache_dir: str,
+    cancel_func,
+    after_func,
+    failed_func,
+    *,
+    reporter: TaskReporter | None = None,
+    progress_callback=None,
+    progress_floor: float = 0.0,
+    progress_ceiling: float = 100.0,
 ):
     if huggingface_hub is None or repo_folder_name is None:
         raise RuntimeError("huggingface_hub is unavailable")
+    reporter = reporter or _build_bridge_task_reporter()
     logger.debug("Downloading model from Hugging Face Hub")
     os.makedirs(cache_dir, exist_ok=True)
 
@@ -189,9 +242,8 @@ def faster_whisper_download_headless(
         "local_dir_use_symlinks": True,
     }
 
-    if bc.web_bridge is not None:
-        bc.web_bridge.reset_task_state(title="Checking Faster Whisper Model")
-        bc.web_bridge.update_task_message("Fetching model info please wait...")
+    reporter.reset_task_state("Checking Faster Whisper Model")
+    reporter.update_task_message("Fetching model info please wait...")
         
     try:
         api = huggingface_hub.HfApi()
@@ -206,81 +258,53 @@ def faster_whisper_download_headless(
         logger.warning(f"Failed to fetch total size: {e}")
         total_size = 0
 
-    failed = False
-    msg = ""
-    finished = False
+    request_error_types = _get_requests_connection_error_types()
 
-    def run_threaded():
-        nonlocal failed, msg, finished
+    def _download() -> None:
         try:
             snapshot_download(repo_id, **kwargs)
-        except (
-            huggingface_hub.utils.HfHubHTTPError,
-            requests.exceptions.ConnectionError,
-        ) as ee:
-            logger.exception(ee)
-            failed = True
-            msg = str(ee)
-        except Exception as e:
-            logger.exception(e)
-            failed = True
-            msg = str(e)
-        finally:
-            finished = True
+        except ((huggingface_hub.utils.HfHubHTTPError,) + request_error_types) as exc:
+            logger.exception(exc)
+            raise
 
-    threaded = Thread(target=run_threaded, daemon=True)
-    threaded.start()
+    def _handle_progress(snapshot) -> None:
+        if total_size > 0:
+            display_sz = min(snapshot.current_bytes, total_size)
+            reporter.update_task_message(
+                f"Downloading {model_name} model ({display_sz / 1024 / 1024:.2f}/{total_size / 1024 / 1024:.2f} MB)"
+            )
+        else:
+            reporter.update_task_message(f"Downloading {model_name} model ({snapshot.current_bytes / 1024 / 1024:.2f} MB / Unknown)")
+        reporter.update_task_progress(snapshot.progress)
+        if progress_callback is not None:
+            progress_callback(snapshot)
 
-    def get_current_size():
-        size = 0
-        if not os.path.exists(storage_folder):
-            return 0
-        for root, dirs, files in os.walk(storage_folder):
-            if 'snapshots' in root.split(os.sep) or 'refs' in root.split(os.sep):
-                continue
-            for f in files:
-                filepath = os.path.join(root, f)
-                if not os.path.islink(filepath):
-                    size += os.path.getsize(filepath)
-        return size
+    monitor_result = monitor_threaded_download(
+        download_fn=_download,
+        observe_path=storage_folder,
+        total_bytes=total_size,
+        on_progress=_handle_progress,
+        cancel_requested=lambda: bool(bc.cancel_dl),
+        cancel_handler=kill_thread,
+        progress_floor=progress_floor,
+        progress_ceiling=progress_ceiling,
+    )
 
-    while not finished:
-        if bc.cancel_dl:
-            kill_thread(threaded)
-            finished = True
-            bc.cancel_dl = False
-            logger.info("Download Cancelled")
-            if bc.web_bridge is not None:
-                bc.web_bridge.finish_task("Download Cancelled")
-            return
+    if monitor_result.cancelled:
+        bc.cancel_dl = False
+        logger.info("Download Cancelled")
+        reporter.finish_task("Download Cancelled")
+        start_optional_callback(cancel_func)
+        return False
 
-        sleep(0.1)
-        if bc.web_bridge is not None:
-            current_sz = get_current_size()
-            if total_size > 0:
-                # To prevent percent > 100 due to overhead bloat
-                display_sz = min(current_sz, total_size)
-                mb_downloaded = display_sz / 1024 / 1024
-                length_in_mb = total_size / 1024 / 1024
-                percent = (display_sz / total_size) * 100
-                bc.web_bridge.update_task_message(f"Downloading {model_name} model ({mb_downloaded:.2f}/{length_in_mb:.2f} MB)")
-                bc.web_bridge.update_task_progress(percent)
-            else:
-                mb_downloaded = current_sz / 1024 / 1024
-                bc.web_bridge.update_task_message(f"Downloading {model_name} model ({mb_downloaded:.2f} MB / Unknown)")
-
-    if success := not failed:
+    if success := monitor_result.error is None:
         logger.info("Download finished")
-        if bc.web_bridge is not None:
-            bc.web_bridge.finish_task("Download Complete")
-        if after_func:
-            Thread(target=after_func, daemon=True).start()
+        reporter.finish_task("Download Complete")
+        start_optional_callback(after_func)
     else:
         logger.info("Download failed")
-        if bc.web_bridge is not None:
-            bc.web_bridge.update_task_error(f"Download failed: {msg}")
-        if failed_func:
-            Thread(target=failed_func, daemon=True).start()
+        reporter.update_task_error(f"Download failed: {monitor_result.error}")
+        start_optional_callback(failed_func)
 
     return success
 
@@ -297,6 +321,10 @@ def download_model(model_key, bridge=None, **kwargs):
         download_root = get_default_download_root()
 
     use_faster_whisper = kwargs.pop("use_faster_whisper")
+    reporter = kwargs.pop("reporter", None)
+    progress_callback = kwargs.pop("progress_callback", None)
+    progress_floor = float(kwargs.pop("progress_floor", 0.0))
+    progress_ceiling = float(kwargs.pop("progress_ceiling", 100.0))
     model_id = _MODELS[model_key] if not use_faster_whisper else FW_MODELS[model_key]
 
     cancel_func = kwargs.pop("cancel_func", None)
@@ -304,9 +332,31 @@ def download_model(model_key, bridge=None, **kwargs):
     failed_func = kwargs.pop("failed_func", None)
 
     if not use_faster_whisper:
-        return whisper_download_headless(model_key, model_id, download_root, cancel_func, after_func, failed_func)
+        return whisper_download_headless(
+            model_key,
+            model_id,
+            download_root,
+            cancel_func,
+            after_func,
+            failed_func,
+            reporter=reporter,
+            progress_callback=progress_callback,
+            progress_floor=progress_floor,
+            progress_ceiling=progress_ceiling,
+        )
     else:
-        return faster_whisper_download_headless(model_key, model_id, download_root, cancel_func, after_func, failed_func)
+        return faster_whisper_download_headless(
+            model_key,
+            model_id,
+            download_root,
+            cancel_func,
+            after_func,
+            failed_func,
+            reporter=reporter,
+            progress_callback=progress_callback,
+            progress_floor=progress_floor,
+            progress_ceiling=progress_ceiling,
+        )
 
 
 # verify downloaded model sha

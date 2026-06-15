@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import os
 from threading import Thread
-from time import sleep, time
+from time import sleep
 from typing import Dict, Optional, cast
-from urllib.request import Request, urlopen
 
 from speech_translate.controller_protocols import JsonDict, ModelManagerBridge, SettingsStore, WhisperLoadApiGetter
 from speech_translate.log_helpers import logger
 from speech_translate.ui_protocol import TASK_SOURCE_MODEL_DOWNLOAD, TASK_SOURCE_MODEL_LOAD
+from speech_translate.utils.whisper.download_runtime import TaskReporter
 from speech_translate.utils.whisper.paths import get_default_download_root
 from speech_translate.utils.whisper.helper import model_select_dict, model_values
 from speech_translate.utils.types import SettingDict
@@ -23,10 +23,17 @@ def _get_whisper_download_api():
 class ModelManagerController:
     """Owns model directory resolution, model status cache, downloads, and runtime model state."""
 
-    def __init__(self, bridge: ModelManagerBridge, settings: SettingsStore, whisper_loader_getter: WhisperLoadApiGetter):
+    def __init__(
+        self,
+        bridge: ModelManagerBridge,
+        settings: SettingsStore,
+        whisper_loader_getter: WhisperLoadApiGetter,
+        whisper_download_getter=_get_whisper_download_api,
+    ):
         self.bridge = bridge
         self.settings = settings
         self.whisper_loader_getter = whisper_loader_getter
+        self.whisper_download_getter = whisper_download_getter
         self.model_status_cache: Dict[str, JsonDict] = {}
         self.model_download_running = False
         self.model_load_running = False
@@ -79,14 +86,14 @@ class ModelManagerController:
     def is_model_available_for_backend(self, model_key: str, backend: str, model_dir: str) -> bool:
         if backend == "faster-whisper":
             try:
-                return _get_whisper_download_api().verify_model_faster_whisper(model_key, model_dir)
+                return self.whisper_download_getter().verify_model_faster_whisper(model_key, model_dir)
             except Exception:
                 return False
         return os.path.exists(os.path.join(model_dir, f"{model_key}.pt"))
 
     def verify_model_status(self, engine: str, model_key: str, model_dir: str) -> tuple[bool, str]:
         try:
-            whisper_download_api = _get_whisper_download_api()
+            whisper_download_api = self.whisper_download_getter()
             downloaded = (
                 whisper_download_api.verify_model_faster_whisper(model_key, model_dir)
                 if engine == "faster-whisper"
@@ -147,36 +154,14 @@ class ModelManagerController:
                 )
         return rows
 
-    @staticmethod
-    def path_size(path: str) -> int:
-        if not path:
-            return 0
-        if os.path.isfile(path):
-            return os.path.getsize(path)
-        if os.path.isdir(path):
-            return sum(os.path.getsize(os.path.join(root, file_name)) for root, _, files in os.walk(path) for file_name in files)
-        return 0
-
-    @staticmethod
-    def format_bytes(value: float) -> str:
-        if value <= 0:
-            return "0 B"
-        for unit in ["B", "KB", "MB", "GB", "TB"]:
-            if value < 1024.0:
-                return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
-            value /= 1024.0
-        return f"{value:.1f} PB"
-
-    def estimate_total_whisper_bytes(self, model_key: str) -> int:
-        try:
-            from whisper import _MODELS
-
-            if url := _MODELS.get(model_key):
-                with urlopen(Request(url, method="HEAD"), timeout=6) as resp:
-                    return int(resp.headers.get("Content-Length", 0))
-        except Exception:
-            pass
-        return 0
+    def _build_download_reporter(self) -> TaskReporter:
+        return TaskReporter(
+            reset_task_state=lambda _title: None,
+            update_task_message=lambda message: self.bridge.update_task_message(message, source=TASK_SOURCE_MODEL_DOWNLOAD),
+            update_task_progress=lambda value: self.bridge.update_task_progress(value, source=TASK_SOURCE_MODEL_DOWNLOAD),
+            finish_task=lambda _message: None,
+            update_task_error=lambda _message: None,
+        )
 
     def build_model_manager_state(self, engine_hint: Optional[str] = None, include_both: bool = False) -> JsonDict:
         self.model_manager_engine = self._normalize_engine_scope(engine_hint)
@@ -285,92 +270,33 @@ class ModelManagerController:
         def worker():
             self.model_download_running = True
             try:
+                whisper_download_api = self.whisper_download_getter()
                 model_dir = self.resolve_model_dir()
                 os.makedirs(model_dir, exist_ok=True)
                 self.bridge.reset_task_state("Model Download")
                 self.bridge.update_task_message(f"Preparing download for {self.model_manager_model} ({engine})", source=TASK_SOURCE_MODEL_DOWNLOAD)
                 self.bridge.update_task_progress(5, source=TASK_SOURCE_MODEL_DOWNLOAD)
 
-                if engine == "whisper":
-                    from whisper import _MODELS
-
-                    if not (url := _MODELS.get(self.model_manager_model)):
-                        raise ValueError(f"Invalid model key: {self.model_manager_model}")
-                    observe_path = os.path.join(model_dir, os.path.basename(url))
-                    total_bytes = self.estimate_total_whisper_bytes(self.model_manager_model)
-                else:
-                    from faster_whisper.utils import _MODELS as fw_models
-                    from huggingface_hub.file_download import repo_folder_name
-
-                    if not (repo_id := fw_models.get(self.model_manager_model)):
-                        raise ValueError(f"Invalid model key: {self.model_manager_model}")
-                    observe_path = os.path.join(model_dir, repo_folder_name(repo_id=repo_id, repo_type="model"))
-                    try:
-                        self.bridge.update_task_message(f"Fetching model info for {self.model_manager_model}...", source=TASK_SOURCE_MODEL_DOWNLOAD)
-                        import huggingface_hub
-
-                        api = huggingface_hub.HfApi()
-                        repo_info = api.repo_info(repo_id=repo_id, repo_type="model", files_metadata=True)
-                        allow_patterns = ["config.json", "preprocessor_config.json", "model.bin", "tokenizer.json", "vocabulary.*"]
-                        filtered = list(
-                            huggingface_hub.utils.filter_repo_objects(
-                                items=[file_info.rfilename for file_info in repo_info.siblings],
-                                allow_patterns=allow_patterns,
-                            )
-                        )
-                        total_bytes = sum(
-                            file_info.size
-                            for file_info in repo_info.siblings
-                            if file_info.rfilename in filtered and file_info.size is not None
-                        )
-                    except Exception as exc:
-                        logger.warning(f"Failed to fetch total size: {exc}")
-                        total_bytes = 0
-
                 self.cache_model_status(engine, self.model_manager_model, False, downloading=True, progress=5, speed="-")
-                result_box = {"ok": False, "error": None}
 
-                def _do_download():
-                    try:
-                        if engine == "whisper":
-                            from whisper import _MODELS, _download
-
-                            _download(_MODELS.get(self.model_manager_model), model_dir, False)
-                        else:
-                            from faster_whisper.utils import download_model as fw_download_model
-
-                            fw_download_model(self.model_manager_model, cache_dir=model_dir)
-                        result_box["ok"] = True
-                    except Exception as exc:
-                        result_box["error"] = exc
-
-                download_thread = Thread(target=_do_download, daemon=True)
-                download_thread.start()
-
-                last_bytes, last_time, start_t = 0, time(), time()
-                while download_thread.is_alive():
-                    sleep(0.6)
-                    current_bytes, now = self.path_size(observe_path), time()
-                    speed_bps = max(0, current_bytes - last_bytes) / max(0.2, now - last_time)
-                    speed_text = f"{self.format_bytes(speed_bps)}/s" if speed_bps > 0 else "-"
-                    progress = min(
-                        95.0,
-                        max(5.0, (current_bytes / total_bytes * 95.0) if total_bytes > 0 else (5.0 + (now - start_t) * 0.9)),
-                    )
-                    size_text = (
-                        f"{self.format_bytes(current_bytes)}/{self.format_bytes(total_bytes)}"
-                        if total_bytes > 0
-                        else self.format_bytes(current_bytes)
-                    )
-
-                    self.cache_model_status(engine, self.model_manager_model, False, downloading=True, progress=progress, speed=speed_text)
-                    self.bridge.update_task_progress(progress, source=TASK_SOURCE_MODEL_DOWNLOAD)
-                    self.bridge.update_task_message(f"DL {self.model_manager_model}: {size_text} ({speed_text})", source=TASK_SOURCE_MODEL_DOWNLOAD)
-                    last_bytes, last_time = current_bytes, now
-
-                download_thread.join()
-                if result_box.get("error"):
-                    raise cast(Exception, result_box["error"])
+                success = whisper_download_api.download_model(
+                    self.model_manager_model,
+                    use_faster_whisper=(engine == "faster-whisper"),
+                    download_root=model_dir,
+                    reporter=self._build_download_reporter(),
+                    progress_floor=5.0,
+                    progress_ceiling=90.0,
+                    progress_callback=lambda snapshot: self.cache_model_status(
+                        engine,
+                        self.model_manager_model,
+                        False,
+                        downloading=True,
+                        progress=snapshot.progress,
+                        speed=snapshot.speed_text,
+                    ),
+                )
+                if not success:
+                    raise RuntimeError("Download failed")
 
                 self.bridge.update_task_progress(90, source=TASK_SOURCE_MODEL_DOWNLOAD)
                 downloaded = False
