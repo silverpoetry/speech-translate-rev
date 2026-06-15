@@ -129,7 +129,14 @@ class RecordingSessionControl:
         self.runtime_state.clear_runtime_threads()
 
 
-recording_control = RecordingSessionControl()
+def build_recording_session_control(
+    *,
+    runtime_state: RecordingRuntimeStateAdapter | None = None,
+) -> RecordingSessionControl:
+    return RecordingSessionControl(runtime_state=runtime_state or build_recording_runtime_state_adapter())
+
+
+recording_control = build_recording_session_control()
 
 
 # Keep these wrappers in record.py because tests and external callers monkey-patch
@@ -179,6 +186,7 @@ def _prepare_recording_session_bootstrap(
     is_tc: bool,
     is_tl: bool,
     p,
+    shared_runtime_state: RealtimeSharedState | None = None,
 ) -> RecordingSessionBootstrap:
     config = _build_recording_session_config(
         rec_type=rec_type,
@@ -203,7 +211,7 @@ def _prepare_recording_session_bootstrap(
         config=config,
         p=p,
         settings_snapshot=settings_snapshot,
-        shared_runtime_state=shared_state,
+        shared_runtime_state=shared_runtime_state or shared_state,
     )
     return RecordingSessionBootstrap(
         config=config,
@@ -402,6 +410,7 @@ def _execute_recording_iteration(
     model_runtime: RecordingModelRuntime,
     translator: TranslationDispatcher,
     control: RecordingSessionControl | None = None,
+    runtime_text_state: RecordingTextState | None = None,
 ) -> bool:
     control = control or recording_control
     if is_tl and config.tl_engine_whisper and not is_tc:
@@ -436,6 +445,8 @@ def _execute_recording_iteration(
         is_tl=is_tl,
         separator=config.separator,
         translator=translator,
+        runtime_text_state=runtime_text_state,
+        set_current_status=control.set_current_status,
     )
     return True
 
@@ -567,6 +578,7 @@ def _run_recording_session_loop(
     is_tl: bool,
     rec_type: str,
     control: RecordingSessionControl | None = None,
+    runtime_text_state: RecordingTextState | None = None,
 ) -> None:
     control = control or recording_control
     while control.is_recording():
@@ -620,6 +632,7 @@ def _run_recording_session_loop(
             model_runtime=model_runtime,
             translator=lifecycle.services.translator,
             control=control,
+            runtime_text_state=runtime_text_state,
         ):
             continue
 
@@ -645,6 +658,7 @@ def _run_recording_session_loop(
                 separator=config.separator,
                 translator=lifecycle.services.translator,
                 buffer_reducer=lifecycle.services.buffer_reducer,
+                runtime_text_state=runtime_text_state,
             )
         if control.current_status() == "▶️ Recording ⟳ Transcribing Audio":
             control.set_current_status("▶️ Recording")
@@ -1096,6 +1110,9 @@ def record_session(
     p = None
     lifecycle: RecordingSessionLifecycle | None = None
     settings_snapshot = dict(_get_recording_settings_store().cache)
+    session_shared_state = RealtimeSharedState()
+    session_text_state = build_recording_text_state(shared_runtime_state=session_shared_state)
+    session_control = build_recording_session_control()
 
     try:
         p = get_pyaudio_module().PyAudio()
@@ -1108,6 +1125,7 @@ def record_session(
             is_tc=is_tc,
             is_tl=is_tl,
             p=p,
+            shared_runtime_state=session_shared_state,
         )
         config = bootstrap.config
         model_runtime = bootstrap.model_runtime
@@ -1129,6 +1147,8 @@ def record_session(
             is_tc=is_tc,
             is_tl=is_tl,
             t_start=t_start,
+            control=session_control,
+            runtime_text_state=session_text_state,
         )
         _start_recording_session_support_threads(
             services=lifecycle.services,
@@ -1137,9 +1157,15 @@ def record_session(
             max_buffer_s=config.max_buffer_s,
             max_sentences=config.max_sentences,
             sentence_limitless=config.sentence_limitless,
+            control=session_control,
+            runtime_text_state=session_text_state,
         )
 
-        _open_recording_stream(p=p, stream_runtime=stream_runtime)
+        _open_recording_stream(
+            p=p,
+            stream_runtime=stream_runtime,
+            state_adapter=StreamingStateAdapter(runtime_state=session_control.runtime_state),
+        )
 
         # Main Transcribing Loop
         _run_recording_session_loop(
@@ -1149,7 +1175,8 @@ def record_session(
             is_tc=is_tc,
             is_tl=is_tl,
             rec_type=rec_type,
-            control=recording_control,
+            control=session_control,
+            runtime_text_state=session_text_state,
         )
     except Exception as e:
         logger.error(f"Error in record session: {str(e)}")
@@ -1157,7 +1184,7 @@ def record_session(
         if p is not None:
             try:
                 finalize_context = RecordingSessionFinalizeContext.from_lifecycle(lifecycle)
-                _finalize_recording_session(p, finalize_context, control=recording_control)
+                _finalize_recording_session(p, finalize_context, control=session_control)
             except Exception as finalize_exc:
                 logger.error(f"Error finalizing record session: {finalize_exc}")
         empty_torch_cuda_cache()

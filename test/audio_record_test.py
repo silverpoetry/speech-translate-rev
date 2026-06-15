@@ -1157,7 +1157,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
             def fake_build_stream_runtime(*, rec_type, config, p, settings_snapshot=None, shared_runtime_state=None):
                 observed["use_temp_seen"] = config.use_temp
                 observed["settings_snapshot_use_temp"] = settings_snapshot["use_temp"]
-                observed["shared_runtime_state_is_default"] = shared_runtime_state is record_module.shared_state
+                observed["shared_runtime_state"] = shared_runtime_state
                 return RecordingStreamRuntime(
                     input_device_index=0,
                     sr_ori=16000,
@@ -1181,27 +1181,32 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 )
 
             record_module._build_recording_stream_runtime = fake_build_stream_runtime
-            record_module._build_recording_session_services = lambda **kwargs: RecordingSessionServices(
-                runtime=RecordingRuntime(
-                    taskname="Transcribe",
-                    device="mic",
-                    lang_source="English",
-                    lang_target="-",
-                    engine="Whisper",
-                    is_tl=False,
-                    use_temp=True,
-                    separator="<br />",
-                    keep_temp=False,
-                    t_start=0.0,
-                    max_buffer_s=10.0,
-                    max_sentences=5,
-                    sentence_limitless=False,
-                    lang_target_display="-",
-                ),
-                status_emitter=type("Emitter", (), {"emit": lambda self, **kwargs: None})(),
-                translator=object(),
-                buffer_reducer=object(),
-            )
+            def fake_build_services(**kwargs):
+                observed["session_control"] = kwargs["control"]
+                observed["runtime_text_state"] = kwargs["runtime_text_state"]
+                return RecordingSessionServices(
+                    runtime=RecordingRuntime(
+                        taskname="Transcribe",
+                        device="mic",
+                        lang_source="English",
+                        lang_target="-",
+                        engine="Whisper",
+                        is_tl=False,
+                        use_temp=True,
+                        separator="<br />",
+                        keep_temp=False,
+                        t_start=0.0,
+                        max_buffer_s=10.0,
+                        max_sentences=5,
+                        sentence_limitless=False,
+                        lang_target_display="-",
+                    ),
+                    status_emitter=type("Emitter", (), {"emit": lambda self, **kwargs: None})(),
+                    translator=object(),
+                    buffer_reducer=object(),
+                )
+
+            record_module._build_recording_session_services = fake_build_services
             record_module._start_recording_session_support_threads = lambda **kwargs: None
             record_module._open_recording_stream = lambda **kwargs: None
             record_module._run_recording_session_loop = lambda **kwargs: None
@@ -1221,7 +1226,10 @@ class AudioRecordHelpersTests(unittest.TestCase):
 
         self.assertTrue(observed["use_temp_seen"])
         self.assertFalse(observed["settings_snapshot_use_temp"])
-        self.assertTrue(observed["shared_runtime_state_is_default"])
+        self.assertIsInstance(observed["shared_runtime_state"], RealtimeSharedState)
+        self.assertIsNot(observed["shared_runtime_state"], record_module.shared_state)
+        self.assertIsNot(observed["session_control"], record_module.recording_control)
+        self.assertIs(observed["runtime_text_state"]._shared, observed["shared_runtime_state"])
 
     def test_record_session_finalizes_when_failure_happens_after_pyaudio_bootstrap(self) -> None:
         from speech_translate.utils.audio import record as record_module
