@@ -13,12 +13,18 @@ sys.path.append(to_add)
 from speech_translate.utils.audio.file import (
     FileEnvironmentAdapter,
     FileBatchStatusContext,
+    FileModDependencies,
+    FileModRequest,
     FileProcessDependencies,
     FileProcessRequest,
+    FileTranslateResultDependencies,
+    FileTranslateResultRequest,
     FileExportPlan,
+    FileModRuntime,
     FileProcessRuntime,
     FileProcessingStateAdapter,
     FileResultQueueAdapter,
+    FileResultTranslateRuntime,
     FileSettingsAdapter,
     FileUiBridgeAdapter,
     WorkerFailure,
@@ -36,7 +42,9 @@ from speech_translate.utils.audio.file import (
     _get_file_environment,
     _is_file_status_completed,
     _save_export_plan_metadata,
+    mod_result,
     process_file,
+    translate_result,
 )
 from speech_translate.bridge_runtime_state import BridgeFileRuntime, BridgeRecordingRuntime, BridgeVisualRuntime
 from speech_translate.runtime_registry import bridge_state_registry
@@ -243,12 +251,17 @@ class AudioFileHelpersTests(unittest.TestCase):
             patch("speech_translate.utils.audio.file.time", return_value=84.0),
         ):
             runtime = _build_mod_result_runtime(
-                model_name_tc="medium",
-                mode="alignment",
-                setting_cache=setting_cache,
-                ui_bridge=bridge_adapter,
-                result_queue=result_queue,
-                processing_state=processing_state,
+                request=FileModRequest(
+                    data_files=[("audio.wav", "result.json")],
+                    model_name_tc="medium",
+                    mode="alignment",
+                ),
+                dependencies=FileModDependencies(
+                    ui_bridge=bridge_adapter,
+                    result_queue=result_queue,
+                    processing_state=processing_state,
+                    settings=FileSettingsAdapter(cache=setting_cache),
+                ),
             )
 
         self.assertEqual(runtime.action, "Alignment")
@@ -280,10 +293,16 @@ class AudioFileHelpersTests(unittest.TestCase):
             patch("speech_translate.utils.audio.file.time", return_value=126.0),
         ):
             runtime = _build_translate_result_runtime(
-                engine="LibreTranslate",
-                setting_cache=setting_cache,
-                ui_bridge=bridge_adapter,
-                processing_state=processing_state,
+                request=FileTranslateResultRequest(
+                    data_files=["result.json"],
+                    engine="LibreTranslate",
+                    lang_target="Chinese",
+                ),
+                dependencies=FileTranslateResultDependencies(
+                    ui_bridge=bridge_adapter,
+                    processing_state=processing_state,
+                    settings=FileSettingsAdapter(cache=setting_cache),
+                ),
             )
 
         self.assertEqual(os.path.normpath(runtime.export_dir), os.path.normpath("D:\\exports\\@translated"))
@@ -519,6 +538,92 @@ class AudioFileHelpersTests(unittest.TestCase):
         self.assertEqual(processing_state.process_disabled, 1)
         self.assertEqual(processing_state.tc_disabled, 1)
         self.assertEqual(processing_state.tl_disabled, 1)
+        self.assertEqual(opened, [])
+
+    def test_mod_result_supports_typed_request_and_dependencies(self) -> None:
+        bridge = FakeFileStatusBridge()
+        ui_bridge = FileUiBridgeAdapter(bridge)
+        result_queue = FakeResultQueueAdapter()
+        processing_state = FakeProcessingStateAdapter(file_processing=False)
+        opened = []
+        runtime = FileModRuntime(
+            status_context=FileBatchStatusContext(is_mod=True, ui_bridge=ui_bridge),
+            action="Alignment",
+            export_dir="D:\\exports\\@aligned",
+            slice_start=None,
+            slice_end=None,
+            stable_whisper_api=object(),
+            model=object(),
+            mod_func=Mock(),
+            mod_args={},
+            started_at=2.0,
+            ui_bridge=ui_bridge,
+            result_queue=result_queue,
+            processing_state=processing_state,
+            settings=FileSettingsAdapter(cache={"auto_open_dir_alignment": True, "export_format": "{file}", "export_to": ["json"]}),
+        )
+        with (
+            patch("speech_translate.utils.audio.file._build_mod_result_runtime", return_value=runtime),
+            patch("speech_translate.utils.audio.file.empty_torch_cuda_cache"),
+            patch("speech_translate.utils.audio.file.time", return_value=2.0),
+        ):
+            mod_result(
+                FileModRequest(
+                    data_files=[("a.wav", "a.json")],
+                    model_name_tc="medium",
+                    mode="alignment",
+                ),
+                dependencies=FileModDependencies(
+                    ui_bridge=ui_bridge,
+                    result_queue=result_queue,
+                    processing_state=processing_state,
+                    settings=runtime.settings,
+                ),
+                open_dir_fn=lambda target: opened.append(target),
+            )
+
+        self.assertEqual(bridge.batches, [("Task alignment with medium", ["a.wav"])])
+        self.assertEqual(processing_state.process_disabled, 1)
+        self.assertEqual(opened, [])
+
+    def test_translate_result_supports_typed_request_and_dependencies(self) -> None:
+        bridge = FakeFileStatusBridge()
+        ui_bridge = FileUiBridgeAdapter(bridge)
+        processing_state = FakeProcessingStateAdapter(file_processing=False)
+        opened = []
+        runtime = FileResultTranslateRuntime(
+            status_context=FileBatchStatusContext(is_mod=True, ui_bridge=ui_bridge),
+            export_dir="D:\\exports\\@translated",
+            slice_start=None,
+            slice_end=None,
+            stable_whisper_api=object(),
+            api_kwargs={},
+            started_at=3.0,
+            ui_bridge=ui_bridge,
+            processing_state=processing_state,
+            settings=FileSettingsAdapter(cache={"auto_open_dir_translate": True, "export_format": "{file}", "export_to": ["json"]}),
+        )
+        with (
+            patch("speech_translate.utils.audio.file._build_translate_result_runtime", return_value=runtime),
+            patch("speech_translate.utils.audio.file.empty_torch_cuda_cache"),
+            patch("speech_translate.utils.audio.file.time", return_value=3.0),
+        ):
+            translate_result(
+                FileTranslateResultRequest(
+                    data_files=["a.json"],
+                    engine="Google Translate",
+                    lang_target="Chinese",
+                ),
+                dependencies=FileTranslateResultDependencies(
+                    ui_bridge=ui_bridge,
+                    processing_state=processing_state,
+                    settings=runtime.settings,
+                ),
+                open_dir_fn=lambda target: opened.append(target),
+            )
+
+        self.assertEqual(bridge.batches, [("Task Translate with Google Translate", ["a.json"])])
+        self.assertEqual(processing_state.process_disabled, 1)
         self.assertEqual(opened, [])
 
 

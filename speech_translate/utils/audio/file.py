@@ -68,6 +68,20 @@ class FileProcessRequest:
     engine: str
 
 
+@dataclass(frozen=True)
+class FileModRequest:
+    data_files: list
+    model_name_tc: str
+    mode: Literal["refinement", "alignment"]
+
+
+@dataclass(frozen=True)
+class FileTranslateResultRequest:
+    data_files: list
+    engine: str
+    lang_target: str
+
+
 @dataclass
 class FileResultQueueAdapter:
     state: object | None = None
@@ -257,6 +271,21 @@ class FileProcessDependencies:
     processing_state: FileProcessingStateAdapter
     settings: FileSettingsAdapter
     environment: FileEnvironmentAdapter
+
+
+@dataclass(frozen=True)
+class FileModDependencies:
+    ui_bridge: FileUiBridgeAdapter
+    result_queue: FileResultQueueAdapter
+    processing_state: FileProcessingStateAdapter
+    settings: FileSettingsAdapter
+
+
+@dataclass(frozen=True)
+class FileTranslateResultDependencies:
+    ui_bridge: FileUiBridgeAdapter
+    processing_state: FileProcessingStateAdapter
+    settings: FileSettingsAdapter
 
 
 @dataclass
@@ -596,22 +625,18 @@ def _build_process_file_runtime(
 
 def _build_mod_result_runtime(
     *,
-    model_name_tc: str,
-    mode: Literal["refinement", "alignment"],
-    setting_cache: Mapping[str, object],
-    ui_bridge: FileUiBridgeAdapter | None = None,
-    result_queue: FileResultQueueAdapter | None = None,
-    processing_state: FileProcessingStateAdapter | None = None,
-    settings: FileSettingsAdapter | None = None,
+    request: FileModRequest,
+    dependencies: FileModDependencies,
 ) -> FileModRuntime:
-    ui_bridge = ui_bridge or build_file_ui_bridge_adapter()
-    result_queue = result_queue or build_file_result_queue_adapter()
-    processing_state = processing_state or build_file_processing_state_adapter()
-    settings = settings or FileSettingsAdapter(cache=setting_cache)
-    action = "Refinement" if mode == "refinement" else "Alignment"
+    ui_bridge = dependencies.ui_bridge
+    result_queue = dependencies.result_queue
+    processing_state = dependencies.processing_state
+    settings = dependencies.settings
+    setting_cache = settings.cache
+    action = "Refinement" if request.mode == "refinement" else "Alignment"
     stable_whisper = get_stable_whisper()
-    model = stable_whisper.load_model(model_name_tc, **get_model_args(setting_cache))
-    mod_func = model.refine if mode == "refinement" else model.align
+    model = stable_whisper.load_model(request.model_name_tc, **get_model_args(setting_cache))
+    mod_func = model.refine if request.mode == "refinement" else model.align
     slice_start, slice_end = _resolve_slice_bounds(setting_cache)
     return FileModRuntime(
         status_context=FileBatchStatusContext(is_tc=False, is_tl=False, is_mod=True, ui_bridge=ui_bridge),
@@ -622,7 +647,7 @@ def _build_mod_result_runtime(
         stable_whisper_api=stable_whisper,
         model=model,
         mod_func=mod_func,
-        mod_args=get_tc_args(mod_func, setting_cache, mode="refine" if mode == "refinement" else "align"),
+        mod_args=get_tc_args(mod_func, setting_cache, mode="refine" if request.mode == "refinement" else "align"),
         started_at=time(),
         ui_bridge=ui_bridge,
         result_queue=result_queue,
@@ -633,19 +658,17 @@ def _build_mod_result_runtime(
 
 def _build_translate_result_runtime(
     *,
-    engine: str,
-    setting_cache: Mapping[str, object],
-    ui_bridge: FileUiBridgeAdapter | None = None,
-    processing_state: FileProcessingStateAdapter | None = None,
-    settings: FileSettingsAdapter | None = None,
+    request: FileTranslateResultRequest,
+    dependencies: FileTranslateResultDependencies,
 ) -> FileResultTranslateRuntime:
-    ui_bridge = ui_bridge or build_file_ui_bridge_adapter()
-    processing_state = processing_state or build_file_processing_state_adapter()
-    settings = settings or FileSettingsAdapter(cache=setting_cache)
+    ui_bridge = dependencies.ui_bridge
+    processing_state = dependencies.processing_state
+    settings = dependencies.settings
+    setting_cache = settings.cache
     slice_start, slice_end = _resolve_slice_bounds(setting_cache)
     api_kwargs = (
         {"libre_link": setting_cache["libre_link"], "libre_api_key": setting_cache["libre_api_key"]}
-        if engine == "LibreTranslate"
+        if request.engine == "LibreTranslate"
         else {}
     )
     return FileResultTranslateRuntime(
@@ -1030,39 +1053,35 @@ def process_file(
 
 
 def mod_result(
-    data_files: List,
-    model_name_tc: str,
-    mode: Literal["refinement", "alignment"],
+    request: FileModRequest,
     *,
-    ui_bridge: FileUiBridgeAdapter | None = None,
-    result_queue: FileResultQueueAdapter | None = None,
-    processing_state: FileProcessingStateAdapter | None = None,
-    settings: FileSettingsAdapter | None = None,
+    dependencies: FileModDependencies | None = None,
     open_dir_fn: Callable[[str], None] = start_file,
 ):
     try:
-        ui_bridge = ui_bridge or build_file_ui_bridge_adapter()
-        result_queue = result_queue or build_file_result_queue_adapter()
-        processing_state = processing_state or build_file_processing_state_adapter()
-        settings = settings or _get_file_settings_store()
+        dependencies = dependencies or FileModDependencies(
+            ui_bridge=build_file_ui_bridge_adapter(),
+            result_queue=build_file_result_queue_adapter(),
+            processing_state=build_file_processing_state_adapter(),
+            settings=_get_file_settings_store(),
+        )
+        processing_state = dependencies.processing_state
         runtime = _build_mod_result_runtime(
-            model_name_tc=model_name_tc,
-            mode=mode,
-            setting_cache=settings.cache,
-            ui_bridge=ui_bridge,
-            result_queue=result_queue,
-            processing_state=processing_state,
-            settings=settings,
+            request=request,
+            dependencies=dependencies,
         )
         status_context = runtime.status_context
         processing_state.reset_mod_counter()
 
-        runtime.ui_bridge.init_file_batch(f"Task {mode} with {model_name_tc}", [f[0] for f in data_files])
+        runtime.ui_bridge.init_file_batch(
+            f"Task {request.mode} with {request.model_name_tc}",
+            [f[0] for f in request.data_files],
+        )
 
         def is_still_active():
-            return status_context.has_active_work(len(data_files))
+            return status_context.has_active_work(len(request.data_files))
 
-        for i, file_data in enumerate(data_files):
+        for i, file_data in enumerate(request.data_files):
             if not processing_state.is_file_processing():
                 break
 
@@ -1073,13 +1092,26 @@ def mod_result(
                 file_name,
                 "",
                 "",
-                model_name_tc,
+                request.model_name_tc,
                 "",
             )
 
             task_short = {"refinement": "rf", "alignment": "al"}
-            format_dict = get_task_format(runtime.action, runtime.action, f"{runtime.action} with {model_name_tc}", f"{runtime.action} with {model_name_tc}")
-            format_dict.update(get_task_format(task_short[mode], task_short[mode], f"{task_short[mode]} with {model_name_tc}", f"{task_short[mode]} with {model_name_tc}", short_only=True))
+            format_dict = get_task_format(
+                runtime.action,
+                runtime.action,
+                f"{runtime.action} with {request.model_name_tc}",
+                f"{runtime.action} with {request.model_name_tc}",
+            )
+            format_dict.update(
+                get_task_format(
+                    task_short[request.mode],
+                    task_short[request.mode],
+                    f"{task_short[request.mode]} with {request.model_name_tc}",
+                    f"{task_short[request.mode]} with {request.model_name_tc}",
+                    short_only=True,
+                )
+            )
             export_plan = _build_export_plan(runtime.export_dir, base_name, format_dict)
 
             try:
@@ -1089,16 +1121,16 @@ def mod_result(
                 continue
 
             mod_args = dict(runtime.mod_args)
-            if mode == "alignment" and len(file_data) > 2 and len(file_data[2]) > 3:
+            if request.mode == "alignment" and len(file_data) > 2 and len(file_data[2]) > 3:
                 mod_args["language"] = get_whisper_to_language_code().get(get_whisper_lang_similar(file_data[2]), "auto")
 
             def _run_mod():
                 try:
-                    _update_status(status_context, "mod", i, f"Processing {mode}")
+                    _update_status(status_context, "mod", i, f"Processing {request.mode}")
                     res = runtime.mod_func(audio_path, mod_src, **mod_args)
                     runtime.result_queue.put(res)
                 except Exception as e:
-                    if "'NoneType'" in str(e) and mode == "refinement":
+                    if "'NoneType'" in str(e) and request.mode == "refinement":
                         try:
                             _update_status(status_context, "mod", i, "Re-transcribing...")
                             res = runtime.model.transcribe(audio_path, **get_tc_args(runtime.model.transcribe, runtime.settings.cache))
@@ -1134,7 +1166,7 @@ def mod_result(
             sleep(0.5)
 
         logger.info(f"Process MOD completed in {time() - runtime.started_at:.2f}s")
-        if processing_state.mod_counter() > 0 and runtime.settings.cache.get(f"auto_open_dir_{mode}", True):
+        if processing_state.mod_counter() > 0 and runtime.settings.cache.get(f"auto_open_dir_{request.mode}", True):
             open_dir_fn(runtime.export_dir)
 
     except Exception as e:
@@ -1145,35 +1177,31 @@ def mod_result(
 
 
 def translate_result(
-    data_files: List,
-    engine: str,
-    lang_target: str,
+    request: FileTranslateResultRequest,
     *,
-    ui_bridge: FileUiBridgeAdapter | None = None,
-    processing_state: FileProcessingStateAdapter | None = None,
-    settings: FileSettingsAdapter | None = None,
+    dependencies: FileTranslateResultDependencies | None = None,
     open_dir_fn: Callable[[str], None] = start_file,
 ):
     try:
-        ui_bridge = ui_bridge or build_file_ui_bridge_adapter()
-        processing_state = processing_state or build_file_processing_state_adapter()
-        settings = settings or _get_file_settings_store()
+        dependencies = dependencies or FileTranslateResultDependencies(
+            ui_bridge=build_file_ui_bridge_adapter(),
+            processing_state=build_file_processing_state_adapter(),
+            settings=_get_file_settings_store(),
+        )
+        processing_state = dependencies.processing_state
         runtime = _build_translate_result_runtime(
-            engine=engine,
-            setting_cache=settings.cache,
-            ui_bridge=ui_bridge,
-            processing_state=processing_state,
-            settings=settings,
+            request=request,
+            dependencies=dependencies,
         )
         status_context = runtime.status_context
         processing_state.reset_mod_counter()
 
-        runtime.ui_bridge.init_file_batch(f"Task Translate with {engine}", data_files)
+        runtime.ui_bridge.init_file_batch(f"Task Translate with {request.engine}", request.data_files)
 
         def is_still_active():
-            return status_context.has_active_work(len(data_files))
+            return status_context.has_active_work(len(request.data_files))
 
-        for i, file_path in enumerate(data_files):
+        for i, file_path in enumerate(request.data_files):
             if not processing_state.is_file_processing():
                 break
 
@@ -1189,13 +1217,26 @@ def translate_result(
                 datetime.now().strftime(runtime.settings.cache["export_format"]),
                 file_name,
                 lang_src,
-                lang_target,
+                request.lang_target,
                 "",
-                engine,
+                request.engine,
             )
 
-            format_dict = get_task_format("translated result", f"translated result from {lang_src} to {lang_target}", f"translated result with {engine}", f"translated result from {lang_src} to {lang_target} with {engine}")
-            format_dict.update(get_task_format("tl res", f"tl res from {lang_src} to {lang_target}", f"tl res with {engine}", f"tl res from {lang_src} to {lang_target} with {engine}", short_only=True))
+            format_dict = get_task_format(
+                "translated result",
+                f"translated result from {lang_src} to {request.lang_target}",
+                f"translated result with {request.engine}",
+                f"translated result from {lang_src} to {request.lang_target} with {request.engine}",
+            )
+            format_dict.update(
+                get_task_format(
+                    "tl res",
+                    f"tl res from {lang_src} to {request.lang_target}",
+                    f"tl res with {request.engine}",
+                    f"tl res from {lang_src} to {request.lang_target} with {request.engine}",
+                    short_only=True,
+                )
+            )
             export_plan = _build_export_plan(runtime.export_dir, base_name, format_dict)
 
             _update_status(status_context, "mod", i, "Translating please wait...")
@@ -1204,7 +1245,7 @@ def translate_result(
             _run_monitored_worker(
                 run_translate_api,
                 cancel_check=processing_state.is_file_processing,
-                args=(result, engine, lang_src, lang_target, fail_status),
+                args=(result, request.engine, lang_src, request.lang_target, fail_status),
                 kwargs=runtime.api_kwargs,
             )
 
