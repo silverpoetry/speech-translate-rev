@@ -9,6 +9,7 @@ to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
 from speech_translate.state_view_builder import StateViewBuilder
+from speech_translate.state_view_settings import build_record_device_view_settings, build_state_view_settings
 from speech_translate.ui_protocol import UI_SECTION_STATE
 
 
@@ -173,6 +174,23 @@ class StateViewBuilderTests(unittest.TestCase):
         self.assertEqual(state["import_ui"]["verify_available"], False)
         self.assertEqual(state["detached_config"]["tc"]["mode"], "tc")
         self.assertEqual(state["about"]["model_dir"], "D:/models")
+
+    def test_build_state_view_settings_extracts_view_payloads(self) -> None:
+        view_settings = build_state_view_settings(self.settings.cache)
+
+        self.assertEqual(view_settings.log_level, "INFO")
+        self.assertEqual(view_settings.main_ui.selected_input, "mic")
+        self.assertEqual(view_settings.main_ui.selected_engine, "Google Translate")
+        self.assertEqual(view_settings.record_ui.model_device_preference, "auto")
+        self.assertEqual(view_settings.compact_settings.to_payload()["model_f_import"], "small")
+
+    def test_build_record_device_view_settings_extracts_device_thresholds(self) -> None:
+        device_settings = build_record_device_view_settings(self.settings.cache, "speaker")
+
+        self.assertEqual(device_settings.sample_rate, 16000)
+        self.assertEqual(device_settings.channels, 2)
+        self.assertTrue(device_settings.threshold_enable)
+        self.assertEqual(device_settings.threshold_db, -40)
 
     def test_prime_audio_source_cache_falls_back_to_error_entries_on_failure(self) -> None:
         with patch("speech_translate.state_view_builder.get_host_apis", side_effect=RuntimeError("boom")):

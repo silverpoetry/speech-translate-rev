@@ -9,6 +9,10 @@ from speech_translate._constants import APP_NAME
 from speech_translate._version import __version__
 from speech_translate.controller_protocols import JsonDict, SettingsStore, StateViewBridge
 from speech_translate.log_helpers import logger
+from speech_translate.state_view_settings import (
+    build_record_device_view_settings,
+    build_state_view_settings,
+)
 from speech_translate.ui_protocol import UI_SECTION_STATE
 from speech_translate.utils.audio.device import (
     get_default_host_api,
@@ -70,7 +74,7 @@ class StateViewBuilder:
         return dict(self.settings.cache)
 
     def _build_system_state(self) -> AppState:
-        settings_snapshot = self._settings_snapshot()
+        view_settings = build_state_view_settings(self._settings_snapshot())
         return AppState(
             app_name=APP_NAME,
             version=__version__,
@@ -78,14 +82,14 @@ class StateViewBuilder:
             os_release=release(),
             os_version=version(),
             cpu=processor(),
-            settings=self._build_compact_settings(settings_snapshot),
+            settings=view_settings.compact_settings.to_payload(),
             import_ui=self.bridge.build_import_ui(verify_available=False),
             main_ui=self.build_main_ui(),
             record_ui=self.build_record_ui(),
             runtime_model=self.bridge.build_runtime_model_state(),
             live_ui=self.bridge.snapshot_live_state(),
             about=self.build_about(),
-            log_level=settings_snapshot.get("log_level", "DEBUG"),
+            log_level=view_settings.log_level,
             current_log=self.bridge.get_log_file_name(),
             log_content=self.bridge.get_log_content(),
         )
@@ -105,7 +109,7 @@ class StateViewBuilder:
         return self.build_state()
 
     def build_main_ui(self) -> JsonDict:
-        settings_snapshot = self._settings_snapshot()
+        view_settings = build_state_view_settings(self._settings_snapshot())
         return {
             "input_options": ["mic", "speaker"],
             "source_options": WHISPER_LANG_LIST,
@@ -116,60 +120,16 @@ class StateViewBuilder:
                 "MyMemoryTranslator",
                 "LibreTranslate",
             ],
-            "selected_input": settings_snapshot.get("input"),
-            "selected_source": settings_snapshot.get("source_lang_mw"),
-            "selected_target": settings_snapshot.get("target_lang_mw"),
-            "selected_engine": settings_snapshot.get("tl_engine_mw"),
-            "transcribe": settings_snapshot.get("transcribe_mw", True),
-            "translate": settings_snapshot.get("translate_mw", True),
-            "auto_scroll_log": settings_snapshot.get("auto_scroll_log"),
-            "auto_refresh_log": settings_snapshot.get("auto_refresh_log"),
+            **view_settings.main_ui.to_payload(),
         }
 
     def build_record_device_ui(self, device: str) -> JsonDict:
-        settings_snapshot = self._settings_snapshot()
-        return {
-            "sample_rate": settings_snapshot.get(f"sample_rate_{device}"),
-            "chunk_size": settings_snapshot.get(f"chunk_size_{device}"),
-            "channels": settings_snapshot.get(f"channels_{device}"),
-            "auto_sample_rate": settings_snapshot.get(f"auto_sample_rate_{device}"),
-            "auto_channels": settings_snapshot.get(f"auto_channels_{device}"),
-            "min_input": settings_snapshot.get(f"min_input_length_{device}"),
-            "max_buffer": settings_snapshot.get(f"max_buffer_{device}"),
-            "max_sentences": settings_snapshot.get(f"max_sentences_{device}"),
-            "no_limit": settings_snapshot.get(f"{device}_no_limit"),
-            "threshold_enable": settings_snapshot.get(f"threshold_enable_{device}"),
-            "threshold_auto": settings_snapshot.get(f"threshold_auto_{device}"),
-            "auto_break_buffer": settings_snapshot.get(f"auto_break_buffer_{device}"),
-            "threshold_auto_level": settings_snapshot.get(f"threshold_auto_level_{device}"),
-            "threshold_auto_silero": settings_snapshot.get(f"threshold_auto_silero_{device}"),
-            "threshold_silero_min": settings_snapshot.get(f"threshold_silero_{device}_min"),
-            "threshold_db": settings_snapshot.get(f"threshold_db_{device}"),
-        }
+        return build_record_device_view_settings(self._settings_snapshot(), device).to_payload()
 
     def build_record_ui(self) -> JsonDict:
-        settings_snapshot = self._settings_snapshot()
+        view_settings = build_state_view_settings(self._settings_snapshot())
         audio_sources = self.build_audio_source_options()
-        return {
-            "input": settings_snapshot.get("input"),
-            "host_api": settings_snapshot.get("hostAPI"),
-            "mic": settings_snapshot.get("mic"),
-            "speaker": settings_snapshot.get("speaker"),
-            "host_api_options": audio_sources.get("host_api_options", []),
-            "mic_options": audio_sources.get("mic_options", []),
-            "speaker_options": audio_sources.get("speaker_options", []),
-            "verbose_record": settings_snapshot.get("verbose_record"),
-            "transcribe_rate": settings_snapshot.get("transcribe_rate"),
-            "model_device_preference": settings_snapshot.get("model_device_preference", "auto"),
-            "model_device_options": ["auto", "cpu", "cuda"],
-            "separate_with": settings_snapshot.get("separate_with"),
-            "use_temp": settings_snapshot.get("use_temp"),
-            "keep_temp": settings_snapshot.get("keep_temp"),
-            "file_use_official_whisper": settings_snapshot.get("file_use_official_whisper", False),
-            "show_audio_visualizer_in_setting": settings_snapshot.get("show_audio_visualizer_in_setting"),
-            "mic_device": self.build_record_device_ui("mic"),
-            "speaker_device": self.build_record_device_ui("speaker"),
-        }
+        return view_settings.record_ui.to_payload(audio_sources=audio_sources)
 
     def build_about(self) -> JsonDict:
         return {
@@ -278,44 +238,3 @@ class StateViewBuilder:
 
     def get_audio_source_options(self, host_api: Optional[str] = None) -> JsonDict:
         return self.build_audio_source_options(host_api)
-
-    def _build_compact_settings(self, settings_snapshot: Dict[str, object]) -> JsonDict:
-        return {
-            "log_level": settings_snapshot.get("log_level"),
-            "dir_export": settings_snapshot.get("dir_export"),
-            "dir_model": settings_snapshot.get("dir_model"),
-            "export_to": settings_snapshot.get("export_to"),
-            "source_lang_mw": settings_snapshot.get("source_lang_mw"),
-            "target_lang_mw": settings_snapshot.get("target_lang_mw"),
-            "input": settings_snapshot.get("input"),
-            "tl_engine_mw": settings_snapshot.get("tl_engine_mw"),
-            "transcribe_mw": settings_snapshot.get("transcribe_mw", True),
-            "translate_mw": settings_snapshot.get("translate_mw", True),
-            "auto_scroll_log": settings_snapshot.get("auto_scroll_log"),
-            "auto_refresh_log": settings_snapshot.get("auto_refresh_log"),
-            "source_lang_f_import": settings_snapshot.get("source_lang_f_import"),
-            "target_lang_f_import": settings_snapshot.get("target_lang_f_import"),
-            "transcribe_f_import": settings_snapshot.get("transcribe_f_import"),
-            "translate_f_import": settings_snapshot.get("translate_f_import"),
-            "tl_engine_f_import": settings_snapshot.get("tl_engine_f_import"),
-            "model_f_import": settings_snapshot.get("model_f_import"),
-            "selenium_compact_level": settings_snapshot.get("selenium_compact_level", 2),
-            "selenium_z_order_mode": settings_snapshot.get("selenium_z_order_mode", "behind-main"),
-            "selenium_auto_close_on_task_done": settings_snapshot.get("selenium_auto_close_on_task_done", True),
-            "selenium_chrome_user_data_dir": settings_snapshot.get("selenium_chrome_user_data_dir", ""),
-            "enable_initial_prompt": settings_snapshot.get("enable_initial_prompt", False),
-            "initial_prompts_map": settings_snapshot.get("initial_prompts_map", {}),
-            "condition_on_previous_text": settings_snapshot.get("condition_on_previous_text", True),
-            "filter_rec": settings_snapshot.get("filter_rec", True),
-            "filter_rec_case_sensitive": settings_snapshot.get("filter_rec_case_sensitive", False),
-            "filter_rec_strip": settings_snapshot.get("filter_rec_strip", True),
-            "filter_rec_ignore_punctuations": settings_snapshot.get("filter_rec_ignore_punctuations", "\"',.?!"),
-            "filter_rec_exact_match": settings_snapshot.get("filter_rec_exact_match", False),
-            "filter_rec_similarity": settings_snapshot.get("filter_rec_similarity", 0.75),
-            "filter_file_import": settings_snapshot.get("filter_file_import", True),
-            "filter_file_import_case_sensitive": settings_snapshot.get("filter_file_import_case_sensitive", False),
-            "filter_file_import_strip": settings_snapshot.get("filter_file_import_strip", True),
-            "filter_file_import_ignore_punctuations": settings_snapshot.get("filter_file_import_ignore_punctuations", "\"',.?!"),
-            "filter_file_import_exact_match": settings_snapshot.get("filter_file_import_exact_match", False),
-            "filter_file_import_similarity": settings_snapshot.get("filter_file_import_similarity", 0.75),
-        }
