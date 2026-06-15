@@ -897,7 +897,7 @@ def _cancellable_tc(
                     split_res(stable_whisper.WhisperResult(result.to_dict()), runtime_settings.snapshot),
                     tc_export_plan.save_base_path,
                     runtime_settings.export_to,
-                    settings,
+                    runtime_settings,
                     source_media_path=file_path,
                 )
             else:
@@ -1000,7 +1000,7 @@ def _cancellable_tl(
             split_res(result, runtime_settings.snapshot),
             tl_export_plan.save_base_path,
             runtime_settings.export_to,
-            settings,
+            runtime_settings,
             source_media_path=media_path,
         )
         _update_status(status_context, "tl", index, "Translated")
@@ -1224,7 +1224,12 @@ def mod_result(
             result = split_res(result, runtime.runtime_settings.snapshot)
             if not result.language: result.language = mod_args.get("language", "auto")
 
-            save_output_stable_ts(result, export_plan.save_base_path, runtime.runtime_settings.export_to, runtime.settings)
+            save_output_stable_ts(
+                result,
+                export_plan.save_base_path,
+                runtime.runtime_settings.export_to,
+                runtime.runtime_settings,
+            )
             processing_state.increment_mod_counter()
             _update_status(status_context, "mod", i, runtime.action)
             _save_export_plan_metadata(
@@ -1328,7 +1333,7 @@ def translate_result(
                 split_res(result, runtime.runtime_settings.snapshot),
                 export_plan.save_base_path,
                 runtime.runtime_settings.export_to,
-                runtime.settings,
+                runtime.runtime_settings,
                 source_media_path=file_path,
             )
             _update_status(status_context, "mod", i, "Translated")

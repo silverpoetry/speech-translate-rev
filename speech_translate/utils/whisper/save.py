@@ -9,6 +9,7 @@ from typing import List, Mapping, Optional, Protocol, Union
 from speech_translate.log_helpers import logger
 from speech_translate.utils.types import StableTsResultDict
 
+from .save_runtime_settings import WhisperSaveRuntimeSettings, build_whisper_save_runtime_settings
 from .stable_args import parse_args_stable_ts
 
 
@@ -31,6 +32,16 @@ class WhisperSaveSettings(Protocol):
 
 def _is_whisper_result_like(value: object) -> bool:
     return hasattr(value, "segments") and hasattr(value, "to_dict")
+
+
+def _resolve_save_runtime_settings(
+    settings: WhisperSaveSettings | Mapping[str, object] | WhisperSaveRuntimeSettings,
+) -> WhisperSaveRuntimeSettings:
+    if isinstance(settings, WhisperSaveRuntimeSettings):
+        return settings
+    if hasattr(settings, "cache"):
+        return build_whisper_save_runtime_settings(getattr(settings, "cache"))
+    return build_whisper_save_runtime_settings(settings)
 
 
 def write_csv(
@@ -84,11 +95,12 @@ def write_csv(
 
 
 def fname_dupe_check(filename: str, extension: str):
+    extension = extension.lstrip(".")
     # check if file already exists
-    if os.path.exists(filename + extension):
+    if os.path.exists(f"{filename}.{extension}"):
         # add (2) to the filename, but if that already exists, add (3) and so on
         i = 2
-        while os.path.exists(filename + f" ({i})"):
+        while os.path.exists(f"{filename} ({i}).{extension}"):
             i += 1
 
         filename += f" ({i})"
@@ -109,16 +121,20 @@ def _next_available_path(base_path: str, extension: str) -> str:
         idx += 1
 
 
-def _save_temp_srt(result: Union[WhisperResultLike, StableTsResultDict], settings: WhisperSaveSettings) -> str:
+def _save_temp_srt(
+    result: Union[WhisperResultLike, StableTsResultDict],
+    settings: WhisperSaveSettings | Mapping[str, object] | WhisperSaveRuntimeSettings,
+) -> str:
+    runtime_settings = _resolve_save_runtime_settings(settings)
     temp_dir = tempfile.mkdtemp(prefix="st_subtitle_")
     temp_base = os.path.join(temp_dir, "subtitle")
     save_method = getattr(result, "to_srt_vtt")
     kwargs_to_pass = {
         "save_path": temp_base,
-        "segment_level": settings.cache["segment_level"],
-        "word_level": settings.cache["word_level"],
+        "segment_level": runtime_settings.segment_level,
+        "word_level": runtime_settings.word_level,
     }
-    args = parse_args_stable_ts(settings.cache["whisper_args"], "save", save_method, **kwargs_to_pass)
+    args = parse_args_stable_ts(runtime_settings.whisper_args, "save", save_method, **kwargs_to_pass)
     args.pop("success", None)
     save_method(**args)
     return temp_base + ".srt"
@@ -135,7 +151,7 @@ def _export_fast_mp4_with_subtitle(
     result: Union[WhisperResultLike, StableTsResultDict],
     outname: str,
     media_path: Optional[str],
-    settings: WhisperSaveSettings,
+    settings: WhisperSaveSettings | Mapping[str, object] | WhisperSaveRuntimeSettings,
 ) -> None:
     if not media_path or not os.path.exists(media_path):
         logger.warning("Skip MP4 export: source media path is missing or does not exist")
@@ -229,9 +245,13 @@ def _export_fast_mp4_with_subtitle(
 
 
 def save_output_stable_ts(
-    result: Union[WhisperResultLike, StableTsResultDict], outname, output_formats: List, settings: WhisperSaveSettings,
+    result: Union[WhisperResultLike, StableTsResultDict],
+    outname,
+    output_formats: List,
+    settings: WhisperSaveSettings | Mapping[str, object] | WhisperSaveRuntimeSettings,
     source_media_path: Optional[str] = None
 ):
+    runtime_settings = _resolve_save_runtime_settings(settings)
     output_formats_methods = {
         "srt": "to_srt_vtt",
         "ass": "to_ass",
@@ -260,7 +280,7 @@ def save_output_stable_ts(
 
         # Save JSON
         elif f_format == "json":
-            with open(fname_dupe_check(outname, f_format) + ".json", "w", encoding="utf-8") as f_json:
+            with open(outname + ".json", "w", encoding="utf-8") as f_json:
                 res = result.to_dict() if _is_whisper_result_like(result) else result
                 json.dump(res, f_json, indent=2, allow_nan=True, ensure_ascii=False)
 
@@ -269,8 +289,8 @@ def save_output_stable_ts(
             save_method = getattr(result, output_formats_methods[f_format])
             kwargs_to_pass = {
                 "save_path": outname,
-                "segment_level": settings.cache["segment_level"],
-                "word_level": settings.cache["word_level"]
+                "segment_level": runtime_settings.segment_level,
+                "word_level": runtime_settings.word_level,
             }
             if f_format == "vtt":
                 kwargs_to_pass["vtt"] = True
@@ -290,6 +310,6 @@ def save_output_stable_ts(
                     logger.warning("Somehow both word level and segment level is False ??, setting segment level to True")
                     kwargs_to_pass["word_level"] = True
 
-            args = parse_args_stable_ts(settings.cache["whisper_args"], "save", save_method, **kwargs_to_pass)
+            args = parse_args_stable_ts(runtime_settings.whisper_args, "save", save_method, **kwargs_to_pass)
             args.pop('success')  # no need to check, because it probably have been checked before since this is the last step
             save_method(**args)  # run the method
