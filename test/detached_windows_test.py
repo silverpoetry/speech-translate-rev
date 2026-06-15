@@ -9,6 +9,7 @@ sys.path.append(to_add)
 
 from speech_translate.detached_windows import (
     DetachedWindowApi,
+    DetachedWindowManager,
     RecordingWindowApi,
     build_detached_config,
     detached_setting_key,
@@ -96,6 +97,31 @@ class DetachedWindowHelpersTests(unittest.TestCase):
     def test_recording_window_api_returns_provider_snapshot(self) -> None:
         api = RecordingWindowApi(lambda: {"status": "Recording", "active": True})
         self.assertEqual(api.get_recording_state(), {"status": "Recording", "active": True})
+
+    def test_manager_resolve_window_placement_preserves_explicit_coordinates(self) -> None:
+        manager = DetachedWindowManager(settings=None)
+        width, height, x, y = manager._resolve_window_placement(
+            "tc",
+            x=10,
+            y=20,
+            width=640,
+            height=320,
+        )
+        self.assertEqual((width, height, x, y), (640, 320, 10, 20))
+
+    def test_manager_resolve_window_placement_uses_cached_geometry_defaults(self) -> None:
+        settings = type("Settings", (), {"cache": {"ex_tc_geometry": "640x320"}})()
+        manager = DetachedWindowManager(settings=settings)
+        width, height, x, y = manager._resolve_window_placement(
+            "tc",
+            x=None,
+            y=None,
+            width=None,
+            height=None,
+        )
+        self.assertEqual((width, height), (640, 320))
+        self.assertIsInstance(x, int)
+        self.assertIsInstance(y, int)
 
 
 if __name__ == "__main__":

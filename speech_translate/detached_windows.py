@@ -18,7 +18,7 @@ from speech_translate.controller_protocols import (
     SettingsStore,
     WebviewWindowLike,
 )
-from speech_translate.window_geometry import center_window_pos, ensure_visible_or_center, parse_window_size
+from speech_translate.window_geometry import resolve_window_placement
 
 
 DETACHED_WINDOW_MODES = {"tc", "tl"}
@@ -363,6 +363,41 @@ class DetachedWindowManager:
         except Exception:
             pass
 
+    def _resolve_window_placement(
+        self,
+        mode: str,
+        *,
+        x: Optional[int],
+        y: Optional[int],
+        width: Optional[int],
+        height: Optional[int],
+    ) -> tuple[int, int, int, int]:
+        if width is not None and height is not None:
+            resolved_width = int(width)
+            resolved_height = int(height)
+            if x is None or y is None:
+                placement = resolve_window_placement(
+                    f"{resolved_width}x{resolved_height}",
+                    resolved_width,
+                    resolved_height,
+                    x=x,
+                    y=y,
+                )
+                return placement.width, placement.height, placement.x, placement.y
+            return resolved_width, resolved_height, int(x), int(y)
+
+        geometry_cache = "900x240"
+        if self.settings is not None:
+            geometry_cache = str(self.settings.cache.get(f"ex_{mode}_geometry", geometry_cache))
+        placement = resolve_window_placement(
+            geometry_cache,
+            900,
+            240,
+            x=x,
+            y=y,
+        )
+        return placement.width, placement.height, placement.x, placement.y
+
     def create_window(
         self,
         mode: str = "tc",
@@ -388,15 +423,13 @@ class DetachedWindowManager:
             html_path = str(Path(__file__).with_name("web") / "detached_window.html")
             always_on_top = self._is_always_on_top_enabled(mode)
             self._window_loaded[mode] = False
-
-            if (width is None or height is None) and self.settings is not None:
-                width, height = parse_window_size(self.settings.cache.get(f"ex_{mode}_geometry", "900x240"), 900, 240)
-            else:
-                width = width or 900
-                height = height or 240
-
-            x, y = center_window_pos(width, height)
-            x, y = ensure_visible_or_center(int(x), int(y), int(width), int(height))
+            width, height, x, y = self._resolve_window_placement(
+                mode,
+                x=x,
+                y=y,
+                width=width,
+                height=height,
+            )
 
             cache_value = None
             if self.settings is not None:
