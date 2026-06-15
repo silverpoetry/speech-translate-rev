@@ -220,6 +220,43 @@ class ModelManagerControllerTests(unittest.TestCase):
         self.assertEqual(cached["progress"], 100.0)
         self.assertIn(("finish", "Model downloaded: small (whisper)"), self.bridge.messages)
 
+    def test_load_runtime_model_clears_loading_state_after_success(self) -> None:
+        from speech_translate import model_manager as model_manager_module
+
+        class InlineThread:
+            def __init__(self, target, daemon=True):
+                self._target = target
+                self.daemon = daemon
+
+            def start(self):
+                self._target()
+
+        class FakeWhisperLoadApi:
+            def get_model_args(self, settings_snapshot):
+                return {"device": "cpu", "download_root": "D:/models"}
+
+            def get_model(self, *args, **kwargs):
+                return ("tc", None, object(), None, object())
+
+        controller = ModelManagerController(
+            self.bridge,
+            self.settings,
+            lambda: FakeWhisperLoadApi(),
+        )
+
+        previous_thread = model_manager_module.Thread
+        try:
+            model_manager_module.Thread = InlineThread
+            result = controller.load_runtime_model("tiny")
+        finally:
+            model_manager_module.Thread = previous_thread
+
+        self.assertTrue(result["ok"])
+        self.assertFalse(controller.model_load_running)
+        self.assertTrue(controller.runtime_model_loaded)
+        self.assertEqual(controller.runtime_model_key, "tiny")
+        self.assertIn(("finish", "Model ready: tiny"), self.bridge.messages)
+
 
 if __name__ == "__main__":
     unittest.main()

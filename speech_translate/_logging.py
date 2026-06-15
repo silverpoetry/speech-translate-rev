@@ -11,8 +11,11 @@ from ._path import dir_log
 
 # ------------------ #
 FILE_ID = None
+CONSOLE_ID = None
 recent_stderr = []
 current_log: str = f"{strftime('%Y-%m-%d %H-%M-%S')}.log"
+_FALLBACK_STREAMS: list[object] = []
+_ORIGINAL_STDERR = sys.stderr
 
 # make sure log folder exist
 if not os.path.exists(dir_log):
@@ -95,30 +98,83 @@ class StreamStderrToLogger(object):
         pass
 
 
-def init_logging(level):
-    global FILE_ID
-    # add file handler
-    FILE_ID = logger.add(
-        dir_log + "/" + current_log, level=level, encoding="utf-8", backtrace=False, diagnose=True, format=LOG_FORMAT
+def _is_loguru_logger() -> bool:
+    return hasattr(logger, "_core") and callable(getattr(logger, "remove", None))
+
+
+def _ensure_writable_stream(stream):
+    if stream is not None:
+        try:
+            stream.write("")
+            flush = getattr(stream, "flush", None)
+            if callable(flush):
+                flush()
+            return stream
+        except Exception:
+            pass
+
+    fallback = open(os.devnull, "w", encoding="utf-8", buffering=1)
+    _FALLBACK_STREAMS.append(fallback)
+    return fallback
+
+
+def _configure_loguru_sinks(level: str) -> None:
+    global CONSOLE_ID, FILE_ID
+
+    safe_stderr = _ensure_writable_stream(_ORIGINAL_STDERR)
+    logger.remove()
+    CONSOLE_ID = logger.add(
+        safe_stderr,
+        level=level,
+        backtrace=False,
+        diagnose=False,
+        format=LOG_FORMAT,
     )
+    FILE_ID = logger.add(
+        dir_log + "/" + current_log,
+        level=level,
+        encoding="utf-8",
+        backtrace=False,
+        diagnose=True,
+        format=LOG_FORMAT,
+    )
+
+
+def _configure_file_sink(level: str) -> None:
+    global FILE_ID
+    if FILE_ID is not None:
+        logger.remove(FILE_ID)
+    FILE_ID = logger.add(
+        dir_log + "/" + current_log,
+        level=level,
+        encoding="utf-8",
+        backtrace=False,
+        diagnose=True,
+        format=LOG_FORMAT,
+    )
+
+
+def init_logging(level):
+    if _is_loguru_logger():
+        _configure_loguru_sinks(level)
+    else:
+        _configure_file_sink(level)
 
     sys.stderr = StreamStderrToLogger()
     # tqdm use stderr so we also need to redirect it
 
 
 def change_log_level(level: str):
-    global FILE_ID
-    logger.remove(FILE_ID)
-    FILE_ID = logger.add(
-        dir_log + "/" + current_log, level=level, encoding="utf-8", backtrace=False, diagnose=True, format=LOG_FORMAT
-    )
+    if _is_loguru_logger():
+        _configure_loguru_sinks(level)
+    else:
+        _configure_file_sink(level)
 
 
 def clear_current_log_file():
     global FILE_ID
-    logger.remove(FILE_ID)
+    if FILE_ID is not None:
+        logger.remove(FILE_ID)
     with open(dir_log + "/" + current_log, "w", encoding="utf-8") as f:
         f.write("")
-    FILE_ID = logger.add(
-        dir_log + "/" + current_log, level="DEBUG", encoding="utf-8", backtrace=False, diagnose=True, format=LOG_FORMAT
-    )
+    _configure_file_sink("DEBUG")
