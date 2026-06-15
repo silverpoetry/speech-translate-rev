@@ -212,7 +212,7 @@ def _prepare_recording_session_bootstrap(
         config=config,
         p=p,
         settings_snapshot=settings_snapshot,
-        shared_runtime_state=shared_runtime_state or shared_state,
+        shared_runtime_state=shared_runtime_state or RealtimeSharedState(),
         callback_context_store_instance=callback_context_store_instance,
     )
     return RecordingSessionBootstrap(
@@ -474,6 +474,7 @@ def _consume_record_loop_input(
     translator: TranslationDispatcher,
     buffer_reducer: BufferStateReducer,
     control: RecordingSessionControl | None = None,
+    runtime_text_state: RecordingTextState | None = None,
 ) -> bytes | None:
     control = control or recording_control
     try:
@@ -497,6 +498,7 @@ def _consume_record_loop_input(
                 separator=config.separator,
                 translator=translator,
                 buffer_reducer=buffer_reducer,
+                runtime_text_state=runtime_text_state,
             )
             control.set_current_status("▶️ Recording (Waiting for speech)")
         if (
@@ -599,6 +601,7 @@ def _run_recording_session_loop(
             translator=lifecycle.services.translator,
             buffer_reducer=lifecycle.services.buffer_reducer,
             control=control,
+            runtime_text_state=runtime_text_state,
         )
         if data is None:
             continue

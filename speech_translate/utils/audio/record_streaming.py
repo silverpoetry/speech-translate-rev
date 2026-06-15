@@ -11,7 +11,6 @@ from speech_translate.runtime_registry import settings_registry
 from speech_translate.runtime_deps import get_torch, get_torchaudio, get_webrtcvad
 from speech_translate.utils.audio.audio import get_db, get_frame_duration, get_speech_webrtc, to_silero
 from speech_translate.utils.audio.device import AudioDeviceSettings, get_device_details, get_pyaudio_module
-from speech_translate.utils.audio.record_runtime import shared_state
 from speech_translate.utils.audio.recording_runtime_state import (
     RecordingRuntimeStateAdapter,
     build_recording_runtime_state_adapter,
@@ -100,6 +99,7 @@ def initialize_callback_context(
     store: CallbackContextStore | None = None,
 ) -> RealtimeCallbackContext:
     store = store or callback_context_store
+    shared_runtime_state = shared_runtime_state or RealtimeSharedState()
     context = RealtimeCallbackContext(
         sample_rate=sample_rate,
         frame_duration_ms=get_frame_duration(sample_rate, chunk_size),
@@ -259,7 +259,7 @@ def detect_realtime_speech(
         return True, data_to_queue
 
     db = get_db_fn(in_data)
-    runtime_state = ctx.shared_runtime_state or shared_state
+    runtime_state = ctx.shared_runtime_state
     runtime_state.last_db = db
     if db > ctx.max_db:
         ctx.max_db = db

@@ -17,7 +17,6 @@ from speech_translate.utils.audio.record_runtime import (
     _build_full_transcribed_text,
     build_recording_text_state,
     _enforce_sentence_limits,
-    shared_state,
 )
 from speech_translate.utils.audio.recording_runtime_state import build_recording_runtime_state_adapter
 from speech_translate.utils.audio.record_types import (

@@ -342,6 +342,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(ctx.sample_rate, 48000)
         self.assertEqual(ctx.num_of_channels, 2)
         self.assertGreater(ctx.frame_duration_ms, 0)
+        self.assertIsInstance(ctx.shared_runtime_state, RealtimeSharedState)
 
     def test_initialize_callback_context_supports_injected_store(self) -> None:
         from speech_translate.utils.audio import record_streaming as streaming_module
