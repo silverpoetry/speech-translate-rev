@@ -151,27 +151,31 @@ class FileProcessingStateAdapter:
     def enable_file_tc(self) -> None:
         state = self._state()
         if state is not None:
-            state.enable_file_tc()
+            state.transcribing_file = True
+            state.file_processing = True
 
     def enable_file_tl(self) -> None:
         state = self._state()
         if state is not None:
-            state.enable_file_tl()
+            state.translating_file = True
+            state.file_processing = True
 
     def disable_file_tc(self) -> None:
         state = self._state()
         if state is not None:
-            state.disable_file_tc()
+            state.transcribing_file = False
 
     def disable_file_tl(self) -> None:
         state = self._state()
         if state is not None:
-            state.disable_file_tl()
+            state.translating_file = False
 
     def disable_file_process(self) -> None:
         state = self._state()
         if state is not None:
-            state.disable_file_process()
+            state.file_processing = False
+            state.transcribing_file = False
+            state.translating_file = False
 
     def reset_mod_counter(self) -> None:
         state = self._state()

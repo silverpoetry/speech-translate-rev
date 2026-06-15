@@ -162,6 +162,24 @@ class AudioFileHelpersTests(unittest.TestCase):
             self.assertEqual(processing_state.translated_count(), 3)
             self.assertEqual(processing_state.mod_counter(), 4)
 
+    def test_file_processing_state_adapter_mutates_plain_bridge_runtime_fields(self) -> None:
+        runtime_state = BridgeFileRuntime()
+        processing_state = build_file_processing_state_adapter(state=runtime_state)
+
+        processing_state.enable_file_tc()
+        processing_state.enable_file_tl()
+        processing_state.increment_transcribed_count()
+        processing_state.increment_translated_count()
+        processing_state.increment_mod_counter()
+        processing_state.disable_file_process()
+
+        self.assertFalse(runtime_state.file_processing)
+        self.assertFalse(runtime_state.transcribing_file)
+        self.assertFalse(runtime_state.translating_file)
+        self.assertEqual(runtime_state.file_tced_counter, 1)
+        self.assertEqual(runtime_state.file_tled_counter, 1)
+        self.assertEqual(runtime_state.mod_file_counter, 1)
+
     def test_get_file_environment_reads_visual_runtime_ffmpeg_state(self) -> None:
         fake_bridge = type("FakeBridgeState", (), {"visual": BridgeVisualRuntime(has_ffmpeg=True)})()
         with bridge_state_registry.override(fake_bridge):

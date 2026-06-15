@@ -12,7 +12,7 @@ from speech_translate.import_queue_manager import ImportQueueController
 from speech_translate.bridge_runtime_state import BridgeFileRuntime, BridgeRecordingRuntime
 from speech_translate.runtime_registry import bridge_state_registry
 from speech_translate.ui_protocol import TASK_SOURCE_IMPORT, UI_SECTION_IMPORT
-from speech_translate.utils.audio.file import FileProcessRequest
+from speech_translate.utils.audio.file import FileProcessDependencies, FileProcessRequest
 
 
 class FakeSettings:
@@ -313,11 +313,14 @@ class ImportQueueControllerTests(unittest.TestCase):
             audio_file_module.process_file = previous_process_file
 
         self.assertIsInstance(observed["request"], FileProcessRequest)
+        self.assertIsInstance(observed["kwargs"]["dependencies"], FileProcessDependencies)
         self.assertEqual(observed["request"].data_files, context.files_to_process)
         self.assertEqual(observed["request"].model_name_tc, context.model_name_tc)
         self.assertEqual(observed["request"].lang_source, "English")
         self.assertEqual(observed["request"].lang_target, "Chinese")
         self.assertEqual(observed["request"].engine, context.engine)
+        self.assertEqual(observed["kwargs"]["dependencies"].settings.cache, context.settings_snapshot)
+        self.assertIs(observed["kwargs"]["dependencies"].ui_bridge.bridge, self.controller)
         self.assertEqual(self.bridge.finished, ["File import finished: 0 transcribed, 0 translated"])
 
     def test_get_file_processing_state_uses_injected_process_runtime(self) -> None:

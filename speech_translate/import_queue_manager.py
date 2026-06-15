@@ -360,8 +360,20 @@ class ImportQueueController:
             parts.append(f"{self.process_runtime.translated_count()} translated")
         return ", ".join(parts) or "no output generated"
 
+    def _build_file_process_dependencies(self, *, context: ImportStartContext):
+        from speech_translate.utils.audio import file as audio_file_module
+
+        return audio_file_module.FileProcessDependencies(
+            ui_bridge=audio_file_module.build_file_ui_bridge_adapter(bridge=self),
+            result_queue=audio_file_module.build_file_result_queue_adapter(),
+            processing_state=audio_file_module.build_file_processing_state_adapter(),
+            settings=audio_file_module.FileSettingsAdapter(cache=dict(context.settings_snapshot)),
+            environment=audio_file_module._get_file_environment(),
+        )
+
     def _start_import_worker(self, *, context: ImportStartContext) -> None:
         from speech_translate.utils.audio import file as audio_file_module
+        dependencies = self._build_file_process_dependencies(context=context)
 
         def worker() -> None:
             try:
@@ -376,6 +388,7 @@ class ImportQueueController:
                         is_tl=context.is_tl,
                         engine=context.engine,
                     ),
+                    dependencies=dependencies,
                 )
                 self.bridge.finish_task(
                     f"File import finished: {self._build_import_summary(is_tc=context.is_tc, is_tl=context.is_tl)}"
