@@ -31,7 +31,6 @@ from speech_translate.utils.audio.record_runtime import (
     _result_text,
     build_recording_text_state,
     run_whisper_tl,
-    shared_state,
     tl_api,
 )
 from speech_translate.utils.audio import record_streaming as streaming_module
@@ -134,9 +133,6 @@ def build_recording_session_control(
     runtime_state: RecordingRuntimeStateAdapter | None = None,
 ) -> RecordingSessionControl:
     return RecordingSessionControl(runtime_state=runtime_state or build_recording_runtime_state_adapter())
-
-
-recording_control = build_recording_session_control()
 
 
 # Keep these wrappers in record.py because tests and external callers monkey-patch
@@ -279,8 +275,8 @@ def _load_recording_model_runtime(
         use_temp=use_temp,
     )
 
-def _drain_audio_queue(control: RecordingSessionControl | None = None) -> None:
-    (control or recording_control).clear_data_queue()
+def _drain_audio_queue(control: RecordingSessionControl) -> None:
+    control.clear_data_queue()
 
 
 def _cleanup_temp_audio_paths(temp_audio_paths: list[str]) -> None:
@@ -320,10 +316,9 @@ def _run_recording_status_loop(
     max_buffer_s: int,
     max_sentences: int,
     sentence_limitless: bool,
-    control: RecordingSessionControl | None = None,
+    control: RecordingSessionControl,
     runtime_text_state: RecordingTextState | None = None,
 ) -> None:
-    control = control or recording_control
     runtime_text_state = runtime_text_state or build_recording_text_state()
     while control.is_recording():
         if session_state.paused:
@@ -347,9 +342,8 @@ def _run_recording_status_loop(
 
 def _start_translation_dispatcher_thread(
     translator: TranslationDispatcher,
-    control: RecordingSessionControl | None = None,
+    control: RecordingSessionControl,
 ) -> None:
-    control = control or recording_control
     Thread(
         target=lambda: translator.close(control.is_recording, _cleanup_translation_audio),
         daemon=True,
@@ -364,7 +358,7 @@ def _start_recording_status_thread(
     max_buffer_s: int,
     max_sentences: int,
     sentence_limitless: bool,
-    control: RecordingSessionControl | None = None,
+    control: RecordingSessionControl,
     runtime_text_state: RecordingTextState | None = None,
 ) -> None:
     Thread(
@@ -411,10 +405,9 @@ def _execute_recording_iteration(
     config: RecordingSessionConfig,
     model_runtime: RecordingModelRuntime,
     translator: TranslationDispatcher,
-    control: RecordingSessionControl | None = None,
+    control: RecordingSessionControl,
     runtime_text_state: RecordingTextState | None = None,
 ) -> bool:
-    control = control or recording_control
     if is_tl and config.tl_engine_whisper and not is_tc:
         control.set_current_status("▶️ Recording ⟳ Translating Audio")
         translator.dispatch(audio_target, "")
@@ -455,9 +448,8 @@ def _execute_recording_iteration(
 
 def _drain_pending_audio(
     session_state: RealtimeSessionState,
-    control: RecordingSessionControl | None = None,
+    control: RecordingSessionControl,
 ) -> None:
-    control = control or recording_control
     while not control.data_queue_empty():
         session_state.append_audio(control.get_data_nowait())
 
@@ -473,10 +465,9 @@ def _consume_record_loop_input(
     num_of_channels: int,
     translator: TranslationDispatcher,
     buffer_reducer: BufferStateReducer,
-    control: RecordingSessionControl | None = None,
+    control: RecordingSessionControl,
     runtime_text_state: RecordingTextState | None = None,
 ) -> bytes | None:
-    control = control or recording_control
     try:
         return control.get_data(timeout=0.1)
     except Empty:
@@ -521,9 +512,8 @@ def _advance_recording_buffer(
     num_of_channels: int,
     sr_divider: int,
     min_input_length: float,
-    control: RecordingSessionControl | None = None,
+    control: RecordingSessionControl,
 ) -> bool:
-    control = control or recording_control
     now = _utc_now()
     if not session_state.next_transcribe_time:
         session_state.next_transcribe_time = now + transcribe_rate
@@ -546,9 +536,8 @@ def _advance_recording_buffer(
 def _finalize_recording_session(
     p,
     finalize_context: RecordingSessionFinalizeContext,
-    control: RecordingSessionControl | None = None,
+    control: RecordingSessionControl,
 ) -> None:
-    control = control or recording_control
     if finalize_context.update_status is not None:
         control.set_current_status("⚠️ Stopping stream")
         finalize_context.update_status()
@@ -581,10 +570,9 @@ def _run_recording_session_loop(
     is_tc: bool,
     is_tl: bool,
     rec_type: str,
-    control: RecordingSessionControl | None = None,
+    control: RecordingSessionControl,
     runtime_text_state: RecordingTextState | None = None,
 ) -> None:
-    control = control or recording_control
     while control.is_recording():
         if lifecycle.session_state.paused:
             sleep(0.1)
@@ -783,10 +771,9 @@ def _build_recording_session_services(
     is_tc: bool,
     is_tl: bool,
     t_start: float,
-    control: RecordingSessionControl | None = None,
+    control: RecordingSessionControl,
     runtime_text_state: RecordingTextState | None = None,
 ) -> RecordingSessionServices:
-    control = control or recording_control
     runtime_text_state = runtime_text_state or build_recording_text_state()
     runtime = RecordingRuntime(
         taskname=config.taskname,
@@ -852,10 +839,9 @@ def _initialize_recording_session_lifecycle(
     is_tc: bool,
     is_tl: bool,
     t_start: float,
-    control: RecordingSessionControl | None = None,
+    control: RecordingSessionControl,
     runtime_text_state: RecordingTextState | None = None,
 ) -> RecordingSessionLifecycle:
-    control = control or recording_control
     runtime_text_state = runtime_text_state or build_recording_text_state()
     session_state = RealtimeSessionState()
     control.set_current_status("▶️ Recording (Waiting for speech)")
@@ -898,13 +884,10 @@ def _start_recording_session_support_threads(
     max_buffer_s: int,
     max_sentences: int,
     sentence_limitless: bool,
-    control: RecordingSessionControl | None = None,
+    control: RecordingSessionControl,
     runtime_text_state: RecordingTextState | None = None,
 ) -> None:
-    if control is None:
-        _start_translation_dispatcher_thread(services.translator)
-    else:
-        _start_translation_dispatcher_thread(services.translator, control=control)
+    _start_translation_dispatcher_thread(services.translator, control=control)
     services.update_status()
     _start_recording_status_thread(
         session_state,
@@ -1070,7 +1053,7 @@ def _commit_realtime_transcription(
     separator: str,
     translator: TranslationDispatcher,
     runtime_text_state: RecordingTextState | None = None,
-    set_current_status=None,
+    set_current_status,
 ) -> None:
     processing_module.commit_realtime_transcription(
         result,
@@ -1079,7 +1062,7 @@ def _commit_realtime_transcription(
         separator=separator,
         translator=translator,
         runtime_text_state=runtime_text_state or build_recording_text_state(),
-        set_current_status=set_current_status or recording_control.set_current_status,
+        set_current_status=set_current_status,
     )
 
 

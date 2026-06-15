@@ -58,6 +58,7 @@ from speech_translate.utils.audio.record import (
     _build_recording_state_payload,
     _build_full_transcribed_text,
     _result_text,
+    build_recording_text_state,
     record_session,
 )
 from speech_translate.bridge_runtime_state import BridgeLiveTextRuntime, BridgeRecordingRuntime
@@ -952,6 +953,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 is_tc=True,
                 is_tl=True,
                 t_start=12.0,
+                control=FakeRecordingSessionControl(),
             )
         finally:
             record_module.TranslationDispatcher = previous_dispatcher
@@ -1319,8 +1321,11 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertTrue(observed["use_temp_seen"])
         self.assertFalse(observed["settings_snapshot_use_temp"])
         self.assertIsInstance(observed["shared_runtime_state"], RealtimeSharedState)
-        self.assertIsNot(observed["shared_runtime_state"], record_module.shared_state)
-        self.assertIsNot(observed["session_control"], record_module.recording_control)
+        self.assertIsInstance(observed["session_control"], record_module.RecordingSessionControl)
+        self.assertIsNot(
+            observed["runtime_text_state"]._shared,
+            build_recording_text_state()._shared,
+        )
         self.assertIs(observed["runtime_text_state"]._shared, observed["shared_runtime_state"])
         self.assertIsNotNone(observed["callback_context_store_instance"])
         self.assertTrue(callable(observed["open_stream_kwargs"]["record_cb_override"]))
@@ -1435,6 +1440,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
             num_of_channels=1,
             sr_divider=10,
             min_input_length=0.1,
+            control=FakeRecordingSessionControl(),
         )
         self.assertFalse(ready)
         self.assertEqual(state.last_sample, b"ab")
@@ -1487,6 +1493,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
             config=config,
             model_runtime=RuntimeStub(),
             translator=translator,
+            control=FakeRecordingSessionControl(),
         )
 
         self.assertTrue(executed)
@@ -2264,29 +2271,24 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(translator.calls[-1], ("temp.wav", "alpha\nbeta"))
 
     def test_break_buffer_falls_back_to_reducer_when_split_not_preserved(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
         session_state = RealtimeSessionState(last_sample=b"1234", duration_seconds=2.0)
         translator = FakeTranslator()
         reducer = FakeBufferReducer()
-        previous_prev_tc = record_module.shared_state.prev_tc_res
-        try:
-            record_module.shared_state.prev_tc_res = ""
-            _break_buffer_and_update_state(
-                reason="silence",
-                session_state=session_state,
-                is_tc=True,
-                sr_divider=1,
-                samp_width=1,
-                num_of_channels=1,
-                sentence_limitless=False,
-                max_sentences=5,
-                separator="<br />",
-                translator=translator,
-                buffer_reducer=reducer,
-            )
-        finally:
-            record_module.shared_state.prev_tc_res = previous_prev_tc
+        runtime_text_state = FakeRuntimeTextState(prev_tc_res="")
+        _break_buffer_and_update_state(
+            reason="silence",
+            session_state=session_state,
+            is_tc=True,
+            sr_divider=1,
+            samp_width=1,
+            num_of_channels=1,
+            sentence_limitless=False,
+            max_sentences=5,
+            separator="<br />",
+            translator=translator,
+            buffer_reducer=reducer,
+            runtime_text_state=runtime_text_state,
+        )
 
         self.assertEqual(reducer.calls, 1)
         self.assertEqual(session_state.last_sample, b"")
