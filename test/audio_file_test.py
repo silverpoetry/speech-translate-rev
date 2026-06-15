@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from queue import Queue
 import sys
 import unittest
 
@@ -10,6 +11,7 @@ sys.path.append(to_add)
 from speech_translate.utils.audio.file import (
     FileBatchStatusContext,
     WorkerFailure,
+    _execute_monitored_queue_task,
     _apply_task_format,
     _build_base_export_name,
     _build_combined_status,
@@ -149,6 +151,38 @@ class AudioFileHelpersTests(unittest.TestCase):
 
         self.assertTrue(context.has_active_work(2))
         self.assertFalse(context.has_active_work(1))
+
+    def test_execute_monitored_queue_task_returns_background_result(self) -> None:
+        previous_queue = bc.data_queue
+        try:
+            bc.data_queue = Queue()
+            result = _execute_monitored_queue_task(
+                lambda value: bc.data_queue.put(value),
+                cancel_check=lambda: True,
+                args=("done",),
+            )
+        finally:
+            bc.data_queue = previous_queue
+
+        self.assertEqual(result, "done")
+
+    def test_execute_monitored_queue_task_can_preserve_per_item_failure_flow(self) -> None:
+        previous_queue = bc.data_queue
+        fail_status = WorkerFailure()
+        try:
+            bc.data_queue = Queue()
+            result = _execute_monitored_queue_task(
+                lambda status: status.capture(RuntimeError("boom")),
+                cancel_check=lambda: True,
+                args=(fail_status,),
+                fail_status=fail_status,
+                raise_failure=False,
+            )
+        finally:
+            bc.data_queue = previous_queue
+
+        self.assertIsNone(result)
+        self.assertTrue(fail_status.failed)
 
 
 if __name__ == "__main__":

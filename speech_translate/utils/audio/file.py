@@ -237,6 +237,36 @@ def _monitor_thread(thread: Thread, check_cancel: Callable[[], bool]) -> None:
             raise Exception("Cancelled")
         sleep(0.1)
 
+
+def _run_monitored_worker(
+    target: Callable,
+    *,
+    cancel_check: Callable[[], bool],
+    args: tuple = (),
+    kwargs: Mapping[str, object] | None = None,
+) -> None:
+    thread = Thread(target=target, args=args, kwargs=dict(kwargs or {}), daemon=True)
+    thread.start()
+    _monitor_thread(thread, cancel_check)
+
+
+def _execute_monitored_queue_task(
+    target: Callable,
+    *,
+    cancel_check: Callable[[], bool],
+    args: tuple = (),
+    kwargs: Mapping[str, object] | None = None,
+    fail_status: WorkerFailure | None = None,
+    raise_failure: bool = True,
+):
+    _run_monitored_worker(target, cancel_check=cancel_check, args=args, kwargs=kwargs)
+    if fail_status is not None:
+        if raise_failure:
+            fail_status.raise_if_failed()
+        elif fail_status.failed:
+            return None
+    return bc.data_queue.get()
+
 # =========================================================================
 # ATOMIC EXECUTORS
 # =========================================================================
@@ -321,13 +351,13 @@ def _cancellable_tc(
         format_dict.update(get_task_format("tc", f"tc {lang_source}", f"tc with {model_name}", f"tc {lang_source} with {model_name}", short_only=True))
         tc_save_name = _apply_task_format(base_name, format_dict)
 
-        thread = Thread(target=run_whisper, args=[tc_func, file_path, "transcribe", fail_status], kwargs=kwargs, daemon=True)
-        thread.start()
-        _monitor_thread(thread, lambda: bc.transcribing_file)
-
-        fail_status.raise_if_failed()
-
-        result = bc.data_queue.get()
+        result = _execute_monitored_queue_task(
+            run_whisper,
+            cancel_check=lambda: bc.transcribing_file,
+            args=(tc_func, file_path, "transcribe", fail_status),
+            kwargs=kwargs,
+            fail_status=fail_status,
+        )
         if sj.cache["filter_file_import"]:
             try: result = remove_segments_by_str(result, filters.get(get_whisper_lang_name(result.language) if auto else get_whisper_lang_similar(lang_source), []), sj.cache["filter_file_import_case_sensitive"], sj.cache["filter_file_import_strip"], sj.cache["filter_file_import_ignore_punctuations"], sj.cache["filter_file_import_exact_match"], sj.cache["filter_file_import_similarity"])
             except Exception: pass
@@ -387,12 +417,13 @@ def _cancellable_tl(
         tl_save_name = _apply_task_format(base_name, format_dict)
 
         if engine in model_values:
-            thread = Thread(target=run_whisper, args=[tl_func, query, "translate", fail_status], kwargs=kwargs, daemon=True)
-            thread.start()
-            _monitor_thread(thread, lambda: bc.translating_file)
-            fail_status.raise_if_failed()
-
-            result = bc.data_queue.get()
+            result = _execute_monitored_queue_task(
+                run_whisper,
+                cancel_check=lambda: bc.translating_file,
+                args=(tl_func, query, "translate", fail_status),
+                kwargs=kwargs,
+                fail_status=fail_status,
+            )
             if sj.cache["filter_file_import"]:
                 try: result = remove_segments_by_str(result, filters.get("english", []), sj.cache["filter_file_import_case_sensitive"], sj.cache["filter_file_import_strip"], sj.cache["filter_file_import_ignore_punctuations"], sj.cache["filter_file_import_exact_match"], sj.cache["filter_file_import_similarity"])
                 except Exception: pass
@@ -401,9 +432,12 @@ def _cancellable_tl(
             if not getattr(query, "text", "").strip():
                 return _update_status(status_context, "tl", index, "TL Fail! Empty text")
             api_kwargs = {"libre_link": sj.cache["libre_link"], "libre_api_key": sj.cache["libre_api_key"]} if engine == "LibreTranslate" else {}
-            thread = Thread(target=run_translate_api, args=[query, engine, lang_source, lang_target, fail_status], kwargs=api_kwargs, daemon=True)
-            thread.start()
-            _monitor_thread(thread, lambda: bc.translating_file)
+            _run_monitored_worker(
+                run_translate_api,
+                cancel_check=lambda: bc.translating_file,
+                args=(query, engine, lang_source, lang_target, fail_status),
+                kwargs=api_kwargs,
+            )
             fail_status.raise_if_failed()
             result = query
 
@@ -574,15 +608,19 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
                     else: raise e
 
             fail_status = WorkerFailure()
-            thread = Thread(target=lambda: run_whisper(_run_mod, None, mode, fail_status), daemon=True)
-            thread.start()
-            _monitor_thread(thread, lambda: bc.file_processing)
+            result = _execute_monitored_queue_task(
+                run_whisper,
+                cancel_check=lambda: bc.file_processing,
+                args=(_run_mod, None, mode, fail_status),
+                fail_status=fail_status,
+                raise_failure=False,
+            )
 
             if fail_status.failed:
                 _update_status(status_context, "mod", i, "Failed")
                 continue
 
-            result = split_res(bc.data_queue.get(), sj.cache)
+            result = split_res(result, sj.cache)
             if not result.language: result.language = mod_args.get("language", "auto")
 
             save_output_stable_ts(result, path.join(export_dir, save_name), sj.cache["export_to"], sj)
@@ -650,9 +688,12 @@ def translate_result(data_files: List, engine: str, lang_target: str):
             _update_status(status_context, "mod", i, "Translating please wait...")
             fail_status = WorkerFailure()
             
-            thread = Thread(target=run_translate_api, args=[result, engine, lang_src, lang_target, fail_status], kwargs=api_kwargs, daemon=True)
-            thread.start()
-            _monitor_thread(thread, lambda: bc.file_processing)
+            _run_monitored_worker(
+                run_translate_api,
+                cancel_check=lambda: bc.file_processing,
+                args=(result, engine, lang_src, lang_target, fail_status),
+                kwargs=api_kwargs,
+            )
 
             if fail_status.failed:
                 _update_status(status_context, "mod", i, "Failed")
