@@ -21,24 +21,9 @@ def get_legacy_bridge() -> BridgeLegacyProxy:
 def __getattr__(name: str):
     if name == "bc":
         return get_legacy_bridge()
-    if name == "sj":
-        from speech_translate.settings_runtime import get_settings_store
-
-        return get_settings_store()
-    if name in {
-        "BridgeDownloadRuntime",
-        "BridgeFileRuntime",
-        "BridgeLiveTextRuntime",
-        "BridgeRecordingRuntime",
-        "BridgeVisualRuntime",
-    }:
-        from speech_translate import bridge_runtime_state as bridge_state_module
-
-        return getattr(bridge_state_module, name)
     raise AttributeError(name)
 
 __all__ = [
     "BridgeClass",
-    "BridgeRuntimeRoot",
     "bc",
 ]

@@ -1,12 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from ._path import dir_debug, dir_export, dir_log, dir_temp, dir_user, p_app_icon, p_app_settings
 from .utils.setting import SettingJson
-
-if TYPE_CHECKING:
-    sj: SettingJson
 
 
 def create_settings_store() -> SettingJson:
@@ -27,14 +22,7 @@ def get_settings_store() -> SettingJson:
     return _settings_singleton
 
 
-def __getattr__(name: str):
-    if name == "sj":
-        return get_settings_store()
-    raise AttributeError(name)
-
-
 __all__ = [
     "create_settings_store",
     "get_settings_store",
-    "sj",
 ]

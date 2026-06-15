@@ -56,12 +56,6 @@ def get_runtime_root() -> BridgeRuntimeRoot:
 def __getattr__(name: str):
     if name == "bc":
         return get_runtime_root()
-    if name == "BridgeClass":
-        return BridgeRuntimeRoot
-    if name == "sj":
-        from speech_translate.settings_runtime import get_settings_store
-
-        return get_settings_store()
     raise AttributeError(name)
 
 

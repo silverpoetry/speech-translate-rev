@@ -8,15 +8,15 @@ from speech_translate.controller_protocols import SettingsStore
 
 
 def _get_default_bridge_state() -> object:
-    from speech_translate.app_runtime import bc
+    from speech_translate.app_runtime import get_runtime_root
 
-    return bc
+    return get_runtime_root()
 
 
 def _get_default_settings_store() -> SettingsStore:
-    from speech_translate.settings_runtime import sj
+    from speech_translate.settings_runtime import get_settings_store
 
-    return sj
+    return get_settings_store()
 
 
 @dataclass

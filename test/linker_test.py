@@ -17,7 +17,11 @@ class LinkerStructureTests(unittest.TestCase):
         self.assertIs(bc.runtime_root, app_runtime.bc)
 
     def test_linker_module_exports_only_primary_compatibility_entries(self) -> None:
-        self.assertEqual(linker_module.__all__, ["BridgeClass", "BridgeRuntimeRoot", "bc"])
+        self.assertEqual(linker_module.__all__, ["BridgeClass", "bc"])
+        with self.assertRaises(AttributeError):
+            _ = linker_module.sj
+        with self.assertRaises(AttributeError):
+            _ = linker_module.BridgeVisualRuntime
 
     def test_bridge_class_exposes_legacy_properties_through_runtime_objects(self) -> None:
         bridge = BridgeClass()

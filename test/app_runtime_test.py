@@ -39,7 +39,8 @@ class AppRuntimeStructureTests(unittest.TestCase):
             app_runtime_module.__all__,
             ["BridgeRuntimeRoot", "create_runtime_root", "get_runtime_root", "bc"],
         )
-        self.assertIs(app_runtime_module.BridgeClass, BridgeRuntimeRoot)
+        with self.assertRaises(AttributeError):
+            _ = app_runtime_module.BridgeClass
 
 
 if __name__ == "__main__":
