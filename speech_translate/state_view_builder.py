@@ -79,10 +79,10 @@ class StateViewBuilder:
             os_version=version(),
             cpu=processor(),
             settings=self._build_compact_settings(settings_snapshot),
-            import_ui=self.bridge._build_import_ui(verify_available=False),
+            import_ui=self.bridge.build_import_ui(verify_available=False),
             main_ui=self.build_main_ui(),
             record_ui=self.build_record_ui(),
-            runtime_model=self.bridge._build_runtime_model_state(),
+            runtime_model=self.bridge.build_runtime_model_state(),
             live_ui=self.bridge.snapshot_live_state(),
             about=self.build_about(),
             log_level=settings_snapshot.get("log_level", "DEBUG"),
@@ -178,8 +178,8 @@ class StateViewBuilder:
             "os": f"{system()} {release()} {version()}",
             "cpu": processor(),
             "log_file": self.bridge.get_log_file_name(),
-            "model_dir": self.bridge._resolve_model_dir(),
-            "export_dir": self.bridge._resolve_export_dir(),
+            "model_dir": self.bridge.resolve_model_dir(),
+            "export_dir": self.bridge.resolve_export_dir(),
         }
 
     def _find_default_device(self, device_info: object, all_options: list[object]) -> str:
@@ -236,7 +236,7 @@ class StateViewBuilder:
             self.audio_source_cache_loading = False
             self.audio_source_cache_ready = True
             try:
-                self.bridge._emit_ui_update([UI_SECTION_STATE])
+                self.bridge.emit_ui_update([UI_SECTION_STATE])
             except Exception:
                 pass
 

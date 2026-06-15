@@ -207,6 +207,7 @@ class RealtimeSessionState:
     next_transcribe_time: datetime | None = None
     paused: bool = False
     temp_audio_paths: list[str] = field(default_factory=list)
+    transcription_lock: LockLike | None = None
 
     def append_audio(self, audio_bytes: bytes) -> None:
         self.last_sample += audio_bytes
@@ -237,6 +238,7 @@ class RealtimeCallbackContext:
     num_of_channels: int
     samp_width: int
     use_temp: bool
+    shared_runtime_state: RealtimeSharedState | None = None
     max_db: float = MAX_THRESHOLD
     min_db: float = MIN_THRESHOLD
     is_silence: bool = False

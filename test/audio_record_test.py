@@ -840,7 +840,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
         previous_tl_sentences = list(record_module.bc.tl_sentences)
         previous_prev_tc = record_module.shared_state.prev_tc_res
         previous_prev_tl = record_module.shared_state.prev_tl_res
-        previous_tc_lock = record_module.bc.tc_lock
         try:
             runtime = RecordingRuntime(
                 taskname="Transcribe & Translate",
@@ -871,7 +870,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
             record_module.bc.tl_sentences = ["old-tl"]
             record_module.shared_state.prev_tc_res = "prev"
             record_module.shared_state.prev_tl_res = "prev-tl"
-            record_module.bc.tc_lock = None
 
             class ModelRuntimeStub:
                 pass
@@ -913,7 +911,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
             observed_tl_sentences = list(record_module.bc.tl_sentences)
             observed_prev_tc = record_module.shared_state.prev_tc_res
             observed_prev_tl = record_module.shared_state.prev_tl_res
-            observed_tc_lock = record_module.bc.tc_lock
+            observed_tc_lock = lifecycle.session_state.transcription_lock
         finally:
             record_module._build_recording_session_services = previous_build_services
             record_module.bc.current_rec_status = previous_status
@@ -922,7 +920,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
             record_module.bc.tl_sentences = previous_tl_sentences
             record_module.shared_state.prev_tc_res = previous_prev_tc
             record_module.shared_state.prev_tl_res = previous_prev_tl
-            record_module.bc.tc_lock = previous_tc_lock
 
         self.assertIsInstance(lifecycle, RecordingSessionLifecycle)
         self.assertEqual(lifecycle.session_state.last_sample, b"")
@@ -1072,7 +1069,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
         previous_open_stream = record_module._open_recording_stream
         previous_finalize = record_module._finalize_recording_session
         previous_recording = record_module.bc.recording
-        previous_tc_lock = record_module.bc.tc_lock
         observed = {}
         try:
             class ConfigStub:
@@ -1107,9 +1103,10 @@ class AudioRecordHelpersTests(unittest.TestCase):
 
             record_module._load_recording_model_runtime = lambda **kwargs: ModelRuntimeStub()
 
-            def fake_build_stream_runtime(*, rec_type, config, p, settings_snapshot=None):
+            def fake_build_stream_runtime(*, rec_type, config, p, settings_snapshot=None, shared_runtime_state=None):
                 observed["use_temp_seen"] = config.use_temp
                 observed["settings_snapshot_use_temp"] = settings_snapshot["use_temp"]
+                observed["shared_runtime_state_is_default"] = shared_runtime_state is record_module.shared_state
                 return RecordingStreamRuntime(
                     input_device_index=0,
                     sr_ori=16000,
@@ -1170,10 +1167,10 @@ class AudioRecordHelpersTests(unittest.TestCase):
             record_module._open_recording_stream = previous_open_stream
             record_module._finalize_recording_session = previous_finalize
             record_module.bc.recording = previous_recording
-            record_module.bc.tc_lock = previous_tc_lock
 
         self.assertTrue(observed["use_temp_seen"])
         self.assertFalse(observed["settings_snapshot_use_temp"])
+        self.assertTrue(observed["shared_runtime_state_is_default"])
 
     def test_record_session_finalizes_when_failure_happens_after_pyaudio_bootstrap(self) -> None:
         from speech_translate.utils.audio import record as record_module
@@ -1540,20 +1537,18 @@ class AudioRecordHelpersTests(unittest.TestCase):
         )
 
     def test_execute_realtime_transcription_uses_lock_when_present(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
-        previous_lock = record_module.bc.tc_lock
         calls = []
 
         def stable_tc(audio_target, **kwargs):
             calls.append((audio_target, kwargs["task"]))
             return FakeResult("ok")
 
-        try:
-            record_module.bc.tc_lock = FakeLock()
-            result = _execute_realtime_transcription("audio", stable_tc, {"beam_size": 5})
-        finally:
-            record_module.bc.tc_lock = previous_lock
+        result = _execute_realtime_transcription(
+            "audio",
+            stable_tc,
+            {"beam_size": 5},
+            transcription_lock=FakeLock(),
+        )
 
         self.assertEqual(result.text, "ok")
         self.assertEqual(calls, [("audio", "transcribe")])
@@ -1728,6 +1723,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
         from speech_translate.utils.audio import record as record_module
 
         previous_get_db = record_module.get_db
+        meter_state = RealtimeSharedState()
         ctx = RealtimeCallbackContext(
             sample_rate=16000,
             frame_duration_ms=30,
@@ -1740,6 +1736,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
             num_of_channels=1,
             samp_width=2,
             use_temp=False,
+            shared_runtime_state=meter_state,
         )
         try:
             record_module.get_db = lambda _: -10.0
@@ -1749,6 +1746,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
 
         self.assertTrue(is_speech)
         self.assertEqual(payload, b"resampled")
+        self.assertEqual(meter_state.last_db, -10.0)
 
     def test_update_realtime_queue_state_tracks_silence_edges(self) -> None:
         from speech_translate.utils.audio import record as record_module

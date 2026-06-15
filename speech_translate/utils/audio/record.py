@@ -194,6 +194,7 @@ def _prepare_recording_session_bootstrap(
         config=config,
         p=p,
         settings_snapshot=settings_snapshot,
+        shared_runtime_state=shared_state,
     )
     return RecordingSessionBootstrap(
         config=config,
@@ -405,7 +406,12 @@ def _execute_recording_iteration(
     if model_runtime.stable_tc is None:
         return False
 
-    result = _execute_realtime_transcription(audio_target, model_runtime.stable_tc, model_runtime.whisper_args)
+    result = _execute_realtime_transcription(
+        audio_target,
+        model_runtime.stable_tc,
+        model_runtime.whisper_args,
+        transcription_lock=session_state.transcription_lock,
+    )
     if result is None:
         return False
 
@@ -673,6 +679,7 @@ def _initialize_callback_context(
     use_temp: bool,
     webrtc_vad: object,
     silero_vad: SileroVadLike,
+    shared_runtime_state: RealtimeSharedState | None = None,
 ) -> RealtimeCallbackContext:
     return streaming_module.initialize_callback_context(
         sample_rate=sample_rate,
@@ -687,6 +694,7 @@ def _initialize_callback_context(
         use_temp=use_temp,
         webrtc_vad=webrtc_vad,
         silero_vad=silero_vad,
+        shared_runtime_state=shared_runtime_state,
     )
 
 
@@ -700,6 +708,7 @@ def _build_recording_stream_runtime(
     config: RecordingSessionConfig,
     p,
     settings_snapshot: Mapping[str, object] | None = None,
+    shared_runtime_state: RealtimeSharedState | None = None,
 ) -> RecordingStreamRuntime:
     pyaudio = get_pyaudio_module()
     return streaming_module.build_recording_stream_runtime(
@@ -712,6 +721,7 @@ def _build_recording_stream_runtime(
         audio_format=pyaudio.paInt16,
         logger_instance=logger,
         settings_snapshot=_recording_settings_snapshot(settings_snapshot),
+        shared_runtime_state=shared_runtime_state,
     )
 
 
@@ -811,7 +821,7 @@ def _initialize_recording_session_lifecycle(
     runtime_text_state.set_translated_sentences([])
     runtime_text_state.set_previous_transcribed_result("")
     runtime_text_state.set_previous_translated_result("")
-    bc.tc_lock = Lock() if (is_tc and is_tl and config.tl_engine_whisper) else None
+    session_state.transcription_lock = Lock() if (is_tc and is_tl and config.tl_engine_whisper) else None
 
     services = _build_recording_session_services(
         config=config,
@@ -921,8 +931,15 @@ def _execute_realtime_transcription(
     audio_target: AudioTarget,
     stable_tc: WhisperCallable,
     whisper_args: dict[str, object],
+    *,
+    transcription_lock=None,
 ) -> TranscriptionResultLike | None:
-    return processing_module.execute_realtime_transcription(audio_target, stable_tc, whisper_args, tc_lock=bc.tc_lock)
+    return processing_module.execute_realtime_transcription(
+        audio_target,
+        stable_tc,
+        whisper_args,
+        tc_lock=transcription_lock,
+    )
 
 
 def _filter_realtime_transcription_result(

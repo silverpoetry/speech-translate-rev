@@ -16,6 +16,7 @@ from speech_translate.utils.audio.record_types import (
     RecordingSessionConfig,
     RecordingStreamRuntime,
     RealtimeCallbackContext,
+    RealtimeSharedState,
     SileroVadLike,
 )
 
@@ -92,6 +93,7 @@ def initialize_callback_context(
     use_temp: bool,
     webrtc_vad: object,
     silero_vad: SileroVadLike,
+    shared_runtime_state: RealtimeSharedState | None = None,
     store: CallbackContextStore | None = None,
 ) -> RealtimeCallbackContext:
     store = store or callback_context_store
@@ -107,6 +109,7 @@ def initialize_callback_context(
         num_of_channels=num_of_channels,
         samp_width=samp_width,
         use_temp=use_temp,
+        shared_runtime_state=shared_runtime_state,
         silence_started_at=time(),
         webrtc_vad=webrtc_vad,
         silero_vad=silero_vad,
@@ -145,6 +148,7 @@ def build_recording_stream_runtime(
     audio_format=None,
     logger_instance=logger,
     settings_snapshot=None,
+    shared_runtime_state: RealtimeSharedState | None = None,
     callback_context_store_instance: CallbackContextStore | None = None,
 ) -> RecordingStreamRuntime:
     settings_snapshot = _recording_settings_snapshot(settings_snapshot)
@@ -178,6 +182,7 @@ def build_recording_stream_runtime(
         use_temp=config.use_temp,
         webrtc_vad=webrtc_vad,
         silero_vad=silero_vad,
+        shared_runtime_state=shared_runtime_state,
         store=callback_context_store_instance,
     )
     return RecordingStreamRuntime(
@@ -252,7 +257,8 @@ def detect_realtime_speech(
         return True, data_to_queue
 
     db = get_db_fn(in_data)
-    shared_state.last_db = db
+    runtime_state = ctx.shared_runtime_state or shared_state
+    runtime_state.last_db = db
     if db > ctx.max_db:
         ctx.max_db = db
     elif db < ctx.min_db:

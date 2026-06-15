@@ -95,7 +95,7 @@ class AppStartupController:
 
     def _create_main_window(self, *, webview, bridge: StartupBridge, raw_main_size: str):
         main_placement = resolve_window_placement(raw_main_size, 980, 620)
-        bridge._log_startup_marker("before_create_main_window")
+        bridge.log_startup_marker("before_create_main_window")
         window = webview.create_window(
             APP_NAME,
             self.build_html_path(),
@@ -107,19 +107,19 @@ class AppStartupController:
             min_size=(880, 560),
             hidden=True,
         )
-        bridge._log_startup_marker("after_create_main_window")
+        bridge.log_startup_marker("after_create_main_window")
         bridge.bind_window(window)
         return window
 
     def _build_webview_ready_callback(self, *, bridge: StartupBridge, tray_enabled: bool):
         def on_webview_ready() -> None:
-            bridge._log_startup_marker("webview_ready_callback")
+            bridge.log_startup_marker("webview_ready_callback")
             if tray_enabled and bridge.get_tray() is None:
                 try:
-                    bridge._log_startup_marker("before_tray_init")
+                    bridge.log_startup_marker("before_tray_init")
                     tray = AppTray(bridge)
                     bridge.bind_tray(tray)
-                    bridge._log_startup_marker("after_tray_init")
+                    bridge.log_startup_marker("after_tray_init")
                 except Exception as exc:
                     logger.exception(exc)
 
@@ -132,7 +132,7 @@ class AppStartupController:
         webview = self._initialize_webview_runtime()
         bridge = self._create_bridge(context.startup_t0)
         self._create_main_window(webview=webview, bridge=bridge, raw_main_size=context.raw_main_size)
-        bridge._log_startup_marker("before_webview_start")
+        bridge.log_startup_marker("before_webview_start")
         webview.start(
             self._build_webview_ready_callback(bridge=bridge, tray_enabled=context.tray_enabled),
             debug=context.debug_enabled,

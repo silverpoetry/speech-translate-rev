@@ -196,10 +196,10 @@ class SystemSettingsBridge(Protocol):
 
 
 class StateViewBridge(Protocol):
-    def _build_import_ui(self, verify_available: bool = True) -> JsonDict:
+    def build_import_ui(self, verify_available: bool = True) -> JsonDict:
         ...
 
-    def _build_runtime_model_state(self) -> JsonDict:
+    def build_runtime_model_state(self) -> JsonDict:
         ...
 
     def snapshot_live_state(self) -> JsonDict:
@@ -214,13 +214,13 @@ class StateViewBridge(Protocol):
     def get_detached_config(self, mode: str) -> JsonDict:
         ...
 
-    def _resolve_model_dir(self) -> str:
+    def resolve_model_dir(self) -> str:
         ...
 
-    def _resolve_export_dir(self) -> str:
+    def resolve_export_dir(self) -> str:
         ...
 
-    def _emit_ui_update(self, sections: Sequence[str]) -> None:
+    def emit_ui_update(self, sections: Sequence[str]) -> None:
         ...
 
 
@@ -239,7 +239,7 @@ class StartupBridge(Protocol):
     def set_startup_t0(self, started_at: float) -> None:
         ...
 
-    def _log_startup_marker(self, marker: str) -> None:
+    def log_startup_marker(self, marker: str) -> None:
         ...
 
     def bind_window(self, window: FolderDialogWindow) -> None:

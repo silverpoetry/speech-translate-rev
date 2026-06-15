@@ -22,7 +22,7 @@ class FakeBridge:
     def set_startup_t0(self, started_at: float) -> None:
         self.startup_t0 = started_at
 
-    def _log_startup_marker(self, marker: str) -> None:
+    def log_startup_marker(self, marker: str) -> None:
         self.markers.append(marker)
 
     def bind_window(self, window) -> None:

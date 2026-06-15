@@ -102,10 +102,10 @@ class FakeBridge:
     def __init__(self) -> None:
         self.emits = []
 
-    def _build_import_ui(self, verify_available: bool = True):
+    def build_import_ui(self, verify_available: bool = True):
         return {"verify_available": verify_available}
 
-    def _build_runtime_model_state(self):
+    def build_runtime_model_state(self):
         return {"loaded": False, "key": "small"}
 
     def snapshot_live_state(self):
@@ -120,13 +120,13 @@ class FakeBridge:
     def get_detached_config(self, mode: str):
         return {"mode": mode}
 
-    def _resolve_model_dir(self):
+    def resolve_model_dir(self):
         return "D:/models"
 
-    def _resolve_export_dir(self):
+    def resolve_export_dir(self):
         return "D:/exports"
 
-    def _emit_ui_update(self, sections):
+    def emit_ui_update(self, sections):
         self.emits.append(tuple(sections))
 
 
