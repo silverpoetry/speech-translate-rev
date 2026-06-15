@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from importlib import import_module
 from threading import Thread
 from time import gmtime, sleep, strftime, time
 from typing import Dict, List, Optional
@@ -16,6 +15,7 @@ from speech_translate.controller_protocols import (
 from speech_translate.linker import bc
 from speech_translate.log_helpers import logger
 from speech_translate.ui_protocol import TASK_SOURCE_IMPORT, UI_SECTION_IMPORT
+from speech_translate.webview_dialog_runtime import create_file_dialog
 from speech_translate.utils.whisper.helper import model_keys, model_select_dict
 
 
@@ -190,9 +190,9 @@ class ImportQueueController:
         if not files:
             if not (window := self.bridge.get_window()):
                 return {"ok": False, "message": "Window not ready"}
-            webview = import_module("webview")
-            files = window.create_file_dialog(
-                getattr(getattr(webview, "FileDialog", object), "OPEN", webview.OPEN_DIALOG),
+            files = create_file_dialog(
+                window,
+                dialog_kind="open",
                 allow_multiple=True,
                 file_types=MEDIA_FILE_TYPES,
             )
@@ -243,9 +243,9 @@ class ImportQueueController:
         if not files:
             if not (window := self.bridge.get_window()):
                 return {"ok": False, "message": "Window not ready"}
-            webview = import_module("webview")
-            files = window.create_file_dialog(
-                getattr(getattr(webview, "FileDialog", object), "OPEN", webview.OPEN_DIALOG),
+            files = create_file_dialog(
+                window,
+                dialog_kind="open",
                 allow_multiple=True,
                 file_types=MEDIA_FILE_TYPES,
             )

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import os
 import sys
-from importlib import import_module
 from pathlib import Path
 from typing import Dict
 
 from speech_translate._path import dir_export, dir_log, dir_user
 from speech_translate.controller_protocols import SettingsStore, SystemSettingsBridge
 from speech_translate.log_helpers import logger
+from speech_translate.webview_dialog_runtime import create_file_dialog
 from speech_translate.utils.helper import open_folder, open_url
 from speech_translate.utils.whisper.helper import model_select_dict
 
@@ -85,9 +85,7 @@ class SystemSettingsController:
             return {"ok": False, "message": "Window not ready", "path": ""}
 
         try:
-            webview = import_module("webview")
-            file_dialog = getattr(getattr(webview, "FileDialog", object), "FOLDER", webview.FOLDER_DIALOG)
-            selected = window.create_file_dialog(file_dialog, directory=default_dir)
+            selected = create_file_dialog(window, dialog_kind="folder", directory=default_dir)
         except Exception as exc:
             logger.exception(exc)
             return {"ok": False, "message": str(exc), "path": ""}

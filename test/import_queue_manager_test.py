@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
@@ -127,6 +128,15 @@ class ImportQueueControllerTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["added"], 1)
         self.assertEqual(len(self.controller.file_import_queue), 1)
+
+    def test_add_files_to_import_queue_uses_shared_dialog_runtime_when_files_omitted(self) -> None:
+        self.bridge.window = object()
+        with patch("speech_translate.import_queue_manager.create_file_dialog", return_value=["dialog.wav"]) as create_dialog:
+            result = self.controller.add_files_to_import_queue()
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(self.controller.file_import_queue[0]["path"], "dialog.wav")
+        create_dialog.assert_called_once()
 
     def test_clear_import_queue_resets_both_queues(self) -> None:
         self.controller.file_import_queue = ["a.wav"]

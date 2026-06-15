@@ -108,14 +108,14 @@ class SystemSettingsControllerTests(unittest.TestCase):
 
     def test_select_directory_updates_setting_and_clears_model_cache(self) -> None:
         self.bridge.window = FakeWindow()
-        fake_webview = type("FakeWebview", (), {"FOLDER_DIALOG": "folder", "FileDialog": type("FD", (), {"FOLDER": "folder"})})()
-        with patch("speech_translate.system_settings_controller.import_module", return_value=fake_webview):
+        with patch("speech_translate.system_settings_controller.create_file_dialog", return_value=["D:\\chosen"]) as create_dialog:
             result = self.controller.select_directory("model")
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["path"], "D:\\chosen")
         self.assertEqual(self.settings.saved["dir_model"], "D:\\chosen")
         self.assertTrue(self.bridge.model_manager_controller.cleared)
+        create_dialog.assert_called_once_with(self.bridge.window, dialog_kind="folder", directory="D:\\models")
 
     def test_get_log_content_reads_file_and_truncates_large_payloads(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
