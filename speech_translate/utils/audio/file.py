@@ -9,9 +9,8 @@ import os
 
 from speech_translate._logging import logger
 from speech_translate._path import dir_alignment, dir_export, dir_refinement, dir_translate
-from speech_translate.runtime_registry import bridge_state_registry, settings_registry
+from speech_translate.runtime_registry import bridge_state_registry, get_current_bridge, settings_registry
 from speech_translate.runtime_deps import empty_torch_cuda_cache, get_stable_whisper, get_whisper_to_language_code
-from speech_translate.web_bridge_runtime import WebBridgeRegistry, web_bridge_registry
 from speech_translate.utils.translate.language import get_whisper_lang_name, get_whisper_lang_similar
 
 from ..helper import filename_only, get_proxies, kill_thread, start_file
@@ -32,10 +31,10 @@ StatusMap = Dict[int, str]
 @dataclass
 class FileUiBridgeAdapter:
     bridge: object | None = None
-    bridge_registry: WebBridgeRegistry = field(default_factory=lambda: web_bridge_registry)
+    bridge_getter: Callable[[], object | None] = get_current_bridge
 
     def _resolve_bridge(self):
-        return self.bridge_registry.get() if self.bridge is None else self.bridge
+        return self.bridge_getter() if self.bridge is None else self.bridge
 
     def init_file_batch(self, task_name: str, files: list[object]) -> None:
         bridge = self._resolve_bridge()

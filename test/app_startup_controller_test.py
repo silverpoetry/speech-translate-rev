@@ -11,7 +11,7 @@ sys.path.append(to_add)
 from speech_translate.app_startup_controller import AppStartupController
 
 
-class FakeBridgeRegistry:
+class FakeBridgeBinding:
     def __init__(self) -> None:
         self.bridge = None
 
@@ -80,13 +80,14 @@ class AppStartupControllerTests(unittest.TestCase):
         self.fake_webview = FakeWebview()
         self.ffmpeg_calls = []
         self.log_levels = []
-        self.bridge_registry = FakeBridgeRegistry()
+        self.bridge_binding = FakeBridgeBinding()
         self.settings = FakeSettings({"log_level": "INFO", "mw_size": "980x620"})
         self.controller = AppStartupController(
             bridge_factory=lambda: self.bridge,
             ffmpeg_path_adder=lambda weak=False: self.ffmpeg_calls.append(weak) or True,
             webview_loader=lambda: self.fake_webview,
-            bridge_registry=self.bridge_registry,
+            bridge_getter=self.bridge_binding.get,
+            bridge_setter=self.bridge_binding.set,
             settings=self.settings,
         )
 
@@ -114,7 +115,7 @@ class AppStartupControllerTests(unittest.TestCase):
         self.assertEqual(self.fake_webview.start_calls, [False])
         self.assertIn("before_create_main_window", self.bridge.markers)
         self.assertEqual(len(fake_tray_calls), 1)
-        self.assertIs(self.bridge_registry.bridge, self.bridge)
+        self.assertIs(self.bridge_binding.bridge, self.bridge)
 
     def test_start_disables_tray_when_flag_present(self) -> None:
         with patch("speech_translate.app_startup_controller.sys.argv",

@@ -71,9 +71,25 @@ bridge_state_registry = BridgeStateRegistry()
 settings_registry = SettingsRegistry()
 
 
+def get_current_bridge() -> object | None:
+    bridge_state = bridge_state_registry.get()
+    visual = getattr(bridge_state, "visual", None)
+    return getattr(visual, "web_bridge", None) if visual is not None else None
+
+
+def set_current_bridge(bridge: object | None) -> None:
+    bridge_state = bridge_state_registry.get()
+    visual = getattr(bridge_state, "visual", None)
+    if visual is None:
+        raise RuntimeError("bridge visual runtime is not available")
+    visual.web_bridge = bridge
+
+
 __all__ = [
     "BridgeStateRegistry",
     "SettingsRegistry",
     "bridge_state_registry",
+    "get_current_bridge",
+    "set_current_bridge",
     "settings_registry",
 ]

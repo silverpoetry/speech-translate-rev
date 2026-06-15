@@ -12,8 +12,7 @@ from speech_translate._version import __version__
 from speech_translate.app_tray import AppTray
 from speech_translate.controller_protocols import FfmpegPathAdder, SettingsStore, StartupBridge, WebviewLoader
 from speech_translate.log_helpers import logger
-from speech_translate.runtime_registry import settings_registry
-from speech_translate.web_bridge_runtime import WebBridgeRegistry, web_bridge_registry
+from speech_translate.runtime_registry import get_current_bridge, set_current_bridge, settings_registry
 from speech_translate.webview_runtime import load_webview_runtime
 from speech_translate.window_geometry import resolve_window_placement
 
@@ -38,19 +37,21 @@ class AppStartupController:
         bridge_factory: Callable[[], StartupBridge],
         ffmpeg_path_adder: FfmpegPathAdder,
         webview_loader: WebviewLoader = load_webview_runtime,
-        bridge_registry: WebBridgeRegistry = web_bridge_registry,
+        bridge_getter: Callable[[], StartupBridge | None] = get_current_bridge,
+        bridge_setter: Callable[[StartupBridge | None], None] = set_current_bridge,
         settings: SettingsStore | None = None,
     ):
         self.bridge_factory = bridge_factory
         self.ffmpeg_path_adder = ffmpeg_path_adder
         self.webview_loader = webview_loader
-        self.bridge_registry = bridge_registry
+        self.bridge_getter = bridge_getter
+        self.bridge_setter = bridge_setter
         self.settings = settings or _get_default_settings()
 
     def install_signal_handler(self) -> None:
         def signal_handler(_sig, _frame):
             logger.info("Received Ctrl+C, exiting...")
-            bridge = self.bridge_registry.get()
+            bridge = self.bridge_getter()
             if bridge is not None:
                 bridge.quit_app()
 
@@ -99,7 +100,7 @@ class AppStartupController:
         bridge = self.bridge_factory()
         logger.debug("[Startup] after_bridge_init")
         bridge.set_startup_t0(startup_t0)
-        self.bridge_registry.set(bridge)
+        self.bridge_setter(bridge)
         return bridge
 
     def _create_main_window(self, *, webview, bridge: StartupBridge, raw_main_size: str):

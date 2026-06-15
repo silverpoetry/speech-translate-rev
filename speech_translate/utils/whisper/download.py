@@ -10,7 +10,7 @@ from time import time
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
 from speech_translate.log_helpers import logger
-from speech_translate.runtime_registry import bridge_state_registry
+from speech_translate.runtime_registry import bridge_state_registry, get_current_bridge
 from speech_translate.runtime_deps import (
     get_faster_whisper_model_registry,
     get_huggingface_hub,
@@ -18,7 +18,6 @@ from speech_translate.runtime_deps import (
     get_whisper_model_registry,
     try_get_requests,
 )
-from speech_translate.web_bridge_runtime import WebBridgeRegistry, web_bridge_registry
 from speech_translate.utils.helper import kill_thread
 from speech_translate.utils.whisper.download_runtime import (
     TaskReporter,
@@ -46,10 +45,10 @@ class DownloadExecutionHooks:
 @dataclass(frozen=True)
 class DownloadBridgeAdapter:
     bridge: Any | None = None
-    bridge_registry: WebBridgeRegistry = field(default_factory=lambda: web_bridge_registry)
+    bridge_getter: Callable[[], Any | None] = get_current_bridge
 
     def resolve(self) -> Any | None:
-        return self.bridge_registry.get() if self.bridge is None else self.bridge
+        return self.bridge_getter() if self.bridge is None else self.bridge
 
 
 def _get_download_runtime_state():

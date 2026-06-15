@@ -4,8 +4,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from speech_translate.live_text_service import LiveTextRenderer
-from speech_translate.runtime_registry import bridge_state_registry
-from speech_translate.web_bridge_runtime import WebBridgeRegistry, web_bridge_registry
+from speech_translate.runtime_registry import bridge_state_registry, get_current_bridge
 
 def _get_recording_bridge_state() -> object | None:
     try:
@@ -90,14 +89,14 @@ class RecordingRuntimeStateAdapter:
 class RecordingTextStoreAdapter:
     state: object | None = None
     state_provider: Callable[[], object] = _get_recording_text_state
-    bridge_registry: WebBridgeRegistry = field(default_factory=lambda: web_bridge_registry)
+    bridge_getter: Callable[[], object | None] = get_current_bridge
     renderer: LiveTextRenderer | None = None
 
     def _state(self) -> object:
         return self.state if self.state is not None else self.state_provider()
 
     def _bridge(self) -> object | None:
-        return self.bridge_registry.get()
+        return self.bridge_getter()
 
     def _renderer(self) -> LiveTextRenderer | None:
         if self.renderer is not None:

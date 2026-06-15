@@ -7,7 +7,14 @@ import unittest
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
-from speech_translate.runtime_registry import BridgeStateRegistry, SettingsRegistry
+from speech_translate.bridge_runtime_state import BridgeVisualRuntime
+from speech_translate.runtime_registry import (
+    BridgeStateRegistry,
+    SettingsRegistry,
+    bridge_state_registry,
+    get_current_bridge,
+    set_current_bridge,
+)
 
 
 class FakeSettings:
@@ -50,6 +57,20 @@ class RuntimeRegistryTests(unittest.TestCase):
             self.assertEqual(registry.get().cache["value"], "override")
 
         self.assertEqual(registry.get().cache["value"], "original")
+
+    def test_current_bridge_helpers_read_and_write_visual_runtime_slot(self) -> None:
+        fake_bridge_state = type("FakeBridgeState", (), {"visual": BridgeVisualRuntime()})()
+
+        with bridge_state_registry.override(fake_bridge_state):
+            set_current_bridge("bridge")
+            self.assertEqual(get_current_bridge(), "bridge")
+            self.assertEqual(fake_bridge_state.visual.web_bridge, "bridge")
+
+    def test_current_bridge_helpers_return_none_when_visual_runtime_has_no_bridge(self) -> None:
+        fake_bridge_state = type("FakeBridgeState", (), {"visual": BridgeVisualRuntime()})()
+
+        with bridge_state_registry.override(fake_bridge_state):
+            self.assertIsNone(get_current_bridge())
 
 
 if __name__ == "__main__":

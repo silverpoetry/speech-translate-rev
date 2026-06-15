@@ -121,7 +121,7 @@ class WhisperDownloadTests(unittest.TestCase):
     def test_build_bridge_task_reporter_supports_registry_backed_adapter(self) -> None:
         bridge = FakeDownloadBridge()
         reporter = _build_bridge_task_reporter(
-            bridge_adapter=DownloadBridgeAdapter(bridge_registry=FakeBridgeRegistry(bridge)),
+            bridge_adapter=DownloadBridgeAdapter(bridge_getter=FakeBridgeRegistry(bridge).get),
         )
 
         reporter.reset_task_state("Download")
