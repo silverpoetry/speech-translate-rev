@@ -5,6 +5,7 @@ from queue import Queue
 import tempfile
 import sys
 import unittest
+from unittest.mock import Mock, patch
 
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
@@ -19,6 +20,9 @@ from speech_translate.utils.audio.file import (
     _build_combined_status,
     _build_export_plan,
     _build_metadata_name,
+    _build_mod_result_runtime,
+    _build_process_file_runtime,
+    _build_translate_result_runtime,
     _is_file_status_completed,
     _save_export_plan_metadata,
 )
@@ -37,6 +41,111 @@ class FakeFileStatusBridge:
 
 
 class AudioFileHelpersTests(unittest.TestCase):
+    def test_build_process_file_runtime_collects_shared_runtime_state(self) -> None:
+        fake_stable_tc = object()
+        fake_stable_tl = object()
+        setting_cache = {
+            "dir_export": "D:\\exports",
+            "file_slice_start": "1",
+            "file_slice_end": "4",
+            "path_filter_file_import": "D:\\filters\\input.json",
+            "filter_file_import": True,
+        }
+
+        with (
+            patch("speech_translate.utils.audio.file.get_model_args", return_value={"device": "cpu"}),
+            patch(
+                "speech_translate.utils.audio.file.get_model",
+                return_value=(None, None, fake_stable_tc, fake_stable_tl, "transcribe-api"),
+            ),
+            patch("speech_translate.utils.audio.file.get_tc_args", return_value={"temperature": 0.2}),
+            patch("speech_translate.utils.audio.file.get_whisper_lang_similar", return_value="english"),
+            patch("speech_translate.utils.audio.file.get_whisper_to_language_code", return_value={"english": "en"}),
+            patch("speech_translate.utils.audio.file.get_hallucination_filter", return_value={"ban": ["uh"]}),
+            patch("speech_translate.utils.audio.file.time", return_value=42.0),
+        ):
+            runtime = _build_process_file_runtime(
+                model_name_tc="small",
+                lang_source="English",
+                engine="Google Translate",
+                is_tc=True,
+                is_tl=False,
+                setting_cache=setting_cache,
+            )
+
+        self.assertEqual(runtime.export_dir, "D:\\exports")
+        self.assertEqual((runtime.slice_start, runtime.slice_end), (1, 4))
+        self.assertEqual(runtime.taskname, "Transcribe")
+        self.assertFalse(runtime.tl_engine_whisper)
+        self.assertIs(runtime.stable_tc, fake_stable_tc)
+        self.assertIs(runtime.stable_tl, fake_stable_tl)
+        self.assertEqual(runtime.whisper_args["temperature"], 0.2)
+        self.assertEqual(runtime.whisper_args["language"], "en")
+        self.assertIsNone(runtime.whisper_args["verbose"])
+        self.assertEqual(runtime.filters, {"ban": ["uh"]})
+        self.assertEqual(runtime.started_at, 42.0)
+
+    def test_build_mod_result_runtime_selects_mode_specific_dependencies(self) -> None:
+        fake_model = Mock()
+        fake_model.refine = Mock(name="refine")
+        fake_model.align = Mock(name="align")
+        fake_stable_whisper = Mock()
+        fake_stable_whisper.load_model.return_value = fake_model
+        setting_cache = {
+            "dir_export": "auto",
+            "file_slice_start": "",
+            "file_slice_end": "6",
+        }
+
+        with (
+            patch("speech_translate.utils.audio.file.get_stable_whisper", return_value=fake_stable_whisper),
+            patch("speech_translate.utils.audio.file.get_model_args", return_value={"device": "cpu"}),
+            patch("speech_translate.utils.audio.file.get_tc_args", return_value={"steps": 2}),
+            patch("speech_translate.utils.audio.file.time", return_value=84.0),
+        ):
+            runtime = _build_mod_result_runtime(
+                model_name_tc="medium",
+                mode="alignment",
+                setting_cache=setting_cache,
+            )
+
+        self.assertEqual(runtime.action, "Alignment")
+        self.assertTrue(os.path.normpath(runtime.export_dir).endswith("@aligned"))
+        self.assertEqual((runtime.slice_start, runtime.slice_end), (None, 6))
+        self.assertIs(runtime.stable_whisper_api, fake_stable_whisper)
+        self.assertIs(runtime.model, fake_model)
+        self.assertIs(runtime.mod_func, fake_model.align)
+        self.assertEqual(runtime.mod_args, {"steps": 2})
+        self.assertEqual(runtime.started_at, 84.0)
+
+    def test_build_translate_result_runtime_scopes_engine_specific_api_kwargs(self) -> None:
+        fake_stable_whisper = object()
+        setting_cache = {
+            "dir_export": "D:\\exports",
+            "file_slice_start": "2",
+            "file_slice_end": "",
+            "libre_link": "http://127.0.0.1:5000",
+            "libre_api_key": "secret",
+        }
+
+        with (
+            patch("speech_translate.utils.audio.file.get_stable_whisper", return_value=fake_stable_whisper),
+            patch("speech_translate.utils.audio.file.time", return_value=126.0),
+        ):
+            runtime = _build_translate_result_runtime(
+                engine="LibreTranslate",
+                setting_cache=setting_cache,
+            )
+
+        self.assertEqual(os.path.normpath(runtime.export_dir), os.path.normpath("D:\\exports\\@translated"))
+        self.assertEqual((runtime.slice_start, runtime.slice_end), (2, None))
+        self.assertIs(runtime.stable_whisper_api, fake_stable_whisper)
+        self.assertEqual(
+            runtime.api_kwargs,
+            {"libre_link": "http://127.0.0.1:5000", "libre_api_key": "secret"},
+        )
+        self.assertEqual(runtime.started_at, 126.0)
+
     def test_build_combined_status_merges_active_statuses(self) -> None:
         status = _build_combined_status(
             0,

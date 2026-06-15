@@ -142,6 +142,46 @@ class FileExportPlan:
     def save_base_path(self) -> str:
         return path.join(self.export_dir, self.save_name)
 
+
+@dataclass(frozen=True)
+class FileProcessRuntime:
+    status_context: FileBatchStatusContext
+    export_dir: str
+    slice_start: int | None
+    slice_end: int | None
+    tl_engine_whisper: bool
+    stable_tc: object
+    stable_tl: object
+    whisper_args: dict[str, object]
+    filters: dict[str, object]
+    taskname: str
+    started_at: float
+
+
+@dataclass(frozen=True)
+class FileModRuntime:
+    status_context: FileBatchStatusContext
+    action: str
+    export_dir: str
+    slice_start: int | None
+    slice_end: int | None
+    stable_whisper_api: object
+    model: object
+    mod_func: Callable
+    mod_args: dict[str, object]
+    started_at: float
+
+
+@dataclass(frozen=True)
+class FileResultTranslateRuntime:
+    status_context: FileBatchStatusContext
+    export_dir: str
+    slice_start: int | None
+    slice_end: int | None
+    stable_whisper_api: object
+    api_kwargs: dict[str, object]
+    started_at: float
+
 def _build_combined_status(
     index: int,
     *,
@@ -247,6 +287,129 @@ def _build_export_plan(export_dir: str, base_name: str, format_dict: Mapping[str
 
 def _save_export_plan_metadata(export_plan: FileExportPlan, meta_data: Mapping[str, object]) -> None:
     _save_metadata(export_plan.metadata_path, dict(meta_data))
+
+
+def _resolve_slice_bounds(setting_cache: Mapping[str, object]) -> tuple[int | None, int | None]:
+    slice_start = int(setting_cache["file_slice_start"]) if setting_cache["file_slice_start"] else None
+    slice_end = int(setting_cache["file_slice_end"]) if setting_cache["file_slice_end"] else None
+    return slice_start, slice_end
+
+
+def _slice_display_name(file_path: str, *, start: int | None, end: int | None) -> str:
+    return filename_only(file_path)[start:end]
+
+
+def _resolve_process_export_dir(setting_cache: Mapping[str, object]) -> str:
+    return dir_export if setting_cache["dir_export"] == "auto" else str(setting_cache["dir_export"])
+
+
+def _resolve_mod_export_dir(setting_cache: Mapping[str, object], *, action: str) -> str:
+    if setting_cache["dir_export"] == "auto":
+        return dir_refinement if action == "Refinement" else dir_alignment
+    return str(setting_cache["dir_export"]) + f"/@{action.lower()}"
+
+
+def _resolve_translate_result_export_dir(setting_cache: Mapping[str, object]) -> str:
+    if setting_cache["dir_export"] == "auto":
+        return dir_translate
+    return str(setting_cache["dir_export"]) + "/@translated"
+
+
+def _build_process_file_runtime(
+    *,
+    model_name_tc: str,
+    lang_source: str,
+    engine: str,
+    is_tc: bool,
+    is_tl: bool,
+    setting_cache: Mapping[str, object],
+) -> FileProcessRuntime:
+    tl_engine_whisper = engine in model_values
+    stable_tc = stable_tl = None
+    to_args = None
+    _, _, stable_tc, stable_tl, to_args = get_model(
+        is_tc,
+        is_tl,
+        tl_engine_whisper,
+        model_name_tc,
+        engine,
+        setting_cache,
+        **get_model_args(setting_cache),
+    )
+    whisper_args = get_tc_args(to_args, setting_cache)
+    whisper_args["language"] = (
+        get_whisper_to_language_code()[get_whisper_lang_similar(lang_source)]
+        if lang_source != "auto detect"
+        else None
+    )
+    whisper_args["verbose"] = None
+    taskname = "Transcribe & Translate" if is_tc and is_tl else "Transcribe" if is_tc else "Translate"
+    filters = (
+        get_hallucination_filter("file", setting_cache["path_filter_file_import"])
+        if setting_cache["filter_file_import"]
+        else {}
+    )
+    slice_start, slice_end = _resolve_slice_bounds(setting_cache)
+    return FileProcessRuntime(
+        status_context=FileBatchStatusContext(is_tc=is_tc, is_tl=is_tl, is_mod=False),
+        export_dir=_resolve_process_export_dir(setting_cache),
+        slice_start=slice_start,
+        slice_end=slice_end,
+        tl_engine_whisper=tl_engine_whisper,
+        stable_tc=stable_tc,
+        stable_tl=stable_tl,
+        whisper_args=whisper_args,
+        filters=filters,
+        taskname=taskname,
+        started_at=time(),
+    )
+
+
+def _build_mod_result_runtime(
+    *,
+    model_name_tc: str,
+    mode: Literal["refinement", "alignment"],
+    setting_cache: Mapping[str, object],
+) -> FileModRuntime:
+    action = "Refinement" if mode == "refinement" else "Alignment"
+    stable_whisper = get_stable_whisper()
+    model = stable_whisper.load_model(model_name_tc, **get_model_args(setting_cache))
+    mod_func = model.refine if mode == "refinement" else model.align
+    slice_start, slice_end = _resolve_slice_bounds(setting_cache)
+    return FileModRuntime(
+        status_context=FileBatchStatusContext(is_tc=False, is_tl=False, is_mod=True),
+        action=action,
+        export_dir=_resolve_mod_export_dir(setting_cache, action=action),
+        slice_start=slice_start,
+        slice_end=slice_end,
+        stable_whisper_api=stable_whisper,
+        model=model,
+        mod_func=mod_func,
+        mod_args=get_tc_args(mod_func, setting_cache, mode="refine" if mode == "refinement" else "align"),
+        started_at=time(),
+    )
+
+
+def _build_translate_result_runtime(
+    *,
+    engine: str,
+    setting_cache: Mapping[str, object],
+) -> FileResultTranslateRuntime:
+    slice_start, slice_end = _resolve_slice_bounds(setting_cache)
+    api_kwargs = (
+        {"libre_link": setting_cache["libre_link"], "libre_api_key": setting_cache["libre_api_key"]}
+        if engine == "LibreTranslate"
+        else {}
+    )
+    return FileResultTranslateRuntime(
+        status_context=FileBatchStatusContext(is_tc=False, is_tl=False, is_mod=True),
+        export_dir=_resolve_translate_result_export_dir(setting_cache),
+        slice_start=slice_start,
+        slice_end=slice_end,
+        stable_whisper_api=get_stable_whisper(),
+        api_kwargs=api_kwargs,
+        started_at=time(),
+    )
 
 def _monitor_thread(thread: Thread, check_cancel: Callable[[], bool]) -> None:
     while thread.is_alive():
@@ -479,28 +642,22 @@ def _cancellable_tl(
 
 def process_file(data_files: List[str], model_name_tc: str, lang_source: str, lang_target: str, is_tc: bool, is_tl: bool, engine: str) -> None:
     try:
-        status_context = FileBatchStatusContext(is_tc=is_tc, is_tl=is_tl, is_mod=False)
+        runtime = _build_process_file_runtime(
+            model_name_tc=model_name_tc,
+            lang_source=lang_source,
+            engine=engine,
+            is_tc=is_tc,
+            is_tl=is_tl,
+            setting_cache=sj.cache,
+        )
+        status_context = runtime.status_context
         bc.file_tced_counter = bc.file_tled_counter = 0
-        
-        tl_engine_whisper = engine in model_values
-        export_dir = dir_export if sj.cache["dir_export"] == "auto" else sj.cache["dir_export"]
-        export_fmt = sj.cache["export_format"]
-        slice_s, slice_e = int(sj.cache["file_slice_start"]) if sj.cache["file_slice_start"] else None, int(sj.cache["file_slice_end"]) if sj.cache["file_slice_end"] else None
-        
-        _, _, stable_tc, stable_tl, to_args = get_model(is_tc, is_tl, tl_engine_whisper, model_name_tc, engine, sj.cache, **get_model_args(sj.cache))
-        whisper_args = get_tc_args(to_args, sj.cache)
-        whisper_args["language"] = get_whisper_to_language_code()[get_whisper_lang_similar(lang_source)] if lang_source != "auto detect" else None
-        whisper_args["verbose"] = None
-        filters = get_hallucination_filter('file', sj.cache["path_filter_file_import"]) if sj.cache["filter_file_import"] else {}
-
-        taskname = "Transcribe & Translate" if is_tc and is_tl else "Transcribe" if is_tc else "Translate"
-        t_start = time()
 
         bc.enable_file_tc()
         bc.enable_file_tl()
 
         if bc.web_bridge:
-            bc.web_bridge.init_file_batch(f"Task: {taskname} with {model_name_tc}", data_files)
+            bc.web_bridge.init_file_batch(f"Task: {runtime.taskname} with {model_name_tc}", data_files)
 
         def is_still_active():
             return status_context.has_active_work(len(data_files))
@@ -508,34 +665,34 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
         for i, file in enumerate(data_files):
             if not bc.file_processing: break
             logger.info(f"Loop entered for file: {file}")
-            file_name = filename_only(file)[slice_s:slice_e]
+            file_name = _slice_display_name(file, start=runtime.slice_start, end=runtime.slice_end)
             base_name = _build_base_export_name(
-                datetime.now().strftime(export_fmt),
+                datetime.now().strftime(sj.cache["export_format"]),
                 file_name,
                 lang_source,
                 lang_target,
                 model_name_tc,
                 engine,
             )
-            export_plan = _build_export_plan(export_dir, base_name, {})
+            export_plan = _build_export_plan(runtime.export_dir, base_name, {})
 
             _save_export_plan_metadata(export_plan, {
-                "meta_written_at": str(datetime.now()), "task": taskname, "filename": file_name,
+                "meta_written_at": str(datetime.now()), "task": runtime.taskname, "filename": file_name,
                 "transcribe": is_tc, "translate": is_tl, "model": model_name_tc, "engine": engine
             })
 
-            if is_tl and not is_tc and tl_engine_whisper:
+            if is_tl and not is_tc and runtime.tl_engine_whisper:
                 Thread(
                     target=_cancellable_tl,
-                    args=[file, lang_source, lang_target, stable_tl, engine, export_plan, i, file, filters],
-                    kwargs={**whisper_args, "status_context": status_context},
+                    args=[file, lang_source, lang_target, runtime.stable_tl, engine, export_plan, i, file, runtime.filters],
+                    kwargs={**runtime.whisper_args, "status_context": status_context},
                     daemon=True,
                 ).start()
             else:
                 tc_thread = Thread(
                     target=_cancellable_tc,
-                    args=[file, lang_source, lang_target, model_name_tc, stable_tc, stable_tl, lang_source == "auto detect", is_tc, is_tl, engine, export_plan, i, filters],
-                    kwargs={**whisper_args, "status_context": status_context},
+                    args=[file, lang_source, lang_target, model_name_tc, runtime.stable_tc, runtime.stable_tl, lang_source == "auto detect", is_tc, is_tl, engine, export_plan, i, runtime.filters],
+                    kwargs={**runtime.whisper_args, "status_context": status_context},
                     daemon=True,
                 )
                 tc_thread.start()
@@ -544,9 +701,9 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
         while bc.file_processing and is_still_active():
             sleep(0.5)
 
-        logger.info(f"Process FILE completed in {time() - t_start:.2f}s")
+        logger.info(f"Process FILE completed in {time() - runtime.started_at:.2f}s")
         if (bc.file_tced_counter > 0 or bc.file_tled_counter > 0) and sj.cache["auto_open_dir_export"]:
-            start_file(export_dir)
+            start_file(runtime.export_dir)
 
     except Exception as e:
         logger.error(f"Process FILE error: {e}")
@@ -559,20 +716,9 @@ def process_file(data_files: List[str], model_name_tc: str, lang_source: str, la
 
 def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement", "alignment"]):
     try:
-        status_context = FileBatchStatusContext(is_tc=False, is_tl=False, is_mod=True)
+        runtime = _build_mod_result_runtime(model_name_tc=model_name_tc, mode=mode, setting_cache=sj.cache)
+        status_context = runtime.status_context
         bc.mod_file_counter = 0
-        action = "Refinement" if mode == "refinement" else "Alignment"
-        
-        export_dir = dir_refinement if mode == "refinement" else dir_alignment
-        if sj.cache["dir_export"] != "auto": export_dir = sj.cache["dir_export"] + f"/@{action.lower()}"
-        slice_s, slice_e = int(sj.cache["file_slice_start"]) if sj.cache["file_slice_start"] else None, int(sj.cache["file_slice_end"]) if sj.cache["file_slice_end"] else None
-
-        stable_whisper = get_stable_whisper()
-        model = stable_whisper.load_model(model_name_tc, **get_model_args(sj.cache))
-        mod_func = model.refine if mode == "refinement" else model.align 
-        mod_args = get_tc_args(mod_func, sj.cache, mode="refine" if mode == "refinement" else "align")
-
-        t_start = time()
 
         if bc.web_bridge:
             bc.web_bridge.init_file_batch(f"Task {mode} with {model_name_tc}", [f[0] for f in data_files])
@@ -584,7 +730,7 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
             if not bc.file_processing: break
 
             audio_path, mod_path = file_data[0], file_data[1]
-            file_name = filename_only(audio_path)[slice_s:slice_e]
+            file_name = _slice_display_name(audio_path, start=runtime.slice_start, end=runtime.slice_end)
             base_name = _build_base_export_name(
                 datetime.now().strftime(sj.cache["export_format"]),
                 file_name,
@@ -595,30 +741,31 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
             )
 
             task_short = {"refinement": "rf", "alignment": "al"}
-            format_dict = get_task_format(action, action, f"{action} with {model_name_tc}", f"{action} with {model_name_tc}")
+            format_dict = get_task_format(runtime.action, runtime.action, f"{runtime.action} with {model_name_tc}", f"{runtime.action} with {model_name_tc}")
             format_dict.update(get_task_format(task_short[mode], task_short[mode], f"{task_short[mode]} with {model_name_tc}", f"{task_short[mode]} with {model_name_tc}", short_only=True))
-            export_plan = _build_export_plan(export_dir, base_name, format_dict)
+            export_plan = _build_export_plan(runtime.export_dir, base_name, format_dict)
 
             try:
-                mod_src = stable_whisper.WhisperResult(mod_path) if mod_path.endswith(".json") else open(mod_path, "r", encoding="utf-8").read()
+                mod_src = runtime.stable_whisper_api.WhisperResult(mod_path) if mod_path.endswith(".json") else open(mod_path, "r", encoding="utf-8").read()
             except Exception:
                 _update_status(status_context, "mod", i, "Parse Error")
                 continue
 
+            mod_args = dict(runtime.mod_args)
             if mode == "alignment" and len(file_data) > 2 and len(file_data[2]) > 3:
                 mod_args["language"] = get_whisper_to_language_code().get(get_whisper_lang_similar(file_data[2]), "auto")
 
             def _run_mod():
                 try:
                     _update_status(status_context, "mod", i, f"Processing {mode}")
-                    res = mod_func(audio_path, mod_src, **mod_args)
+                    res = runtime.mod_func(audio_path, mod_src, **mod_args)
                     bc.data_queue.put(res)
                 except Exception as e:
                     if "'NoneType'" in str(e) and mode == "refinement":
                         try:
                             _update_status(status_context, "mod", i, "Re-transcribing...")
-                            res = model.transcribe(audio_path, **get_tc_args(model.transcribe, sj.cache))
-                            res = mod_func(audio_path, res, **mod_args)
+                            res = runtime.model.transcribe(audio_path, **get_tc_args(runtime.model.transcribe, sj.cache))
+                            res = runtime.mod_func(audio_path, res, **mod_args)
                             bc.data_queue.put(res)
                         except Exception as ee:
                             raise Exception(f"Re-transcribe failed: {ee}")
@@ -642,15 +789,15 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
 
             save_output_stable_ts(result, export_plan.save_base_path, sj.cache["export_to"], sj)
             bc.mod_file_counter += 1
-            _update_status(status_context, "mod", i, action)
-            _save_export_plan_metadata(export_plan, {"meta_written_at": str(datetime.now()), "task": f"Mod Result ({mode})", "time": time() - t_start})
+            _update_status(status_context, "mod", i, runtime.action)
+            _save_export_plan_metadata(export_plan, {"meta_written_at": str(datetime.now()), "task": f"Mod Result ({mode})", "time": time() - runtime.started_at})
 
         while bc.file_processing and is_still_active():
             sleep(0.5)
 
-        logger.info(f"Process MOD completed in {time() - t_start:.2f}s")
+        logger.info(f"Process MOD completed in {time() - runtime.started_at:.2f}s")
         if bc.mod_file_counter > 0 and sj.cache.get(f"auto_open_dir_{mode}", True):
-            start_file(export_dir)
+            start_file(runtime.export_dir)
 
     except Exception as e:
         logger.error(f"Process MOD error: {e}")
@@ -661,12 +808,9 @@ def mod_result(data_files: List, model_name_tc: str, mode: Literal["refinement",
 
 def translate_result(data_files: List, engine: str, lang_target: str):
     try:
-        status_context = FileBatchStatusContext(is_tc=False, is_tl=False, is_mod=True)
+        runtime = _build_translate_result_runtime(engine=engine, setting_cache=sj.cache)
+        status_context = runtime.status_context
         bc.mod_file_counter = 0
-        export_dir = dir_translate if sj.cache["dir_export"] == "auto" else sj.cache["dir_export"] + "/@translated"
-        slice_s, slice_e = int(sj.cache["file_slice_start"]) if sj.cache["file_slice_start"] else None, int(sj.cache["file_slice_end"]) if sj.cache["file_slice_end"] else None
-        
-        t_start = time()
 
         if bc.web_bridge:
             bc.web_bridge.init_file_batch(f"Task Translate with {engine}", data_files)
@@ -674,19 +818,17 @@ def translate_result(data_files: List, engine: str, lang_target: str):
         def is_still_active():
             return status_context.has_active_work(len(data_files))
 
-        api_kwargs = {"libre_link": sj.cache["libre_link"], "libre_api_key": sj.cache["libre_api_key"]} if engine == "LibreTranslate" else {}
-
         for i, file_path in enumerate(data_files):
             if not bc.file_processing: break
 
-            stable_whisper = get_stable_whisper()
-            try: result = stable_whisper.WhisperResult(file_path)
+            try:
+                result = runtime.stable_whisper_api.WhisperResult(file_path)
             except Exception:
                 _update_status(status_context, "mod", i, "Parse Error")
                 continue
 
             lang_src = to_language_name(result.language) or "auto"
-            file_name = filename_only(file_path)[slice_s:slice_e]
+            file_name = _slice_display_name(file_path, start=runtime.slice_start, end=runtime.slice_end)
             base_name = _build_base_export_name(
                 datetime.now().strftime(sj.cache["export_format"]),
                 file_name,
@@ -698,7 +840,7 @@ def translate_result(data_files: List, engine: str, lang_target: str):
 
             format_dict = get_task_format("translated result", f"translated result from {lang_src} to {lang_target}", f"translated result with {engine}", f"translated result from {lang_src} to {lang_target} with {engine}")
             format_dict.update(get_task_format("tl res", f"tl res from {lang_src} to {lang_target}", f"tl res with {engine}", f"tl res from {lang_src} to {lang_target} with {engine}", short_only=True))
-            export_plan = _build_export_plan(export_dir, base_name, format_dict)
+            export_plan = _build_export_plan(runtime.export_dir, base_name, format_dict)
 
             _update_status(status_context, "mod", i, "Translating please wait...")
             fail_status = WorkerFailure()
@@ -707,7 +849,7 @@ def translate_result(data_files: List, engine: str, lang_target: str):
                 run_translate_api,
                 cancel_check=lambda: bc.file_processing,
                 args=(result, engine, lang_src, lang_target, fail_status),
-                kwargs=api_kwargs,
+                kwargs=runtime.api_kwargs,
             )
 
             if fail_status.failed:
@@ -717,14 +859,14 @@ def translate_result(data_files: List, engine: str, lang_target: str):
             bc.mod_file_counter += 1
             save_output_stable_ts(split_res(result, sj.cache), export_plan.save_base_path, sj.cache["export_to"], sj, source_media_path=file_path)
             _update_status(status_context, "mod", i, "Translated")
-            _save_export_plan_metadata(export_plan, {"meta_written_at": str(datetime.now()), "task": "Translate JSON", "time": time() - t_start})
+            _save_export_plan_metadata(export_plan, {"meta_written_at": str(datetime.now()), "task": "Translate JSON", "time": time() - runtime.started_at})
 
         while bc.file_processing and is_still_active():
             sleep(0.5)
 
-        logger.info(f"Process TL JSON completed in {time() - t_start:.2f}s")
+        logger.info(f"Process TL JSON completed in {time() - runtime.started_at:.2f}s")
         if bc.mod_file_counter > 0 and sj.cache["auto_open_dir_translate"]:
-            start_file(export_dir)
+            start_file(runtime.export_dir)
 
     except Exception as e:
         logger.error(f"Process TL JSON error: {e}")
