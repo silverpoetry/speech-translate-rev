@@ -22,6 +22,10 @@ from speech_translate.utils.audio.recording_runtime_state import (
     build_recording_text_store_adapter,
 )
 from speech_translate.utils.translate.language import get_whisper_lang_name, verify_language_in_key
+from speech_translate.utils.translate.translation_runtime_settings import (
+    RealtimeTranslationSettings,
+    build_realtime_translation_settings,
+)
 
 from ..helper import get_proxies, unique_rec_list
 from ..translate.translator import translate
@@ -34,7 +38,14 @@ class RecordingSettingsAdapter:
 
 
 def _get_recording_settings():
-    return RecordingSettingsAdapter(cache=settings_registry.get().cache)
+    return RecordingSettingsAdapter(cache=dict(settings_registry.get().cache))
+
+
+def _get_realtime_translation_settings(
+    settings: RecordingSettingsAdapter | None = None,
+) -> RealtimeTranslationSettings:
+    settings = settings or _get_recording_settings()
+    return build_realtime_translation_settings(settings.cache)
 
 
 def _enforce_sentence_limits(sentences: list, is_limitless: bool, max_sentences: int) -> list:
@@ -405,14 +416,19 @@ def run_whisper_tl(
 ):
     runtime_text_state = runtime_text_state or build_recording_text_state()
     settings = settings or _get_recording_settings()
-    cache = settings.cache
+    translation_settings = _get_realtime_translation_settings(settings)
     try:
         result = stable_tl(audio, task="translate", **whisper_args)
-        if cache["filter_rec"]:
+        if translation_settings.filter_rec:
             result = remove_segments_by_str(
-                result, hallucination_filters.get("english", []), cache["filter_rec_case_sensitive"],
-                cache["filter_rec_strip"], cache["filter_rec_ignore_punctuations"],
-                cache["filter_rec_exact_match"], cache["filter_rec_similarity"], False
+                result,
+                hallucination_filters.get("english", []),
+                translation_settings.filter_rec_case_sensitive,
+                translation_settings.filter_rec_strip,
+                translation_settings.filter_rec_ignore_punctuations,
+                translation_settings.filter_rec_exact_match,
+                translation_settings.filter_rec_similarity,
+                False,
             )
         text = result.text.strip()
         runtime_text_state.set_detected_language(result.language or "~")
@@ -434,7 +450,7 @@ def tl_api(
 ):
     runtime_text_state = runtime_text_state or build_recording_text_state()
     settings = settings or _get_recording_settings()
-    cache = settings.cache
+    translation_settings = _get_realtime_translation_settings(settings)
     try:
         source_units = [line.strip() for line in text.splitlines() if line.strip()]
         if not source_units:
@@ -444,14 +460,19 @@ def tl_api(
         source_lang = _resolve_live_input_source_language(lang_source, engine, runtime_text_state)
 
         if engine == "LibreTranslate":
-            kwargs.update({"libre_link": cache["libre_link"], "libre_api_key": cache["libre_api_key"]})
+            kwargs.update(
+                {
+                    "libre_link": translation_settings.libre_link,
+                    "libre_api_key": translation_settings.libre_api_key,
+                }
+            )
 
         success, result = translate(
             engine,
             source_units,
             source_lang,
             lang_target,
-            get_proxies(cache["http_proxy"], cache["https_proxy"]),
+            get_proxies(translation_settings.http_proxy, translation_settings.https_proxy),
             False,
             **kwargs,
         )

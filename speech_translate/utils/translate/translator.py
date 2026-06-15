@@ -81,7 +81,7 @@ def _create_selenium_translator(config):
 
 
 def _get_translator_settings_snapshot():
-    return settings_registry.get().cache
+    return dict(settings_registry.get().cache)
 
 
 _selenium_translator_manager = SeleniumTranslatorManager(

@@ -70,6 +70,7 @@ from speech_translate.utils.audio.record_settings import (
     build_recording_model_settings,
     build_recording_stream_settings,
 )
+from speech_translate.utils.translate.translation_runtime_settings import build_realtime_translation_settings
 from speech_translate.utils.audio.recording_runtime_state import (
     build_recording_runtime_state_adapter,
     build_recording_text_store_adapter,
@@ -629,6 +630,33 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(settings.threshold_auto_mode, 2)
         self.assertTrue(settings.suppress_record_warning)
         self.assertEqual(settings.device_settings.cache["speaker"], "[ID: 0,1] | Loopback")
+
+    def test_build_realtime_translation_settings_extracts_translation_runtime_policy(self) -> None:
+        settings = build_realtime_translation_settings(
+            {
+                "http_proxy": "http://127.0.0.1:8080",
+                "https_proxy": "https://127.0.0.1:8443",
+                "libre_link": "http://127.0.0.1:5000",
+                "libre_api_key": "secret",
+                "filter_rec": True,
+                "filter_rec_case_sensitive": True,
+                "filter_rec_strip": False,
+                "filter_rec_ignore_punctuations": "!?",
+                "filter_rec_exact_match": True,
+                "filter_rec_similarity": 0.9,
+            }
+        )
+
+        self.assertEqual(settings.http_proxy, "http://127.0.0.1:8080")
+        self.assertEqual(settings.https_proxy, "https://127.0.0.1:8443")
+        self.assertEqual(settings.libre_link, "http://127.0.0.1:5000")
+        self.assertEqual(settings.libre_api_key, "secret")
+        self.assertTrue(settings.filter_rec)
+        self.assertTrue(settings.filter_rec_case_sensitive)
+        self.assertFalse(settings.filter_rec_strip)
+        self.assertEqual(settings.filter_rec_ignore_punctuations, "!?")
+        self.assertTrue(settings.filter_rec_exact_match)
+        self.assertEqual(settings.filter_rec_similarity, 0.9)
 
     def test_load_recording_model_runtime_builds_whisper_runtime(self) -> None:
         from speech_translate.utils.audio import record as record_module
