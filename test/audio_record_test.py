@@ -366,14 +366,12 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertIs(store.get(), ctx)
         self.assertIs(streaming_module.get_callback_context(store), ctx)
 
-    def test_initialize_callback_context_can_skip_legacy_global_sync(self) -> None:
+    def test_initialize_callback_context_store_is_isolated_from_default_store(self) -> None:
         from speech_translate.utils.audio import record_streaming as streaming_module
 
-        previous_callback_context = streaming_module.callback_context
+        previous_default_context = streaming_module.get_callback_context()
         store = FakeCallbackContextStore()
-        legacy_marker = object()
         try:
-            streaming_module.callback_context = legacy_marker
             ctx = streaming_module.initialize_callback_context(
                 sample_rate=16000,
                 chunk_size=320,
@@ -388,14 +386,15 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 webrtc_vad=object(),
                 silero_vad=object(),
                 store=store,
-                sync_legacy_context=False,
             )
-            observed_legacy_callback_context = streaming_module.callback_context
+            observed_default_context = streaming_module.get_callback_context()
         finally:
-            streaming_module.callback_context = previous_callback_context
+            streaming_module.reset_callback_context()
+            if previous_default_context is not None:
+                streaming_module.callback_context_store.set(previous_default_context)
 
         self.assertIs(store.get(), ctx)
-        self.assertIs(observed_legacy_callback_context, legacy_marker)
+        self.assertIs(observed_default_context, previous_default_context)
 
     def test_reset_callback_context_clears_global_state(self) -> None:
         from speech_translate.utils.audio import record as record_module
@@ -1242,13 +1241,11 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 settings_snapshot=None,
                 shared_runtime_state=None,
                 callback_context_store_instance=None,
-                sync_legacy_callback_context=True,
             ):
                 observed["use_temp_seen"] = config.use_temp
                 observed["settings_snapshot_use_temp"] = settings_snapshot["use_temp"]
                 observed["shared_runtime_state"] = shared_runtime_state
                 observed["callback_context_store_instance"] = callback_context_store_instance
-                observed["sync_legacy_callback_context"] = sync_legacy_callback_context
                 return RecordingStreamRuntime(
                     input_device_index=0,
                     sr_ori=16000,
@@ -1325,7 +1322,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertIsNot(observed["session_control"], record_module.recording_control)
         self.assertIs(observed["runtime_text_state"]._shared, observed["shared_runtime_state"])
         self.assertIsNotNone(observed["callback_context_store_instance"])
-        self.assertFalse(observed["sync_legacy_callback_context"])
         self.assertTrue(callable(observed["open_stream_kwargs"]["record_cb_override"]))
         self.assertIsNot(observed["open_stream_kwargs"]["record_cb_override"], record_module.record_cb)
         self.assertIs(

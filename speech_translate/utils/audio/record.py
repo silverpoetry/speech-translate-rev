@@ -188,7 +188,6 @@ def _prepare_recording_session_bootstrap(
     p,
     shared_runtime_state: RealtimeSharedState | None = None,
     callback_context_store_instance: CallbackContextStore | None = None,
-    sync_legacy_callback_context: bool = True,
 ) -> RecordingSessionBootstrap:
     config = _build_recording_session_config(
         rec_type=rec_type,
@@ -215,7 +214,6 @@ def _prepare_recording_session_bootstrap(
         settings_snapshot=settings_snapshot,
         shared_runtime_state=shared_runtime_state or shared_state,
         callback_context_store_instance=callback_context_store_instance,
-        sync_legacy_callback_context=sync_legacy_callback_context,
     )
     return RecordingSessionBootstrap(
         config=config,
@@ -708,7 +706,6 @@ def _initialize_callback_context(
     silero_vad: SileroVadLike,
     shared_runtime_state: RealtimeSharedState | None = None,
     store: CallbackContextStore | None = None,
-    sync_legacy_context: bool = True,
 ) -> RealtimeCallbackContext:
     return streaming_module.initialize_callback_context(
         sample_rate=sample_rate,
@@ -725,7 +722,6 @@ def _initialize_callback_context(
         silero_vad=silero_vad,
         shared_runtime_state=shared_runtime_state,
         store=store,
-        sync_legacy_context=sync_legacy_context,
     )
 
 
@@ -741,7 +737,6 @@ def _build_recording_stream_runtime(
     settings_snapshot: Mapping[str, object] | None = None,
     shared_runtime_state: RealtimeSharedState | None = None,
     callback_context_store_instance: CallbackContextStore | None = None,
-    sync_legacy_callback_context: bool = True,
 ) -> RecordingStreamRuntime:
     pyaudio = get_pyaudio_module()
     return streaming_module.build_recording_stream_runtime(
@@ -756,7 +751,6 @@ def _build_recording_stream_runtime(
         settings_snapshot=_recording_settings_snapshot(settings_snapshot),
         shared_runtime_state=shared_runtime_state,
         callback_context_store_instance=callback_context_store_instance,
-        sync_legacy_callback_context=sync_legacy_callback_context,
     )
 
 
@@ -1188,7 +1182,6 @@ def record_session(
             p=p,
             shared_runtime_state=session_shared_state,
             callback_context_store_instance=session_callback_context_store,
-            sync_legacy_callback_context=False,
         )
         config = bootstrap.config
         model_runtime = bootstrap.model_runtime

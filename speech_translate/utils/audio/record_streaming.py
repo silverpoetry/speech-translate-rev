@@ -25,9 +25,6 @@ from speech_translate.utils.audio.record_types import (
 )
 
 
-callback_context: RealtimeCallbackContext | None = None
-
-
 @dataclass
 class CallbackContextStore:
     value: RealtimeCallbackContext | None = None
@@ -75,22 +72,14 @@ def _recording_device_settings(settings_snapshot=None) -> AudioDeviceSettings:
     return AudioDeviceSettings(cache=_recording_settings_snapshot(settings_snapshot))
 
 
-def _sync_legacy_callback_context(store: CallbackContextStore) -> None:
-    global callback_context
-    callback_context = store.get()
-
-
 def get_callback_context(store: CallbackContextStore | None = None) -> RealtimeCallbackContext | None:
     store = store or callback_context_store
-    context = store.get()
-    _sync_legacy_callback_context(store)
-    return context
+    return store.get()
 
 
 def reset_callback_context(store: CallbackContextStore | None = None) -> None:
     store = store or callback_context_store
     store.reset()
-    _sync_legacy_callback_context(store)
 
 
 def initialize_callback_context(
@@ -109,7 +98,6 @@ def initialize_callback_context(
     silero_vad: SileroVadLike,
     shared_runtime_state: RealtimeSharedState | None = None,
     store: CallbackContextStore | None = None,
-    sync_legacy_context: bool = True,
 ) -> RealtimeCallbackContext:
     store = store or callback_context_store
     context = RealtimeCallbackContext(
@@ -130,8 +118,6 @@ def initialize_callback_context(
         silero_vad=silero_vad,
     )
     store.set(context)
-    if sync_legacy_context:
-        _sync_legacy_callback_context(store)
     return context
 
 
@@ -166,7 +152,6 @@ def build_recording_stream_runtime(
     settings_snapshot=None,
     shared_runtime_state: RealtimeSharedState | None = None,
     callback_context_store_instance: CallbackContextStore | None = None,
-    sync_legacy_callback_context: bool = True,
 ) -> RecordingStreamRuntime:
     settings_snapshot = _recording_settings_snapshot(settings_snapshot)
     success, detail = get_device_details_fn(rec_type, _recording_device_settings(settings_snapshot), p)
@@ -201,7 +186,6 @@ def build_recording_stream_runtime(
         silero_vad=silero_vad,
         shared_runtime_state=shared_runtime_state,
         store=callback_context_store_instance,
-        sync_legacy_context=sync_legacy_callback_context,
     )
     return RecordingStreamRuntime(
         input_device_index=int(device_detail["index"]),
