@@ -179,6 +179,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
 
     def test_reset_callback_context_clears_global_state(self) -> None:
         from speech_translate.utils.audio import record as record_module
+        from speech_translate.utils.audio import record_streaming as streaming_module
 
         record_module._initialize_callback_context(
             sample_rate=16000,
@@ -195,7 +196,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
             silero_vad=object(),
         )
         _reset_callback_context()
-        self.assertIsNone(record_module.callback_context)
+        self.assertIsNone(streaming_module.get_callback_context())
 
     def test_translation_task_defaults_are_explicit(self) -> None:
         task = TranslationTask(kind="whisper", separator="<br />")
@@ -347,7 +348,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
                     "chunk_size": 960,
                 },
             )
-            record_module._load_recording_vad_runtime = lambda rec_type: ("webrtc", "silero")
+            record_module._load_recording_vad_runtime = lambda rec_type, settings_snapshot=None: ("webrtc", "silero")
             record_module._initialize_callback_context = lambda **kwargs: RealtimeCallbackContext(
                 sample_rate=kwargs["sample_rate"],
                 frame_duration_ms=10,
@@ -387,6 +388,71 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(runtime.sr_divider, 16000)
         self.assertEqual(runtime.callback_ctx.webrtc_vad, "webrtc")
         self.assertEqual(runtime.callback_ctx.silero_vad, "silero")
+
+    def test_build_recording_stream_runtime_uses_explicit_settings_snapshot(self) -> None:
+        from speech_translate.utils.audio import record_streaming as streaming_module
+
+        captured = {}
+
+        def fake_load_vad_runtime(*, rec_type, settings_snapshot=None):
+            captured["rec_type"] = rec_type
+            captured["settings_snapshot"] = dict(settings_snapshot)
+            return "webrtc", "silero"
+
+        runtime = streaming_module.build_recording_stream_runtime(
+            rec_type="mic",
+            config=type(
+                "Config",
+                (),
+                {
+                    "threshold_enable": True,
+                    "threshold_db": -20.0,
+                    "threshold_auto": True,
+                    "use_silero": True,
+                    "silero_min_conf": 0.75,
+                    "use_temp": False,
+                },
+            )(),
+            p=type("P", (), {"get_sample_size": lambda self, fmt: 2})(),
+            get_device_details_fn=lambda rec_type, sj, p: (
+                True,
+                {
+                    "device_detail": {"index": 1},
+                    "sample_rate": 44100,
+                    "num_of_channels": 1,
+                    "chunk_size": 441,
+                },
+            ),
+            load_recording_vad_runtime_fn=fake_load_vad_runtime,
+            initialize_callback_context_fn=lambda **kwargs: RealtimeCallbackContext(
+                sample_rate=kwargs["sample_rate"],
+                frame_duration_ms=10,
+                threshold_enable=kwargs["threshold_enable"],
+                threshold_db=kwargs["threshold_db"],
+                threshold_auto=kwargs["threshold_auto"],
+                use_silero=kwargs["use_silero"],
+                silero_min_conf=kwargs["silero_min_conf"],
+                vad_checked=False,
+                num_of_channels=kwargs["num_of_channels"],
+                samp_width=kwargs["samp_width"],
+                use_temp=kwargs["use_temp"],
+                webrtc_vad=kwargs["webrtc_vad"],
+                silero_vad=kwargs["silero_vad"],
+                silence_started_at=0.0,
+            ),
+            audio_format=16,
+            logger_instance=type("Logger", (), {"warning": lambda self, message: None})(),
+            settings_snapshot={
+                "threshold_auto_mode_mic": 2,
+                "supress_record_warning": True,
+            },
+        )
+
+        self.assertEqual(captured["rec_type"], "mic")
+        self.assertEqual(captured["settings_snapshot"]["threshold_auto_mode_mic"], 2)
+        self.assertTrue(captured["settings_snapshot"]["supress_record_warning"])
+        self.assertEqual(runtime.input_device_index, 1)
+        self.assertEqual(runtime.sr_ori, 44100)
 
     def test_open_recording_stream_passes_bootstrap_values_to_pyaudio(self) -> None:
         from speech_translate.utils.audio import record as record_module

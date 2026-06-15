@@ -22,6 +22,10 @@ from speech_translate.utils.audio.record_types import (
 callback_context: RealtimeCallbackContext | None = None
 
 
+def _recording_settings_snapshot(settings_snapshot=None):
+    return sj.cache if settings_snapshot is None else settings_snapshot
+
+
 def get_callback_context() -> RealtimeCallbackContext | None:
     return callback_context
 
@@ -67,8 +71,9 @@ def initialize_callback_context(
     return callback_context
 
 
-def load_recording_vad_runtime(*, rec_type: str) -> tuple[object, SileroVadLike]:
-    webrtc_vad = get_webrtcvad().Vad(sj.cache.get(f"threshold_auto_mode_{rec_type}", 3))
+def load_recording_vad_runtime(*, rec_type: str, settings_snapshot=None) -> tuple[object, SileroVadLike]:
+    settings_snapshot = _recording_settings_snapshot(settings_snapshot)
+    webrtc_vad = get_webrtcvad().Vad(settings_snapshot.get(f"threshold_auto_mode_{rec_type}", 3))
     torchaudio = get_torchaudio()
     torch = get_torch()
 
@@ -94,7 +99,9 @@ def build_recording_stream_runtime(
     initialize_callback_context_fn=initialize_callback_context,
     audio_format=None,
     logger_instance=logger,
+    settings_snapshot=None,
 ) -> RecordingStreamRuntime:
+    settings_snapshot = _recording_settings_snapshot(settings_snapshot)
     success, detail = get_device_details_fn(rec_type, sj, p)
     if not success:
         raise Exception("Failed to get device details")
@@ -104,10 +111,10 @@ def build_recording_stream_runtime(
     num_of_channels = int(detail["num_of_channels"])
     chunk_size = int(detail["chunk_size"])
 
-    if not sj.cache["supress_record_warning"] and sr_ori > 48000:
+    if not settings_snapshot["supress_record_warning"] and sr_ori > 48000:
         logger_instance.warning(f"Sample rate is high ({sr_ori} Hz). May cause issues. Can be suppressed in settings.")
 
-    webrtc_vad, silero_vad = load_recording_vad_runtime_fn(rec_type=rec_type)
+    webrtc_vad, silero_vad = load_recording_vad_runtime_fn(rec_type=rec_type, settings_snapshot=settings_snapshot)
     pyaudio = get_pyaudio_module()
     sample_format = pyaudio.paInt16 if audio_format is None else audio_format
     samp_width = p.get_sample_size(sample_format)

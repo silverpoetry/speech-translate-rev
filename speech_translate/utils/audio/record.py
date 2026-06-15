@@ -54,9 +54,6 @@ from ..helper import str_separator_to_html
 from ..whisper.helper import get_hallucination_filter, model_values
 from ..whisper.result import remove_segments_by_str
 
-
-callback_context: RealtimeCallbackContext | None = None
-
 _build_smart_split_outcome = processing_module.build_smart_split_outcome
 
 
@@ -531,9 +528,7 @@ def _get_callback_context() -> RealtimeCallbackContext | None:
 
 
 def _reset_callback_context() -> None:
-    global callback_context
     streaming_module.reset_callback_context()
-    callback_context = streaming_module.callback_context
 
 
 def _initialize_callback_context(
@@ -551,8 +546,7 @@ def _initialize_callback_context(
     webrtc_vad: object,
     silero_vad: SileroVadLike,
 ) -> RealtimeCallbackContext:
-    global callback_context
-    callback_context = streaming_module.initialize_callback_context(
+    return streaming_module.initialize_callback_context(
         sample_rate=sample_rate,
         chunk_size=chunk_size,
         threshold_enable=threshold_enable,
@@ -566,11 +560,10 @@ def _initialize_callback_context(
         webrtc_vad=webrtc_vad,
         silero_vad=silero_vad,
     )
-    return callback_context
 
 
-def _load_recording_vad_runtime(*, rec_type: str) -> tuple[object, SileroVadLike]:
-    return streaming_module.load_recording_vad_runtime(rec_type=rec_type)
+def _load_recording_vad_runtime(*, rec_type: str, settings_snapshot=None) -> tuple[object, SileroVadLike]:
+    return streaming_module.load_recording_vad_runtime(rec_type=rec_type, settings_snapshot=settings_snapshot)
 
 
 def _build_recording_stream_runtime(
@@ -589,6 +582,7 @@ def _build_recording_stream_runtime(
         initialize_callback_context_fn=_initialize_callback_context,
         audio_format=pyaudio.paInt16,
         logger_instance=logger,
+        settings_snapshot=sj.cache,
     )
 
 
