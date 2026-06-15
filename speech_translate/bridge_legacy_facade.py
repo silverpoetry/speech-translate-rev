@@ -305,6 +305,44 @@ class BridgeLegacyFacade(
     pass
 
 
+class BridgeLegacyProxy(BridgeLegacyFacade):
+    """Compatibility wrapper that exposes legacy bridge access on top of a runtime root object."""
+
+    def __init__(self, runtime_root: object):
+        self._runtime_root = runtime_root
+
+    @property
+    def runtime_root(self) -> object:
+        return self._runtime_root
+
+    @property
+    def visual(self):
+        return self._runtime_root.visual
+
+    @property
+    def file_runtime(self):
+        return self._runtime_root.file_runtime
+
+    @property
+    def download(self):
+        return self._runtime_root.download
+
+    @property
+    def recording_runtime(self):
+        return self._runtime_root.recording_runtime
+
+    @property
+    def live_text(self):
+        return self._runtime_root.live_text
+
+    @property
+    def live_text_renderer(self):
+        return self._runtime_root.live_text_renderer
+
+    def __getattr__(self, item: str):
+        return getattr(self._runtime_root, item)
+
+
 __all__ = [
     "BridgeVisualLegacyMixin",
     "BridgeFileLegacyMixin",
@@ -312,4 +350,5 @@ __all__ = [
     "BridgeRecordingLegacyMixin",
     "BridgeLiveTextLegacyMixin",
     "BridgeLegacyFacade",
+    "BridgeLegacyProxy",
 ]

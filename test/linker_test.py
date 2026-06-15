@@ -7,10 +7,14 @@ import unittest
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
-from speech_translate.linker import BridgeClass
+from speech_translate import app_runtime
+from speech_translate.linker import BridgeClass, bc
 
 
 class LinkerStructureTests(unittest.TestCase):
+    def test_linker_runtime_singleton_wraps_app_runtime_root(self) -> None:
+        self.assertIs(bc.runtime_root, app_runtime.bc)
+
     def test_bridge_class_exposes_legacy_properties_through_runtime_objects(self) -> None:
         bridge = BridgeClass()
 
