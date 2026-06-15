@@ -7,6 +7,7 @@ import unittest
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
+import speech_translate.linker as linker_module
 from speech_translate import app_runtime
 from speech_translate.linker import BridgeClass, bc
 
@@ -14,6 +15,9 @@ from speech_translate.linker import BridgeClass, bc
 class LinkerStructureTests(unittest.TestCase):
     def test_linker_runtime_singleton_wraps_app_runtime_root(self) -> None:
         self.assertIs(bc.runtime_root, app_runtime.bc)
+
+    def test_linker_module_exports_only_primary_compatibility_entries(self) -> None:
+        self.assertEqual(linker_module.__all__, ["BridgeClass", "BridgeRuntimeRoot", "bc"])
 
     def test_bridge_class_exposes_legacy_properties_through_runtime_objects(self) -> None:
         bridge = BridgeClass()

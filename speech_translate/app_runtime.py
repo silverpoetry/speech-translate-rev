@@ -14,12 +14,13 @@ from speech_translate.live_text_service import LiveTextRenderer
 
 if TYPE_CHECKING:
     from speech_translate.controller_protocols import SettingsStore
+    bc: "BridgeRuntimeRoot"
 
 
 def _get_default_settings_store() -> "SettingsStore":
-    from speech_translate.settings_runtime import sj
+    from speech_translate.settings_runtime import get_settings_store
 
-    return sj
+    return get_settings_store()
 
 if system() == "Windows":
     from multiprocessing import Queue
@@ -39,17 +40,34 @@ class BridgeRuntimeRoot:
         self.live_text_renderer = LiveTextRenderer(settings_store or _get_default_settings_store())
 
 
-BridgeClass = BridgeRuntimeRoot
+def create_runtime_root(settings_store: "SettingsStore" | None = None) -> BridgeRuntimeRoot:
+    return BridgeRuntimeRoot(settings_store)
+
+_runtime_singleton: BridgeRuntimeRoot | None = None
 
 
-from speech_translate.settings_runtime import sj
+def get_runtime_root() -> BridgeRuntimeRoot:
+    global _runtime_singleton
+    if _runtime_singleton is None:
+        _runtime_singleton = create_runtime_root()
+    return _runtime_singleton
 
-bc = BridgeRuntimeRoot(sj)
+
+def __getattr__(name: str):
+    if name == "bc":
+        return get_runtime_root()
+    if name == "BridgeClass":
+        return BridgeRuntimeRoot
+    if name == "sj":
+        from speech_translate.settings_runtime import get_settings_store
+
+        return get_settings_store()
+    raise AttributeError(name)
 
 
 __all__ = [
     "BridgeRuntimeRoot",
-    "BridgeClass",
+    "create_runtime_root",
+    "get_runtime_root",
     "bc",
-    "sj",
 ]
