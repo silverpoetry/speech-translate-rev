@@ -12,6 +12,7 @@ from speech_translate.utils.audio.record import (
     BufferStateReducer,
     RealtimeCallbackContext,
     RecordingRuntime,
+    RecordingSessionFinalizeContext,
     RecordingSessionLifecycle,
     RecordingSessionServices,
     RecordingStreamRuntime,
@@ -717,6 +718,72 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertIs(lifecycle.services, services)
         self.assertEqual(lifecycle.sr_divider, 16000)
 
+    def test_recording_session_finalize_context_defaults_without_lifecycle(self) -> None:
+        context = RecordingSessionFinalizeContext.from_lifecycle(None)
+
+        self.assertIsNone(context.session_state)
+        self.assertIsNone(context.update_status)
+        self.assertTrue(context.keep_temp)
+
+    def test_recording_session_finalize_context_captures_lifecycle_cleanup_contract(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        updated = []
+        previous_status = record_module.bc.current_rec_status
+        runtime = RecordingRuntime(
+            taskname="Transcribe",
+            device="mic",
+            lang_source="English",
+            lang_target="-",
+            engine="Whisper",
+            is_tl=False,
+            use_temp=True,
+            separator="<br />",
+            keep_temp=False,
+            t_start=0.0,
+            max_buffer_s=10.0,
+            max_sentences=5,
+            sentence_limitless=False,
+            lang_target_display="-",
+        )
+        services = RecordingSessionServices(
+            runtime=runtime,
+            status_emitter=type("Emitter", (), {"emit": lambda self, **kwargs: updated.append(kwargs)})(),
+            translator=object(),
+            buffer_reducer=object(),
+        )
+        lifecycle = RecordingSessionLifecycle(
+            session_state=RealtimeSessionState(),
+            services=services,
+            callback_ctx=RealtimeCallbackContext(
+                sample_rate=16000,
+                frame_duration_ms=20,
+                threshold_enable=True,
+                threshold_db=-20.0,
+                threshold_auto=True,
+                use_silero=True,
+                silero_min_conf=0.75,
+                vad_checked=False,
+                num_of_channels=1,
+                samp_width=2,
+                use_temp=True,
+            ),
+            sr_ori=16000,
+            num_of_channels=1,
+            samp_width=2,
+            sr_divider=16000,
+        )
+        try:
+            record_module.bc.current_rec_status = "Stopping"
+            context = RecordingSessionFinalizeContext.from_lifecycle(lifecycle)
+            context.update_status()
+        finally:
+            record_module.bc.current_rec_status = previous_status
+
+        self.assertIs(context.session_state, lifecycle.session_state)
+        self.assertFalse(context.keep_temp)
+        self.assertEqual(updated, [{"status": "Stopping"}])
+
     def test_start_recording_session_support_threads_starts_workers_and_updates_status(self) -> None:
         from speech_translate.utils.audio import record as record_module
 
@@ -930,9 +997,10 @@ class AudioRecordHelpersTests(unittest.TestCase):
             record_module.bc.recording = previous_recording
 
         self.assertEqual(finalized[0][0][0], py_audio)
-        self.assertIsNone(finalized[0][0][1])
-        self.assertIsNone(finalized[0][0][2])
-        self.assertTrue(finalized[0][1]["keep_temp"])
+        self.assertIsInstance(finalized[0][0][1], RecordingSessionFinalizeContext)
+        self.assertIsNone(finalized[0][0][1].session_state)
+        self.assertIsNone(finalized[0][0][1].update_status)
+        self.assertTrue(finalized[0][0][1].keep_temp)
 
     def test_resolve_live_input_source_language_prefers_detected_supported_language(self) -> None:
         from speech_translate.utils.audio import record as record_module

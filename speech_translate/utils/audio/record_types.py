@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from types import TracebackType
-from typing import Any, Literal, Protocol
+from typing import Any, Callable, Literal, Protocol
 
 import numpy as np
 
@@ -159,6 +159,24 @@ class RecordingSessionLifecycle:
     num_of_channels: int
     samp_width: int
     sr_divider: int
+
+
+@dataclass
+class RecordingSessionFinalizeContext:
+    session_state: "RealtimeSessionState" | None = None
+    update_status: Callable[[], None] | None = None
+    keep_temp: bool = True
+
+    @classmethod
+    def from_lifecycle(cls, lifecycle: RecordingSessionLifecycle | None) -> "RecordingSessionFinalizeContext":
+        if lifecycle is None:
+            return cls()
+
+        return cls(
+            session_state=lifecycle.session_state,
+            update_status=lifecycle.services.update_status,
+            keep_temp=lifecycle.services.runtime.keep_temp,
+        )
 
 
 @dataclass

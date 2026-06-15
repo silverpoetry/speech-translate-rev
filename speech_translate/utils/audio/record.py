@@ -6,7 +6,7 @@ from shlex import quote
 from threading import Lock, Thread
 from time import gmtime, sleep, strftime, time
 
-from typing import Callable, Mapping, cast
+from typing import Mapping, cast
 
 from speech_translate._constants import WHISPER_SR
 from speech_translate._logging import logger
@@ -34,6 +34,7 @@ from speech_translate.utils.audio import record_streaming as streaming_module
 from speech_translate.utils.audio.record_types import (
     AudioTarget,
     RecordingSessionBootstrap,
+    RecordingSessionFinalizeContext,
     RecordingModelRuntime,
     RecordingRuntime,
     RecordingSessionConfig,
@@ -444,33 +445,30 @@ def _advance_recording_buffer(
 
 def _finalize_recording_session(
     p,
-    session_state: RealtimeSessionState | None,
-    update_status_lbl: Callable[[], None] | None,
-    *,
-    keep_temp: bool,
+    finalize_context: RecordingSessionFinalizeContext,
 ) -> None:
-    if update_status_lbl is not None:
+    if finalize_context.update_status is not None:
         bc.current_rec_status = "⚠️ Stopping stream"
-        update_status_lbl()
+        finalize_context.update_status()
     if bc.stream:
         bc.stream.stop_stream()
         bc.stream.close()
         bc.stream = None
     bc.rec_tc_thread = bc.rec_tl_thread = None
 
-    if update_status_lbl is not None:
+    if finalize_context.update_status is not None:
         bc.current_rec_status = "⚠️ Terminating pyaudio"
-        update_status_lbl()
+        finalize_context.update_status()
     p.terminate()
 
     _drain_audio_queue()
-    if session_state is not None and not keep_temp:
-        _cleanup_temp_audio_paths(session_state.temp_audio_paths)
+    if finalize_context.session_state is not None and not finalize_context.keep_temp:
+        _cleanup_temp_audio_paths(finalize_context.session_state.temp_audio_paths)
 
     _reset_callback_context()
     bc.current_rec_status = "⏹️ Stopped"
-    if update_status_lbl is not None:
-        update_status_lbl()
+    if finalize_context.update_status is not None:
+        finalize_context.update_status()
 
 
 def _run_recording_session_loop(
@@ -999,12 +997,8 @@ def record_session(
     finally:
         if p is not None:
             try:
-                _finalize_recording_session(
-                    p,
-                    lifecycle.session_state if lifecycle is not None else None,
-                    lifecycle.services.update_status if lifecycle is not None else None,
-                    keep_temp=lifecycle.services.runtime.keep_temp if lifecycle is not None else True,
-                )
+                finalize_context = RecordingSessionFinalizeContext.from_lifecycle(lifecycle)
+                _finalize_recording_session(p, finalize_context)
             except Exception as finalize_exc:
                 logger.error(f"Error finalizing record session: {finalize_exc}")
         empty_torch_cuda_cache()
