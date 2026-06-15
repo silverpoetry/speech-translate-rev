@@ -84,10 +84,6 @@ def _build_recording_state_payload(
         payload["sentences"] = sentences
     return payload
 
-
-shared_state = RealtimeSharedState()
-
-
 @dataclass
 class RecordingBridgeAdapter:
     bridge: object | None = None
@@ -113,7 +109,7 @@ class RecordingTextState:
         shared_runtime_state: RealtimeSharedState | None = None,
         text_store: RecordingTextStoreAdapter | None = None,
     ):
-        self._shared = shared_runtime_state or shared_state
+        self._shared = shared_runtime_state or RealtimeSharedState()
         self._text_store = text_store or build_recording_text_store_adapter()
 
     def transcribed_sentences(self) -> list[object]:

@@ -312,6 +312,16 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(state.prev_tl_res, "")
         self.assertIsNone(state.last_db)
 
+    def test_default_recording_text_state_owns_isolated_shared_runtime_state(self) -> None:
+        first = build_recording_text_state()
+        second = build_recording_text_state()
+
+        first.set_previous_transcribed_result("alpha")
+
+        self.assertEqual(_result_text(first.previous_transcribed_result()), "alpha")
+        self.assertEqual(second.previous_transcribed_result(), "")
+        self.assertIsNot(first._shared, second._shared)
+
     def test_session_state_tracks_buffer_and_duration(self) -> None:
         state = RealtimeSessionState()
         state.append_audio(b"abcd")

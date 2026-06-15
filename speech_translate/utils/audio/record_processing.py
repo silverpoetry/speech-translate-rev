@@ -18,7 +18,6 @@ from speech_translate.utils.audio.record_runtime import (
     build_recording_text_state,
     _enforce_sentence_limits,
 )
-from speech_translate.utils.audio.recording_runtime_state import build_recording_runtime_state_adapter
 from speech_translate.utils.audio.record_types import (
     AudioTarget,
     HallucinationFilters,
@@ -159,10 +158,9 @@ def commit_realtime_transcription(
     separator: str,
     translator: TranslationDispatcher,
     runtime_text_state: RecordingTextState | None = None,
-    set_current_status=None,
+    set_current_status,
 ) -> None:
     runtime_text_state = runtime_text_state or build_recording_text_state()
-    set_current_status = set_current_status or build_recording_runtime_state_adapter().set_current_status
     text = result.text.strip() if result else ""
     runtime_text_state.set_detected_language(result.language if result else "~")
 
