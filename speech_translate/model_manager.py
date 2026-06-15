@@ -3,15 +3,15 @@ from __future__ import annotations
 import os
 from threading import Thread
 from time import sleep
-from typing import Dict, Optional, cast
+from typing import Dict, Optional
 
+from speech_translate.controller_settings import build_runtime_model_load_settings
 from speech_translate.controller_protocols import JsonDict, ModelManagerBridge, SettingsStore, WhisperLoadApiGetter
 from speech_translate.log_helpers import logger
 from speech_translate.ui_protocol import TASK_SOURCE_MODEL_DOWNLOAD, TASK_SOURCE_MODEL_LOAD
 from speech_translate.utils.whisper.download_runtime import TaskReporter
 from speech_translate.utils.whisper.paths import get_default_download_root
 from speech_translate.utils.whisper.helper import model_select_dict, model_values
-from speech_translate.utils.types import SettingDict
 
 
 def _get_whisper_download_api():
@@ -356,12 +356,11 @@ class ModelManagerController:
         def worker():
             try:
                 whisper_load_api = self.whisper_loader_getter()
-                settings_snapshot = cast(SettingDict, self.bridge.get_settings_snapshot())
-                settings_snapshot["model_mw"] = settings_snapshot["model_f_import"] = model_key
-                engine = self.normalize_engine_name(str(settings_snapshot.get("tl_engine_mw", "Google Translate")))
-                transcribe_enabled = bool(settings_snapshot.get("transcribe_mw", True))
-                translate_enabled = bool(settings_snapshot.get("translate_mw", True))
-                tl_engine_whisper = engine in model_values
+                load_settings = build_runtime_model_load_settings(
+                    self.bridge.get_settings_snapshot(),
+                    model_key=model_key,
+                    normalize_engine_name=self.normalize_engine_name,
+                )
 
                 self.bridge.reset_task_state("Model Load")
                 self.bridge.update_task_message(f"Loading model cache for {model_key}", source=TASK_SOURCE_MODEL_LOAD)
@@ -371,7 +370,7 @@ class ModelManagerController:
                     source=TASK_SOURCE_MODEL_LOAD,
                 )
 
-                model_args = whisper_load_api.get_model_args(settings_snapshot)
+                model_args = whisper_load_api.get_model_args(load_settings.snapshot)
                 self.bridge.update_task_progress(15, source=TASK_SOURCE_MODEL_LOAD)
                 self.bridge.update_task_message(
                     f"Checking model cache for {model_key}",
@@ -379,12 +378,12 @@ class ModelManagerController:
                 )
 
                 bundle_cached = whisper_load_api.is_model_bundle_cached(
-                    transcribe_enabled,
-                    translate_enabled,
-                    tl_engine_whisper,
-                    model_key,
-                    engine,
-                    settings_snapshot,
+                    load_settings.transcribe_enabled,
+                    load_settings.translate_enabled,
+                    load_settings.tl_engine_whisper,
+                    load_settings.model_key,
+                    load_settings.engine,
+                    load_settings.snapshot,
                     **model_args,
                 )
                 if bundle_cached:
@@ -401,12 +400,12 @@ class ModelManagerController:
                     )
 
                 whisper_load_api.get_model(
-                    transcribe_enabled,
-                    translate_enabled,
-                    tl_engine_whisper,
-                    model_key,
-                    engine,
-                    settings_snapshot,
+                    load_settings.transcribe_enabled,
+                    load_settings.translate_enabled,
+                    load_settings.tl_engine_whisper,
+                    load_settings.model_key,
+                    load_settings.engine,
+                    load_settings.snapshot,
                     **model_args,
                 )
 

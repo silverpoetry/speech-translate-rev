@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from threading import RLock, Thread
 from time import sleep, time
-from typing import Optional, cast
+from typing import Optional
 
+from speech_translate.controller_settings import RecordingControllerSettings, build_recording_controller_settings
 from speech_translate.controller_protocols import JsonDict, RecordingBridge, ShutdownSeleniumFn, WhisperLoadApiGetter
 from speech_translate.log_helpers import logger
 from speech_translate.ui_protocol import UI_SECTION_TASK
@@ -15,8 +16,6 @@ from speech_translate.utils.audio.recording_runtime_state import (
     build_recording_text_store_adapter,
 )
 from speech_translate.utils.audio.record_types import RecordingSessionDependencies, RecordingSessionRequest
-from speech_translate.utils.types import SettingDict
-from speech_translate.utils.whisper.helper import model_keys
 
 
 DEFAULT_RECORDING_STATE: JsonDict = {
@@ -35,14 +34,39 @@ DEFAULT_RECORDING_STATE: JsonDict = {
 
 @dataclass(frozen=True)
 class RecordingStartContext:
-    device: str
-    lang_source: str
-    lang_target: str
-    engine: str
-    model_name_tc: str
-    is_tc: bool
-    is_tl: bool
-    settings_snapshot: SettingDict
+    settings: RecordingControllerSettings
+
+    @property
+    def device(self) -> str:
+        return self.settings.device
+
+    @property
+    def lang_source(self) -> str:
+        return self.settings.lang_source
+
+    @property
+    def lang_target(self) -> str:
+        return self.settings.lang_target
+
+    @property
+    def engine(self) -> str:
+        return self.settings.engine
+
+    @property
+    def model_name_tc(self) -> str:
+        return self.settings.model_name_tc
+
+    @property
+    def is_tc(self) -> bool:
+        return self.settings.is_tc
+
+    @property
+    def is_tl(self) -> bool:
+        return self.settings.is_tl
+
+    @property
+    def settings_snapshot(self):
+        return self.settings.snapshot
 
     @property
     def mode(self) -> str:
@@ -50,11 +74,11 @@ class RecordingStartContext:
 
     @property
     def engine_is_whisper(self) -> bool:
-        return self.engine in model_keys
+        return self.settings.engine_is_whisper
 
     @property
     def should_auto_close_selenium(self) -> bool:
-        return self.is_tl and self.engine == "Selenium Chrome Translate"
+        return self.settings.should_auto_close_selenium
 
 
 class RecordingSessionController:
@@ -101,16 +125,18 @@ class RecordingSessionController:
         is_tc: bool,
         is_tl: bool,
     ) -> RecordingStartContext:
-        settings_snapshot = cast(SettingDict, self.bridge.get_settings_snapshot())
         return RecordingStartContext(
-            device=str(settings_snapshot.get("input", device)),
-            lang_source=str(settings_snapshot.get("source_lang_mw", lang_source)),
-            lang_target=str(settings_snapshot.get("target_lang_mw", lang_target)),
-            engine=self.bridge.normalize_engine_name(str(settings_snapshot.get("tl_engine_mw", engine))),
-            model_name_tc=self.bridge.normalize_model_key(str(settings_snapshot.get("model_mw", ""))),
-            is_tc=bool(settings_snapshot.get("transcribe_mw", is_tc)),
-            is_tl=bool(settings_snapshot.get("translate_mw", is_tl)),
-            settings_snapshot=settings_snapshot,
+            settings=build_recording_controller_settings(
+                self.bridge.get_settings_snapshot(),
+                default_device=device,
+                default_lang_source=lang_source,
+                default_lang_target=lang_target,
+                default_engine=engine,
+                default_is_tc=is_tc,
+                default_is_tl=is_tl,
+                normalize_engine_name=self.bridge.normalize_engine_name,
+                normalize_model_key=self.bridge.normalize_model_key,
+            )
         )
 
     def _probe_cached_bundle(self, context: RecordingStartContext) -> bool:
@@ -152,7 +178,7 @@ class RecordingSessionController:
     def _shutdown_recording_session(self, *, context: RecordingStartContext) -> None:
         self.runtime_state.disable_recording()
         self.set_recording_state({"status": "Stopped", "active": False})
-        if context.should_auto_close_selenium and bool(self.bridge.get_settings_snapshot().get("selenium_auto_close_on_task_done", True)):
+        if context.should_auto_close_selenium:
             self.shutdown_selenium_fn()
         self.record_worker_thread = None
 
@@ -249,7 +275,7 @@ class RecordingSessionController:
         self._reset_recording_runtime()
         self.set_recording_state(self._build_recording_state(context, cached_bundle=cached_bundle))
         self._start_recording_worker(context)
-        return {"ok": True, "device": context.device, "engine_whisper": context.engine in model_keys, "message": "Recording started"}
+        return {"ok": True, "device": context.device, "engine_whisper": context.engine_is_whisper, "message": "Recording started"}
 
     def stop_recording(self) -> JsonDict:
         if not self.runtime_state.is_recording_active():
@@ -258,7 +284,18 @@ class RecordingSessionController:
         self.runtime_state.disable_recording()
 
         if self.wait_recording_idle(timeout_s=12.0):
-            if bool(self.bridge.get_settings_snapshot().get("selenium_auto_close_on_task_done", True)) and self.bridge.normalize_engine_name(str(self.bridge.get_settings_snapshot().get("tl_engine_mw", ""))) == "Selenium Chrome Translate":
+            settings = build_recording_controller_settings(
+                self.bridge.get_settings_snapshot(),
+                default_device=str(self.recording_state.get("device", "mic")),
+                default_lang_source=str(self.recording_state.get("lang_source", "English")),
+                default_lang_target=str(self.recording_state.get("lang_target", "Indonesian")),
+                default_engine=str(self.recording_state.get("engine", "")),
+                default_is_tc=True,
+                default_is_tl=True,
+                normalize_engine_name=self.bridge.normalize_engine_name,
+                normalize_model_key=self.bridge.normalize_model_key,
+            )
+            if settings.should_auto_close_selenium:
                 self.shutdown_selenium_fn()
             self.set_recording_state({"status": "Stopped", "active": False})
             return {"ok": True, "message": "Recording stopped"}
