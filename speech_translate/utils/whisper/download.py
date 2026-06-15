@@ -1,38 +1,37 @@
 # pylint: disable=import-outside-toplevel, protected-access
+from __future__ import annotations
+
 import hashlib
 import os
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 from time import time
-from typing import Dict, List, Literal, Optional, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
+from speech_translate.linker import bc
 from speech_translate.log_helpers import logger
-from speech_translate.utils.whisper.paths import get_default_download_root
+from speech_translate.runtime_deps import (
+    get_faster_whisper_model_registry,
+    get_huggingface_hub,
+    get_huggingface_repo_folder_name,
+    get_whisper_model_registry,
+    try_get_requests,
+)
+from speech_translate.utils.helper import kill_thread
 from speech_translate.utils.whisper.download_runtime import (
     TaskReporter,
     build_download_progress_snapshot,
     monitor_threaded_download,
     start_optional_callback,
 )
+from speech_translate.utils.whisper.paths import get_default_download_root
 
-try:
-    import huggingface_hub
-    from huggingface_hub.file_download import repo_folder_name
-    _validate_hf_hub_args = huggingface_hub.utils.validate_hf_hub_args
-except ModuleNotFoundError:  # pragma: no cover - optional runtime dependency fallback
-    huggingface_hub = None  # type: ignore[assignment]
-    repo_folder_name = None  # type: ignore[assignment]
 
-    def _validate_hf_hub_args(func):
-        return func
-
-try:
-    import requests
-except ModuleNotFoundError:  # pragma: no cover - optional runtime dependency fallback
-    requests = None  # type: ignore[assignment]
-
-from speech_translate.linker import bc
-from speech_translate.utils.helper import kill_thread
+@dataclass(frozen=True)
+class HuggingFaceDownloadRuntime:
+    hub: Any
+    repo_folder_name: Callable[..., str]
 
 
 def _build_bridge_task_reporter() -> TaskReporter:
@@ -48,12 +47,108 @@ def _build_bridge_task_reporter() -> TaskReporter:
     )
 
 
-def _get_requests_connection_error_types() -> tuple[type[BaseException], ...]:
-    exceptions_mod = getattr(requests, "exceptions", None)
+def _build_huggingface_download_runtime() -> HuggingFaceDownloadRuntime:
+    return HuggingFaceDownloadRuntime(
+        hub=get_huggingface_hub(),
+        repo_folder_name=get_huggingface_repo_folder_name(),
+    )
+
+
+def _calculate_sha256(file_path: str | Path, *, chunk_size: int = 1024 * 1024) -> str:
+    hasher = hashlib.sha256()
+    with open(file_path, "rb") as model_file:
+        for chunk in iter(lambda: model_file.read(chunk_size), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def _get_requests_connection_error_types(requests_module=None) -> tuple[type[BaseException], ...]:
+    requests_module = try_get_requests() if requests_module is None else requests_module
+    if requests_module is None:
+        return ()
+
+    exceptions_mod = getattr(requests_module, "exceptions", None)
     connection_error = getattr(exceptions_mod, "ConnectionError", None)
     if isinstance(connection_error, type) and issubclass(connection_error, BaseException):
         return (connection_error,)
     return ()
+
+
+def _resolve_faster_whisper_storage_folder(
+    cache_dir: str | Path,
+    repo_id: str,
+    *,
+    repo_folder_name: Callable[..., str],
+) -> Path:
+    return Path(cache_dir) / repo_folder_name(repo_id=repo_id, repo_type="model")
+
+
+def _is_complete_model_dir(model_dir: Path) -> bool:
+    if not model_dir.exists() or not model_dir.is_dir():
+        return False
+
+    has_config = (model_dir / "config.json").exists()
+    has_weights = (model_dir / "model.bin").exists() or (model_dir / "model.safetensors").exists()
+    if not (has_config and has_weights):
+        return False
+
+    if any(model_dir.rglob("*.incomplete")):
+        return False
+
+    return True
+
+
+def _resolve_whisper_model_url(model_key: str) -> str:
+    model_registry = get_whisper_model_registry()
+    try:
+        return model_registry[model_key]
+    except KeyError as exc:
+        available = ", ".join(sorted(model_registry.keys()))
+        raise RuntimeError(f"Model {model_key} not found; available models = [{available}]") from exc
+
+
+def _resolve_faster_whisper_repo_id(model_key: str) -> str:
+    model_registry = get_faster_whisper_model_registry()
+    repo_id = model_registry.get(model_key)
+    if repo_id is None:
+        available = ", ".join(sorted(model_registry.keys()))
+        raise ValueError(f"Invalid model size '{model_key}', expected one of: {available}")
+    return repo_id
+
+
+def _verify_faster_whisper_snapshot_cache(model_key: str, cache_dir: str | Path) -> bool:
+    repo_id = _resolve_faster_whisper_repo_id(model_key)
+
+    local_model_dir = Path(cache_dir) / f"faster-whisper-{model_key}"
+    if _is_complete_model_dir(local_model_dir):
+        return True
+
+    try:
+        repo_folder_name = get_huggingface_repo_folder_name()
+    except RuntimeError:
+        return False
+
+    storage_folder = _resolve_faster_whisper_storage_folder(
+        cache_dir,
+        repo_id,
+        repo_folder_name=repo_folder_name,
+    )
+    snapshot_root = storage_folder / "snapshots"
+
+    if not snapshot_root.exists():
+        return False
+
+    snapshot_dirs = [path for path in snapshot_root.iterdir() if path.is_dir()]
+    if not snapshot_dirs:
+        return False
+
+    snapshot_dirs.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+
+    for snapshot in snapshot_dirs:
+        if _is_complete_model_dir(snapshot):
+            return True
+
+    return False
 
 
 def whisper_download_headless(
@@ -80,12 +175,9 @@ def whisper_download_headless(
         return False
 
     if os.path.isfile(download_target):
-        with open(download_target, "rb") as f:
-            model_bytes = f.read()
-        if hashlib.sha256(model_bytes).hexdigest() == expected_sha256:
+        if _calculate_sha256(download_target) == expected_sha256:
             return download_target
-        else:
-            logger.warning(f"{download_target} exists, but the SHA256 checksum does not match; re-downloading the file")
+        logger.warning(f"{download_target} exists, but the SHA256 checksum does not match; re-downloading the file")
 
     reporter.reset_task_state("Downloading Whisper Model")
 
@@ -140,32 +232,30 @@ def whisper_download_headless(
                 if progress_callback is not None:
                     progress_callback(snapshot)
 
-        model_bytes = open(download_target, "rb").read()
-        if hashlib.sha256(model_bytes).hexdigest() != expected_sha256:
+        if _calculate_sha256(download_target) != expected_sha256:
             logger.error("Model has been downloaded but the SHA256 checksum does not match. Please retry loading the model.")
             msg = "SHA256 mismatch"
             success = False
         else:
             success = True
 
-    except Exception as e:
-        logger.exception(e)
-        msg = str(e)
+    except Exception as exc:
+        logger.exception(exc)
+        msg = str(exc)
         success = False
-    
+
     if success:
         logger.info("Download finished successfully")
         reporter.finish_task("Download Complete")
         start_optional_callback(after_func)
         return True
-    else:
-        logger.info("Download failed")
-        reporter.update_task_error(f"Download failed: {msg}")
-        start_optional_callback(failed_func)
-        return False
+
+    logger.info("Download failed")
+    reporter.update_task_error(f"Download failed: {msg}")
+    start_optional_callback(failed_func)
+    return False
 
 
-@_validate_hf_hub_args
 def snapshot_download(
     repo_id: str,
     *,
@@ -187,11 +277,10 @@ def snapshot_download(
     allow_patterns: Optional[Union[List[str], str]] = None,
     ignore_patterns: Optional[Union[List[str], str]] = None,
     tqdm_class=None,
+    hf_runtime: HuggingFaceDownloadRuntime | None = None,
 ) -> str:
-    """Wrapper around huggingface_hub.snapshot_download to download correctly."""
-    if huggingface_hub is None:
-        raise RuntimeError("huggingface_hub is unavailable")
-    return huggingface_hub.snapshot_download(
+    hf_runtime = hf_runtime or _build_huggingface_download_runtime()
+    return hf_runtime.hub.snapshot_download(
         repo_id,
         repo_type=repo_type,
         revision=revision,
@@ -213,6 +302,7 @@ def snapshot_download(
         tqdm_class=tqdm_class,
     )
 
+
 def faster_whisper_download_headless(
     model_name: str,
     repo_id: str,
@@ -225,14 +315,21 @@ def faster_whisper_download_headless(
     progress_callback=None,
     progress_floor: float = 0.0,
     progress_ceiling: float = 100.0,
+    hf_runtime: HuggingFaceDownloadRuntime | None = None,
 ):
-    if huggingface_hub is None or repo_folder_name is None:
-        raise RuntimeError("huggingface_hub is unavailable")
+    hf_runtime = hf_runtime or _build_huggingface_download_runtime()
+    huggingface_hub = hf_runtime.hub
     reporter = reporter or _build_bridge_task_reporter()
     logger.debug("Downloading model from Hugging Face Hub")
     os.makedirs(cache_dir, exist_ok=True)
 
-    storage_folder = os.path.join(cache_dir, repo_folder_name(repo_id=repo_id, repo_type="model"))
+    storage_folder = str(
+        _resolve_faster_whisper_storage_folder(
+            cache_dir,
+            repo_id,
+            repo_folder_name=hf_runtime.repo_folder_name,
+        )
+    )
     allow_patterns = ["config.json", "preprocessor_config.json", "model.bin", "tokenizer.json", "vocabulary.*"]
     kwargs = {
         "local_files_only": False,
@@ -244,25 +341,27 @@ def faster_whisper_download_headless(
 
     reporter.reset_task_state("Checking Faster Whisper Model")
     reporter.update_task_message("Fetching model info please wait...")
-        
+
     try:
         api = huggingface_hub.HfApi()
         repo_info = api.repo_info(repo_id=repo_id, repo_type="model", files_metadata=True)
-        filtered = list(huggingface_hub.utils.filter_repo_objects(
-            items=[f.rfilename for f in repo_info.siblings],
-            allow_patterns=allow_patterns,
-            ignore_patterns=None
-        ))
-        total_size = sum(f.size for f in repo_info.siblings if f.rfilename in filtered and f.size is not None)
-    except Exception as e:
-        logger.warning(f"Failed to fetch total size: {e}")
+        filtered = list(
+            huggingface_hub.utils.filter_repo_objects(
+                items=[sibling.rfilename for sibling in repo_info.siblings],
+                allow_patterns=allow_patterns,
+                ignore_patterns=None,
+            )
+        )
+        total_size = sum(sibling.size for sibling in repo_info.siblings if sibling.rfilename in filtered and sibling.size is not None)
+    except Exception as exc:
+        logger.warning(f"Failed to fetch total size: {exc}")
         total_size = 0
 
     request_error_types = _get_requests_connection_error_types()
 
     def _download() -> None:
         try:
-            snapshot_download(repo_id, **kwargs)
+            snapshot_download(repo_id, hf_runtime=hf_runtime, **kwargs)
         except ((huggingface_hub.utils.HfHubHTTPError,) + request_error_types) as exc:
             logger.exception(exc)
             raise
@@ -309,13 +408,7 @@ def faster_whisper_download_headless(
     return success
 
 
-# donwload function
 def download_model(model_key, bridge=None, **kwargs):
-    if huggingface_hub is None:
-        raise RuntimeError("huggingface_hub is unavailable")
-    from faster_whisper.utils import _MODELS as FW_MODELS
-    from whisper import _MODELS
-
     download_root = kwargs.pop("download_root", None)
     if download_root is None:
         download_root = get_default_download_root()
@@ -325,7 +418,6 @@ def download_model(model_key, bridge=None, **kwargs):
     progress_callback = kwargs.pop("progress_callback", None)
     progress_floor = float(kwargs.pop("progress_floor", 0.0))
     progress_ceiling = float(kwargs.pop("progress_ceiling", 100.0))
-    model_id = _MODELS[model_key] if not use_faster_whisper else FW_MODELS[model_key]
 
     cancel_func = kwargs.pop("cancel_func", None)
     after_func = kwargs.pop("after_func", None)
@@ -334,20 +426,7 @@ def download_model(model_key, bridge=None, **kwargs):
     if not use_faster_whisper:
         return whisper_download_headless(
             model_key,
-            model_id,
-            download_root,
-            cancel_func,
-            after_func,
-            failed_func,
-            reporter=reporter,
-            progress_callback=progress_callback,
-            progress_floor=progress_floor,
-            progress_ceiling=progress_ceiling,
-        )
-    else:
-        return faster_whisper_download_headless(
-            model_key,
-            model_id,
+            _resolve_whisper_model_url(model_key),
             download_root,
             cancel_func,
             after_func,
@@ -358,66 +437,33 @@ def download_model(model_key, bridge=None, **kwargs):
             progress_ceiling=progress_ceiling,
         )
 
+    hf_runtime = _build_huggingface_download_runtime()
+    return faster_whisper_download_headless(
+        model_key,
+        _resolve_faster_whisper_repo_id(model_key),
+        download_root,
+        cancel_func,
+        after_func,
+        failed_func,
+        reporter=reporter,
+        progress_callback=progress_callback,
+        progress_floor=progress_floor,
+        progress_ceiling=progress_ceiling,
+        hf_runtime=hf_runtime,
+    )
 
-# verify downloaded model sha
+
 def verify_model_whisper(model_key, download_root=None):
-    from whisper import _MODELS, available_models
     if download_root is None:
         download_root = get_default_download_root()
-
-    if model_key not in _MODELS:
-        raise RuntimeError(f"Model {model_key} not found; available models = {available_models()}")
 
     model_file = os.path.join(download_root, model_key + ".pt")
     if not os.path.exists(model_file):
         return False
 
-    expected_sha256 = _MODELS[model_key].split("/")[-2]
-
-    model_bytes = open(model_file, "rb").read()
-    return hashlib.sha256(model_bytes).hexdigest() == expected_sha256
+    expected_sha256 = _resolve_whisper_model_url(model_key).split("/")[-2]
+    return _calculate_sha256(model_file) == expected_sha256
 
 
 def verify_model_faster_whisper(model_key: str, cache_dir) -> bool:
-    if huggingface_hub is None or repo_folder_name is None:
-        raise RuntimeError("huggingface_hub is unavailable")
-    from faster_whisper.utils import _MODELS as FW_MODELS
-    repo_id = FW_MODELS.get(model_key)
-    if repo_id is None:
-        raise ValueError(f"Invalid model size '{model_key}', expected one of: {', '.join(FW_MODELS.keys())}")
-
-    def _is_complete_model_dir(model_dir: Path) -> bool:
-        if not model_dir.exists() or not model_dir.is_dir():
-            return False
-
-        has_config = (model_dir / "config.json").exists()
-        has_weights = (model_dir / "model.bin").exists() or (model_dir / "model.safetensors").exists()
-        if not (has_config and has_weights):
-            return False
-
-        if any(model_dir.rglob("*.incomplete")):
-            return False
-
-        return True
-
-    local_model_dir = Path(cache_dir) / f"faster-whisper-{model_key}"
-    if _is_complete_model_dir(local_model_dir):
-        return True
-
-    storage_folder = Path(cache_dir) / repo_folder_name(repo_id=repo_id, repo_type="model")
-    snapshot_root = storage_folder / "snapshots"
-
-    if not snapshot_root.exists():
-        return False
-
-    snapshot_dirs = [p for p in snapshot_root.iterdir() if p.is_dir()]
-    if not snapshot_dirs:
-        return False
-
-    snapshot_dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-
-    for snapshot in snapshot_dirs:
-        if _is_complete_model_dir(snapshot):
-            return True
-
-    return False
+    return _verify_faster_whisper_snapshot_cache(model_key, cache_dir)

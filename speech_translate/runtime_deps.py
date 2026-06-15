@@ -13,6 +13,13 @@ def _import_runtime_dependency(module_name: str, package_name: str) -> Any:
         raise RuntimeError(f"{package_name} is unavailable") from exc
 
 
+def _optional_runtime_dependency(module_name: str, package_name: str) -> Any | None:
+    try:
+        return _import_runtime_dependency(module_name, package_name)
+    except RuntimeError:
+        return None
+
+
 def get_torch() -> Any:
     return _import_runtime_dependency("torch", "torch")
 
@@ -27,6 +34,44 @@ def get_webrtcvad() -> Any:
 
 def get_stable_whisper() -> Any:
     return _import_runtime_dependency("stable_whisper", "stable-whisper")
+
+
+def try_get_requests() -> Any | None:
+    return _optional_runtime_dependency("requests", "requests")
+
+
+def get_huggingface_hub() -> Any:
+    return _import_runtime_dependency("huggingface_hub", "huggingface_hub")
+
+
+@lru_cache(maxsize=1)
+def _get_huggingface_repo_folder_name() -> Any:
+    file_download = _import_runtime_dependency("huggingface_hub.file_download", "huggingface_hub")
+    return getattr(file_download, "repo_folder_name")
+
+
+def get_huggingface_repo_folder_name() -> Any:
+    return _get_huggingface_repo_folder_name()
+
+
+@lru_cache(maxsize=1)
+def _get_whisper_model_registry() -> dict[str, str]:
+    whisper_module = _import_runtime_dependency("whisper", "whisper")
+    return dict(getattr(whisper_module, "_MODELS"))
+
+
+def get_whisper_model_registry() -> dict[str, str]:
+    return dict(_get_whisper_model_registry())
+
+
+@lru_cache(maxsize=1)
+def _get_faster_whisper_model_registry() -> dict[str, str]:
+    faster_whisper_utils = _import_runtime_dependency("faster_whisper.utils", "faster-whisper")
+    return dict(getattr(faster_whisper_utils, "_MODELS"))
+
+
+def get_faster_whisper_model_registry() -> dict[str, str]:
+    return dict(_get_faster_whisper_model_registry())
 
 
 @lru_cache(maxsize=1)
