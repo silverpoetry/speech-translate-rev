@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from html import escape
 from importlib import import_module
 from pathlib import Path
@@ -13,29 +12,7 @@ from typing import Iterable, List, Optional
 from urllib.parse import quote
 
 from speech_translate.log_helpers import logger
-
-
-@dataclass
-class SeleniumTranslatorConfig:
-    source_lang: str = "auto"
-    target_lang: str = "zh-CN"
-    headless: bool = False
-    page_timeout_sec: float = 20.0
-    force_chinese_ui: bool = True
-    chrome_user_data_dir: Optional[str] = None
-    engine_compact_mode: bool = True
-    engine_width: int = 420
-    engine_height: int = 240
-    engine_margin_right: int = 16
-    engine_margin_top: int = 56
-    engine_margin_bottom: int = 48
-    engine_dock_bottom: bool = True
-    engine_content_opacity: float = 0.75
-    engine_page_zoom: float = 0.86
-    win_native_compact: bool = True
-    win_alpha: int = 176
-    win_borderless: bool = False
-    win_z_order_mode: str = "behind-main"
+from speech_translate.utils.translate.selenium_runtime import SeleniumTranslatorConfig
 
 
 class SeleniumWebTranslator:

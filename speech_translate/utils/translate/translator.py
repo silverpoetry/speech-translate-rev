@@ -1,5 +1,4 @@
 # pylint: disable=protected-access, redefined-outer-name, import-outside-toplevel, invalid-name
-from threading import Lock
 from typing import Dict, List
 
 from speech_translate.linker import sj
@@ -7,6 +6,7 @@ from speech_translate.log_helpers import logger
 
 from ..helper import get_similar_keys
 from .language import GOOGLE_KEY_VAL, LIBRE_KEY_VAL, MYMEMORY_KEY_VAL
+from .selenium_runtime import SeleniumTranslatorManager
 
 try:
     import requests
@@ -74,99 +74,88 @@ def _load_deep_translator_classes():
 
 TlCon = TranslationConnection(None, None)
 
+def _create_selenium_translator(config):
+    from .selenium_web_translator import SeleniumWebTranslator
 
-_selenium_translator = None
-_selenium_translator_lock = Lock()
+    return SeleniumWebTranslator(config)
+
+
+_selenium_translator_manager = SeleniumTranslatorManager(
+    settings_snapshot_provider=lambda: sj.cache,
+    translator_factory=_create_selenium_translator,
+    logger_instance=logger,
+)
 
 
 def _get_selenium_translator():
-    global _selenium_translator
-    with _selenium_translator_lock:
-        if _selenium_translator is None:
-            from .selenium_web_translator import SeleniumTranslatorConfig, SeleniumWebTranslator
-
-            level_raw = sj.cache.get("selenium_compact_level", 2)
-            try:
-                level = int(level_raw)
-            except Exception:
-                level = 2
-            level = max(0, min(3, level))
-
-            profile = {
-                0: {
-                    "engine_width": 420,
-                    "engine_height": 240,
-                    "engine_content_opacity": 1.0,
-                    "engine_page_zoom": 1.0,
-                    "win_native_compact": False,
-                    "win_alpha": 255,
-                },
-                1: {
-                    "engine_width": 360,
-                    "engine_height": 210,
-                    "engine_content_opacity": 0.92,
-                    "engine_page_zoom": 0.92,
-                    "win_native_compact": True,
-                    "win_alpha": 220,
-                },
-                2: {
-                    "engine_width": 320,
-                    "engine_height": 180,
-                    "engine_content_opacity": 0.80,
-                    "engine_page_zoom": 0.86,
-                    "win_native_compact": True,
-                    "win_alpha": 196,
-                },
-                3: {
-                    "engine_width": 280,
-                    "engine_height": 150,
-                    "engine_content_opacity": 0.70,
-                    "engine_page_zoom": 0.80,
-                    "win_native_compact": True,
-                    "win_alpha": 176,
-                },
-            }[level]
-
-            z_order_mode = str(sj.cache.get("selenium_z_order_mode", "behind-main"))
-            chrome_user_data_dir = str(sj.cache.get("selenium_chrome_user_data_dir", "") or "").strip()
-
-            _selenium_translator = SeleniumWebTranslator(
-                SeleniumTranslatorConfig(
-                    source_lang="auto",
-                    target_lang="zh-CN",
-                    headless=False,
-                    engine_compact_mode=True,
-                    engine_width=profile["engine_width"],
-                    engine_height=profile["engine_height"],
-                    engine_margin_right=8,
-                    engine_margin_top=28,
-                    engine_margin_bottom=40,
-                    engine_dock_bottom=True,
-                    engine_content_opacity=profile["engine_content_opacity"],
-                    engine_page_zoom=profile["engine_page_zoom"],
-                    win_native_compact=bool(profile["win_native_compact"]),
-                    win_alpha=int(profile["win_alpha"]),
-                    win_borderless=False,
-                    win_z_order_mode=z_order_mode,
-                    chrome_user_data_dir=(chrome_user_data_dir or None),
-                )
-            )
-    return _selenium_translator
+    return _selenium_translator_manager.get()
 
 
 def shutdown_selenium_translator() -> None:
     """Close and reset the singleton Selenium translator instance."""
-    global _selenium_translator
-    with _selenium_translator_lock:
-        translator = _selenium_translator
-        _selenium_translator = None
+    _selenium_translator_manager.shutdown()
 
-    if translator is None:
-        return
+
+def _resolve_language_code(
+    language_map: dict[str, str],
+    language_name: str,
+    *,
+    engine_label: str,
+    fallback_to_auto: bool,
+) -> str:
     try:
-        translator.close()
-    except Exception as exc:
-        logger.debug(f"Failed to close Selenium translator cleanly: {exc}")
+        return language_map[language_name]
+    except KeyError:
+        logger.warning(f"{engine_label} language code undefined for {language_name}. Trying similar keys")
+
+    similar_keys = get_similar_keys(language_map, language_name)
+    if similar_keys:
+        resolved = language_map[similar_keys[0]]
+        logger.debug(f"Got similar key for {engine_label} language {language_name}: {resolved}")
+        return resolved
+
+    if fallback_to_auto:
+        logger.warning(f"{engine_label} source language code undefined. Using auto")
+        return "auto"
+
+    raise KeyError(language_name)
+
+
+def _resolve_language_pair(
+    language_map: dict[str, str],
+    from_lang: str,
+    to_lang: str,
+    *,
+    engine_label: str,
+    fallback_source_to_auto: bool = True,
+) -> tuple[str, str]:
+    source_code = _resolve_language_code(
+        language_map,
+        from_lang,
+        engine_label=engine_label,
+        fallback_to_auto=fallback_source_to_auto,
+    )
+    target_code = _resolve_language_code(
+        language_map,
+        to_lang,
+        engine_label=engine_label,
+        fallback_to_auto=False,
+    )
+    return source_code, target_code
+
+
+def _ensure_deep_translator_connection() -> tuple[object | None, object | None]:
+    if TlCon.GoogleTranslator is None or TlCon.MyMemoryTranslator is None:
+        TlCon.GoogleTranslator, TlCon.MyMemoryTranslator = _load_deep_translator_classes()
+    return TlCon.GoogleTranslator, TlCon.MyMemoryTranslator
+
+
+def _log_translation_debug(query: List[str], result: object, debug_log: bool) -> None:
+    if not debug_log:
+        return
+    logger.info("-" * 50)
+    logger.debug("Query: " + str(query))
+    logger.debug("Translation Get: " + str(result))
 
 
 def google_tl(text: List[str], from_lang: str, to_lang: str, proxies: Dict, debug_log: bool = False, **kwargs):
@@ -189,19 +178,12 @@ def google_tl(text: List[str], from_lang: str, to_lang: str, proxies: Dict, debu
     result = ""
     # --- Get lang code ---
     try:
-        assert isinstance(GOOGLE_KEY_VAL, Dict)
-        try:
-            LCODE_FROM = GOOGLE_KEY_VAL[from_lang]
-            LCODE_TO = GOOGLE_KEY_VAL[to_lang]
-        except KeyError:
-            logger.warning("Language Code Undefined. Trying to get similar keys")
-            try:
-                LCODE_FROM = GOOGLE_KEY_VAL[get_similar_keys(GOOGLE_KEY_VAL, from_lang)[0]]
-                logger.debug(f"Got similar key for GOOGLE LANG {from_lang}: {LCODE_FROM}")
-            except KeyError:
-                logger.warning("Source Language Code Undefined. Using auto")
-                LCODE_FROM = "auto"
-            LCODE_TO = GOOGLE_KEY_VAL[get_similar_keys(GOOGLE_KEY_VAL, to_lang)[0]]
+        LCODE_FROM, LCODE_TO = _resolve_language_pair(
+            GOOGLE_KEY_VAL,
+            from_lang,
+            to_lang,
+            engine_label="Google",
+        )
     except KeyError as e:
         logger.exception(e)
         return is_success, "Error Language Code Undefined"
@@ -209,17 +191,16 @@ def google_tl(text: List[str], from_lang: str, to_lang: str, proxies: Dict, debu
     # using deep_translator v 1.11.1
     # --- Translate ---
     try:
-        if TlCon.GoogleTranslator is None:
-            TlCon.GoogleTranslator, TlCon.MyMemoryTranslator = _load_deep_translator_classes()
-            if TlCon.GoogleTranslator is None:
-                return is_success, "Error: deep_translator is unavailable"
+        google_translator, _ = _ensure_deep_translator_connection()
+        if google_translator is None:
+            return is_success, "Error: deep_translator is unavailable"
 
         tl_kwargs = {}
         if kwargs.pop("live_input", False):
             tl_kwargs["with_tqdm"] = False
         prefer_full_text = kwargs.pop("prefer_full_text", False)
 
-        translator = TlCon.GoogleTranslator(source=LCODE_FROM, target=LCODE_TO, proxies=proxies)
+        translator = google_translator(source=LCODE_FROM, target=LCODE_TO, proxies=proxies)
         if prefer_full_text and len(text) == 1:
             # Full-text request usually gives better contextual quality than line-by-line translation.
             result = [translator.translate(text[0])]
@@ -230,10 +211,7 @@ def google_tl(text: List[str], from_lang: str, to_lang: str, proxies: Dict, debu
         logger.exception(e)
         result = str(e)
     finally:
-        if debug_log:
-            logger.info("-" * 50)
-            logger.debug("Query: " + str(text))
-            logger.debug("Translation Get: " + str(result))
+        _log_translation_debug(text, result, debug_log)
 
     return is_success, result
 
@@ -258,19 +236,12 @@ def memory_tl(text: List[str], from_lang: str, to_lang: str, proxies: Dict, debu
     result = ""
     # --- Get lang code ---
     try:
-        assert isinstance(MYMEMORY_KEY_VAL, Dict)
-        try:
-            LCODE_FROM = MYMEMORY_KEY_VAL[from_lang]
-            LCODE_TO = MYMEMORY_KEY_VAL[to_lang]
-        except KeyError:
-            logger.warning("Language Code Undefined. Trying to get similar keys")
-            try:
-                LCODE_FROM = MYMEMORY_KEY_VAL[get_similar_keys(MYMEMORY_KEY_VAL, from_lang)[0]]
-                logger.debug(f"Got similar key for GOOGLE LANG {from_lang}: {LCODE_FROM}")
-            except KeyError:
-                logger.warning("Source Language Code Undefined. Using auto")
-                LCODE_FROM = "auto"
-            LCODE_TO = MYMEMORY_KEY_VAL[get_similar_keys(MYMEMORY_KEY_VAL, to_lang)[0]]
+        LCODE_FROM, LCODE_TO = _resolve_language_pair(
+            MYMEMORY_KEY_VAL,
+            from_lang,
+            to_lang,
+            engine_label="MyMemory",
+        )
     except KeyError as e:
         logger.exception(e)
         return is_success, "Error Language Code Undefined"
@@ -278,26 +249,21 @@ def memory_tl(text: List[str], from_lang: str, to_lang: str, proxies: Dict, debu
     # using deep_translator v 1.11.1
     # --- Translate ---
     try:
-        if TlCon.MyMemoryTranslator is None:
-            TlCon.GoogleTranslator, TlCon.MyMemoryTranslator = _load_deep_translator_classes()
-            if TlCon.MyMemoryTranslator is None:
-                return is_success, "Error: deep_translator is unavailable"
+        _, mymemory_translator = _ensure_deep_translator_connection()
+        if mymemory_translator is None:
+            return is_success, "Error: deep_translator is unavailable"
 
         tl_kwargs = {}
         if kwargs.pop("live_input", False):
             tl_kwargs["with_tqdm"] = False
 
-        result = TlCon.MyMemoryTranslator(source=LCODE_FROM, target=LCODE_TO,
-                                          proxies=proxies).translate_batch(text, **tl_kwargs)
+        result = mymemory_translator(source=LCODE_FROM, target=LCODE_TO, proxies=proxies).translate_batch(text, **tl_kwargs)
         is_success = True
     except Exception as e:
         result = str(e)
         logger.exception(e)
     finally:
-        if debug_log:
-            logger.info("-" * 50)
-            logger.debug("Query: " + str(text))
-            logger.debug("Translation Get: " + str(result))
+        _log_translation_debug(text, result, debug_log)
     return is_success, result
 
 
@@ -333,17 +299,12 @@ def libre_tl(
     result = ""
     # --- Get lang code ---
     try:
-        try:
-            LCODE_FROM = LIBRE_KEY_VAL[from_lang]
-            LCODE_TO = LIBRE_KEY_VAL[to_lang]
-        except KeyError:
-            try:
-                LCODE_FROM = LIBRE_KEY_VAL[get_similar_keys(LIBRE_KEY_VAL, from_lang)[0]]
-                logger.debug(f"Got similar key for LIBRE LANG {from_lang}: {LCODE_FROM}")
-            except KeyError:
-                logger.warning("Source Language Code Undefined. Using auto")
-                LCODE_FROM = "auto"
-            LCODE_TO = LIBRE_KEY_VAL[get_similar_keys(LIBRE_KEY_VAL, to_lang)[0]]
+        LCODE_FROM, LCODE_TO = _resolve_language_pair(
+            LIBRE_KEY_VAL,
+            from_lang,
+            to_lang,
+            engine_label="Libre",
+        )
     except KeyError as e:
         logger.exception(e)
         return is_success, "Error Language Code Undefined"
@@ -389,10 +350,7 @@ def libre_tl(
             result = "Error: Invalid parameter value. Check for https, host, port, and apiKeys. " \
                 "If you use external server, make sure https is set to True."
     finally:
-        if debug_log:
-            logger.info("-" * 50)
-            logger.debug("Query: " + str(text))
-            logger.debug("Translation Get: " + str(result))
+        _log_translation_debug(text, result, debug_log)
     return is_success, result
 
 
@@ -403,17 +361,12 @@ def selenium_chrome_tl(text: List[str], from_lang: str, to_lang: str, proxies: D
     result = ""
 
     try:
-        assert isinstance(GOOGLE_KEY_VAL, Dict)
-        try:
-            source_code = GOOGLE_KEY_VAL[from_lang]
-            target_code = GOOGLE_KEY_VAL[to_lang]
-        except KeyError:
-            logger.warning("Language Code Undefined for Selenium engine. Trying similar keys")
-            try:
-                source_code = GOOGLE_KEY_VAL[get_similar_keys(GOOGLE_KEY_VAL, from_lang)[0]]
-            except Exception:
-                source_code = "auto"
-            target_code = GOOGLE_KEY_VAL[get_similar_keys(GOOGLE_KEY_VAL, to_lang)[0]]
+        source_code, target_code = _resolve_language_pair(
+            GOOGLE_KEY_VAL,
+            from_lang,
+            to_lang,
+            engine_label="Selenium",
+        )
     except Exception as e:
         logger.exception(e)
         return is_success, "Error Language Code Undefined"
@@ -430,10 +383,7 @@ def selenium_chrome_tl(text: List[str], from_lang: str, to_lang: str, proxies: D
         logger.exception(e)
         result = str(e)
     finally:
-        if debug_log:
-            logger.info("-" * 50)
-            logger.debug("Query: " + str(text))
-            logger.debug("Translation Get: " + str(result))
+        _log_translation_debug(text, result, debug_log)
 
     return is_success, result
 
