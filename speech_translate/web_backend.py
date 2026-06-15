@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from html import escape
 import json
 import re
 from threading import Lock
@@ -193,11 +194,11 @@ class HeadlessMainWindow:
 
     def start_lb(self, *_args: object, **_kwargs: object) -> None:
         if self.bridge is not None:
-            self.bridge.task_state.active = True
+            self.bridge.set_task_active(True)
 
     def stop_lb(self, *_args: object, **_kwargs: object) -> None:
         if self.bridge is not None:
-            self.bridge.task_state.active = False
+            self.bridge.set_task_active(False)
 
     def from_file_stop(self, prompt: bool = False, notify: bool = True, master: object | None = None) -> None:
         _ = (prompt, notify, master)
@@ -243,6 +244,51 @@ class WebTaskBridge:
         self._tray: TrayLike | None = None
         self._main_window = HeadlessMainWindow(self)
 
+    def _emit_task_update(self) -> None:
+        self._emit_ui_update([UI_SECTION_TASK])
+
+    def _emit_live_update(self) -> None:
+        self._emit_ui_update([UI_SECTION_LIVE])
+
+    def _resolve_live_targets(self, target: str) -> tuple[str, str]:
+        key_html = target if target.endswith("_html") else f"{target}_html"
+        return key_html, key_html.replace("_html", "_text")
+
+    def _set_task_state_fields(self, **updates: object) -> None:
+        with self._lock:
+            for key, value in updates.items():
+                setattr(self.task_state, key, value)
+
+    def _complete_task(self, *, message: str = "", error: str = "") -> None:
+        with self._lock:
+            if message:
+                self.task_state.message = message
+            if error:
+                self.task_state.error = error
+            self.task_state.finished = True
+            self.task_state.active = False
+            self.task_state.progress = 100.0
+
+    def _normalize_live_text(self, html: str) -> str:
+        text = html.replace("<br />", "\n").replace("<br/>", "\n").replace("<br>", "\n")
+        text = text.replace("</span>", "\n")
+        text = re.sub(r"<[^>]+>", "", text)
+        text = re.sub(r"\n{2,}", "\n", text)
+        return text.strip()
+
+    def _render_live_html(self, text: str) -> str:
+        lines = [line for line in text.splitlines() if line != ""]
+        if not lines:
+            lines = [""]
+        escaped_lines = [f"<span class='live-line'>{escape(line)}</span>" for line in lines]
+        return "<div class='live-lines'>" + "<br />".join(escaped_lines) + "</div>"
+
+    def _set_live_content(self, html_key: str, text_key: str, *, html: str, text: str) -> None:
+        if html_key in self.live_state:
+            self.live_state[html_key] = html
+        if text_key in self.live_state:
+            self.live_state[text_key] = text
+
     def bind_window(self, window: WebviewWindowLike) -> None:
         self._window = window
 
@@ -279,14 +325,12 @@ class WebTaskBridge:
     def reset_task_state(self, title: str = "") -> TaskState:
         with self._lock:
             self.task_state = TaskState(active=True, title=title)
-        self._emit_ui_update([UI_SECTION_TASK])
+        self._emit_task_update()
         return self.task_state
 
     def update_task_message(self, message: str, source: str = TASK_SOURCE_GENERAL) -> None:
-        with self._lock:
-            self.task_state.message = message
-            self.task_state.message_source = source
-        self._emit_ui_update([UI_SECTION_TASK])
+        self._set_task_state_fields(message=message, message_source=source)
+        self._emit_task_update()
 
     def update_task_progress(self, progress: float, source: str = TASK_SOURCE_GENERAL) -> None:
         with self._lock:
@@ -297,28 +341,23 @@ class WebTaskBridge:
             else:
                 self.task_state.progress = incoming
             self.task_state.progress_source = source
-        self._emit_ui_update([UI_SECTION_TASK])
+        self._emit_task_update()
 
     def update_task_rows(self, rows: Sequence[Sequence[object]]) -> None:
-        with self._lock:
-            self.task_state.rows = self._normalize_task_rows(rows)
-        self._emit_ui_update([UI_SECTION_TASK])
+        self._set_task_state_fields(rows=self._normalize_task_rows(rows))
+        self._emit_task_update()
 
     def update_task_error(self, error: str) -> None:
-        with self._lock:
-            self.task_state.error = error
-            self.task_state.finished = True
-            self.task_state.active = False
-            self.task_state.progress = 100.0
-        self._emit_ui_update([UI_SECTION_TASK])
+        self._complete_task(error=error)
+        self._emit_task_update()
 
     def finish_task(self, message: str = "") -> None:
-        with self._lock:
-            self.task_state.message = message
-            self.task_state.finished = True
-            self.task_state.active = False
-            self.task_state.progress = 100.0
-        self._emit_ui_update([UI_SECTION_TASK])
+        self._complete_task(message=message)
+        self._emit_task_update()
+
+    def set_task_active(self, active: bool) -> None:
+        self._set_task_state_fields(active=bool(active))
+        self._emit_task_update()
 
     def snapshot_task_state(self) -> JsonDict:
         with self._lock:
@@ -335,56 +374,33 @@ class WebTaskBridge:
             }
 
     def _normalize_task_rows(self, rows: Sequence[Sequence[object]]) -> TaskTable:
-        normalized: TaskTable = []
-        for row in rows:
-            normalized.append([cell for cell in row])
-        return normalized
-
-    def _html_to_text(self, html: str) -> str:
-        text = html.replace("<br />", "\n").replace("<br/>", "\n").replace("<br>", "\n")
-        text = text.replace("</span>", "\n")
-        text = re.sub(r"<[^>]+>", "", text)
-        text = re.sub(r"\n{2,}", "\n", text)
-        return text.strip()
+        return [[cell for cell in row] for row in rows]
 
     def update_live_html(self, target: str, html: str) -> None:
-        text_target = target.replace("_html", "_text")
+        html_target, text_target = self._resolve_live_targets(target)
         with self._lock:
-            if target in self.live_state:
-                self.live_state[target] = html
-            if text_target in self.live_state:
-                self.live_state[text_target] = self._html_to_text(html)
-        self._emit_ui_update([UI_SECTION_LIVE])
+            self._set_live_content(
+                html_target,
+                text_target,
+                html=html,
+                text=self._normalize_live_text(html),
+            )
+        self._emit_live_update()
 
     def append_live_text(self, target: str, text: str, separator: str = "") -> None:
-        key_html = target if target.endswith("_html") else f"{target}_html"
-        key_text = key_html.replace("_html", "_text")
+        key_html, key_text = self._resolve_live_targets(target)
         with self._lock:
             old = str(self.live_state.get(key_text, ""))
             combined = f"{old}{text}{separator}"
-            self.live_state[key_text] = combined
-            lines = [line for line in combined.splitlines() if line != ""]
-            if not lines:
-                lines = [""]
-
-            escaped_lines = []
-            for line in lines:
-                escaped_line = (
-                    line.replace("&", "&amp;")
-                    .replace("<", "&lt;")
-                    .replace(">", "&gt;")
-                )
-                escaped_lines.append(f"<span class='live-line'>{escaped_line}</span>")
-
-            self.live_state[key_html] = "<div class='live-lines'>" + "<br />".join(escaped_lines) + "</div>"
-        self._emit_ui_update([UI_SECTION_LIVE])
+            self._set_live_content(key_html, key_text, html=self._render_live_html(combined), text=combined)
+        self._emit_live_update()
 
     def clear_live(self, prefix: str = "") -> None:
         with self._lock:
             for key in list(self.live_state.keys()):
                 if not prefix or key.startswith(prefix):
                     self.live_state[key] = ""
-        self._emit_ui_update([UI_SECTION_LIVE])
+        self._emit_live_update()
 
     def snapshot_live_state(self) -> JsonDict:
         with self._lock:

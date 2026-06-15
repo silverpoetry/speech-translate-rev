@@ -45,6 +45,12 @@ class WebTaskBridgeTests(unittest.TestCase):
         state = self.bridge.snapshot_task_state()
         self.assertEqual(state["rows"], [["a.wav", "Waiting"], ["b.wav", "Done"]])
 
+    def test_set_task_active_updates_snapshot_and_emits(self) -> None:
+        self.bridge.set_task_active(True)
+        state = self.bridge.snapshot_task_state()
+        self.assertTrue(state["active"])
+        self.assertTrue(any(UI_SECTION_TASK in script for script in self.window.scripts))
+
     def test_headless_queue_window_routes_rows_to_bridge(self) -> None:
         queue_window = HeadlessQueueWindow(self.bridge)
         queue_window.update_sheet([["a.wav", "Queued"]])
@@ -53,6 +59,18 @@ class WebTaskBridgeTests(unittest.TestCase):
     def test_reset_task_state_emits_task_section(self) -> None:
         self.bridge.reset_task_state("Recording")
         self.assertTrue(any(UI_SECTION_TASK in script for script in self.window.scripts))
+
+    def test_update_live_html_syncs_html_and_text(self) -> None:
+        self.bridge.update_live_html("main_transcribed_html", "<span>Hello</span><br />World")
+        state = self.bridge.snapshot_live_state()
+        self.assertEqual(state["main_transcribed_html"], "<span>Hello</span><br />World")
+        self.assertEqual(state["main_transcribed_text"], "Hello\nWorld")
+
+    def test_append_live_text_escapes_html_sensitive_chars(self) -> None:
+        self.bridge.append_live_text("main_transcribed", "A<B&>", separator="\n")
+        state = self.bridge.snapshot_live_state()
+        self.assertEqual(state["main_transcribed_text"], "A<B&>\n")
+        self.assertIn("&lt;B&amp;&gt;", state["main_transcribed_html"])
 
 
 if __name__ == "__main__":
