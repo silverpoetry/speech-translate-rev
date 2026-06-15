@@ -9,6 +9,7 @@ from typing import List, Optional
 from speech_translate.controller_protocols import (
     ImportQueueBridge,
     JsonDict,
+    ModelManagerControllerApi,
     SettingsStore,
     ShutdownSeleniumFn,
 )
@@ -90,12 +91,13 @@ class ImportQueueController:
         bridge: ImportQueueBridge,
         settings: SettingsStore,
         shutdown_selenium_fn: ShutdownSeleniumFn,
+        model_manager: ModelManagerControllerApi,
         process_runtime: ImportQueueProcessRuntime | None = None,
     ):
         self.bridge = bridge
         self.settings = settings
         self.shutdown_selenium_fn = shutdown_selenium_fn
-        self.model_manager = bridge.model_manager_controller
+        self.model_manager = model_manager
         self.process_runtime = process_runtime or ImportQueueProcessRuntime()
         self._lock = RLock()
         self.file_import_queue: List[object] = []

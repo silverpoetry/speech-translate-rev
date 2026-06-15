@@ -52,7 +52,12 @@ def configure_runtime_bootstrap() -> None:
 def build_web_bridge_dependencies(bridge: "WebBridge") -> WebBridgeDependencies:
     main_window_controller = MainWindowController(bridge, sj)
     model_manager_controller = ModelManagerController(bridge, sj, get_whisper_load_api)
-    import_queue_controller = ImportQueueController(bridge, sj, shutdown_selenium_translator)
+    import_queue_controller = ImportQueueController(
+        bridge,
+        sj,
+        shutdown_selenium_translator,
+        model_manager_controller,
+    )
     recording_controller = RecordingSessionController(bridge, get_whisper_load_api, shutdown_selenium_translator)
     state_view_builder = StateViewBuilder(bridge, sj)
     system_settings_controller = SystemSettingsController(bridge, sj, _default_path_config())

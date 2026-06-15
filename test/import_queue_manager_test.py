@@ -148,7 +148,13 @@ class ImportQueueControllerTests(unittest.TestCase):
         self.settings = FakeSettings()
         self.bridge.settings_snapshot = self.settings.cache
         self.process_runtime = FakeProcessRuntime()
-        self.controller = ImportQueueController(self.bridge, self.settings, lambda: None, process_runtime=self.process_runtime)
+        self.controller = ImportQueueController(
+            self.bridge,
+            self.settings,
+            lambda: None,
+            self.bridge.model_manager_controller,
+            process_runtime=self.process_runtime,
+        )
 
     def test_get_full_display_queue_merges_processing_status(self) -> None:
         self.controller.file_import_queue = [{"path": "a.wav", "name": "a.wav", "status": "Waiting", "is_completed": False}]
