@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 import tempfile
@@ -26,7 +27,61 @@ class FakeUrlResponse:
         return b""
 
 
+class ChunkedUrlResponse:
+    def __init__(self, chunks, headers=None):
+        self._chunks = list(chunks)
+        self._headers = {} if headers is None else dict(headers)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def info(self):
+        return self._headers
+
+    def read(self, _buffer_size):
+        return self._chunks.pop(0) if self._chunks else b""
+
+
 class WhisperDownloadTests(unittest.TestCase):
+    def test_whisper_download_headless_uses_injected_cancel_hooks(self) -> None:
+        from speech_translate.utils.whisper import download as download_module
+
+        previous_urlopen = download_module.urllib.request.urlopen
+        cancel_state = {"requested": True, "cleared": False}
+        cancelled = []
+        reporter_events = []
+        try:
+            download_module.urllib.request.urlopen = lambda _url: FakeUrlResponse()
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                result = whisper_download_headless(
+                    "small",
+                    "https://example.com/0123456789abcdef/model.pt",
+                    temp_dir,
+                    lambda: cancelled.append("cancelled"),
+                    None,
+                    None,
+                    hooks=download_module.DownloadExecutionHooks(
+                        reporter=TaskReporter(
+                            reset_task_state=lambda title: reporter_events.append(("reset", title)),
+                            finish_task=lambda message: reporter_events.append(("finish", message)),
+                        ),
+                        cancel_requested=lambda: cancel_state["requested"],
+                        clear_cancel_requested=lambda: cancel_state.update(requested=False, cleared=True),
+                        start_callback=lambda callback: callback() if callback is not None else None,
+                    ),
+                )
+        finally:
+            download_module.urllib.request.urlopen = previous_urlopen
+
+        self.assertFalse(result)
+        self.assertEqual(cancelled, ["cancelled"])
+        self.assertTrue(cancel_state["cleared"])
+        self.assertIn(("finish", "Download Cancelled"), reporter_events)
+
     def test_whisper_download_headless_runs_cancel_callback(self) -> None:
         from speech_translate.utils.whisper import download as download_module
 
@@ -61,6 +116,32 @@ class WhisperDownloadTests(unittest.TestCase):
         self.assertFalse(result)
         self.assertEqual(cancelled, ["cancelled"])
         self.assertIn(("finish", "Download Cancelled"), reporter_events)
+
+    def test_whisper_download_headless_handles_missing_content_length(self) -> None:
+        from speech_translate.utils.whisper import download as download_module
+
+        payload = b"abcd"
+        expected_sha = hashlib.sha256(payload).hexdigest()
+        previous_urlopen = download_module.urllib.request.urlopen
+        messages = []
+        try:
+            download_module.urllib.request.urlopen = lambda _url: ChunkedUrlResponse([payload], headers={})
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                result = whisper_download_headless(
+                    "small",
+                    f"https://example.com/{expected_sha}/model.pt",
+                    temp_dir,
+                    None,
+                    None,
+                    None,
+                    reporter=TaskReporter(update_task_message=messages.append),
+                )
+        finally:
+            download_module.urllib.request.urlopen = previous_urlopen
+
+        self.assertTrue(result)
+        self.assertTrue(any("Unknown" in message for message in messages))
 
     def test_download_model_whisper_backend_does_not_require_huggingface_runtime(self) -> None:
         from speech_translate.utils.whisper import download as download_module

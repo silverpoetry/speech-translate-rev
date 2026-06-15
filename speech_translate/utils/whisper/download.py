@@ -34,8 +34,16 @@ class HuggingFaceDownloadRuntime:
     repo_folder_name: Callable[..., str]
 
 
-def _build_bridge_task_reporter() -> TaskReporter:
-    web_bridge = bc.web_bridge
+@dataclass(frozen=True)
+class DownloadExecutionHooks:
+    reporter: TaskReporter
+    cancel_requested: Callable[[], bool]
+    clear_cancel_requested: Callable[[], None]
+    start_callback: Callable[[Callable | None], None]
+
+
+def _build_bridge_task_reporter(bridge: Any | None = None) -> TaskReporter:
+    web_bridge = bridge or bc.web_bridge
     if web_bridge is None:
         return TaskReporter()
     return TaskReporter(
@@ -51,6 +59,22 @@ def _build_huggingface_download_runtime() -> HuggingFaceDownloadRuntime:
     return HuggingFaceDownloadRuntime(
         hub=get_huggingface_hub(),
         repo_folder_name=get_huggingface_repo_folder_name(),
+    )
+
+
+def _build_download_execution_hooks(
+    *,
+    reporter: TaskReporter | None = None,
+    bridge: Any | None = None,
+    cancel_requested: Callable[[], bool] | None = None,
+    clear_cancel_requested: Callable[[], None] | None = None,
+    callback_starter: Callable[[Callable | None], None] = start_optional_callback,
+) -> DownloadExecutionHooks:
+    return DownloadExecutionHooks(
+        reporter=reporter or _build_bridge_task_reporter(bridge),
+        cancel_requested=cancel_requested or (lambda: bool(bc.cancel_dl)),
+        clear_cancel_requested=clear_cancel_requested or (lambda: setattr(bc, "cancel_dl", False)),
+        start_callback=callback_starter,
     )
 
 
@@ -72,6 +96,19 @@ def _get_requests_connection_error_types(requests_module=None) -> tuple[type[Bas
     if isinstance(connection_error, type) and issubclass(connection_error, BaseException):
         return (connection_error,)
     return ()
+
+
+def _read_content_length(headers: Any) -> int:
+    raw_length = None
+    try:
+        raw_length = headers.get("Content-Length")
+    except Exception:
+        raw_length = None
+
+    try:
+        return max(0, int(raw_length))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _resolve_faster_whisper_storage_folder(
@@ -160,11 +197,14 @@ def whisper_download_headless(
     failed_func,
     *,
     reporter: TaskReporter | None = None,
+    bridge: Any | None = None,
+    hooks: DownloadExecutionHooks | None = None,
     progress_callback=None,
     progress_floor: float = 0.0,
     progress_ceiling: float = 100.0,
 ):
-    reporter = reporter or _build_bridge_task_reporter()
+    hooks = hooks or _build_download_execution_hooks(reporter=reporter, bridge=bridge)
+    reporter = hooks.reporter
     os.makedirs(download_root, exist_ok=True)
     expected_sha256 = url.split("/")[-2]
     download_target = os.path.join(download_root, os.path.basename(url))
@@ -188,20 +228,21 @@ def whisper_download_headless(
     previous_time = 0.0
 
     try:
+        download_hasher = hashlib.sha256()
         with urllib.request.urlopen(url) as source, open(download_target, "wb") as output:
             buffer_size = 8192
-            length = int(source.info().get("Content-Length"))
-            length_in_mb = length / 1024 / 1024
+            length = _read_content_length(source.info())
+            length_in_mb = length / 1024 / 1024 if length > 0 else 0.0
 
             bytes_read = 0
             started_at = previous_time = time()
 
             while True:
-                if bc.cancel_dl:
+                if hooks.cancel_requested():
                     logger.info("Download cancelled")
-                    bc.cancel_dl = False
+                    hooks.clear_cancel_requested()
                     reporter.finish_task("Download Cancelled")
-                    start_optional_callback(cancel_func)
+                    hooks.start_callback(cancel_func)
                     return False
 
                 buffer = source.read(buffer_size)
@@ -209,6 +250,7 @@ def whisper_download_headless(
                     break
 
                 output.write(buffer)
+                download_hasher.update(buffer)
                 bytes_read += len(buffer)
                 current_time = time()
                 snapshot = build_download_progress_snapshot(
@@ -220,19 +262,24 @@ def whisper_download_headless(
                     current_time=current_time,
                     progress_floor=progress_floor,
                     progress_ceiling=progress_ceiling,
-                    allow_time_fallback=False,
+                    allow_time_fallback=length <= 0,
                 )
                 previous_bytes = bytes_read
                 previous_time = current_time
 
-                reporter.update_task_message(
-                    f"Downloading {model_name} model ({bytes_read / 1024 / 1024:.2f}/{length_in_mb:.2f} MB)"
-                )
+                if length > 0:
+                    reporter.update_task_message(
+                        f"Downloading {model_name} model ({bytes_read / 1024 / 1024:.2f}/{length_in_mb:.2f} MB)"
+                    )
+                else:
+                    reporter.update_task_message(
+                        f"Downloading {model_name} model ({bytes_read / 1024 / 1024:.2f} MB / Unknown)"
+                    )
                 reporter.update_task_progress(snapshot.progress)
                 if progress_callback is not None:
                     progress_callback(snapshot)
 
-        if _calculate_sha256(download_target) != expected_sha256:
+        if download_hasher.hexdigest() != expected_sha256:
             logger.error("Model has been downloaded but the SHA256 checksum does not match. Please retry loading the model.")
             msg = "SHA256 mismatch"
             success = False
@@ -247,12 +294,12 @@ def whisper_download_headless(
     if success:
         logger.info("Download finished successfully")
         reporter.finish_task("Download Complete")
-        start_optional_callback(after_func)
+        hooks.start_callback(after_func)
         return True
 
     logger.info("Download failed")
     reporter.update_task_error(f"Download failed: {msg}")
-    start_optional_callback(failed_func)
+    hooks.start_callback(failed_func)
     return False
 
 
@@ -312,6 +359,8 @@ def faster_whisper_download_headless(
     failed_func,
     *,
     reporter: TaskReporter | None = None,
+    bridge: Any | None = None,
+    hooks: DownloadExecutionHooks | None = None,
     progress_callback=None,
     progress_floor: float = 0.0,
     progress_ceiling: float = 100.0,
@@ -319,7 +368,8 @@ def faster_whisper_download_headless(
 ):
     hf_runtime = hf_runtime or _build_huggingface_download_runtime()
     huggingface_hub = hf_runtime.hub
-    reporter = reporter or _build_bridge_task_reporter()
+    hooks = hooks or _build_download_execution_hooks(reporter=reporter, bridge=bridge)
+    reporter = hooks.reporter
     logger.debug("Downloading model from Hugging Face Hub")
     os.makedirs(cache_dir, exist_ok=True)
 
@@ -383,27 +433,27 @@ def faster_whisper_download_headless(
         observe_path=storage_folder,
         total_bytes=total_size,
         on_progress=_handle_progress,
-        cancel_requested=lambda: bool(bc.cancel_dl),
+        cancel_requested=hooks.cancel_requested,
         cancel_handler=kill_thread,
         progress_floor=progress_floor,
         progress_ceiling=progress_ceiling,
     )
 
     if monitor_result.cancelled:
-        bc.cancel_dl = False
+        hooks.clear_cancel_requested()
         logger.info("Download Cancelled")
         reporter.finish_task("Download Cancelled")
-        start_optional_callback(cancel_func)
+        hooks.start_callback(cancel_func)
         return False
 
     if success := monitor_result.error is None:
         logger.info("Download finished")
         reporter.finish_task("Download Complete")
-        start_optional_callback(after_func)
+        hooks.start_callback(after_func)
     else:
         logger.info("Download failed")
         reporter.update_task_error(f"Download failed: {monitor_result.error}")
-        start_optional_callback(failed_func)
+        hooks.start_callback(failed_func)
 
     return success
 
@@ -418,10 +468,20 @@ def download_model(model_key, bridge=None, **kwargs):
     progress_callback = kwargs.pop("progress_callback", None)
     progress_floor = float(kwargs.pop("progress_floor", 0.0))
     progress_ceiling = float(kwargs.pop("progress_ceiling", 100.0))
+    cancel_requested = kwargs.pop("cancel_requested", None)
+    clear_cancel_requested = kwargs.pop("clear_cancel_requested", None)
+    callback_starter = kwargs.pop("callback_starter", start_optional_callback)
 
     cancel_func = kwargs.pop("cancel_func", None)
     after_func = kwargs.pop("after_func", None)
     failed_func = kwargs.pop("failed_func", None)
+    hooks = _build_download_execution_hooks(
+        reporter=reporter,
+        bridge=bridge,
+        cancel_requested=cancel_requested,
+        clear_cancel_requested=clear_cancel_requested,
+        callback_starter=callback_starter,
+    )
 
     if not use_faster_whisper:
         return whisper_download_headless(
@@ -431,7 +491,7 @@ def download_model(model_key, bridge=None, **kwargs):
             cancel_func,
             after_func,
             failed_func,
-            reporter=reporter,
+            hooks=hooks,
             progress_callback=progress_callback,
             progress_floor=progress_floor,
             progress_ceiling=progress_ceiling,
@@ -445,7 +505,7 @@ def download_model(model_key, bridge=None, **kwargs):
         cancel_func,
         after_func,
         failed_func,
-        reporter=reporter,
+        hooks=hooks,
         progress_callback=progress_callback,
         progress_floor=progress_floor,
         progress_ceiling=progress_ceiling,
