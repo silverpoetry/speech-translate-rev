@@ -39,7 +39,7 @@ from speech_translate.utils.audio.recording_runtime_state import (
     RecordingRuntimeStateAdapter,
     build_recording_runtime_state_adapter,
 )
-from speech_translate.utils.audio.record_streaming import StreamingStateAdapter
+from speech_translate.utils.audio.record_streaming import CallbackContextStore, StreamingStateAdapter
 from speech_translate.utils.audio.record_types import (
     AudioTarget,
     RecordingSessionBootstrap,
@@ -187,6 +187,8 @@ def _prepare_recording_session_bootstrap(
     is_tl: bool,
     p,
     shared_runtime_state: RealtimeSharedState | None = None,
+    callback_context_store_instance: CallbackContextStore | None = None,
+    sync_legacy_callback_context: bool = True,
 ) -> RecordingSessionBootstrap:
     config = _build_recording_session_config(
         rec_type=rec_type,
@@ -212,6 +214,8 @@ def _prepare_recording_session_bootstrap(
         p=p,
         settings_snapshot=settings_snapshot,
         shared_runtime_state=shared_runtime_state or shared_state,
+        callback_context_store_instance=callback_context_store_instance,
+        sync_legacy_callback_context=sync_legacy_callback_context,
     )
     return RecordingSessionBootstrap(
         config=config,
@@ -703,6 +707,8 @@ def _initialize_callback_context(
     webrtc_vad: object,
     silero_vad: SileroVadLike,
     shared_runtime_state: RealtimeSharedState | None = None,
+    store: CallbackContextStore | None = None,
+    sync_legacy_context: bool = True,
 ) -> RealtimeCallbackContext:
     return streaming_module.initialize_callback_context(
         sample_rate=sample_rate,
@@ -718,6 +724,8 @@ def _initialize_callback_context(
         webrtc_vad=webrtc_vad,
         silero_vad=silero_vad,
         shared_runtime_state=shared_runtime_state,
+        store=store,
+        sync_legacy_context=sync_legacy_context,
     )
 
 
@@ -732,6 +740,8 @@ def _build_recording_stream_runtime(
     p,
     settings_snapshot: Mapping[str, object] | None = None,
     shared_runtime_state: RealtimeSharedState | None = None,
+    callback_context_store_instance: CallbackContextStore | None = None,
+    sync_legacy_callback_context: bool = True,
 ) -> RecordingStreamRuntime:
     pyaudio = get_pyaudio_module()
     return streaming_module.build_recording_stream_runtime(
@@ -745,6 +755,8 @@ def _build_recording_stream_runtime(
         logger_instance=logger,
         settings_snapshot=_recording_settings_snapshot(settings_snapshot),
         shared_runtime_state=shared_runtime_state,
+        callback_context_store_instance=callback_context_store_instance,
+        sync_legacy_callback_context=sync_legacy_callback_context,
     )
 
 
@@ -752,12 +764,13 @@ def _open_recording_stream(
     *,
     p,
     stream_runtime: RecordingStreamRuntime,
+    record_cb_override: Callable | None = None,
     state_adapter: StreamingStateAdapter | None = None,
 ) -> None:
     streaming_module.open_recording_stream(
         p=p,
         stream_runtime=stream_runtime,
-        record_cb=record_cb,
+        record_cb=record_cb if record_cb_override is None else record_cb_override,
         state_adapter=state_adapter,
     )
 
@@ -948,6 +961,53 @@ def _handle_record_callback_error(ctx: RealtimeCallbackContext | None, exc: Exce
     streaming_module.handle_record_callback_error(ctx, exc)
 
 
+def _execute_record_callback(
+    in_data,
+    _frame_count,
+    _time_info,
+    _status,
+    *,
+    callback_ctx: RealtimeCallbackContext | None,
+    state_adapter: StreamingStateAdapter | None = None,
+):
+    pyaudio = get_pyaudio_module()
+    try:
+        if callback_ctx is None:
+            return (in_data, pyaudio.paContinue)
+
+        resampled = resample_sr(in_data, callback_ctx.sample_rate, WHISPER_SR)
+        is_speech, data_to_queue = _detect_realtime_speech(callback_ctx, in_data, resampled)
+        _update_realtime_queue_state(
+            callback_ctx,
+            is_speech=is_speech,
+            data_to_queue=data_to_queue,
+            state_adapter=state_adapter,
+        )
+
+        return (in_data, pyaudio.paContinue)
+    except Exception as exc:
+        _handle_record_callback_error(callback_ctx, exc)
+        return (in_data, pyaudio.paContinue)
+
+
+def build_record_callback(
+    callback_ctx: RealtimeCallbackContext | None,
+    *,
+    state_adapter: StreamingStateAdapter | None = None,
+):
+    def _session_record_cb(in_data, frame_count, time_info, status):
+        return _execute_record_callback(
+            in_data,
+            frame_count,
+            time_info,
+            status,
+            callback_ctx=callback_ctx,
+            state_adapter=state_adapter,
+        )
+
+    return _session_record_cb
+
+
 def _build_record_audio_target(
     session_state: RealtimeSessionState,
     *,
@@ -1113,6 +1173,7 @@ def record_session(
     session_shared_state = RealtimeSharedState()
     session_text_state = build_recording_text_state(shared_runtime_state=session_shared_state)
     session_control = build_recording_session_control()
+    session_callback_context_store = streaming_module.build_callback_context_store()
 
     try:
         p = get_pyaudio_module().PyAudio()
@@ -1126,6 +1187,8 @@ def record_session(
             is_tl=is_tl,
             p=p,
             shared_runtime_state=session_shared_state,
+            callback_context_store_instance=session_callback_context_store,
+            sync_legacy_callback_context=False,
         )
         config = bootstrap.config
         model_runtime = bootstrap.model_runtime
@@ -1161,10 +1224,15 @@ def record_session(
             runtime_text_state=session_text_state,
         )
 
+        stream_state_adapter = StreamingStateAdapter(runtime_state=session_control.runtime_state)
         _open_recording_stream(
             p=p,
             stream_runtime=stream_runtime,
-            state_adapter=StreamingStateAdapter(runtime_state=session_control.runtime_state),
+            record_cb_override=build_record_callback(
+                stream_runtime.callback_ctx,
+                state_adapter=stream_state_adapter,
+            ),
+            state_adapter=stream_state_adapter,
         )
 
         # Main Transcribing Loop
@@ -1187,26 +1255,20 @@ def record_session(
                 _finalize_recording_session(p, finalize_context, control=session_control)
             except Exception as finalize_exc:
                 logger.error(f"Error finalizing record session: {finalize_exc}")
+        session_callback_context_store.reset()
         empty_torch_cuda_cache()
         logger.info("Record session ended")
 
 
 def record_cb(in_data, _frame_count, _time_info, _status):
     """Audio stream callback for PyAudio"""
-    pyaudio = get_pyaudio_module()
-    ctx = _get_callback_context()
-    try:
-        if ctx is None:
-            return (in_data, pyaudio.paContinue)
-
-        resampled = resample_sr(in_data, ctx.sample_rate, WHISPER_SR)
-        is_speech, data_to_queue = _detect_realtime_speech(ctx, in_data, resampled)
-        _update_realtime_queue_state(ctx, is_speech=is_speech, data_to_queue=data_to_queue)
-
-        return (in_data, pyaudio.paContinue)
-    except Exception as exc:
-        _handle_record_callback_error(ctx, exc)
-        return (in_data, pyaudio.paContinue)
+    return _execute_record_callback(
+        in_data,
+        _frame_count,
+        _time_info,
+        _status,
+        callback_ctx=_get_callback_context(),
+    )
 
 # =========================================================================
 # API / WORKER EXECUTORS

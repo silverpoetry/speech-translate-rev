@@ -43,6 +43,10 @@ class CallbackContextStore:
         self.value = None
 
 
+def build_callback_context_store(*, value: RealtimeCallbackContext | None = None) -> CallbackContextStore:
+    return CallbackContextStore(value=value)
+
+
 @dataclass
 class StreamingStateAdapter:
     runtime_state: RecordingRuntimeStateAdapter = field(default_factory=build_recording_runtime_state_adapter)
@@ -56,7 +60,7 @@ class StreamingStateAdapter:
     def set_current_status(self, status: str) -> None:
         self.runtime_state.set_current_status(status)
 
-callback_context_store = CallbackContextStore()
+callback_context_store = build_callback_context_store()
 
 
 def _get_recording_settings():
@@ -105,6 +109,7 @@ def initialize_callback_context(
     silero_vad: SileroVadLike,
     shared_runtime_state: RealtimeSharedState | None = None,
     store: CallbackContextStore | None = None,
+    sync_legacy_context: bool = True,
 ) -> RealtimeCallbackContext:
     store = store or callback_context_store
     context = RealtimeCallbackContext(
@@ -125,7 +130,8 @@ def initialize_callback_context(
         silero_vad=silero_vad,
     )
     store.set(context)
-    _sync_legacy_callback_context(store)
+    if sync_legacy_context:
+        _sync_legacy_callback_context(store)
     return context
 
 
@@ -160,6 +166,7 @@ def build_recording_stream_runtime(
     settings_snapshot=None,
     shared_runtime_state: RealtimeSharedState | None = None,
     callback_context_store_instance: CallbackContextStore | None = None,
+    sync_legacy_callback_context: bool = True,
 ) -> RecordingStreamRuntime:
     settings_snapshot = _recording_settings_snapshot(settings_snapshot)
     success, detail = get_device_details_fn(rec_type, _recording_device_settings(settings_snapshot), p)
@@ -194,6 +201,7 @@ def build_recording_stream_runtime(
         silero_vad=silero_vad,
         shared_runtime_state=shared_runtime_state,
         store=callback_context_store_instance,
+        sync_legacy_context=sync_legacy_callback_context,
     )
     return RecordingStreamRuntime(
         input_device_index=int(device_detail["index"]),

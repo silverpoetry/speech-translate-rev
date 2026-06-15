@@ -366,6 +366,37 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertIs(store.get(), ctx)
         self.assertIs(streaming_module.get_callback_context(store), ctx)
 
+    def test_initialize_callback_context_can_skip_legacy_global_sync(self) -> None:
+        from speech_translate.utils.audio import record_streaming as streaming_module
+
+        previous_callback_context = streaming_module.callback_context
+        store = FakeCallbackContextStore()
+        legacy_marker = object()
+        try:
+            streaming_module.callback_context = legacy_marker
+            ctx = streaming_module.initialize_callback_context(
+                sample_rate=16000,
+                chunk_size=320,
+                threshold_enable=True,
+                threshold_db=-20.0,
+                threshold_auto=True,
+                use_silero=True,
+                silero_min_conf=0.75,
+                num_of_channels=1,
+                samp_width=2,
+                use_temp=False,
+                webrtc_vad=object(),
+                silero_vad=object(),
+                store=store,
+                sync_legacy_context=False,
+            )
+            observed_legacy_callback_context = streaming_module.callback_context
+        finally:
+            streaming_module.callback_context = previous_callback_context
+
+        self.assertIs(store.get(), ctx)
+        self.assertIs(observed_legacy_callback_context, legacy_marker)
+
     def test_reset_callback_context_clears_global_state(self) -> None:
         from speech_translate.utils.audio import record as record_module
         from speech_translate.utils.audio import record_streaming as streaming_module
@@ -408,6 +439,55 @@ class AudioRecordHelpersTests(unittest.TestCase):
         )
         streaming_module.reset_callback_context(store)
         self.assertIsNone(store.get())
+
+    def test_build_record_callback_uses_provided_context_and_state_adapter(self) -> None:
+        from speech_translate.utils.audio import record as record_module
+
+        previous_get_pyaudio_module = record_module.get_pyaudio_module
+        previous_resample_sr = record_module.resample_sr
+        previous_detect = record_module._detect_realtime_speech
+        previous_update = record_module._update_realtime_queue_state
+        observed = {}
+        ctx = RealtimeCallbackContext(
+            sample_rate=16000,
+            frame_duration_ms=20,
+            threshold_enable=True,
+            threshold_db=-20.0,
+            threshold_auto=True,
+            use_silero=True,
+            silero_min_conf=0.75,
+            vad_checked=False,
+            num_of_channels=1,
+            samp_width=2,
+            use_temp=False,
+        )
+        state_adapter = FakeStreamingStateAdapter()
+        try:
+            record_module.get_pyaudio_module = lambda: type("FakePyAudioModule", (), {"paContinue": "continue"})()
+            record_module.resample_sr = lambda in_data, sample_rate, target_rate: b"resampled"
+            record_module._detect_realtime_speech = lambda current_ctx, in_data, resampled: (
+                current_ctx is ctx,
+                b"queued",
+            )
+
+            def fake_update(current_ctx, **kwargs):
+                observed["ctx"] = current_ctx
+                observed["kwargs"] = kwargs
+
+            record_module._update_realtime_queue_state = fake_update
+            callback = record_module.build_record_callback(ctx, state_adapter=state_adapter)
+            result = callback(b"raw", 0, None, None)
+        finally:
+            record_module.get_pyaudio_module = previous_get_pyaudio_module
+            record_module.resample_sr = previous_resample_sr
+            record_module._detect_realtime_speech = previous_detect
+            record_module._update_realtime_queue_state = previous_update
+
+        self.assertEqual(result, (b"raw", "continue"))
+        self.assertIs(observed["ctx"], ctx)
+        self.assertTrue(observed["kwargs"]["is_speech"])
+        self.assertEqual(observed["kwargs"]["data_to_queue"], b"queued")
+        self.assertIs(observed["kwargs"]["state_adapter"], state_adapter)
 
     def test_translation_task_defaults_are_explicit(self) -> None:
         task = TranslationTask(kind="whisper", separator="<br />")
@@ -1154,10 +1234,21 @@ class AudioRecordHelpersTests(unittest.TestCase):
 
             record_module._load_recording_model_runtime = lambda **kwargs: ModelRuntimeStub()
 
-            def fake_build_stream_runtime(*, rec_type, config, p, settings_snapshot=None, shared_runtime_state=None):
+            def fake_build_stream_runtime(
+                *,
+                rec_type,
+                config,
+                p,
+                settings_snapshot=None,
+                shared_runtime_state=None,
+                callback_context_store_instance=None,
+                sync_legacy_callback_context=True,
+            ):
                 observed["use_temp_seen"] = config.use_temp
                 observed["settings_snapshot_use_temp"] = settings_snapshot["use_temp"]
                 observed["shared_runtime_state"] = shared_runtime_state
+                observed["callback_context_store_instance"] = callback_context_store_instance
+                observed["sync_legacy_callback_context"] = sync_legacy_callback_context
                 return RecordingStreamRuntime(
                     input_device_index=0,
                     sr_ori=16000,
@@ -1208,7 +1299,10 @@ class AudioRecordHelpersTests(unittest.TestCase):
 
             record_module._build_recording_session_services = fake_build_services
             record_module._start_recording_session_support_threads = lambda **kwargs: None
-            record_module._open_recording_stream = lambda **kwargs: None
+            def fake_open_stream(**kwargs):
+                observed["open_stream_kwargs"] = kwargs
+
+            record_module._open_recording_stream = fake_open_stream
             record_module._run_recording_session_loop = lambda **kwargs: None
             record_module._finalize_recording_session = lambda *args, **kwargs: None
 
@@ -1230,6 +1324,14 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertIsNot(observed["shared_runtime_state"], record_module.shared_state)
         self.assertIsNot(observed["session_control"], record_module.recording_control)
         self.assertIs(observed["runtime_text_state"]._shared, observed["shared_runtime_state"])
+        self.assertIsNotNone(observed["callback_context_store_instance"])
+        self.assertFalse(observed["sync_legacy_callback_context"])
+        self.assertTrue(callable(observed["open_stream_kwargs"]["record_cb_override"]))
+        self.assertIsNot(observed["open_stream_kwargs"]["record_cb_override"], record_module.record_cb)
+        self.assertIs(
+            observed["open_stream_kwargs"]["state_adapter"].runtime_state,
+            observed["session_control"].runtime_state,
+        )
 
     def test_record_session_finalizes_when_failure_happens_after_pyaudio_bootstrap(self) -> None:
         from speech_translate.utils.audio import record as record_module
