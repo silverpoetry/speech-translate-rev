@@ -5,7 +5,6 @@ from typing import List
 import inspect
 import threading
 
-from darkdetect import isDark
 from loguru import logger
 from notifypy import Notify
 
@@ -41,7 +40,6 @@ default_setting: SettingDict = {
     "hostAPI": "",
     "verbose_record": False,
     "separate_with": "\\n",
-    "theme": "sun-valley-dark" if isDark() else "sun-valley-light",
     "show_audio_visualizer_in_record": True,
     "show_audio_visualizer_in_setting": True,
     "supress_hidden_to_tray": False,

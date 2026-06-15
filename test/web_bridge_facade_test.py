@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 import unittest
 
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -41,6 +42,10 @@ class DummyController:
     def build_main_ui(self):
         self.calls.append(("build_main_ui",))
         return {"ok": True}
+
+    def log_startup_marker(self, marker):
+        self.calls.append(("log_startup_marker", marker))
+        return {"marker": marker}
 
     def get_detached_config(self, mode):
         self.calls.append(("get_detached_config", mode))
@@ -98,6 +103,31 @@ class WebBridgeFacadeMixinTests(unittest.TestCase):
         result = self.bridge.open_directory("export")
         self.assertEqual(result, {"name": "export"})
         self.assertIn(("open_directory", "export"), self.bridge.system_settings_controller.calls)
+
+    def test_log_startup_marker_uses_main_window_log_method_name(self) -> None:
+        self.bridge._log_startup_marker("boot")
+        self.assertIn(("log_startup_marker", "boot"), self.bridge.main_window_controller.calls)
+
+    def test_build_audio_source_options_forwards_optional_argument(self) -> None:
+        self.bridge.state_view_builder.build_audio_source_options = lambda selected_host_api=None: {
+            "selected_host_api": selected_host_api
+        }
+        self.assertEqual(
+            self.bridge._build_audio_source_options("WASAPI"),
+            {"selected_host_api": "WASAPI"},
+        )
+
+    def test_path_size_handles_single_file(self) -> None:
+        with tempfile.NamedTemporaryFile(delete=False) as handle:
+            handle.write(b"abcd")
+            temp_path = handle.name
+        try:
+            self.assertEqual(self.bridge._path_size(temp_path), 4)
+        finally:
+            os.remove(temp_path)
+
+    def test_fmt_bytes_uses_readable_units(self) -> None:
+        self.assertEqual(self.bridge._fmt_bytes(1536), "1.5 KB")
 
 
 if __name__ == "__main__":

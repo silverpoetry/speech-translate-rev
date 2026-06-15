@@ -23,7 +23,7 @@ setup(
     name="SpeechTranslate",
     version=version(),
     description="A realtime speech transcription and translation application using Whisper OpenAI and free translation API."
-    " Interface made using Tkinter. Code written fully in Python.",
+    " Interface made with a webview frontend. Code written fully in Python.",
     long_description=read_me(),
     long_description_content_type="text/markdown",
     python_requires=">=3.8",

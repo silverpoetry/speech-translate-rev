@@ -282,7 +282,6 @@ class StateViewBuilder:
 
     def _build_compact_settings(self, settings_snapshot: Dict[str, object]) -> JsonDict:
         return {
-            "theme": settings_snapshot.get("theme"),
             "log_level": settings_snapshot.get("log_level"),
             "dir_export": settings_snapshot.get("dir_export"),
             "dir_model": settings_snapshot.get("dir_model"),

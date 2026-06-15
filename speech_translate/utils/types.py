@@ -109,7 +109,6 @@ class SettingDict(TypedDict):
     speaker: str
     hostAPI: str
     separate_with: str
-    theme: str
     show_audio_visualizer_in_record: bool
     show_audio_visualizer_in_setting: bool
     supress_hidden_to_tray: bool

@@ -15,7 +15,6 @@ from speech_translate.ui_protocol import UI_SECTION_STATE
 class FakeSettings:
     def __init__(self) -> None:
         self.cache = {
-            "theme": "dark",
             "log_level": "INFO",
             "dir_export": "auto",
             "dir_model": "auto",
