@@ -90,9 +90,17 @@ class WebBridgeFacadeMixinTests(unittest.TestCase):
         self.assertEqual(self.bridge._resolve_model_dir(), "D:/models")
         self.assertIn(("resolve_model_dir",), self.bridge.model_manager_controller.calls)
 
+    def test_public_resolve_model_dir_alias_forwards_to_model_manager(self) -> None:
+        self.assertEqual(self.bridge.resolve_model_dir(), "D:/models")
+        self.assertIn(("resolve_model_dir",), self.bridge.model_manager_controller.calls)
+
     def test_wait_recording_idle_forwards_to_recording_controller(self) -> None:
         self.assertTrue(self.bridge._wait_recording_idle(timeout_s=3.5))
         self.assertIn(("wait_recording_idle", 3.5), self.bridge.recording_controller.calls)
+
+    def test_public_wait_recording_idle_alias_forwards_to_recording_controller(self) -> None:
+        self.assertTrue(self.bridge.wait_recording_idle(timeout_s=1.5))
+        self.assertIn(("wait_recording_idle", 1.5), self.bridge.recording_controller.calls)
 
     def test_get_detached_config_forwards_to_detached_controller(self) -> None:
         result = self.bridge.get_detached_config("tc")

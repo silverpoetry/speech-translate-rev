@@ -12,14 +12,6 @@ from speech_translate.import_queue_manager import ImportQueueController
 from speech_translate.ui_protocol import TASK_SOURCE_IMPORT, UI_SECTION_IMPORT
 
 
-class DummyLock:
-    def __enter__(self):
-        return None
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
-
 class FakeSettings:
     def __init__(self) -> None:
         self.cache = {
@@ -38,40 +30,13 @@ class FakeBridge:
     TL_ENGINE_TARGET_DICT_REF = {"Google Translate": ["Chinese"]}
 
     def __init__(self) -> None:
-        self.model_manager_controller = type(
-            "ModelManagerController",
-            (),
-            {
-                "pending_calls": [],
-                "ready_calls": [],
-                "mark_runtime_model_pending": lambda self_, model_key, loaded=False, message=None: self_.pending_calls.append((model_key, loaded, message)),
-                "mark_runtime_model_ready": lambda self_, model_key=None, message=None: self_.ready_calls.append((model_key, message)),
-            },
-        )()
-        self._lock = DummyLock()
-        self._model_load_running = False
-        self._runtime_model_loaded = False
-        self._runtime_model_key = "small"
-        self._runtime_model_message = ""
-        self.task_state = type("TaskState", (), {"title": ""})()
+        self.model_manager_controller = FakeModelManager()
         self.updates = []
         self.window = None
         self.bound_headless = 0
         self.finished = []
         self.errors = []
         self.settings_snapshot = dict(FakeSettings().cache)
-
-    def _normalize_engine_name(self, value: str) -> str:
-        return value
-
-    def _normalize_model_key(self, value: str) -> str:
-        return value
-
-    def _resolve_model_dir(self) -> str:
-        return "D:\\model-cache"
-
-    def _is_model_available_for_backend(self, model_key: str, backend: str, model_dir: str) -> bool:
-        return model_key == "small"
 
     def update_task_message(self, message: str, source: str = "general"):
         self.updates.append(("message", source, message))
@@ -82,20 +47,23 @@ class FakeBridge:
     def update_task_rows(self, rows):
         self.updates.append(("rows", rows))
 
-    def _emit_ui_update(self, sections):
+    def emit_ui_update(self, sections):
         self.updates.append(("emit", tuple(sections)))
 
     def get_recording_state(self):
         return {"active": False}
 
-    def _wait_recording_idle(self, timeout_s: float = 12.0) -> bool:
+    def wait_recording_idle(self, timeout_s: float = 12.0) -> bool:
         return True
 
     def get_window(self):
         return self.window
 
     def reset_task_state(self, title: str):
-        self.task_state.title = title
+        self.updates.append(("reset", title))
+
+    def set_task_title(self, title: str):
+        self.updates.append(("title", title))
 
     def bind_headless_main_window(self):
         self.bound_headless += 1
@@ -110,12 +78,77 @@ class FakeBridge:
         return dict(self.settings_snapshot)
 
 
+class FakeModelManager:
+    def __init__(self) -> None:
+        self.pending_calls = []
+        self.ready_calls = []
+        self.model_load_running = False
+        self.runtime_model_loaded = False
+        self.runtime_model_key = "small"
+
+    def mark_runtime_model_pending(self, model_key, loaded=False, message=None):
+        self.pending_calls.append((model_key, loaded, message))
+        self.runtime_model_key = model_key
+        self.runtime_model_loaded = bool(loaded)
+        self.model_load_running = True
+
+    def mark_runtime_model_ready(self, model_key=None, message=None):
+        resolved_key = model_key or self.runtime_model_key
+        self.ready_calls.append((resolved_key, message))
+        self.runtime_model_key = resolved_key
+        self.runtime_model_loaded = True
+        self.model_load_running = False
+
+    def normalize_engine_name(self, value: str) -> str:
+        return value
+
+    def normalize_model_key(self, value: str) -> str:
+        return value
+
+    def resolve_model_dir(self) -> str:
+        return "D:\\model-cache"
+
+    def is_model_available_for_backend(self, model_key: str, backend: str, model_dir: str) -> bool:
+        return model_key == "small"
+
+
+class FakeProcessRuntime:
+    def __init__(self) -> None:
+        self.recording_active = False
+        self.file_processing_active = False
+        self.enabled = 0
+        self.disabled = 0
+        self.tc_count = 0
+        self.tl_count = 0
+
+    def is_recording_active(self) -> bool:
+        return self.recording_active
+
+    def is_file_processing_active(self) -> bool:
+        return self.file_processing_active
+
+    def enable_file_processing(self) -> None:
+        self.enabled += 1
+        self.file_processing_active = True
+
+    def disable_file_processing(self) -> None:
+        self.disabled += 1
+        self.file_processing_active = False
+
+    def transcribed_count(self) -> int:
+        return self.tc_count
+
+    def translated_count(self) -> int:
+        return self.tl_count
+
+
 class ImportQueueControllerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.bridge = FakeBridge()
         self.settings = FakeSettings()
         self.bridge.settings_snapshot = self.settings.cache
-        self.controller = ImportQueueController(self.bridge, self.settings, lambda: None)
+        self.process_runtime = FakeProcessRuntime()
+        self.controller = ImportQueueController(self.bridge, self.settings, lambda: None, process_runtime=self.process_runtime)
 
     def test_get_full_display_queue_merges_processing_status(self) -> None:
         self.controller.file_import_queue = [{"path": "a.wav", "name": "a.wav", "status": "Waiting", "is_completed": False}]
@@ -175,15 +208,15 @@ class ImportQueueControllerTests(unittest.TestCase):
         self.assertTrue(any(update[0] == "message" and update[1] == TASK_SOURCE_IMPORT for update in self.bridge.updates))
 
     def test_start_import_queue_uses_engine_name_and_prepares_runtime_model(self) -> None:
-        previous_runtime_loaded = self.bridge._runtime_model_loaded
-        previous_runtime_key = self.bridge._runtime_model_key
-        previous_model_load_running = self.bridge._model_load_running
+        previous_runtime_loaded = self.bridge.model_manager_controller.runtime_model_loaded
+        previous_runtime_key = self.bridge.model_manager_controller.runtime_model_key
+        previous_model_load_running = self.bridge.model_manager_controller.model_load_running
         previous_start_worker = self.controller._start_import_worker
         captured = {}
         try:
-            self.bridge._runtime_model_loaded = True
-            self.bridge._runtime_model_key = "small"
-            self.bridge._model_load_running = False
+            self.bridge.model_manager_controller.runtime_model_loaded = True
+            self.bridge.model_manager_controller.runtime_model_key = "small"
+            self.bridge.model_manager_controller.model_load_running = False
             self.controller.file_import_queue = [{"path": "a.wav", "name": "a.wav", "status": "Waiting", "is_completed": False}]
             self.controller._start_import_worker = lambda *, context: captured.update(
                 {"engine": context.engine, "model": context.model_name_tc, "prepare": context.should_prepare_runtime_model}
@@ -192,9 +225,9 @@ class ImportQueueControllerTests(unittest.TestCase):
             self.settings.cache["model_f_import"] = "small"
             result = self.controller.start_import_queue()
         finally:
-            self.bridge._runtime_model_loaded = previous_runtime_loaded
-            self.bridge._runtime_model_key = previous_runtime_key
-            self.bridge._model_load_running = previous_model_load_running
+            self.bridge.model_manager_controller.runtime_model_loaded = previous_runtime_loaded
+            self.bridge.model_manager_controller.runtime_model_key = previous_runtime_key
+            self.bridge.model_manager_controller.model_load_running = previous_model_load_running
             self.controller._start_import_worker = previous_start_worker
 
         self.assertTrue(result["ok"])
@@ -225,6 +258,27 @@ class ImportQueueControllerTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(shutdown_calls, ["shutdown"])
+
+    def test_get_file_processing_state_uses_injected_process_runtime(self) -> None:
+        self.controller.processing_queue = [{"path": "a.wav", "name": "a.wav", "status": "Working", "is_completed": False}]
+        self.controller.file_import_queue = [{"path": "a.wav", "name": "a.wav", "status": "Working", "is_completed": False}]
+        self.process_runtime.file_processing_active = True
+
+        state = self.controller.get_file_processing_state()
+
+        self.assertTrue(state["active"])
+
+    def test_finish_import_run_clears_runtime_loading_flag_via_model_manager(self) -> None:
+        self.bridge.model_manager_controller.model_load_running = True
+        self.controller.processing_queue = [{"path": "a.wav", "name": "a.wav", "status": "Done", "is_completed": True}]
+        self.controller.file_import_queue = [{"path": "a.wav", "name": "a.wav", "status": "Waiting", "is_completed": False}]
+
+        self.controller._finish_import_run(
+            context=self.controller._build_import_start_context(),
+        )
+
+        self.assertFalse(self.bridge.model_manager_controller.model_load_running)
+        self.assertEqual(self.process_runtime.disabled, 1)
 
 
 if __name__ == "__main__":

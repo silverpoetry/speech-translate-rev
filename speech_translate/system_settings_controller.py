@@ -32,13 +32,13 @@ class SystemSettingsController:
             "export": self.resolve_export_dir(),
             "log": self.resolve_log_dir(),
             "debug": self.dir_debug,
-            "model": self.bridge._resolve_model_dir(),
+            "model": self.bridge.resolve_model_dir(),
         }
 
     def _directory_selection_targets(self) -> Dict[str, tuple[str, str]]:
         return {
             "export": ("dir_export", self.resolve_export_dir()),
-            "model": ("dir_model", self.bridge._resolve_model_dir()),
+            "model": ("dir_model", self.bridge.resolve_model_dir()),
             "selenium_chrome": ("selenium_chrome_user_data_dir", self.resolve_selenium_chrome_user_data_dir()),
         }
 

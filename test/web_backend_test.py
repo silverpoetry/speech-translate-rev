@@ -60,6 +60,16 @@ class WebTaskBridgeTests(unittest.TestCase):
         self.bridge.reset_task_state("Recording")
         self.assertTrue(any(UI_SECTION_TASK in script for script in self.window.scripts))
 
+    def test_set_task_title_updates_snapshot_and_emits(self) -> None:
+        self.bridge.set_task_title("Queued Import")
+        state = self.bridge.snapshot_task_state()
+        self.assertEqual(state["title"], "Queued Import")
+        self.assertTrue(any(UI_SECTION_TASK in script for script in self.window.scripts))
+
+    def test_emit_ui_update_accepts_generic_sequence(self) -> None:
+        self.bridge.emit_ui_update((UI_SECTION_TASK,))
+        self.assertTrue(any(UI_SECTION_TASK in script for script in self.window.scripts))
+
     def test_update_live_html_syncs_html_and_text(self) -> None:
         self.bridge.update_live_html("main_transcribed_html", "<span>Hello</span><br />World")
         state = self.bridge.snapshot_live_state()

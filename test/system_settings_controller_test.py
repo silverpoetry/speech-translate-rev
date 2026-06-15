@@ -55,7 +55,7 @@ class FakeBridge:
     def get_window(self):
         return self.window
 
-    def _resolve_model_dir(self):
+    def resolve_model_dir(self):
         return "D:\\models"
 
 

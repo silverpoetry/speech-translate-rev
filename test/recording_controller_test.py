@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import sys
 import unittest
-from threading import Lock
 
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
@@ -30,20 +29,15 @@ class FakeModelManager:
 
 class FakeBridge:
     def __init__(self) -> None:
-        self._lock = Lock()
         self.model_manager_controller = FakeModelManager()
         self.emits = []
-        self._runtime_model_key = "small"
-        self._runtime_model_loaded = False
-        self._runtime_model_message = ""
-        self._model_load_running = False
         self.bound_headless = 0
         self.clear_live_calls = 0
         self.reset_task_titles = []
         self.finished = []
         self.errors = []
 
-    def _emit_ui_update(self, sections):
+    def emit_ui_update(self, sections):
         self.emits.append(tuple(sections))
 
     def get_settings_snapshot(self):
@@ -58,10 +52,10 @@ class FakeBridge:
             "selenium_auto_close_on_task_done": True,
         }
 
-    def _normalize_engine_name(self, value: str) -> str:
+    def normalize_engine_name(self, value: str) -> str:
         return value
 
-    def _normalize_model_key(self, value: str) -> str:
+    def normalize_model_key(self, value: str) -> str:
         return value
 
     def bind_headless_main_window(self) -> None:

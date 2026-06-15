@@ -191,7 +191,7 @@ class SystemSettingsBridge(Protocol):
     def get_window(self) -> FolderDialogWindow | None:
         ...
 
-    def _resolve_model_dir(self) -> str:
+    def resolve_model_dir(self) -> str:
         ...
 
 
@@ -509,22 +509,18 @@ class ImportQueueControllerApi(Protocol):
 
 
 class RecordingBridge(Protocol):
-    _lock: object
     model_manager_controller: ModelManagerControllerApi
-    _runtime_model_key: str
-    _runtime_model_loaded: bool
-    _model_load_running: bool
 
-    def _emit_ui_update(self, sections: Sequence[str]) -> None:
+    def emit_ui_update(self, sections: Sequence[str]) -> None:
         ...
 
     def get_settings_snapshot(self) -> JsonDict:
         ...
 
-    def _normalize_engine_name(self, value: str) -> str:
+    def normalize_engine_name(self, value: str) -> str:
         ...
 
-    def _normalize_model_key(self, value: str) -> str:
+    def normalize_model_key(self, value: str) -> str:
         ...
 
     def bind_headless_main_window(self) -> None:
@@ -564,19 +560,14 @@ WhisperLoadApiGetter = Callable[[], WhisperLoadApi]
 
 
 class ImportQueueBridge(Protocol):
-    _lock: object
     model_manager_controller: ModelManagerControllerApi
-    task_state: TaskStateLike
-    _model_load_running: bool
-    _runtime_model_loaded: bool
-    _runtime_model_key: str
     TL_ENGINE_SOURCE_DICT_REF: dict[str, list[str]]
     TL_ENGINE_TARGET_DICT_REF: dict[str, list[str]]
 
-    def _emit_ui_update(self, sections: Sequence[str]) -> None:
+    def emit_ui_update(self, sections: Sequence[str]) -> None:
         ...
 
-    def _wait_recording_idle(self, timeout_s: float = 12.0) -> bool:
+    def wait_recording_idle(self, timeout_s: float = 12.0) -> bool:
         ...
 
     def get_recording_state(self) -> JsonDict:
@@ -585,19 +576,19 @@ class ImportQueueBridge(Protocol):
     def get_window(self) -> FolderDialogWindow | None:
         ...
 
-    def _normalize_engine_name(self, value: str) -> str:
+    def normalize_engine_name(self, value: str) -> str:
         ...
 
-    def _normalize_model_key(self, value: str) -> str:
+    def normalize_model_key(self, value: str) -> str:
         ...
 
-    def _resolve_model_dir(self) -> str:
-        ...
-
-    def _is_model_available_for_backend(self, model_key: str, backend: str, model_dir: str) -> bool:
+    def resolve_model_dir(self) -> str:
         ...
 
     def reset_task_state(self, title: str) -> None:
+        ...
+
+    def set_task_title(self, title: str) -> None:
         ...
 
     def bind_headless_main_window(self) -> None:

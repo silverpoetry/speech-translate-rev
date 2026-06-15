@@ -197,6 +197,9 @@ class WebTaskBridge:
         except Exception:
             pass
 
+    def emit_ui_update(self, sections: Sequence[str]) -> None:
+        self._emit_ui_update(list(sections))
+
     def bind_headless_main_window(self) -> HeadlessMainWindow:
         setattr(bc, "mw", self._main_window)
         setattr(bc, "sw", None)
@@ -211,6 +214,10 @@ class WebTaskBridge:
             self.task_state = TaskState(active=True, title=title)
         self._emit_task_update()
         return self.task_state
+
+    def set_task_title(self, title: str) -> None:
+        self._set_task_state_fields(title=str(title))
+        self._emit_task_update()
 
     def update_task_message(self, message: str, source: str = TASK_SOURCE_GENERAL) -> None:
         self._set_task_state_fields(message=message, message_source=source)
