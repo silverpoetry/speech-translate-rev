@@ -66,6 +66,10 @@ from speech_translate.utils.audio.record import (
 )
 from speech_translate.bridge_runtime_state import BridgeLiveTextRuntime, BridgeRecordingRuntime
 from speech_translate.runtime_registry import bridge_state_registry
+from speech_translate.utils.audio.record_settings import (
+    build_recording_model_settings,
+    build_recording_stream_settings,
+)
 from speech_translate.utils.audio.recording_runtime_state import (
     build_recording_runtime_state_adapter,
     build_recording_text_store_adapter,
@@ -589,6 +593,42 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertFalse(config.auto_break_buffer)
         self.assertTrue(config.use_temp)
         self.assertEqual(config.taskname, "Transcribe & Translate")
+
+    def test_build_recording_model_settings_extracts_runtime_policy_fields(self) -> None:
+        settings = build_recording_model_settings(
+            {
+                "enable_initial_prompt": True,
+                "initial_prompts_map": {"en": "hello"},
+                "use_faster_whisper": True,
+                "filter_rec": True,
+                "path_filter_rec": "filters.txt",
+            }
+        )
+
+        self.assertTrue(settings.enable_initial_prompt)
+        self.assertEqual(settings.initial_prompts_map, {"en": "hello"})
+        self.assertTrue(settings.use_faster_whisper)
+        self.assertTrue(settings.filter_rec)
+        self.assertEqual(settings.path_filter_rec, "filters.txt")
+
+    def test_build_recording_stream_settings_extracts_device_and_vad_policy(self) -> None:
+        settings = build_recording_stream_settings(
+            rec_type="speaker",
+            settings_snapshot={
+                "threshold_auto_mode_speaker": "2",
+                "supress_record_warning": True,
+                "speaker": "[ID: 0,1] | Loopback",
+                "chunk_size_speaker": 1024,
+                "auto_sample_rate_speaker": True,
+                "sample_rate_speaker": 48000,
+                "auto_channels_speaker": False,
+                "channels_speaker": "2",
+            },
+        )
+
+        self.assertEqual(settings.threshold_auto_mode, 2)
+        self.assertTrue(settings.suppress_record_warning)
+        self.assertEqual(settings.device_settings.cache["speaker"], "[ID: 0,1] | Loopback")
 
     def test_load_recording_model_runtime_builds_whisper_runtime(self) -> None:
         from speech_translate.utils.audio import record as record_module

@@ -1,9 +1,7 @@
 import os
-from ast import literal_eval
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from queue import Empty, Queue
-from shlex import quote
 from threading import Lock, Thread
 from time import gmtime, sleep, strftime, time
 
@@ -16,6 +14,10 @@ from speech_translate.runtime_deps import empty_torch_cuda_cache, get_whisper_to
 from speech_translate.utils.audio.audio import get_db, get_speech_webrtc, resample_sr, to_silero
 from speech_translate.utils.audio.device import get_device_details, get_pyaudio_module
 from speech_translate.utils.audio import record_processing as processing_module
+from speech_translate.utils.audio.record_settings import (
+    build_recording_model_settings,
+    build_recording_session_config as build_recording_session_settings_config,
+)
 from speech_translate.utils.audio.record_runtime import (
     BufferStateReducer,
     RecordingSettingsAdapter,
@@ -62,8 +64,7 @@ from speech_translate.utils.audio.record_types import (
 )
 from speech_translate.utils.translate.language import get_whisper_lang_name, get_whisper_lang_similar
 
-from ..helper import str_separator_to_html
-from ..whisper.helper import get_hallucination_filter, model_values
+from ..whisper.helper import get_hallucination_filter
 from ..whisper.result import remove_segments_by_str
 
 _build_smart_split_outcome = processing_module.build_smart_split_outcome
@@ -152,25 +153,13 @@ def _build_recording_session_config(
     settings_snapshot: Mapping[str, object] | None = None,
 ) -> RecordingSessionConfig:
     settings_snapshot = _recording_settings_snapshot(settings_snapshot)
-    return RecordingSessionConfig(
+    return build_recording_session_settings_config(
         rec_type=rec_type,
-        transcribe_rate=timedelta(seconds=settings_snapshot["transcribe_rate"] / 1000),
-        max_buffer_s=int(settings_snapshot.get(f"max_buffer_{rec_type}", 10)),
-        max_sentences=int(settings_snapshot.get(f"max_sentences_{rec_type}", 5)),
-        sentence_limitless=bool(settings_snapshot.get(f"{rec_type}_no_limit", False)),
-        min_input_length=float(settings_snapshot.get(f"min_input_length_{rec_type}", 0.4)),
-        keep_temp=bool(settings_snapshot.get("keep_temp", False)),
-        tl_engine_whisper=engine in model_values,
-        taskname="Transcribe & Translate" if is_tc and is_tl else "Transcribe" if is_tc else "Translate",
-        auto=lang_source.lower() == "auto detect",
-        threshold_enable=bool(settings_snapshot.get(f"threshold_enable_{rec_type}", True)),
-        threshold_db=float(settings_snapshot.get(f"threshold_db_{rec_type}", -20)),
-        threshold_auto=bool(settings_snapshot.get(f"threshold_auto_{rec_type}", True)),
-        use_silero=bool(settings_snapshot.get(f"threshold_auto_silero_{rec_type}", True)),
-        silero_min_conf=float(settings_snapshot.get(f"threshold_silero_{rec_type}_min", 0.75)),
-        auto_break_buffer=bool(settings_snapshot.get(f"auto_break_buffer_{rec_type}", True)),
-        use_temp=bool(settings_snapshot["use_temp"]),
-        separator=str_separator_to_html(literal_eval(quote(settings_snapshot["separate_with"]))),
+        lang_source=lang_source,
+        engine=engine,
+        is_tc=is_tc,
+        is_tl=is_tl,
+        settings_snapshot=settings_snapshot,
     )
 
 
@@ -231,25 +220,26 @@ def _load_recording_model_runtime(
     settings_snapshot: Mapping[str, object] | None = None,
 ) -> RecordingModelRuntime:
     settings_snapshot = _recording_settings_snapshot(settings_snapshot)
-    model_args = get_model_args(settings_snapshot)
+    model_settings = build_recording_model_settings(settings_snapshot)
+    model_args = get_model_args(model_settings.snapshot)
     _, _, stable_tc, stable_tl, to_args = get_model(
         is_tc,
         is_tl,
         config.tl_engine_whisper,
         model_name_tc,
         engine,
-        settings_snapshot,
+        model_settings.snapshot,
         **model_args,
     )
-    whisper_args = get_tc_args(to_args, settings_snapshot)
+    whisper_args = get_tc_args(to_args, model_settings.snapshot)
     whisper_args["verbose"] = None
     configured_whisper_language = get_whisper_lang_similar(lang_source) if not config.auto else None
     whisper_args["language"] = get_whisper_to_language_code().get(configured_whisper_language) if configured_whisper_language else None
 
-    if settings_snapshot.get("enable_initial_prompt", False):
+    if model_settings.enable_initial_prompt:
         from ..whisper.prompts import pick_initial_prompt
 
-        prompt = pick_initial_prompt(whisper_args.get("language"), True, settings_snapshot.get("initial_prompts_map", {}), None)
+        prompt = pick_initial_prompt(whisper_args.get("language"), True, model_settings.initial_prompts_map, None)
         if prompt:
             whisper_args["initial_prompt"] = prompt
         else:
@@ -260,12 +250,16 @@ def _load_recording_model_runtime(
     demucs_enabled = bool(whisper_args.get("demucs", False))
     vad_enabled = bool(whisper_args.get("vad", False))
     use_temp = config.use_temp
-    if settings_snapshot["use_faster_whisper"] and not use_temp:
+    if model_settings.use_faster_whisper and not use_temp:
         whisper_args["input_sr"] = WHISPER_SR
     if demucs_enabled and vad_enabled:
         use_temp = True
 
-    hallucination_filters = get_hallucination_filter('rec', settings_snapshot["path_filter_rec"]) if settings_snapshot["filter_rec"] else {}
+    hallucination_filters = (
+        get_hallucination_filter("rec", model_settings.path_filter_rec)
+        if model_settings.filter_rec
+        else {}
+    )
     return RecordingModelRuntime(
         stable_tc=cast(WhisperCallable | None, stable_tc),
         stable_tl=cast(WhisperCallable | None, stable_tl),

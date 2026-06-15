@@ -11,6 +11,7 @@ from speech_translate.runtime_registry import settings_registry
 from speech_translate.runtime_deps import get_torch, get_torchaudio, get_webrtcvad
 from speech_translate.utils.audio.audio import get_db, get_frame_duration, get_speech_webrtc, to_silero
 from speech_translate.utils.audio.device import AudioDeviceSettings, get_device_details, get_pyaudio_module
+from speech_translate.utils.audio.record_settings import build_recording_stream_settings
 from speech_translate.utils.audio.recording_runtime_state import (
     RecordingRuntimeStateAdapter,
     build_recording_runtime_state_adapter,
@@ -122,8 +123,11 @@ def initialize_callback_context(
 
 
 def load_recording_vad_runtime(*, rec_type: str, settings_snapshot=None) -> tuple[object, SileroVadLike]:
-    settings_snapshot = _recording_settings_snapshot(settings_snapshot)
-    webrtc_vad = get_webrtcvad().Vad(settings_snapshot.get(f"threshold_auto_mode_{rec_type}", 3))
+    stream_settings = build_recording_stream_settings(
+        rec_type=rec_type,
+        settings_snapshot=_recording_settings_snapshot(settings_snapshot),
+    )
+    webrtc_vad = get_webrtcvad().Vad(stream_settings.threshold_auto_mode)
     torchaudio = get_torchaudio()
     torch = get_torch()
 
@@ -153,8 +157,11 @@ def build_recording_stream_runtime(
     shared_runtime_state: RealtimeSharedState | None = None,
     callback_context_store_instance: CallbackContextStore | None = None,
 ) -> RecordingStreamRuntime:
-    settings_snapshot = _recording_settings_snapshot(settings_snapshot)
-    success, detail = get_device_details_fn(rec_type, _recording_device_settings(settings_snapshot), p)
+    stream_settings = build_recording_stream_settings(
+        rec_type=rec_type,
+        settings_snapshot=_recording_settings_snapshot(settings_snapshot),
+    )
+    success, detail = get_device_details_fn(rec_type, stream_settings.device_settings, p)
     if not success:
         raise Exception("Failed to get device details")
 
@@ -163,10 +170,10 @@ def build_recording_stream_runtime(
     num_of_channels = int(detail["num_of_channels"])
     chunk_size = int(detail["chunk_size"])
 
-    if not settings_snapshot["supress_record_warning"] and sr_ori > 48000:
+    if not stream_settings.suppress_record_warning and sr_ori > 48000:
         logger_instance.warning(f"Sample rate is high ({sr_ori} Hz). May cause issues. Can be suppressed in settings.")
 
-    webrtc_vad, silero_vad = load_recording_vad_runtime_fn(rec_type=rec_type, settings_snapshot=settings_snapshot)
+    webrtc_vad, silero_vad = load_recording_vad_runtime_fn(rec_type=rec_type, settings_snapshot=stream_settings.snapshot)
     pyaudio = get_pyaudio_module()
     sample_format = pyaudio.paInt16 if audio_format is None else audio_format
     samp_width = p.get_sample_size(sample_format)
