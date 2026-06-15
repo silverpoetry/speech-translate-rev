@@ -10,7 +10,14 @@ to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
 from speech_translate.linker import bc
-from speech_translate.utils.whisper.download import TaskReporter, whisper_download_headless
+from speech_translate.utils.whisper.download import (
+    DownloadBridgeAdapter,
+    DownloadCancellationAdapter,
+    TaskReporter,
+    _build_bridge_task_reporter,
+    _build_download_execution_hooks,
+    whisper_download_headless,
+)
 
 
 class FakeUrlResponse:
@@ -45,7 +52,63 @@ class ChunkedUrlResponse:
         return self._chunks.pop(0) if self._chunks else b""
 
 
+class FakeDownloadBridge:
+    def __init__(self) -> None:
+        self.task_titles = []
+        self.messages = []
+        self.progress = []
+        self.finished = []
+        self.errors = []
+
+    def reset_task_state(self, title: str) -> None:
+        self.task_titles.append(title)
+
+    def update_task_message(self, message: str, source: str = "general") -> None:
+        self.messages.append((source, message))
+
+    def update_task_progress(self, progress: float, source: str = "general") -> None:
+        self.progress.append((source, progress))
+
+    def finish_task(self, message: str = "") -> None:
+        self.finished.append(message)
+
+    def update_task_error(self, error: str) -> None:
+        self.errors.append(error)
+
+
+class FakeCancellationState:
+    def __init__(self, *, cancel_dl: bool) -> None:
+        self.cancel_dl = cancel_dl
+
+
 class WhisperDownloadTests(unittest.TestCase):
+    def test_build_bridge_task_reporter_supports_injected_bridge_adapter(self) -> None:
+        bridge = FakeDownloadBridge()
+        reporter = _build_bridge_task_reporter(bridge_adapter=DownloadBridgeAdapter(bridge=bridge))
+
+        reporter.reset_task_state("Download")
+        reporter.update_task_message("working")
+        reporter.update_task_progress(25.0)
+        reporter.finish_task("done")
+        reporter.update_task_error("boom")
+
+        self.assertEqual(bridge.task_titles, ["Download"])
+        self.assertEqual(bridge.messages[-1][1], "working")
+        self.assertEqual(bridge.progress[-1][1], 25.0)
+        self.assertEqual(bridge.finished, ["done"])
+        self.assertEqual(bridge.errors, ["boom"])
+
+    def test_build_download_execution_hooks_supports_injected_cancellation_adapter(self) -> None:
+        cancellation_state = FakeCancellationState(cancel_dl=True)
+        hooks = _build_download_execution_hooks(
+            reporter=TaskReporter(),
+            cancellation_adapter=DownloadCancellationAdapter(state=cancellation_state),
+        )
+
+        self.assertTrue(hooks.cancel_requested())
+        hooks.clear_cancel_requested()
+        self.assertFalse(cancellation_state.cancel_dl)
+
     def test_whisper_download_headless_uses_injected_cancel_hooks(self) -> None:
         from speech_translate.utils.whisper import download as download_module
 
