@@ -123,6 +123,30 @@ class DetachedWindowHelpersTests(unittest.TestCase):
         self.assertIsInstance(x, int)
         self.assertIsInstance(y, int)
 
+    def test_manager_resolve_window_placement_allows_width_override_only(self) -> None:
+        settings = type("Settings", (), {"cache": {"ex_tc_geometry": "640x320"}})()
+        manager = DetachedWindowManager(settings=settings)
+        width, height, x, y = manager._resolve_window_placement(
+            "tc",
+            x=30,
+            y=40,
+            width=800,
+            height=None,
+        )
+        self.assertEqual((width, height, x, y), (800, 320, 30, 40))
+
+    def test_manager_resolve_window_placement_allows_height_override_only(self) -> None:
+        settings = type("Settings", (), {"cache": {"ex_tc_geometry": "640x320"}})()
+        manager = DetachedWindowManager(settings=settings)
+        width, height, x, y = manager._resolve_window_placement(
+            "tc",
+            x=30,
+            y=40,
+            width=None,
+            height=500,
+        )
+        self.assertEqual((width, height, x, y), (640, 500, 30, 40))
+
 
 if __name__ == "__main__":
     unittest.main()

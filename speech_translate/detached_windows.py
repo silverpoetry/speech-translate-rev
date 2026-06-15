@@ -372,27 +372,22 @@ class DetachedWindowManager:
         width: Optional[int],
         height: Optional[int],
     ) -> tuple[int, int, int, int]:
-        if width is not None and height is not None:
-            resolved_width = int(width)
-            resolved_height = int(height)
-            if x is None or y is None:
-                placement = resolve_window_placement(
-                    f"{resolved_width}x{resolved_height}",
-                    resolved_width,
-                    resolved_height,
-                    x=x,
-                    y=y,
-                )
-                return placement.width, placement.height, placement.x, placement.y
-            return resolved_width, resolved_height, int(x), int(y)
-
         geometry_cache = "900x240"
         if self.settings is not None:
             geometry_cache = str(self.settings.cache.get(f"ex_{mode}_geometry", geometry_cache))
-        placement = resolve_window_placement(
+
+        cached_placement = resolve_window_placement(
             geometry_cache,
             900,
             240,
+        )
+        resolved_width = int(width) if width is not None else cached_placement.width
+        resolved_height = int(height) if height is not None else cached_placement.height
+
+        placement = resolve_window_placement(
+            f"{resolved_width}x{resolved_height}",
+            resolved_width,
+            resolved_height,
             x=x,
             y=y,
         )
