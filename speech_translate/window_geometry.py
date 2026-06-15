@@ -29,6 +29,15 @@ class WindowPlacement:
     y: int
 
 
+@dataclass(frozen=True)
+class NativeWindowGeometry:
+    width: int | None
+    height: int | None
+    raw_width: int | None
+    raw_height: int | None
+    scale_factor: float
+
+
 class DefaultMetricsProvider:
     def platform_name(self) -> str:
         return system()
@@ -180,3 +189,34 @@ def resolve_window_placement(
         x, y = center_window_pos(width, height, metrics=metrics)
     x, y = ensure_visible_or_center(int(x), int(y), int(width), int(height), metrics=metrics)
     return WindowPlacement(width=width, height=height, x=x, y=y)
+
+
+def resolve_native_scale_factor(native_window: object | None) -> float:
+    if native_window is None:
+        return 1.0
+    try:
+        scale_factor = float(getattr(native_window, "scale_factor", 1.0) or 1.0)
+        if scale_factor > 0:
+            return scale_factor
+    except Exception:
+        pass
+    return 1.0
+
+
+def extract_native_window_geometry(native_window: object | None) -> NativeWindowGeometry:
+    scale_factor = resolve_native_scale_factor(native_window)
+    if native_window is None:
+        return NativeWindowGeometry(None, None, None, None, scale_factor)
+
+    try:
+        client_size = getattr(native_window, "ClientSize", None)
+        if client_size is None:
+            return NativeWindowGeometry(None, None, None, None, scale_factor)
+
+        raw_width = int(getattr(client_size, "Width"))
+        raw_height = int(getattr(client_size, "Height"))
+        width = int(round(raw_width / scale_factor))
+        height = int(round(raw_height / scale_factor))
+        return NativeWindowGeometry(width, height, raw_width, raw_height, scale_factor)
+    except Exception:
+        return NativeWindowGeometry(None, None, None, None, scale_factor)

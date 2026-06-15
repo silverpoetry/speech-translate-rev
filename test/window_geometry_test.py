@@ -10,7 +10,9 @@ sys.path.append(to_add)
 from speech_translate.window_geometry import (
     center_window_pos,
     ensure_visible_or_center,
+    extract_native_window_geometry,
     parse_window_size,
+    resolve_native_scale_factor,
     resolve_window_placement,
 )
 
@@ -90,6 +92,26 @@ class WindowGeometryTests(unittest.TestCase):
             platform_name="Windows",
         )
         self.assertEqual(parse_window_size("2000x2000", 980, 620, metrics=metrics), (720, 480))
+
+    def test_resolve_native_scale_factor_defaults_when_invalid(self) -> None:
+        native_window = type("NativeWindow", (), {"scale_factor": 0})()
+        self.assertEqual(resolve_native_scale_factor(native_window), 1.0)
+
+    def test_extract_native_window_geometry_returns_logical_and_raw_sizes(self) -> None:
+        native_window = type(
+            "NativeWindow",
+            (),
+            {
+                "scale_factor": 2.0,
+                "ClientSize": type("ClientSize", (), {"Width": 1800, "Height": 1240})(),
+            },
+        )()
+
+        geometry = extract_native_window_geometry(native_window)
+
+        self.assertEqual((geometry.width, geometry.height), (900, 620))
+        self.assertEqual((geometry.raw_width, geometry.raw_height), (1800, 1240))
+        self.assertEqual(geometry.scale_factor, 2.0)
 
 
 if __name__ == "__main__":

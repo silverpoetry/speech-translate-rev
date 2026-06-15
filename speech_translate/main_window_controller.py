@@ -6,6 +6,7 @@ from typing import Optional
 
 from speech_translate.controller_protocols import MainWindowBridge, SettingsStore, TrayLike, FolderDialogWindow
 from speech_translate.log_helpers import logger
+from speech_translate.window_geometry import extract_native_window_geometry
 
 
 class MainWindowController:
@@ -75,32 +76,6 @@ class MainWindowController:
             pass
         self.log_startup_marker("main_window_shown_after_init")
 
-    def _resolve_scale_factor(self, native_window: object | None) -> float:
-        if native_window is None:
-            return 1.0
-        try:
-            scale_factor = float(getattr(native_window, "scale_factor", 1.0) or 1.0)
-            if scale_factor > 0:
-                return scale_factor
-        except Exception:
-            pass
-        return 1.0
-
-    def _extract_native_window_size(self, native_window: object | None, *, scale_factor: float) -> tuple[int | None, int | None, int | None, int | None]:
-        if native_window is None:
-            return None, None, None, None
-        try:
-            client_size = getattr(native_window, "ClientSize", None)
-            if client_size is None:
-                return None, None, None, None
-            raw_width = int(getattr(client_size, "Width"))
-            raw_height = int(getattr(client_size, "Height"))
-            width = int(round(raw_width / scale_factor))
-            height = int(round(raw_height / scale_factor))
-            return width, height, raw_width, raw_height
-        except Exception:
-            return None, None, None, None
-
     def _extract_window_size(self, window: FolderDialogWindow) -> tuple[int | None, int | None]:
         try:
             return int(getattr(window, "width")), int(getattr(window, "height"))
@@ -120,8 +95,12 @@ class MainWindowController:
         if window is None:
             return
         native_window = getattr(window, "native", None)
-        scale_factor = self._resolve_scale_factor(native_window)
-        width, height, raw_width, raw_height = self._extract_native_window_size(native_window, scale_factor=scale_factor)
+        native_geometry = extract_native_window_geometry(native_window)
+        width = native_geometry.width
+        height = native_geometry.height
+        raw_width = native_geometry.raw_width
+        raw_height = native_geometry.raw_height
+        scale_factor = native_geometry.scale_factor
         if width is None or height is None:
             width, height = self._extract_window_size(window)
             raw_width, raw_height = None, None

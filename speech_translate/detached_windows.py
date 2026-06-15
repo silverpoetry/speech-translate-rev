@@ -17,7 +17,7 @@ from speech_translate.controller_protocols import (
 )
 from speech_translate.detached_window_runtime import DetachedWindowDeliveryRuntime
 from speech_translate.log_helpers import logger
-from speech_translate.window_geometry import resolve_window_placement
+from speech_translate.window_geometry import extract_native_window_geometry, resolve_window_placement
 
 
 DETACHED_WINDOW_MODES = {"tc", "tl"}
@@ -304,21 +304,13 @@ class DetachedWindowManager:
         if native_window is None:
             return
 
-        try:
-            client_size = getattr(native_window, "ClientSize", None)
-            if client_size is None:
-                return
-
-            raw_width = int(getattr(client_size, "Width"))
-            raw_height = int(getattr(client_size, "Height"))
-
-            scale_factor = float(getattr(native_window, "scale_factor", 1.0) or 1.0)
-            if scale_factor <= 0:
-                scale_factor = 1.0
-
-            width = int(round(raw_width / scale_factor))
-            height = int(round(raw_height / scale_factor))
-        except Exception:
+        native_geometry = extract_native_window_geometry(native_window)
+        width = native_geometry.width
+        height = native_geometry.height
+        raw_width = native_geometry.raw_width
+        raw_height = native_geometry.raw_height
+        scale_factor = native_geometry.scale_factor
+        if width is None or height is None:
             return
 
         current_outer_w = None

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from types import SimpleNamespace
 
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
@@ -185,6 +186,31 @@ class DetachedWindowHelpersTests(unittest.TestCase):
         manager.update_window_config("tc", config)
 
         self.assertEqual(len(manager.windows["tc"].scripts), 1)
+
+    def test_manager_persist_window_geometry_uses_shared_native_geometry_logic(self) -> None:
+        class FakeSettings:
+            def __init__(self) -> None:
+                self.saved = {}
+
+            def save_key(self, key: str, value: object) -> None:
+                self.saved[key] = value
+
+        class FakeWindow:
+            def __init__(self) -> None:
+                self.width = 900
+                self.height = 620
+                self.native = SimpleNamespace(
+                    scale_factor=2.0,
+                    ClientSize=SimpleNamespace(Width=1800, Height=1240),
+                )
+
+        settings = FakeSettings()
+        manager = DetachedWindowManager(settings=settings)
+        manager.windows["tc"] = FakeWindow()
+
+        manager._persist_window_geometry("tc")
+
+        self.assertEqual(settings.saved["ex_tc_geometry"], "900x620")
 
 
 if __name__ == "__main__":
