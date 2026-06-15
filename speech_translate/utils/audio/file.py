@@ -57,6 +57,17 @@ class FileEnvironmentAdapter:
     has_ffmpeg: bool = False
 
 
+@dataclass(frozen=True)
+class FileProcessRequest:
+    data_files: list[str]
+    model_name_tc: str
+    lang_source: str
+    lang_target: str
+    is_tc: bool
+    is_tl: bool
+    engine: str
+
+
 @dataclass
 class FileResultQueueAdapter:
     state: object | None = None
@@ -237,6 +248,15 @@ class WorkerFailure:
     def raise_if_failed(self) -> None:
         if self.failed:
             raise self.error or RuntimeError("Unknown worker failure")
+
+
+@dataclass(frozen=True)
+class FileProcessDependencies:
+    ui_bridge: FileUiBridgeAdapter
+    result_queue: FileResultQueueAdapter
+    processing_state: FileProcessingStateAdapter
+    settings: FileSettingsAdapter
+    environment: FileEnvironmentAdapter
 
 
 @dataclass
@@ -508,43 +528,41 @@ def _resolve_translate_result_export_dir(setting_cache: Mapping[str, object]) ->
 
 def _build_process_file_runtime(
     *,
-    model_name_tc: str,
-    lang_source: str,
-    engine: str,
-    is_tc: bool,
-    is_tl: bool,
-    setting_cache: Mapping[str, object],
-    ui_bridge: FileUiBridgeAdapter | None = None,
-    result_queue: FileResultQueueAdapter | None = None,
-    processing_state: FileProcessingStateAdapter | None = None,
-    settings: FileSettingsAdapter | None = None,
-    environment: FileEnvironmentAdapter | None = None,
+    request: FileProcessRequest,
+    dependencies: FileProcessDependencies,
 ) -> FileProcessRuntime:
-    ui_bridge = ui_bridge or build_file_ui_bridge_adapter()
-    result_queue = result_queue or build_file_result_queue_adapter()
-    processing_state = processing_state or build_file_processing_state_adapter()
-    settings = settings or FileSettingsAdapter(cache=setting_cache)
-    environment = environment or _get_file_environment()
-    tl_engine_whisper = engine in model_values
+    ui_bridge = dependencies.ui_bridge
+    result_queue = dependencies.result_queue
+    processing_state = dependencies.processing_state
+    settings = dependencies.settings
+    environment = dependencies.environment
+    setting_cache = settings.cache
+    tl_engine_whisper = request.engine in model_values
     stable_tc = stable_tl = None
     to_args = None
     _, _, stable_tc, stable_tl, to_args = get_model(
-        is_tc,
-        is_tl,
+        request.is_tc,
+        request.is_tl,
         tl_engine_whisper,
-        model_name_tc,
-        engine,
+        request.model_name_tc,
+        request.engine,
         setting_cache,
         **get_model_args(setting_cache),
     )
     whisper_args = get_tc_args(to_args, setting_cache)
     whisper_args["language"] = (
-        get_whisper_to_language_code()[get_whisper_lang_similar(lang_source)]
-        if lang_source != "auto detect"
+        get_whisper_to_language_code()[get_whisper_lang_similar(request.lang_source)]
+        if request.lang_source != "auto detect"
         else None
     )
     whisper_args["verbose"] = None
-    taskname = "Transcribe & Translate" if is_tc and is_tl else "Transcribe" if is_tc else "Translate"
+    taskname = (
+        "Transcribe & Translate"
+        if request.is_tc and request.is_tl
+        else "Transcribe"
+        if request.is_tc
+        else "Translate"
+    )
     filters = (
         get_hallucination_filter("file", setting_cache["path_filter_file_import"])
         if setting_cache["filter_file_import"]
@@ -552,7 +570,12 @@ def _build_process_file_runtime(
     )
     slice_start, slice_end = _resolve_slice_bounds(setting_cache)
     return FileProcessRuntime(
-        status_context=FileBatchStatusContext(is_tc=is_tc, is_tl=is_tl, is_mod=False, ui_bridge=ui_bridge),
+        status_context=FileBatchStatusContext(
+            is_tc=request.is_tc,
+            is_tl=request.is_tl,
+            is_mod=False,
+            ui_bridge=ui_bridge,
+        ),
         export_dir=_resolve_process_export_dir(setting_cache),
         slice_start=slice_start,
         slice_end=slice_end,
@@ -907,39 +930,23 @@ def _cancellable_tl(
 # =========================================================================
 
 def process_file(
-    data_files: List[str],
-    model_name_tc: str,
-    lang_source: str,
-    lang_target: str,
-    is_tc: bool,
-    is_tl: bool,
-    engine: str,
+    request: FileProcessRequest,
     *,
-    ui_bridge: FileUiBridgeAdapter | None = None,
-    result_queue: FileResultQueueAdapter | None = None,
-    processing_state: FileProcessingStateAdapter | None = None,
-    settings: FileSettingsAdapter | None = None,
-    environment: FileEnvironmentAdapter | None = None,
+    dependencies: FileProcessDependencies | None = None,
     open_dir_fn: Callable[[str], None] = start_file,
 ) -> None:
     try:
-        ui_bridge = ui_bridge or build_file_ui_bridge_adapter()
-        result_queue = result_queue or build_file_result_queue_adapter()
-        processing_state = processing_state or build_file_processing_state_adapter()
-        settings = settings or _get_file_settings_store()
-        environment = environment or _get_file_environment()
+        dependencies = dependencies or FileProcessDependencies(
+            ui_bridge=build_file_ui_bridge_adapter(),
+            result_queue=build_file_result_queue_adapter(),
+            processing_state=build_file_processing_state_adapter(),
+            settings=_get_file_settings_store(),
+            environment=_get_file_environment(),
+        )
+        processing_state = dependencies.processing_state
         runtime = _build_process_file_runtime(
-            model_name_tc=model_name_tc,
-            lang_source=lang_source,
-            engine=engine,
-            is_tc=is_tc,
-            is_tl=is_tl,
-            setting_cache=settings.cache,
-            ui_bridge=ui_bridge,
-            result_queue=result_queue,
-            processing_state=processing_state,
-            settings=settings,
-            environment=environment,
+            request=request,
+            dependencies=dependencies,
         )
         status_context = runtime.status_context
         processing_state.reset_file_counts()
@@ -947,12 +954,15 @@ def process_file(
         processing_state.enable_file_tc()
         processing_state.enable_file_tl()
 
-        runtime.ui_bridge.init_file_batch(f"Task: {runtime.taskname} with {model_name_tc}", data_files)
+        runtime.ui_bridge.init_file_batch(
+            f"Task: {runtime.taskname} with {request.model_name_tc}",
+            request.data_files,
+        )
 
         def is_still_active():
-            return status_context.has_active_work(len(data_files))
+            return status_context.has_active_work(len(request.data_files))
 
-        for i, file in enumerate(data_files):
+        for i, file in enumerate(request.data_files):
             if not processing_state.is_file_processing():
                 break
             logger.info(f"Loop entered for file: {file}")
@@ -960,30 +970,44 @@ def process_file(
             base_name = _build_base_export_name(
                 datetime.now().strftime(runtime.settings.cache["export_format"]),
                 file_name,
-                lang_source,
-                lang_target,
-                model_name_tc,
-                engine,
+                request.lang_source,
+                request.lang_target,
+                request.model_name_tc,
+                request.engine,
             )
             export_plan = _build_export_plan(runtime.export_dir, base_name, {})
 
             _save_export_plan_metadata(export_plan, {
                 "meta_written_at": str(datetime.now()), "task": runtime.taskname, "filename": file_name,
-                "transcribe": is_tc, "translate": is_tl, "model": model_name_tc, "engine": engine
+                "transcribe": request.is_tc, "translate": request.is_tl, "model": request.model_name_tc, "engine": request.engine
             })
 
-            if is_tl and not is_tc and runtime.tl_engine_whisper:
+            if request.is_tl and not request.is_tc and runtime.tl_engine_whisper:
                 Thread(
                     target=_cancellable_tl,
-                    args=[file, lang_source, lang_target, runtime.stable_tl, engine, export_plan, i, file, runtime.filters],
-                    kwargs={**runtime.whisper_args, "status_context": status_context, "processing_state": processing_state, "result_queue": result_queue, "settings": runtime.settings, "environment": runtime.environment},
+                    args=[file, request.lang_source, request.lang_target, runtime.stable_tl, request.engine, export_plan, i, file, runtime.filters],
+                    kwargs={**runtime.whisper_args, "status_context": status_context, "processing_state": processing_state, "result_queue": runtime.result_queue, "settings": runtime.settings, "environment": runtime.environment},
                     daemon=True,
                 ).start()
             else:
                 tc_thread = Thread(
                     target=_cancellable_tc,
-                    args=[file, lang_source, lang_target, model_name_tc, runtime.stable_tc, runtime.stable_tl, lang_source == "auto detect", is_tc, is_tl, engine, export_plan, i, runtime.filters],
-                    kwargs={**runtime.whisper_args, "status_context": status_context, "processing_state": processing_state, "result_queue": result_queue, "settings": runtime.settings, "environment": runtime.environment},
+                    args=[
+                        file,
+                        request.lang_source,
+                        request.lang_target,
+                        request.model_name_tc,
+                        runtime.stable_tc,
+                        runtime.stable_tl,
+                        request.lang_source == "auto detect",
+                        request.is_tc,
+                        request.is_tl,
+                        request.engine,
+                        export_plan,
+                        i,
+                        runtime.filters,
+                    ],
+                    kwargs={**runtime.whisper_args, "status_context": status_context, "processing_state": processing_state, "result_queue": runtime.result_queue, "settings": runtime.settings, "environment": runtime.environment},
                     daemon=True,
                 )
                 tc_thread.start()

@@ -367,13 +367,15 @@ class ImportQueueController:
             try:
                 self.process_runtime.enable_file_processing()
                 audio_file_module.process_file(
-                    context.files_to_process,
-                    context.model_name_tc,
-                    str(context.settings_snapshot.get("source_lang_f_import", "English")),
-                    str(context.settings_snapshot.get("target_lang_f_import", "Indonesian")),
-                    context.is_tc,
-                    context.is_tl,
-                    context.engine,
+                    audio_file_module.FileProcessRequest(
+                        data_files=context.files_to_process,
+                        model_name_tc=context.model_name_tc,
+                        lang_source=str(context.settings_snapshot.get("source_lang_f_import", "English")),
+                        lang_target=str(context.settings_snapshot.get("target_lang_f_import", "Indonesian")),
+                        is_tc=context.is_tc,
+                        is_tl=context.is_tl,
+                        engine=context.engine,
+                    ),
                 )
                 self.bridge.finish_task(
                     f"File import finished: {self._build_import_summary(is_tc=context.is_tc, is_tl=context.is_tl)}"

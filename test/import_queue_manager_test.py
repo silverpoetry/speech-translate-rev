@@ -12,6 +12,7 @@ from speech_translate.import_queue_manager import ImportQueueController
 from speech_translate.bridge_runtime_state import BridgeFileRuntime, BridgeRecordingRuntime
 from speech_translate.runtime_registry import bridge_state_registry
 from speech_translate.ui_protocol import TASK_SOURCE_IMPORT, UI_SECTION_IMPORT
+from speech_translate.utils.audio.file import FileProcessRequest
 
 
 class FakeSettings:
@@ -281,6 +282,43 @@ class ImportQueueControllerTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(shutdown_calls, ["shutdown"])
+
+    def test_start_import_worker_passes_typed_file_process_request(self) -> None:
+        from speech_translate import import_queue_manager as import_module
+        from speech_translate.utils.audio import file as audio_file_module
+
+        previous_thread = import_module.Thread
+        previous_process_file = audio_file_module.process_file
+        observed = {}
+
+        class InlineThread:
+            def __init__(self, target, daemon=None) -> None:
+                self._target = target
+
+            def start(self) -> None:
+                self._target()
+
+        def fake_process_file(request, **kwargs) -> None:
+            observed["request"] = request
+            observed["kwargs"] = kwargs
+
+        try:
+            import_module.Thread = InlineThread
+            audio_file_module.process_file = fake_process_file
+            self.controller.file_import_queue = [{"path": "a.wav", "name": "a.wav", "status": "Waiting", "is_completed": False}]
+            context = self.controller._build_import_start_context()
+            self.controller._start_import_worker(context=context)
+        finally:
+            import_module.Thread = previous_thread
+            audio_file_module.process_file = previous_process_file
+
+        self.assertIsInstance(observed["request"], FileProcessRequest)
+        self.assertEqual(observed["request"].data_files, context.files_to_process)
+        self.assertEqual(observed["request"].model_name_tc, context.model_name_tc)
+        self.assertEqual(observed["request"].lang_source, "English")
+        self.assertEqual(observed["request"].lang_target, "Chinese")
+        self.assertEqual(observed["request"].engine, context.engine)
+        self.assertEqual(self.bridge.finished, ["File import finished: 0 transcribed, 0 translated"])
 
     def test_get_file_processing_state_uses_injected_process_runtime(self) -> None:
         self.controller.processing_queue = [{"path": "a.wav", "name": "a.wav", "status": "Working", "is_completed": False}]

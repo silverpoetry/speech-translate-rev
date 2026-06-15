@@ -13,6 +13,8 @@ sys.path.append(to_add)
 from speech_translate.utils.audio.file import (
     FileEnvironmentAdapter,
     FileBatchStatusContext,
+    FileProcessDependencies,
+    FileProcessRequest,
     FileExportPlan,
     FileProcessRuntime,
     FileProcessingStateAdapter,
@@ -186,15 +188,22 @@ class AudioFileHelpersTests(unittest.TestCase):
             patch("speech_translate.utils.audio.file.time", return_value=42.0),
         ):
             runtime = _build_process_file_runtime(
-                model_name_tc="small",
-                lang_source="English",
-                engine="Google Translate",
-                is_tc=True,
-                is_tl=False,
-                setting_cache=setting_cache,
-                ui_bridge=bridge_adapter,
-                result_queue=result_queue,
-                processing_state=processing_state,
+                request=FileProcessRequest(
+                    data_files=["a.wav"],
+                    model_name_tc="small",
+                    lang_source="English",
+                    lang_target="Chinese",
+                    is_tc=True,
+                    is_tl=False,
+                    engine="Google Translate",
+                ),
+                dependencies=FileProcessDependencies(
+                    ui_bridge=bridge_adapter,
+                    result_queue=result_queue,
+                    processing_state=processing_state,
+                    settings=FileSettingsAdapter(cache=setting_cache),
+                    environment=FileEnvironmentAdapter(),
+                ),
             )
 
         self.assertEqual(runtime.export_dir, "D:\\exports")
@@ -483,16 +492,24 @@ class AudioFileHelpersTests(unittest.TestCase):
             patch("speech_translate.utils.audio.file.time", return_value=1.0),
         ):
             process_file(
-                ["a.wav"],
-                "small",
-                "English",
-                "Chinese",
-                True,
-                False,
-                "Google Translate",
-                ui_bridge=ui_bridge,
-                result_queue=result_queue,
-                processing_state=processing_state,
+                FileProcessRequest(
+                    data_files=["a.wav"],
+                    model_name_tc="small",
+                    lang_source="English",
+                    lang_target="Chinese",
+                    is_tc=True,
+                    is_tl=False,
+                    engine="Google Translate",
+                ),
+                dependencies=FileProcessDependencies(
+                    ui_bridge=ui_bridge,
+                    result_queue=result_queue,
+                    processing_state=processing_state,
+                    settings=FileSettingsAdapter(
+                        cache={"auto_open_dir_export": True, "export_format": "{file}", "export_to": ["txt"]}
+                    ),
+                    environment=FileEnvironmentAdapter(has_ffmpeg=True),
+                ),
                 open_dir_fn=lambda target: opened.append(target),
             )
 
