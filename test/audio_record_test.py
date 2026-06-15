@@ -277,7 +277,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
     def test_recording_runtime_state_default_provider_reads_bridge_substates(self) -> None:
         from speech_translate.utils.audio.recording_runtime_state import RecordingRuntimeStateAdapter, RecordingTextStoreAdapter
 
-        previous_bridge_state = bridge_state_registry.state
         fake_bridge = type(
             "FakeBridgeState",
             (),
@@ -286,8 +285,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 "live_text": BridgeLiveTextRuntime(auto_detected_lang="ja", tc_sentences=["a"], tl_sentences=["b"]),
             },
         )()
-        try:
-            bridge_state_registry.set(fake_bridge)
+        with bridge_state_registry.override(fake_bridge):
 
             runtime_state = RecordingRuntimeStateAdapter()
             text_store = RecordingTextStoreAdapter()
@@ -296,8 +294,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
             self.assertEqual(text_store.detected_language(), "ja")
             self.assertEqual(text_store.transcribed_sentences(), ["a"])
             self.assertEqual(text_store.translated_sentences(), ["b"])
-        finally:
-            bridge_state_registry.set(previous_bridge_state)
 
     def test_result_text_supports_result_object_and_string(self) -> None:
         self.assertEqual(_result_text(FakeResult(" hello ")), "hello")

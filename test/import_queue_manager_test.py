@@ -145,7 +145,6 @@ class ImportQueueControllerTests(unittest.TestCase):
     def test_import_process_runtime_default_provider_reads_bridge_substates(self) -> None:
         from speech_translate.import_queue_manager import ImportQueueProcessRuntime
 
-        previous_bridge_state = bridge_state_registry.state
         fake_bridge = type(
             "FakeBridgeState",
             (),
@@ -154,16 +153,13 @@ class ImportQueueControllerTests(unittest.TestCase):
                 "file_runtime": BridgeFileRuntime(file_processing=True, file_tced_counter=3, file_tled_counter=4),
             },
         )()
-        try:
-            bridge_state_registry.set(fake_bridge)
+        with bridge_state_registry.override(fake_bridge):
 
             runtime = ImportQueueProcessRuntime()
             self.assertTrue(runtime.is_recording_active())
             self.assertTrue(runtime.is_file_processing_active())
             self.assertEqual(runtime.transcribed_count(), 3)
             self.assertEqual(runtime.translated_count(), 4)
-        finally:
-            bridge_state_registry.set(previous_bridge_state)
 
     def setUp(self) -> None:
         self.bridge = FakeBridge()

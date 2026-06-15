@@ -97,14 +97,10 @@ class WhisperDownloadTests(unittest.TestCase):
     def test_download_cancellation_adapter_default_provider_reads_download_runtime(self) -> None:
         from speech_translate.utils.whisper.download import DownloadCancellationAdapter
 
-        previous_bridge_state = bridge_state_registry.state
         fake_bridge = type("FakeBridgeState", (), {"download": BridgeDownloadRuntime(cancel_dl=True)})()
-        try:
-            bridge_state_registry.set(fake_bridge)
+        with bridge_state_registry.override(fake_bridge):
             adapter = DownloadCancellationAdapter()
             self.assertTrue(adapter.cancel_requested())
-        finally:
-            bridge_state_registry.set(previous_bridge_state)
 
     def test_build_bridge_task_reporter_supports_injected_bridge_adapter(self) -> None:
         bridge = FakeDownloadBridge()
@@ -184,32 +180,29 @@ class WhisperDownloadTests(unittest.TestCase):
 
         previous_urlopen = download_module.urllib.request.urlopen
         previous_callback_starter = download_module.start_optional_callback
-        previous_bridge_state = bridge_state_registry.state
         cancelled = []
         reporter_events = []
         fake_bridge = type("FakeBridgeState", (), {"download": BridgeDownloadRuntime(cancel_dl=True)})()
         try:
             download_module.urllib.request.urlopen = lambda _url: FakeUrlResponse()
             download_module.start_optional_callback = lambda callback: callback() if callback is not None else None
-            bridge_state_registry.set(fake_bridge)
-
-            with tempfile.TemporaryDirectory() as temp_dir:
-                result = whisper_download_headless(
-                    "small",
-                    "https://example.com/0123456789abcdef/model.pt",
-                    temp_dir,
-                    lambda: cancelled.append("cancelled"),
-                    None,
-                    None,
-                    reporter=TaskReporter(
-                        reset_task_state=lambda title: reporter_events.append(("reset", title)),
-                        finish_task=lambda message: reporter_events.append(("finish", message)),
-                    ),
-                )
+            with bridge_state_registry.override(fake_bridge):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    result = whisper_download_headless(
+                        "small",
+                        "https://example.com/0123456789abcdef/model.pt",
+                        temp_dir,
+                        lambda: cancelled.append("cancelled"),
+                        None,
+                        None,
+                        reporter=TaskReporter(
+                            reset_task_state=lambda title: reporter_events.append(("reset", title)),
+                            finish_task=lambda message: reporter_events.append(("finish", message)),
+                        ),
+                    )
         finally:
             download_module.urllib.request.urlopen = previous_urlopen
             download_module.start_optional_callback = previous_callback_starter
-            bridge_state_registry.set(previous_bridge_state)
 
         self.assertFalse(result)
         self.assertEqual(cancelled, ["cancelled"])

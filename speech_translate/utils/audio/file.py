@@ -61,81 +61,107 @@ class FileEnvironmentAdapter:
 @dataclass
 class FileResultQueueAdapter:
     state: object | None = None
+    state_provider: Callable[[], object] | None = None
+
+    def _state(self) -> object:
+        if self.state is not None:
+            return self.state
+        if self.state_provider is None:
+            raise RuntimeError("file result queue state is not configured")
+        return self.state_provider()
 
     def get(self):
-        if self.state is None:
-            raise RuntimeError("file result queue state is not configured")
-        return self.state.data_queue.get()
+        return self._state().data_queue.get()
 
     def put(self, payload) -> None:
-        if self.state is None:
-            raise RuntimeError("file result queue state is not configured")
-        self.state.data_queue.put(payload)
+        self._state().data_queue.put(payload)
 
 
 @dataclass
 class FileProcessingStateAdapter:
     state: object | None = None
+    state_provider: Callable[[], object] | None = None
+
+    def _state(self) -> object | None:
+        if self.state is not None:
+            return self.state
+        return self.state_provider() if self.state_provider is not None else None
 
     def is_file_processing(self) -> bool:
-        return bool(self.state.file_processing) if self.state is not None else False
+        state = self._state()
+        return bool(state.file_processing) if state is not None else False
 
     def is_transcribing_file(self) -> bool:
-        return bool(self.state.transcribing_file) if self.state is not None else False
+        state = self._state()
+        return bool(state.transcribing_file) if state is not None else False
 
     def is_translating_file(self) -> bool:
-        return bool(self.state.translating_file) if self.state is not None else False
+        state = self._state()
+        return bool(state.translating_file) if state is not None else False
 
     def reset_file_counts(self) -> None:
-        if self.state is None:
+        state = self._state()
+        if state is None:
             return
-        self.state.file_tced_counter = 0
-        self.state.file_tled_counter = 0
+        state.file_tced_counter = 0
+        state.file_tled_counter = 0
 
     def increment_transcribed_count(self) -> None:
-        if self.state is not None:
-            self.state.file_tced_counter += 1
+        state = self._state()
+        if state is not None:
+            state.file_tced_counter += 1
 
     def increment_translated_count(self) -> None:
-        if self.state is not None:
-            self.state.file_tled_counter += 1
+        state = self._state()
+        if state is not None:
+            state.file_tled_counter += 1
 
     def transcribed_count(self) -> int:
-        return int(getattr(self.state, "file_tced_counter", 0)) if self.state is not None else 0
+        state = self._state()
+        return int(getattr(state, "file_tced_counter", 0)) if state is not None else 0
 
     def translated_count(self) -> int:
-        return int(getattr(self.state, "file_tled_counter", 0)) if self.state is not None else 0
+        state = self._state()
+        return int(getattr(state, "file_tled_counter", 0)) if state is not None else 0
 
     def enable_file_tc(self) -> None:
-        if self.state is not None:
-            self.state.enable_file_tc()
+        state = self._state()
+        if state is not None:
+            state.enable_file_tc()
 
     def enable_file_tl(self) -> None:
-        if self.state is not None:
-            self.state.enable_file_tl()
+        state = self._state()
+        if state is not None:
+            state.enable_file_tl()
 
     def disable_file_tc(self) -> None:
-        if self.state is not None:
-            self.state.disable_file_tc()
+        state = self._state()
+        if state is not None:
+            state.disable_file_tc()
 
     def disable_file_tl(self) -> None:
-        if self.state is not None:
-            self.state.disable_file_tl()
+        state = self._state()
+        if state is not None:
+            state.disable_file_tl()
 
     def disable_file_process(self) -> None:
-        if self.state is not None:
-            self.state.disable_file_process()
+        state = self._state()
+        if state is not None:
+            state.disable_file_process()
 
     def reset_mod_counter(self) -> None:
-        if self.state is not None:
-            self.state.mod_file_counter = 0
+        state = self._state()
+        if state is not None:
+            state.mod_file_counter = 0
 
     def increment_mod_counter(self) -> None:
-        if self.state is not None:
-            self.state.mod_file_counter += 1
+        state = self._state()
+        if state is not None:
+            state.mod_file_counter += 1
 
     def mod_counter(self) -> int:
-        return int(getattr(self.state, "mod_file_counter", 0)) if self.state is not None else 0
+        state = self._state()
+        return int(getattr(state, "mod_file_counter", 0)) if state is not None else 0
 
 
 def _get_file_settings_store():
@@ -159,8 +185,8 @@ def _get_file_environment():
 
 
 file_ui_bridge = FileUiBridgeAdapter()
-file_result_queue = FileResultQueueAdapter(state=_get_file_recording_runtime_state())
-file_processing_state = FileProcessingStateAdapter(state=_get_file_runtime_state())
+file_result_queue = FileResultQueueAdapter(state_provider=_get_file_recording_runtime_state)
+file_processing_state = FileProcessingStateAdapter(state_provider=_get_file_runtime_state)
 
 
 def _get_whisper_runtime_api():

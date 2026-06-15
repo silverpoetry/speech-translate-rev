@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Iterator
 
 from speech_translate.controller_protocols import SettingsStore
 
@@ -29,6 +30,18 @@ class BridgeStateRegistry:
     def set(self, state: object) -> None:
         self.state = state
 
+    def clear(self) -> None:
+        self.state = None
+
+    @contextmanager
+    def override(self, state: object) -> Iterator[object]:
+        previous_state = self.state
+        self.state = state
+        try:
+            yield state
+        finally:
+            self.state = previous_state
+
 
 @dataclass
 class SettingsRegistry:
@@ -40,6 +53,18 @@ class SettingsRegistry:
 
     def set(self, settings: SettingsStore) -> None:
         self.settings = settings
+
+    def clear(self) -> None:
+        self.settings = None
+
+    @contextmanager
+    def override(self, settings: SettingsStore) -> Iterator[SettingsStore]:
+        previous_settings = self.settings
+        self.settings = settings
+        try:
+            yield settings
+        finally:
+            self.settings = previous_settings
 
 
 bridge_state_registry = BridgeStateRegistry()

@@ -32,9 +32,11 @@ from speech_translate.utils.audio.file import (
     _get_file_environment,
     _is_file_status_completed,
     _save_export_plan_metadata,
+    file_processing_state,
+    file_result_queue,
     process_file,
 )
-from speech_translate.bridge_runtime_state import BridgeVisualRuntime
+from speech_translate.bridge_runtime_state import BridgeFileRuntime, BridgeRecordingRuntime, BridgeVisualRuntime
 from speech_translate.runtime_registry import bridge_state_registry
 
 class FakeFileStatusBridge:
@@ -128,14 +130,30 @@ class FakeProcessingStateAdapter:
 
 
 class AudioFileHelpersTests(unittest.TestCase):
+    def test_file_result_queue_default_adapter_resolves_registry_state_lazily(self) -> None:
+        fake_queue = Queue()
+        fake_bridge = type(
+            "FakeBridgeState",
+            (),
+            {"recording_runtime": BridgeRecordingRuntime(data_queue=fake_queue)},
+        )()
+        with bridge_state_registry.override(fake_bridge):
+            file_result_queue.put({"message": "ok"})
+            self.assertEqual(file_result_queue.get(), {"message": "ok"})
+
+    def test_file_processing_state_default_adapter_resolves_registry_state_lazily(self) -> None:
+        runtime_state = BridgeFileRuntime(file_processing=True, file_tced_counter=2, file_tled_counter=3, mod_file_counter=4)
+        fake_bridge = type("FakeBridgeState", (), {"file_runtime": runtime_state})()
+        with bridge_state_registry.override(fake_bridge):
+            self.assertTrue(file_processing_state.is_file_processing())
+            self.assertEqual(file_processing_state.transcribed_count(), 2)
+            self.assertEqual(file_processing_state.translated_count(), 3)
+            self.assertEqual(file_processing_state.mod_counter(), 4)
+
     def test_get_file_environment_reads_visual_runtime_ffmpeg_state(self) -> None:
-        previous_bridge_state = bridge_state_registry.state
         fake_bridge = type("FakeBridgeState", (), {"visual": BridgeVisualRuntime(has_ffmpeg=True)})()
-        try:
-            bridge_state_registry.set(fake_bridge)
+        with bridge_state_registry.override(fake_bridge):
             environment = _get_file_environment()
-        finally:
-            bridge_state_registry.set(previous_bridge_state)
 
         self.assertTrue(environment.has_ffmpeg)
 
