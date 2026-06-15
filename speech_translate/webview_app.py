@@ -119,7 +119,7 @@ class WebBridge(WebBridgeFacadeMixin, WebTaskBridge):
         result = self.state_view_builder.build_state()
         if not self.main_window_controller.first_state_logged:
             self.main_window_controller.first_state_logged = True
-            self._log_startup_marker("first_get_state")
+            self.log_startup_marker("first_get_state")
         return result
 
     def get_task_state(self) -> JsonDict:

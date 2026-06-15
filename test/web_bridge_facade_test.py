@@ -82,23 +82,15 @@ class WebBridgeFacadeMixinTests(unittest.TestCase):
         self.assertEqual(self.bridge.model_manager_controller.runtime_model_key, "medium")
 
     def test_build_main_ui_forwards_to_state_view_builder(self) -> None:
-        result = self.bridge._build_main_ui()
+        result = self.bridge.build_main_ui()
         self.assertEqual(result, {"ok": True})
         self.assertIn(("build_main_ui",), self.bridge.state_view_builder.calls)
 
     def test_resolve_model_dir_forwards_to_model_manager(self) -> None:
-        self.assertEqual(self.bridge._resolve_model_dir(), "D:/models")
-        self.assertIn(("resolve_model_dir",), self.bridge.model_manager_controller.calls)
-
-    def test_public_resolve_model_dir_alias_forwards_to_model_manager(self) -> None:
         self.assertEqual(self.bridge.resolve_model_dir(), "D:/models")
         self.assertIn(("resolve_model_dir",), self.bridge.model_manager_controller.calls)
 
     def test_wait_recording_idle_forwards_to_recording_controller(self) -> None:
-        self.assertTrue(self.bridge._wait_recording_idle(timeout_s=3.5))
-        self.assertIn(("wait_recording_idle", 3.5), self.bridge.recording_controller.calls)
-
-    def test_public_wait_recording_idle_alias_forwards_to_recording_controller(self) -> None:
         self.assertTrue(self.bridge.wait_recording_idle(timeout_s=1.5))
         self.assertIn(("wait_recording_idle", 1.5), self.bridge.recording_controller.calls)
 
@@ -113,7 +105,7 @@ class WebBridgeFacadeMixinTests(unittest.TestCase):
         self.assertIn(("open_directory", "export"), self.bridge.system_settings_controller.calls)
 
     def test_log_startup_marker_uses_main_window_log_method_name(self) -> None:
-        self.bridge._log_startup_marker("boot")
+        self.bridge.log_startup_marker("boot")
         self.assertIn(("log_startup_marker", "boot"), self.bridge.main_window_controller.calls)
 
     def test_build_audio_source_options_forwards_optional_argument(self) -> None:
@@ -121,7 +113,7 @@ class WebBridgeFacadeMixinTests(unittest.TestCase):
             "selected_host_api": selected_host_api
         }
         self.assertEqual(
-            self.bridge._build_audio_source_options("WASAPI"),
+            self.bridge.build_audio_source_options("WASAPI"),
             {"selected_host_api": "WASAPI"},
         )
 

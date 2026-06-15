@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from platform import system
-from typing import TYPE_CHECKING
 
 from speech_translate.bridge_runtime_state import (
     BridgeDownloadRuntime,
@@ -12,12 +11,10 @@ from speech_translate.bridge_runtime_state import (
 )
 from speech_translate.live_text_service import LiveTextRenderer
 
-if TYPE_CHECKING:
-    from speech_translate.controller_protocols import SettingsStore
-    bc: "BridgeRuntimeRoot"
+from speech_translate.controller_protocols import SettingsStore
 
 
-def _get_default_settings_store() -> "SettingsStore":
+def _get_default_settings_store() -> SettingsStore:
     from speech_translate.settings_runtime import get_settings_store
 
     return get_settings_store()
@@ -31,7 +28,7 @@ else:
 class BridgeRuntimeRoot:
     """Application runtime root that owns the mutable subsystem state objects."""
 
-    def __init__(self, settings_store: "SettingsStore" | None = None):
+    def __init__(self, settings_store: SettingsStore | None = None):
         self.visual = BridgeVisualRuntime()
         self.file_runtime = BridgeFileRuntime()
         self.download = BridgeDownloadRuntime()
@@ -40,7 +37,7 @@ class BridgeRuntimeRoot:
         self.live_text_renderer = LiveTextRenderer(settings_store or _get_default_settings_store())
 
 
-def create_runtime_root(settings_store: "SettingsStore" | None = None) -> BridgeRuntimeRoot:
+def create_runtime_root(settings_store: SettingsStore | None = None) -> BridgeRuntimeRoot:
     return BridgeRuntimeRoot(settings_store)
 
 _runtime_singleton: BridgeRuntimeRoot | None = None
@@ -53,15 +50,8 @@ def get_runtime_root() -> BridgeRuntimeRoot:
     return _runtime_singleton
 
 
-def __getattr__(name: str):
-    if name == "bc":
-        return get_runtime_root()
-    raise AttributeError(name)
-
-
 __all__ = [
     "BridgeRuntimeRoot",
     "create_runtime_root",
     "get_runtime_root",
-    "bc",
 ]
