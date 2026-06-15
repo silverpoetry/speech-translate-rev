@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Mapping, cast
 
+from speech_translate.controller_protocols import JsonDict
 from speech_translate.utils.types import SettingDict
 from speech_translate.utils.whisper.helper import model_values
 
@@ -41,8 +42,37 @@ class RuntimeModelLoadSettings:
     tl_engine_whisper: bool
 
 
+@dataclass(frozen=True)
+class SeleniumSettings:
+    compact_level: int
+    z_order_mode: str
+    auto_close_on_task_done: bool
+    chrome_user_data_dir: str
+
+    def as_settings_updates(self) -> dict[str, object]:
+        return {
+            "selenium_compact_level": self.compact_level,
+            "selenium_z_order_mode": self.z_order_mode,
+            "selenium_auto_close_on_task_done": self.auto_close_on_task_done,
+            "selenium_chrome_user_data_dir": self.chrome_user_data_dir,
+        }
+
+
 def _copy_settings_snapshot(settings_snapshot: Mapping[str, object]) -> SettingDict:
     return cast(SettingDict, dict(settings_snapshot))
+
+
+def _normalize_compact_level(value: object, *, default: int) -> int:
+    try:
+        compact_level = int(value)
+    except Exception:
+        compact_level = default
+    return max(0, min(3, compact_level))
+
+
+def _normalize_selenium_z_order_mode(value: object, *, default: str) -> str:
+    normalized = str(value if value is not None else default).strip().lower()
+    return normalized if normalized in {"normal", "behind-main", "bottom"} else default
 
 
 def build_recording_controller_settings(
@@ -93,9 +123,62 @@ def build_runtime_model_load_settings(
     )
 
 
+def build_selenium_settings(payload: object) -> SeleniumSettings:
+    data = payload if isinstance(payload, dict) else {}
+    return SeleniumSettings(
+        compact_level=_normalize_compact_level(data.get("compact_level", 2), default=2),
+        z_order_mode=_normalize_selenium_z_order_mode(data.get("z_order_mode", "behind-main"), default="behind-main"),
+        auto_close_on_task_done=bool(data.get("auto_close_on_task_done", True)),
+        chrome_user_data_dir=str(data.get("chrome_user_data_dir", "") or "").strip(),
+    )
+
+
+def normalize_system_setting_value(key: str, value: object) -> object:
+    if key == "selenium_compact_level":
+        return _normalize_compact_level(value, default=2)
+    if key == "selenium_z_order_mode":
+        return _normalize_selenium_z_order_mode(value, default="behind-main")
+    if key == "selenium_auto_close_on_task_done":
+        return bool(value)
+    if key == "selenium_chrome_user_data_dir":
+        return str(value or "").strip()
+    return value
+
+
+def normalize_record_setting_value(key: str, value: object) -> object:
+    if key == "model_device_preference":
+        normalized = str(value or "auto").strip().lower()
+        return normalized if normalized in {"auto", "cpu", "cuda"} else "auto"
+    return value
+
+
+def build_setting_response(key: str, settings_snapshot: Mapping[str, object]) -> JsonDict:
+    return {"key": key, "value": settings_snapshot.get(key)}
+
+
+def build_compound_setting_response(
+    response_key: str,
+    settings_snapshot: Mapping[str, object],
+    fallback_values: Mapping[str, object],
+) -> JsonDict:
+    return {
+        "key": response_key,
+        "value": {
+            setting_key: settings_snapshot.get(setting_key, fallback_value)
+            for setting_key, fallback_value in fallback_values.items()
+        },
+    }
+
+
 __all__ = [
     "RecordingControllerSettings",
     "RuntimeModelLoadSettings",
+    "SeleniumSettings",
+    "build_compound_setting_response",
     "build_recording_controller_settings",
     "build_runtime_model_load_settings",
+    "build_selenium_settings",
+    "build_setting_response",
+    "normalize_record_setting_value",
+    "normalize_system_setting_value",
 ]
