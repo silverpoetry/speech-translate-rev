@@ -1,0 +1,1978 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>语音翻译</title>
+  <link rel="stylesheet" href="styles.css?v=20260617-ui-cn-8" />
+
+<script>
+(function () {
+  const baseState = {
+    settings: {
+      dir_export: 'auto',
+      dir_log: 'auto',
+      mw_size: '1035x628',
+      log_level: 'INFO',
+      auto_scroll_log: true,
+      auto_refresh_log: false,
+      export_to: ['txt', 'srt', 'vtt', 'json'],
+      input: 'mic',
+      use_faster_whisper: true,
+      model_mw: 'tiny',
+      model_f_import: 'tiny',
+      source_lang_mw: 'English',
+      target_lang_mw: 'Chinese',
+      source_lang_f_import: 'English',
+      target_lang_f_import: 'Chinese',
+      ex_tc_geometry: '900x240',
+      ex_tl_geometry: '960x280',
+      tl_engine_mw: 'Google Translate',
+      tl_engine_f_import: 'Google Translate',
+      transcribe_mw: true,
+      translate_mw: true,
+      transcribe_f_import: true,
+      translate_f_import: true,
+      hostAPI: 'Windows WASAPI',
+      mic: 'Microphone Array',
+      speaker: 'Stereo Mix',
+      verbose_record: true,
+      model_device_preference: 'auto',
+      transcribe_rate: 300,
+      separate_with: '\\n',
+      use_temp: true,
+      keep_temp: false,
+      file_use_official_whisper: false,
+      sample_rate_mic: 16000,
+      chunk_size_mic: 1024,
+      channels_mic: 'Mono',
+      auto_sample_rate_mic: false,
+      auto_channels_mic: false,
+      min_input_length_mic: 0.4,
+      max_buffer_mic: 10,
+      max_sentences_mic: 5,
+      mic_no_limit: false,
+      threshold_enable_mic: true,
+      threshold_auto_mic: true,
+      auto_break_buffer_mic: true,
+      threshold_auto_level_mic: 3,
+      threshold_auto_silero_mic: true,
+      threshold_silero_mic_min: 0.7,
+      threshold_db_mic: -22.5,
+      sample_rate_speaker: 44100,
+      chunk_size_speaker: 1024,
+      channels_speaker: 'Stereo',
+      auto_sample_rate_speaker: true,
+      auto_channels_speaker: true,
+      min_input_length_speaker: 0.4,
+      max_buffer_speaker: 10,
+      max_sentences_speaker: 5,
+      speaker_no_limit: false,
+      threshold_enable_speaker: true,
+      threshold_auto_speaker: true,
+      auto_break_buffer_speaker: true,
+      threshold_auto_level_speaker: 3,
+      threshold_auto_silero_speaker: true,
+      threshold_silero_speaker_min: 0.7,
+      threshold_db_speaker: -20,
+      colorize_per_segment: true,
+      colorize_per_word: false,
+      gradient_low_conf: '#ef4444',
+      gradient_high_conf: '#22c55e',
+      tb_mw_tc_auto_scroll: true,
+      tb_mw_tc_limit_max: false,
+      tb_mw_tc_limit_max_per_line: false,
+      tb_mw_tc_max: 300,
+      tb_mw_tc_max_per_line: 30,
+      tb_mw_tc_font: 'Segoe UI',
+      tb_mw_tc_font_bold: false,
+      tb_mw_tc_font_size: 16,
+      tb_mw_tc_font_color: '#0f172a',
+      tb_mw_tc_use_conf_color: true,
+      tb_mw_tl_auto_scroll: true,
+      tb_mw_tl_limit_max: true,
+      tb_mw_tl_limit_max_per_line: true,
+      tb_mw_tl_max: 120,
+      tb_mw_tl_max_per_line: 12,
+      tb_mw_tl_font: 'Georgia',
+      tb_mw_tl_font_bold: true,
+      tb_mw_tl_font_size: 18,
+      tb_mw_tl_font_color: '#1e293b',
+      tb_mw_tl_use_conf_color: false,
+      enable_initial_prompt: false,
+      condition_on_previous_text: true,
+      path_filter_rec: 'auto',
+      path_filter_file_import: 'auto',
+      filter_rec: true,
+      filter_rec_case_sensitive: false,
+      filter_rec_strip: true,
+      filter_rec_ignore_punctuations: '"\',.?!',
+      filter_rec_exact_match: false,
+      filter_rec_similarity: 0.75,
+      filter_file_import: true,
+      filter_file_import_case_sensitive: false,
+      filter_file_import_strip: true,
+      filter_file_import_ignore_punctuations: '"\',.?!',
+      filter_file_import_exact_match: false,
+      filter_file_import_similarity: 0.75,
+      auto_open_dir_export: true,
+      auto_open_dir_translate: true,
+      auto_open_dir_refinement: true,
+      auto_open_dir_alignment: true,
+      file_slice_start: '',
+      file_slice_end: '',
+      rec_ask_confirmation_first: true,
+      supress_hidden_to_tray: false,
+      supress_record_warning: false,
+      debug_realtime_record: false,
+      debug_translate: false,
+      initial_prompt: '',
+      prefix: '',
+      max_initial_timestamp: 1.0,
+      whisper_args: '',
+      export_format: 'txt',
+      remove_repetition_file_import: false,
+      remove_repetition_amount: 1,
+      segment_max_words: 16,
+      segment_max_chars: 90,
+      segment_split_or_newline: 'split',
+      segment_even_split: true,
+      segment_level: true,
+      word_level: false,
+      use_en_model: false,
+      decoding_preset: 'greedy',
+      temperature: 0,
+      best_of: 5,
+      beam_size: 5,
+      patience: 1,
+      compression_ratio_threshold: 2.4,
+      logprob_threshold: -1.0,
+      no_speech_threshold: 0.6,
+      suppress_tokens: '-1',
+      suppress_blank: true,
+      fp16: true,
+      http_proxy_enable: false,
+      http_proxy: '',
+      https_proxy_enable: false,
+      https_proxy: '',
+      libre_link: '',
+      libre_api_key: '',
+      initial_prompts_map: {}
+    },
+    about: {
+      model_dir: 'D:/Models/whisper',
+      log_file: 'D:/Projects/speechtranslateProj/speech_translate/_logs/app.log'
+    },
+    current_log: '2026-06-17 10:00:00 INFO Runtime ready\\n2026-06-17 10:00:01 INFO tiny loaded from local cache',
+    runtime_model: {
+      loading: false,
+      loaded: true,
+      model_key: 'tiny',
+      engine: 'faster-whisper',
+      status_text: 'tiny 已加载',
+      progress: 100,
+      status_message: 'ready'
+    },
+    record_ui: {
+      input: 'mic',
+      verbose_record: true,
+      model_device_options: ['auto', 'cpu', 'cuda'],
+      model_device_preference: 'auto',
+      transcribe_rate: 300,
+      separate_with: '\\n',
+      use_temp: true,
+      keep_temp: false,
+      file_use_official_whisper: false,
+      mic_device: {
+        threshold_db: -22.5,
+        sample_rate: 16000,
+        chunk_size: 1024,
+        channels: 'Mono',
+        auto_sample_rate: false,
+        auto_channels: false,
+        min_input_length: 0.4,
+        max_buffer: 10,
+        max_sentences: 5,
+        no_limit: false,
+        threshold_enable: true,
+        threshold_auto: true,
+        threshold_auto_level: 3,
+        threshold_auto_silero: true,
+        threshold_silero_min: 0.7,
+        auto_break_buffer: true,
+      },
+      speaker_device: {
+        threshold_db: -20,
+        sample_rate: 44100,
+        chunk_size: 1024,
+        channels: 'Stereo',
+        auto_sample_rate: true,
+        auto_channels: true,
+        min_input_length: 0.4,
+        max_buffer: 10,
+        max_sentences: 5,
+        no_limit: false,
+        threshold_enable: true,
+        threshold_auto: true,
+        threshold_auto_level: 3,
+        threshold_auto_silero: true,
+        threshold_silero_min: 0.7,
+        auto_break_buffer: true,
+      }
+    },
+    fileProcessingState: {
+      active: true,
+      files_total: 8,
+      files_completed: 3,
+      files_failed: 1,
+    },
+    fileImportQueue: [
+      { name: 'meeting-01.mp3' },
+      { name: 'demo.wav' },
+      { name: 'lecture.mp4' },
+      { name: 'clip.m4a' },
+    ],
+    detached_config: {
+      tc: { font: 'Segoe UI', font_size: 14, font_color: '#ffffff', bg_color: '#111827', font_bold: false, limit_max: false, limit_max_per_line: false, max: 120, max_per_line: 30, use_conf_color: true, opacity: 1, always_on_top: true, no_title_bar: true, click_through: false },
+      tl: { font: 'Segoe UI', font_size: 14, font_color: '#ffffff', bg_color: '#111827', font_bold: false, limit_max: false, limit_max_per_line: false, max: 120, max_per_line: 30, use_conf_color: true, opacity: 1, always_on_top: true, no_title_bar: true, click_through: false }
+    },
+    audio_source_options: {
+      host_apis: ['Windows WASAPI', 'MME'],
+      mic_devices: ['Microphone Array', 'USB Mic'],
+      speaker_devices: ['Stereo Mix', 'Speakers (Realtek)']
+    },
+    import_ui: {
+      selected_backend: 'faster-whisper',
+      selected_model: 'tiny',
+      selected_model_key: 'tiny',
+      selected_engine: 'Google Translate',
+      selected_source: 'English',
+      selected_target: 'Chinese',
+      model_options: ['tiny', 'base', 'small'],
+      engine_options: ['Google Translate', 'LibreTranslate', 'DeepL'],
+      source_options: ['Auto detect', 'English', 'Japanese'],
+      target_options: ['Chinese', 'English', 'Indonesian'],
+      transcribe: true,
+      translate: true,
+      queued_files: [
+        { name: 'meeting-01.mp3', status: 'Transcribed, Translated' },
+        { name: 'demo.wav', status: 'Processing, Waiting' },
+        { name: 'lecture.mp4', status: 'Waiting, Waiting' }
+      ]
+    },
+    model_manager: {
+      selected_engine: 'faster-whisper',
+      selected_model: 'tiny',
+      selected_model_estimate_bytes: 78000000,
+      model_dir: 'D:/Models/whisper',
+      download_running: true,
+      checked: {
+        model: 'tiny',
+        engine: 'faster-whisper',
+        downloaded: true
+      },
+      rows: [
+        { model: 'tiny', engine: 'faster-whisper', downloaded: true, downloading: false, progress: 100 },
+        { model: 'base', engine: 'faster-whisper', downloaded: false, downloading: true, progress: 61, speed: '7.2 MB/s' },
+        { model: 'small', engine: 'faster-whisper', downloaded: false, downloading: false, progress: 0 },
+        { model: 'tiny', engine: 'whisper', downloaded: true, downloading: false, progress: 100 },
+        { model: 'base', engine: 'whisper', downloaded: false, downloading: false, progress: 0, error: '文件缺失' }
+      ]
+    },
+    initial_prompts_map: {},
+  };
+
+  const liveState = {
+    main_transcribed_html: '',
+    main_transcribed_text: '',
+    main_translated_html: '',
+    main_translated_text: '',
+    detached_transcribed_html: '',
+    detached_translated_html: ''
+  };
+
+  const taskState = {
+    active: true,
+    title: '实时转写运行中',
+    message: 'tiny 模型已准备完成，等待持续输入。',
+    progress: 100,
+    source: 'general'
+  };
+
+  const recordingState = {
+    active: true,
+    status: 'Recording',
+    device: 'mic',
+    input: 'mic',
+    last_db: -18.2,
+    threshold_db: -22.5,
+    timer: '00:02:14',
+    buffer_seconds: 3,
+    max_buffer_seconds: 10,
+    sentences: 7,
+  };
+
+  const noop = async () => ({ ok: true });
+  const api = new Proxy({
+    get_state: async () => structuredClone(baseState),
+    get_task_state: async () => structuredClone(taskState),
+    get_runtime_model_state: async () => structuredClone(baseState.runtime_model),
+    get_recording_state: async () => structuredClone(recordingState),
+    get_live_state: async () => structuredClone(liveState),
+    get_import_ui_details: async () => structuredClone(baseState.import_ui),
+    get_model_manager_state: async () => structuredClone(baseState.model_manager),
+    get_detached_config: async (mode) => structuredClone(baseState.detached_config[mode] || baseState.detached_config.tc),
+    build_audio_source_options: async () => structuredClone(baseState.audio_source_options),
+    get_model_status: async () => [],
+    get_file_processing_state: async () => structuredClone(baseState.fileProcessingState),
+    get_import_queue_state: async () => ({ queue: structuredClone(baseState.fileImportQueue), processing: structuredClone(baseState.fileProcessingState) }),
+    show_main_window: noop,
+    mark_startup: noop,
+    rerender_live_text: noop,
+    update_detached_content: noop,
+    update_detached_config: noop,
+    create_detached_window: noop,
+    close_detached_window: noop,
+    load_runtime_model: noop,
+    check_model: async () => structuredClone(baseState.model_manager),
+    check_all_models: async () => structuredClone(baseState.model_manager),
+    start_import_queue: noop,
+    stop_import_queue: noop,
+    start_recording: noop,
+    stop_recording: noop,
+    set_setting: noop,
+    set_record_setting: noop,
+    set_import_setting: noop,
+    set_detached_config: noop,
+    save_settings: noop,
+    open_directory: noop,
+    pick_directory: async () => 'D:/Export',
+    pick_file: async () => '',
+    get_log_content: async () => baseState.current_log,
+  }, {
+    get(target, prop) {
+      if (prop in target) {
+        return target[prop];
+      }
+      return noop;
+    }
+  });
+  window.pywebview = { api };
+  window.addEventListener('DOMContentLoaded', () => {
+    document.dispatchEvent(new Event('pywebviewready'));
+    window.dispatchEvent(new Event('pywebviewready'));
+  }, { once: true });
+})();
+</script>
+
+</head>
+
+<body>
+  <div class="bg-grid"></div>
+  <main class="app-shell">
+    <div class="dashboard-layout">
+      <aside class="card sidebar-nav">
+        <div class="sidebar-brand">
+          <div class="brand-row">
+            <span class="brand-icon" aria-hidden="true"></span>
+            <h2>语音翻译</h2>
+          </div>
+        </div>
+        <nav class="menu-list" aria-label="主菜单">
+          <button type="button" class="menu-item is-active" data-nav-target="realtime"><span
+              class="menu-icon menu-icon-realtime"></span><span>实时转写</span></button>
+          <button type="button" class="menu-item" data-nav-target="file"><span
+              class="menu-icon menu-icon-file"></span><span>文件转写</span></button>
+          <button type="button" class="menu-item" data-nav-target="model"><span
+              class="menu-icon menu-icon-model"></span><span>模型选择</span></button>
+          <button type="button" class="menu-item" data-nav-target="settings"><span
+              class="menu-icon menu-icon-settings"></span><span>设置</span></button>
+        </nav>
+        <div class="sidebar-actions">
+          <button class="btn-with-icon" data-open-dir="model">模型目录</button>
+          <button class="btn-with-icon" data-open-dir="export">导出目录</button>
+        </div>
+      </aside>
+
+      <div class="dashboard-content">
+        <section class="card workspace-hub" id="workspace-hub">
+          <div class="workflow-panels">
+            <article class="workflow-card tab-panel" id="tab-model" role="tabpanel">
+              <section class="panel-card core-card">
+                <div class="floating-action-row">
+                  <button class="btn-icon" data-action="save-import-settings" data-tooltip="保存模型配置" title="保存模型配置"><span
+                      class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+                </div>
+                <div class="section-head">
+                  <div>
+                    <h3>模型选择</h3>
+                  </div>
+                </div>
+
+                <div class="hero-toolbar hero-toolbar-compact">
+                  <div class="hero-toolbar-main">
+                    <button class="btn-with-icon btn-major" data-action="load-model" id="btn-load-model">加载模型</button>
+                    <span class="hero-toolbar-caption">调整运行模型、后端和主窗口尺寸。</span>
+                  </div>
+                  <div class="hero-toolbar-pills">
+                    <span class="pill pill-muted" id="import-model-pill">模型：tiny</span>
+                  </div>
+                </div>
+
+                <div class="model-selection-workbench">
+                  <div class="model-selection-shell">
+                    <div class="model-selection-main-card">
+                      <div class="model-selection-kicker">运行配置</div>
+                      <div class="form-grid import-grid model-select-grid model-select-inline">
+                        <div class="model-select-engine-inline">
+                          <span>Whisper 后端</span>
+                          <div class="model-engine-titlebar" id="model-import-engine-bar" role="tablist" aria-label="模型选择后端">
+                            <button type="button" class="model-engine-tab is-active" data-import-engine-option="whisper"
+                              role="tab" aria-selected="true">whisper</button>
+                            <button type="button" class="model-engine-tab" data-import-engine-option="faster-whisper"
+                              role="tab" aria-selected="false">faster-whisper</button>
+                          </div>
+                        </div>
+                        <label>
+                          <span>模型</span>
+                          <select id="model_f_import"></select>
+                        </label>
+                      </div>
+                      <div class="model-selection-main-foot">
+                        <div class="status-row compact-status-row">
+                          <span class="pill pill-muted" id="model-manager-dir-pill">模型目录</span>
+                          <span class="pill pill-muted" id="model-selection-history">历史提示</span>
+                        </div>
+                        <div class="inline-actions compact-gap">
+                          <button type="button" class="btn-with-icon" data-action="pick-model-dir">设置模型目录</button>
+                          <button type="button" class="btn-with-icon" data-open-dir="model">打开模型目录</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="model-selection-side-card">
+                      <div class="model-selection-kicker">窗口与提示策略</div>
+                      <div class="form-grid form-grid-spaced model-selection-side-grid">
+                        <label>
+                          <span>主窗口尺寸</span>
+                          <input id="mw_size" type="text" placeholder="980x620" />
+                          <small class="field-note">格式：宽x高。重启应用后按该尺寸启动。</small>
+                        </label>
+                        <label class="toggle-row"><input id="condition_on_previous_text" type="checkbox" />
+                          使用上一次输出作为提示</label>
+                      </div>
+                    </div>
+                  </div>
+                  <aside class="model-selection-status-rail">
+                    <div class="model-selection-status-head">
+                      <span class="model-selection-kicker">启动摘要</span>
+                      <p>把当前模型、运行状态和历史提示集中放在右侧，切换配置时无需上下扫视整个页面。</p>
+                    </div>
+                    <div class="status-overview-grid model-selection-status-grid" aria-label="模型选择概览">
+                      <div class="status-overview-card">
+                        <span class="status-overview-label">当前模型</span>
+                        <span class="status-overview-value" id="model-selection-current">未选择</span>
+                        <span class="status-overview-meta" id="model-selection-current-meta">等待同步</span>
+                      </div>
+                      <div class="status-overview-card">
+                        <span class="status-overview-label">运行状态</span>
+                        <span class="status-overview-value" id="model-selection-runtime">未加载</span>
+                        <span class="status-overview-meta" id="model-selection-runtime-meta">等待加载</span>
+                      </div>
+                      <div class="status-overview-card">
+                        <span class="status-overview-label">后端</span>
+                        <span class="status-overview-value" id="model-selection-backend">未知</span>
+                        <span class="status-overview-meta" id="model-selection-backend-meta">模型选择页</span>
+                      </div>
+                      <div class="status-overview-card status-overview-card-compact">
+                        <span class="status-overview-label">历史提示</span>
+                        <span class="status-overview-value" id="model-selection-history-card">未设置</span>
+                        <span class="status-overview-meta" id="model-selection-history-meta">condition_on_previous_text</span>
+                      </div>
+                    </div>
+                  </aside>
+                </div>
+              </section>
+
+              <details class="advanced-panel" open>
+                <summary>模型检查与下载</summary>
+                <div class="advanced-panel-body">
+                  <div class="model-manager-head">
+                    <div class="model-engine-titlebar" id="model-manager-engine-bar" role="tablist" aria-label="模型引擎">
+                      <button type="button" class="model-engine-tab is-active" data-engine-option="whisper" role="tab"
+                        aria-selected="true">whisper</button>
+                      <button type="button" class="model-engine-tab" data-engine-option="faster-whisper" role="tab"
+                        aria-selected="false">faster-whisper</button>
+                    </div>
+                    <div class="model-manager-tools">
+                      <button class="btn-icon" data-action="check-model-current" data-tooltip="检查当前选中模型"
+                        title="检查当前选中模型"><span class="btn-glyph glyph-refresh" aria-hidden="true"></span></button>
+                      <button class="btn-icon" data-action="check-all-models" data-tooltip="检查当前引擎全部模型"
+                        title="检查当前引擎全部模型"><span class="btn-glyph glyph-search" aria-hidden="true"></span></button>
+                      <button class="btn-icon btn-icon-blue" data-action="pick-model-dir" data-tooltip="设置模型目录"
+                        title="设置模型目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                    </div>
+                  </div>
+                  <div class="model-manager-workspace">
+                    <div id="model-status-card" class="state-card model-status-card"></div>
+                    <div class="model-manager-side">
+                      <div class="model-manager-overview">
+                        <div class="model-manager-overview-card model-manager-overview-card-primary">
+                          <span class="model-manager-overview-label">当前模型</span>
+                          <span class="model-manager-overview-value" id="model-manager-overview-model">tiny</span>
+                          <span class="model-manager-overview-meta" id="model-manager-overview-model-meta">预计体积较小，适合快速启动</span>
+                        </div>
+                        <div class="model-manager-overview-card">
+                          <span class="model-manager-overview-label">当前引擎</span>
+                          <span class="model-manager-overview-value" id="model-manager-overview-engine">faster-whisper</span>
+                          <span class="model-manager-overview-meta" id="model-manager-overview-engine-meta">本地缓存管理</span>
+                        </div>
+                        <div class="model-manager-overview-card">
+                          <span class="model-manager-overview-label">下载状态</span>
+                          <span class="model-manager-overview-value" id="model-manager-overview-download">已就绪</span>
+                          <span class="model-manager-overview-meta" id="model-manager-overview-download-meta">本地缓存可直接加载</span>
+                        </div>
+                      </div>
+                      <div class="section-head model-manager-hint-wrap">
+                        <p id="model-manager-hint">页面会自动检查当前引擎的全部模型。缺失模型可直接点击下载按钮。</p>
+                      </div>
+                      <div class="status-row import-status model-manager-summary-row">
+                        <span class="pill pill-muted" id="model-manager-dir-pill">模型目录</span>
+                        <span class="pill pill-muted" id="model-manager-engine-pill">引擎</span>
+                        <span class="pill pill-muted" id="model-manager-selection-pill">模型</span>
+                        <span class="pill pill-muted" id="model-manager-download-pill">下载</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </details>
+            </article>
+
+            <article class="workflow-card tab-panel" id="tab-file" role="tabpanel">
+              <section class="panel-card core-card">
+                <div class="section-head">
+                  <div>
+                    <h3>文件转写</h3>
+                  </div>
+                  <div class="floating-action-row">
+                    <button class="btn-icon btn-icon-blue" data-action="add-files-to-queue" data-tooltip="导入文件"
+                      title="导入文件"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                    <button class="btn-icon" data-action="clear-import-queue" data-tooltip="清空队列" title="清空队列"><span
+                        class="btn-glyph glyph-trash" aria-hidden="true"></span></button>
+                  </div>
+                </div>
+
+                <div class="hero-toolbar hero-toolbar-compact">
+                  <div class="hero-toolbar-main">
+                    <button class="btn-with-icon btn-major" data-action="import-files">一键导入并处理</button>
+                    <button class="primary btn-with-icon btn-recording" data-action="start-import-queue"
+                      id="btn-import-start">开始处理</button>
+                  </div>
+                  <div class="hero-toolbar-pills">
+                    <label class="toggle-row"><input id="transcribe_f_import" type="checkbox" checked /> 转写</label>
+                    <label class="toggle-row"><input id="translate_f_import" type="checkbox" checked /> 翻译</label>
+                  </div>
+                </div>
+                <div class="file-workbench-shell">
+                  <div class="file-workbench-main">
+                    <div class="status-overview-grid file-import-overview-grid" aria-label="文件导入概览">
+                      <div class="status-overview-card">
+                        <span class="status-overview-label">队列</span>
+                        <span class="status-overview-value" id="file-import-queue-count">0</span>
+                        <span class="status-overview-meta" id="file-import-queue-meta">等待导入</span>
+                      </div>
+                      <div class="status-overview-card">
+                        <span class="status-overview-label">处理状态</span>
+                        <span class="status-overview-value" id="file-import-processing-state">空闲</span>
+                        <span class="status-overview-meta" id="file-import-processing-meta">等待任务</span>
+                      </div>
+                      <div class="status-overview-card">
+                        <span class="status-overview-label">语言</span>
+                        <span class="status-overview-value" id="file-import-language-state">未知</span>
+                        <span class="status-overview-meta">源 → 目标</span>
+                      </div>
+                    </div>
+                    <div class="file-workspace-shell">
+                      <div class="file-queue-box">
+                        <div class="file-queue-section-head">
+                          <div>
+                            <div class="file-queue-title">待处理队列</div>
+                            <div class="file-queue-subtitle">先整理输入文件，再统一启动转写与翻译流程。</div>
+                          </div>
+                        </div>
+                        <div class="file-queue-header">
+                          <span>文件名</span>
+                          <span>转写状态</span>
+                          <span>翻译状态</span>
+                          <span>操作</span>
+                        </div>
+                        <div class="file-queue-body">
+                          <ul id="file_import_list" class="file-queue-list">
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <aside class="file-ops-card">
+                    <div class="file-ops-head">
+                      <span class="file-ops-kicker">处理指引</span>
+                      <p class="file-ops-title">导入后即可整批启动，不必反复切换到下方设置面板。</p>
+                    </div>
+                    <div class="file-ops-steps" aria-label="文件处理步骤">
+                      <div class="file-ops-step"><strong>1</strong><span>导入音频或视频文件，先确认队列顺序。</span></div>
+                      <div class="file-ops-step"><strong>2</strong><span>选择是否需要转写与翻译，再点击开始处理。</span></div>
+                      <div class="file-ops-step"><strong>3</strong><span>输出目录和格式会按右侧摘要直接生效。</span></div>
+                    </div>
+                    <div class="file-ops-summary">
+                      <div class="status-overview-card status-overview-card-compact">
+                        <span class="status-overview-label">导出目录</span>
+                        <span class="status-overview-value" id="file-import-export-dir">auto</span>
+                        <span class="status-overview-meta" id="file-import-export-meta">输出设置</span>
+                      </div>
+                      <div class="status-overview-card status-overview-card-compact">
+                        <span class="status-overview-label">导出格式</span>
+                        <span class="status-overview-value" id="file-import-export-formats">未设置</span>
+                        <span class="status-overview-meta" id="file-import-export-formats-meta">TXT / SRT / VTT ...</span>
+                      </div>
+                    </div>
+                  </aside>
+                </div>
+
+                <div class="status-row import-status core-status-bottom">
+                  <span class="pill pill-muted" id="import-lang-pill">语言</span>
+                  <span class="pill pill-muted" id="import-engine-pill">引擎</span>
+                </div>
+              </section>
+
+              <div class="dual-advanced-grid">
+                <details class="advanced-panel panel-card" open>
+                  <summary>语言配置</summary>
+                  <div class="floating-action-row">
+                    <button class="btn-icon" data-action="save-import-settings" data-tooltip="保存文件语言配置"
+                      title="保存文件语言配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+                  </div>
+                  <div class="advanced-panel-body">
+                    <div class="form-grid">
+                      <label>
+                        <span>源语言</span>
+                        <select id="source_lang_f_import"></select>
+                      </label>
+                      <label>
+                        <span>目标语言</span>
+                        <select id="target_lang_f_import"></select>
+                      </label>
+                      <label>
+                        <span>翻译引擎</span>
+                        <select id="tl_engine_f_import"></select>
+                      </label>
+                    </div>
+                  </div>
+                </details>
+
+                <details class="advanced-panel panel-card" open>
+                  <summary>输出设置</summary>
+                  <div class="floating-action-row">
+                    <button class="btn-icon btn-icon-blue" data-action="pick-export-dir" data-tooltip="设置导出目录"
+                      title="设置导出目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                    <button class="btn-icon" data-action="save-import-settings" data-tooltip="保存文件输出设置"
+                      title="保存文件输出设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+                  </div>
+                  <div class="advanced-panel-body">
+                    <div class="file-export-block">
+                      <div class="inline-actions import-actions compact-gap file-export-formats">
+                        <span>输出格式</span>
+                        <label class="toggle-row"><input id="export_txt" type="checkbox" /> TXT</label>
+                        <label class="toggle-row"><input id="export_srt" type="checkbox" /> SRT</label>
+                        <label class="toggle-row"><input id="export_vtt" type="checkbox" /> VTT</label>
+                        <label class="toggle-row"><input id="export_ass" type="checkbox" /> ASS</label>
+                        <label class="toggle-row"><input id="export_json" type="checkbox" /> JSON</label>
+                        <label class="toggle-row"><input id="export_csv" type="checkbox" /> CSV</label>
+                        <label class="toggle-row"><input id="export_tsv" type="checkbox" /> TSV</label>
+                        <label class="toggle-row"><input id="export_mp4" type="checkbox" /> MP4 (带字幕)</label>
+                      </div>
+                      <div class="file-export-grid form-grid compact-form-grid">
+                        <label class="field-span-2">
+                          <span>导出目录</span>
+                          <div class="input-action-row">
+                            <input id="dir_export_file" type="text" placeholder="auto" />
+                            <div class="inline-actions compact-gap">
+                              <button type="button" class="btn-icon btn-icon-blue" data-action="pick-export-dir"
+                                data-tooltip="选择导出目录" title="选择导出目录"><span class="btn-glyph glyph-folder"
+                                  aria-hidden="true"></span></button>
+                              <button type="button" class="btn-icon" data-open-dir="export"
+                                data-tooltip="打开导出目录" title="打开导出目录"><span class="btn-glyph glyph-detach"
+                                  aria-hidden="true"></span></button>
+                            </div>
+                          </div>
+                        </label>
+                        <label class="toggle-row"><input id="auto_open_dir_export_file" type="checkbox" /> 任务完成后自动打开目录</label>
+                        <label class="toggle-row"><input id="auto_open_dir_translate_file" type="checkbox" /> 翻译完成后自动打开目录</label>
+                        <label class="toggle-row"><input id="auto_open_dir_refinement_file" type="checkbox" /> 精修完成后自动打开目录</label>
+                        <label class="toggle-row"><input id="auto_open_dir_alignment_file" type="checkbox" /> 对齐完成后自动打开目录</label>
+                      </div>
+                      <div class="file-export-head file-export-foot">
+                        <span class="pill pill-muted" id="file-export-dir-pill">输出目录：auto</span>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </article>
+
+            <article class="workflow-card tab-panel is-active" id="tab-realtime" role="tabpanel">
+              <section class="panel-card core-card">
+                <div class="floating-action-row">
+                  <button class="btn-icon" data-action="create-detached-tc" data-tooltip="打开转写独立窗口"
+                    title="打开转写独立窗口"><span class="btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
+                  <button class="btn-icon btn-icon-blue" data-action="create-detached-tl" data-tooltip="打开翻译独立窗口"
+                    title="打开翻译独立窗口"><span class="btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
+                </div>
+                <div class="section-head">
+                  <div>
+                    <h3>实时转写</h3>
+                  </div>
+                </div>
+
+                <div class="realtime-hero-shell">
+                  <div class="realtime-control-card">
+                    <div class="realtime-control-head">
+                      <span class="realtime-control-kicker">录制控制</span>
+                      <span class="realtime-control-meta">主操作与采集模式</span>
+                    </div>
+                    <div class="inline-actions realtime-top-bar">
+                      <button class="primary btn-with-icon btn-recording" data-action="start-recording"
+                        id="btn-recording-toggle">开始录制</button>
+                      <label class="toggle-row"><input id="transcribe_mw" type="checkbox" checked /> 转写</label>
+                      <label class="toggle-row"><input id="translate_mw" type="checkbox" checked /> 翻译</label>
+                    </div>
+                    <div class="status-row import-status realtime-hero-pills">
+                      <span class="pill pill-muted" id="main-input-pill">输入</span>
+                      <span class="pill pill-muted" id="main-model-pill">模型</span>
+                      <span class="pill pill-muted" id="main-lang-pill">语言</span>
+                      <span class="pill pill-muted" id="main-engine-pill">引擎</span>
+                    </div>
+                  </div>
+
+                  <div class="record-visualizer-card realtime-live-meter" id="record_visualizer_card" aria-live="polite">
+                    <div class="record-visualizer-head">
+                      <span>实时输入电平</span>
+                      <span id="record_visualizer_label">等待录制</span>
+                    </div>
+                    <div class="record-visualizer-track" aria-hidden="true">
+                      <div class="record-visualizer-threshold" id="record_visualizer_threshold"></div>
+                      <div class="record-visualizer-fill" id="record_visualizer_fill"></div>
+                    </div>
+                    <div class="record-visualizer-meta">
+                      <span id="record_visualizer_db">- dB</span>
+                      <span id="record_visualizer_threshold_text">阈值 - dB</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="realtime-status-grid" aria-label="实时录制概览">
+                  <div class="realtime-status-card">
+                    <span class="realtime-status-label">模型</span>
+                    <span class="realtime-status-value" id="realtime-model-state">未加载</span>
+                    <span class="realtime-status-meta" id="realtime-model-meta">等待同步</span>
+                  </div>
+                  <div class="realtime-status-card">
+                    <span class="realtime-status-label">任务</span>
+                    <span class="realtime-status-value" id="realtime-task-state">空闲</span>
+                    <span class="realtime-status-meta" id="realtime-task-message">等待任务</span>
+                  </div>
+                  <div class="realtime-status-card realtime-status-card-compact">
+                    <span class="realtime-status-label">计时</span>
+                    <span class="realtime-status-value" id="realtime-recording-timer">--:--:--</span>
+                    <span class="realtime-status-meta" id="realtime-recording-buffer">缓冲 0/0 sec</span>
+                  </div>
+                  <div class="realtime-status-card realtime-status-card-compact">
+                    <span class="realtime-status-label">句子</span>
+                    <span class="realtime-status-value" id="realtime-recording-sentences">0</span>
+                    <span class="realtime-status-meta" id="realtime-recording-device">输入 -</span>
+                  </div>
+                </div>
+
+                <div class="advanced-panel-body split-view transcript-shell">
+                  <div class="stack">
+                    <div id="main-transcribed-label" class="live-output-preview-label">转写预览</div>
+                    <div id="main-transcribed-output" class="live-output">转写内容将显示在这里。</div>
+                  </div>
+                  <div class="stack">
+                    <div id="main-translated-label" class="live-output-preview-label">翻译预览</div>
+                    <div id="main-translated-output" class="live-output">翻译内容将显示在这里。</div>
+                  </div>
+                </div>
+
+              </section>
+
+              <div class="dual-advanced-grid">
+                <details class="advanced-panel panel-card" open>
+                  <summary>设备配置</summary>
+                  <div class="floating-action-row">
+                    <button class="btn-icon" data-action="save-settings" data-tooltip="保存实时配置" title="保存实时配置"><span
+                        class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+                  </div>
+                  <div class="advanced-panel-body">
+                    <div class="form-grid">
+                      <label>
+                        <span>输入</span>
+                        <select id="input_mode">
+                          <option value="mic">麦克风</option>
+                          <option value="speaker">扬声器</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>主机 API</span>
+                        <select id="hostAPI"></select>
+                      </label>
+                      <label>
+                        <span>麦克风</span>
+                        <select id="mic"></select>
+                      </label>
+                      <label>
+                        <span>扬声器</span>
+                        <select id="speaker"></select>
+                      </label>
+                    </div>
+                  </div>
+                </details>
+
+                <details class="advanced-panel panel-card" open>
+                  <summary>语言配置</summary>
+                  <div class="floating-action-row">
+                    <button class="btn-icon btn-icon-blue" data-action="load-main-model" data-tooltip="加载当前实时模型"
+                      title="加载当前实时模型"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+                    <button class="btn-icon" data-action="save-settings" data-tooltip="保存实时配置" title="保存实时配置"><span
+                        class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+                  </div>
+                  <div class="advanced-panel-body">
+                    <div class="form-grid">
+                      <label>
+                        <span>源语言</span>
+                        <select id="source_lang_mw"></select>
+                      </label>
+                      <label>
+                        <span>实时模型</span>
+                        <select id="model_mw"></select>
+                      </label>
+                      <label>
+                        <span>Whisper 后端</span>
+                        <select id="backend_mw">
+                          <option value="whisper">whisper</option>
+                          <option value="faster-whisper">faster-whisper</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>目标语言</span>
+                        <select id="target_lang_mw"></select>
+                      </label>
+                      <label>
+                        <span>翻译引擎</span>
+                        <select id="tl_engine_mw"></select>
+                      </label>
+                    </div>
+                  </div>
+                </details>
+
+                <details class="advanced-panel panel-card grid-span-all" open>
+                  <summary>独立窗口工作台</summary>
+                  <div class="floating-action-row">
+                    <button class="btn-icon" data-action="create-detached-tc" data-tooltip="打开转写独立窗口"
+                      title="打开转写独立窗口"><span class="btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
+                    <button class="btn-icon btn-icon-blue" data-action="create-detached-tl" data-tooltip="打开翻译独立窗口"
+                      title="打开翻译独立窗口"><span class="btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
+                  </div>
+                  <div class="advanced-panel-body">
+                    <div class="detached-workbench-head">
+                      <p class="detached-workbench-title">独立窗口的样式与窗口参数已统一收口到「设置」页的 TC / TL 专属面板。</p>
+                      <p class="detached-workbench-meta">这里仅保留运行时操作，避免实时页和设置页同时维护两套配置来源。</p>
+                    </div>
+                    <div class="detached-workbench-grid">
+                      <section class="detached-workbench-card">
+                        <div class="section-inline-head">
+                          <div class="settings-section-title">转写窗口 (TC)</div>
+                          <button type="button" class="btn-with-icon" data-action="open-detached-settings-tc">编辑设置</button>
+                        </div>
+                        <div class="inline-actions import-actions compact-gap">
+                          <button type="button" class="btn-with-icon" data-action="create-detached-tc">打开 / 关闭</button>
+                          <button type="button" class="btn-with-icon" data-action="show-detached-tc">显示</button>
+                          <button type="button" class="btn-with-icon" data-action="hide-detached-tc">隐藏</button>
+                          <button type="button" class="btn-with-icon" data-action="close-detached-tc">关闭</button>
+                        </div>
+                        <div class="form-grid detached-config-mini-grid">
+                          <label>
+                            <span>尺寸</span>
+                            <input id="ex_tc_geometry_main" type="text" placeholder="900x240" />
+                          </label>
+                          <label>
+                            <span>透明度</span>
+                            <input id="ex_tc_opacity_main" type="range" min="0.1" max="1" step="0.05" />
+                          </label>
+                          <label class="toggle-row"><input id="ex_tc_always_on_top_main" type="checkbox" /> 置顶</label>
+                          <label class="toggle-row"><input id="ex_tc_no_title_bar_main" type="checkbox" /> 隐藏标题栏</label>
+                          <label class="toggle-row"><input id="ex_tc_click_through_main" type="checkbox" /> 点击穿透</label>
+                          <label class="toggle-row"><input id="tb_ex_tc_use_conf_color_main" type="checkbox" /> 使用置信度颜色</label>
+                        </div>
+                        <div class="status-row compact-status-row">
+                          <span class="pill pill-muted" id="detached-tc-state">状态</span>
+                          <span class="pill pill-muted" id="detached-tc-geometry">尺寸</span>
+                        </div>
+                        <div class="status-row compact-status-row">
+                          <span class="pill pill-muted">设置源：TC 专属配置</span>
+                          <span class="pill pill-muted">内容源：实时转写输出</span>
+                        </div>
+                      </section>
+                      <section class="detached-workbench-card">
+                        <div class="section-inline-head">
+                          <div class="settings-section-title">翻译窗口 (TL)</div>
+                          <button type="button" class="btn-with-icon" data-action="open-detached-settings-tl">编辑设置</button>
+                        </div>
+                        <div class="inline-actions import-actions compact-gap">
+                          <button type="button" class="btn-with-icon" data-action="create-detached-tl">打开 / 关闭</button>
+                          <button type="button" class="btn-with-icon" data-action="show-detached-tl">显示</button>
+                          <button type="button" class="btn-with-icon" data-action="hide-detached-tl">隐藏</button>
+                          <button type="button" class="btn-with-icon" data-action="close-detached-tl">关闭</button>
+                        </div>
+                        <div class="form-grid detached-config-mini-grid">
+                          <label>
+                            <span>尺寸</span>
+                            <input id="ex_tl_geometry_main" type="text" placeholder="960x280" />
+                          </label>
+                          <label>
+                            <span>透明度</span>
+                            <input id="ex_tl_opacity_main" type="range" min="0.1" max="1" step="0.05" />
+                          </label>
+                          <label class="toggle-row"><input id="ex_tl_always_on_top_main" type="checkbox" /> 置顶</label>
+                          <label class="toggle-row"><input id="ex_tl_no_title_bar_main" type="checkbox" /> 隐藏标题栏</label>
+                          <label class="toggle-row"><input id="ex_tl_click_through_main" type="checkbox" /> 点击穿透</label>
+                          <label class="toggle-row"><input id="tb_ex_tl_use_conf_color_main" type="checkbox" /> 使用置信度颜色</label>
+                        </div>
+                        <div class="status-row compact-status-row">
+                          <span class="pill pill-muted" id="detached-tl-state">状态</span>
+                          <span class="pill pill-muted" id="detached-tl-geometry">尺寸</span>
+                        </div>
+                        <div class="status-row compact-status-row">
+                          <span class="pill pill-muted">设置源：TL 专属配置</span>
+                          <span class="pill pill-muted">内容源：实时翻译输出</span>
+                        </div>
+                      </section>
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="card advanced-shell is-hidden" id="settings-shell">
+          <section class="settings-toolbar" id="settings_toolbar">
+            <div class="settings-toolbar-head">
+              <label class="settings-search">
+                <span>搜索设置</span>
+                <input id="settings_search" type="search" placeholder="搜索关键词，例如 代理、Whisper、日志、录制、字幕" />
+              </label>
+              <button type="button" class="btn-with-icon" id="settings_search_clear">清空筛选</button>
+            </div>
+            <div class="settings-toolbar-foot">
+              <div class="settings-shortcuts">
+                <button type="button" class="menu-item settings-shortcut" data-settings-jump="系统与日志">系统</button>
+                <button type="button" class="menu-item settings-shortcut" data-settings-jump="翻译网络与 LibreTranslate">网络</button>
+                <button type="button" class="menu-item settings-shortcut" data-settings-jump="导出与切分">导出</button>
+                <button type="button" class="menu-item settings-shortcut" data-settings-jump="Whisper 解码参数">解码</button>
+                <button type="button" class="menu-item settings-shortcut" data-settings-jump="独立窗口（TC / TL）">独立窗</button>
+                <button type="button" class="menu-item settings-shortcut" data-settings-jump="录制设置（麦克风 / 扬声器）">录制</button>
+                <button type="button" class="menu-item settings-shortcut" data-settings-jump="幻觉过滤 (Hallucination Filter)">过滤</button>
+                <button type="button" class="menu-item settings-shortcut" data-settings-jump="引导词">引导词</button>
+              </div>
+              <span class="settings-search-meta" id="settings_search_meta">显示全部设置</span>
+            </div>
+            <div class="settings-toolbar-overview" aria-label="设置总览">
+              <article class="settings-overview-card settings-overview-card-primary">
+                <span class="settings-overview-label">模型</span>
+                <span class="settings-overview-value" id="settings_toolbar_model">等待同步</span>
+                <span class="settings-overview-meta" id="settings_toolbar_model_meta">运行后端与当前模型</span>
+              </article>
+              <article class="settings-overview-card">
+                <span class="settings-overview-label">导出</span>
+                <span class="settings-overview-value" id="settings_toolbar_export">等待同步</span>
+                <span class="settings-overview-meta" id="settings_toolbar_export_meta">输出格式与目录策略</span>
+              </article>
+              <article class="settings-overview-card">
+                <span class="settings-overview-label">录制</span>
+                <span class="settings-overview-value" id="settings_toolbar_record">等待同步</span>
+                <span class="settings-overview-meta" id="settings_toolbar_record_meta">输入源、节流与确认策略</span>
+              </article>
+              <article class="settings-overview-card">
+                <span class="settings-overview-label">独立窗</span>
+                <span class="settings-overview-value" id="settings_toolbar_detached">等待同步</span>
+                <span class="settings-overview-meta" id="settings_toolbar_detached_meta">TC / TL 窗口尺寸与展示</span>
+              </article>
+            </div>
+          </section>
+
+          <details class="advanced-panel" open>
+            <summary>系统与日志</summary>
+            <div class="advanced-panel-body">
+              <div class="form-grid">
+                <label>
+                  <span>日志级别</span>
+                  <select id="log_level">
+                    <option value="DEBUG">DEBUG</option>
+                    <option value="INFO">INFO</option>
+                    <option value="WARNING">WARNING</option>
+                    <option value="ERROR">ERROR</option>
+                  </select>
+                </label>
+                <label>
+                  <span>导出目录</span>
+                  <div class="input-action-row">
+                    <input id="dir_export" type="text" placeholder="auto" readonly />
+                    <button type="button" class="btn-icon" data-action="pick-export-dir" data-tooltip="选择导出目录"
+                      title="选择导出目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                  </div>
+                </label>
+                <label class="field-span-2">
+                  <span>模型目录</span>
+                  <div class="input-action-row">
+                    <input id="dir_model" type="text" readonly />
+                    <div class="inline-actions compact-gap">
+                      <button type="button" class="btn-icon btn-icon-blue" data-action="pick-model-dir"
+                        data-tooltip="选择模型目录" title="选择模型目录"><span class="btn-glyph glyph-folder"
+                          aria-hidden="true"></span></button>
+                      <button type="button" class="btn-icon" data-open-dir="model" data-tooltip="打开模型目录"
+                        title="打开模型目录"><span class="btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
+                    </div>
+                  </div>
+                </label>
+                <label class="field-span-2">
+                  <span>当前日志文件</span>
+                  <div class="input-action-row">
+                    <input id="current_log" type="text" readonly />
+                    <div class="inline-actions compact-gap">
+                      <button type="button" class="btn-icon btn-icon-blue" data-open-dir="log" data-tooltip="打开日志目录"
+                        title="打开日志目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                      <button type="button" class="btn-icon" data-action="refresh-log" data-tooltip="刷新日志"
+                        title="刷新日志"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+                      <button type="button" class="btn-icon" data-action="clear-log" data-tooltip="清空当前日志"
+                        title="清空当前日志"><span class="btn-glyph glyph-trash" aria-hidden="true"></span></button>
+                    </div>
+                  </div>
+                </label>
+                <label class="field-span-2">
+                  <span>日志目录</span>
+                  <div class="input-action-row">
+                    <input id="dir_log" type="text" placeholder="auto" />
+                    <div class="inline-actions compact-gap">
+                      <button type="button" class="btn-icon btn-icon-blue" data-action="pick-log-dir"
+                        data-tooltip="选择日志目录" title="选择日志目录"><span class="btn-glyph glyph-folder"
+                          aria-hidden="true"></span></button>
+                      <button type="button" class="btn-icon" data-open-dir="log" data-tooltip="打开日志目录"
+                        title="打开日志目录"><span class="btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
+                    </div>
+                  </div>
+                </label>
+              </div>
+              <div class="inline-actions import-actions compact-gap">
+                <label class="toggle-row"><input id="auto_scroll_log" type="checkbox" /> 日志自动滚动到底部</label>
+                <label class="toggle-row"><input id="auto_refresh_log" type="checkbox" /> 自动刷新日志</label>
+              </div>
+              <div class="log-stack">
+                <pre class="log-output" id="log_content">日志加载中…</pre>
+              </div>
+            </div>
+          </details>
+
+          <details class="advanced-panel" open>
+            <summary>任务与环境</summary>
+            <div class="advanced-panel-body">
+              <div class="inline-actions import-actions compact-gap">
+                <button type="button" class="btn-with-icon" data-action="refresh">刷新状态</button>
+                <button type="button" class="btn-with-icon" data-action="open-repo">项目仓库</button>
+                <button type="button" class="btn-with-icon" data-action="hide-to-tray">隐藏到托盘</button>
+              </div>
+              <section class="task-banner">
+                <div class="task-banner-head">
+                  <div class="task-banner-title" id="task-title">空闲</div>
+                  <span class="task-badge" id="task-badge">空闲</span>
+                </div>
+                <div class="task-banner-message" id="task-message">等待操作。</div>
+                <div class="task-progress-track">
+                  <div class="task-progress-fill" id="task-progress-fill"></div>
+                </div>
+                <div class="task-progress-text" id="task-progress-text">0%</div>
+              </section>
+              <div class="state-card task-card" id="task-card"></div>
+              <div class="state-card about-card" id="about-card"></div>
+            </div>
+          </details>
+
+
+          <details class="advanced-panel">
+            <summary>翻译网络与 LibreTranslate</summary>
+            <div class="advanced-panel-body">
+              <div class="form-grid">
+                <label class="toggle-row">
+                  <input id="http_proxy_enable" type="checkbox" />
+                  启用 HTTP 代理
+                </label>
+                <label>
+                  <span>HTTP 代理</span>
+                  <input id="http_proxy" type="text" placeholder="http://127.0.0.1:7890" />
+                </label>
+                <label class="toggle-row">
+                  <input id="https_proxy_enable" type="checkbox" />
+                  启用 HTTPS 代理
+                </label>
+                <label>
+                  <span>HTTPS 代理</span>
+                  <input id="https_proxy" type="text" placeholder="http://127.0.0.1:7890" />
+                </label>
+                <label class="field-span-2">
+                  <span>LibreTranslate 地址</span>
+                  <input id="libre_link" type="text" placeholder="https://libretranslate.example.com" />
+                </label>
+                <label class="field-span-2">
+                  <span>LibreTranslate API Key</span>
+                  <input id="libre_api_key" type="password" placeholder="留空表示不使用 API Key" />
+                </label>
+              </div>
+            </div>
+          </details>
+
+          <details class="advanced-panel">
+            <summary>导出与切分</summary>
+            <div class="advanced-panel-body">
+              <div class="form-grid">
+                <label class="field-span-2">
+                  <span>导出目录命名格式</span>
+                  <input id="export_format" type="text" placeholder="%Y-%m-%d %f {file}/{task-lang}" />
+                </label>
+                <label class="toggle-row">
+                  <input id="auto_open_dir_export" type="checkbox" />
+                  任务完成后自动打开导出目录
+                </label>
+                <label class="toggle-row">
+                  <input id="remove_repetition_file_import" type="checkbox" />
+                  文件转写后去重
+                </label>
+                <label>
+                  <span>去重复次数</span>
+                  <input id="remove_repetition_amount" type="number" min="1" max="10" step="1" />
+                </label>
+                <label>
+                  <span>分段最大词数</span>
+                  <input id="segment_max_words" type="text" placeholder="留空表示不限制" />
+                </label>
+                <label>
+                  <span>分段最大字符数</span>
+                  <input id="segment_max_chars" type="text" placeholder="留空表示不限制" />
+                </label>
+                <label>
+                  <span>切分模式</span>
+                  <select id="segment_split_or_newline">
+                    <option value="Split">Split</option>
+                    <option value="Newline">Newline</option>
+                  </select>
+                </label>
+                <label class="toggle-row">
+                  <input id="segment_even_split" type="checkbox" />
+                  尽量平均切分
+                </label>
+                <label class="toggle-row">
+                  <input id="segment_level" type="checkbox" />
+                  导出段级时间轴
+                </label>
+                <label class="toggle-row">
+                  <input id="word_level" type="checkbox" />
+                  导出词级时间轴
+                </label>
+                <label>
+                  <span>文件切片起始</span>
+                  <input id="file_slice_start" type="text" placeholder="留空表示从头开始" />
+                </label>
+                <label>
+                  <span>文件切片结束</span>
+                  <input id="file_slice_end" type="text" placeholder="留空表示处理到末尾" />
+                </label>
+                <label class="toggle-row">
+                  <input id="auto_open_dir_translate" type="checkbox" />
+                  翻译完成后自动打开目录
+                </label>
+                <label class="toggle-row">
+                  <input id="auto_open_dir_refinement" type="checkbox" />
+                  精修完成后自动打开目录
+                </label>
+                <label class="toggle-row">
+                  <input id="auto_open_dir_alignment" type="checkbox" />
+                  对齐完成后自动打开目录
+                </label>
+              </div>
+            </div>
+          </details>
+
+          <details class="advanced-panel settings-panel-wide">
+            <summary>主界面文本显示</summary>
+            <div class="advanced-panel-body">
+              <div class="settings-section-card">
+                <div class="settings-section-title">全局着色</div>
+                <div class="form-grid compact-form-grid">
+                  <label class="toggle-row">
+                    <input id="colorize_per_segment" type="checkbox" />
+                    按段置信度着色
+                  </label>
+                  <label class="toggle-row">
+                    <input id="colorize_per_word" type="checkbox" />
+                    按词置信度着色
+                  </label>
+                  <label>
+                    <span>低置信度颜色</span>
+                    <input id="gradient_low_conf" type="text" placeholder="#FF0000" />
+                  </label>
+                  <label>
+                    <span>高置信度颜色</span>
+                    <input id="gradient_high_conf" type="text" placeholder="#00FF00" />
+                  </label>
+                </div>
+              </div>
+
+              <div class="settings-dual-card-grid">
+                <section class="settings-section-card">
+                  <div class="settings-section-title">主转写区域</div>
+                  <div class="form-grid compact-form-grid">
+                    <label>
+                      <span>字体</span>
+                      <input id="tb_mw_tc_font" type="text" placeholder="TKDefaultFont" />
+                    </label>
+                    <label>
+                      <span>字号</span>
+                      <input id="tb_mw_tc_font_size" type="number" min="8" max="48" step="1" />
+                    </label>
+                    <label>
+                      <span>字体颜色</span>
+                      <input id="tb_mw_tc_font_color" type="text" placeholder="#FFFFFF" />
+                    </label>
+                    <label>
+                      <span>最大字符数</span>
+                      <input id="tb_mw_tc_max" type="number" min="20" max="5000" step="1" />
+                    </label>
+                    <label>
+                      <span>每行最大字符</span>
+                      <input id="tb_mw_tc_max_per_line" type="number" min="10" max="500" step="1" />
+                    </label>
+                    <label class="toggle-row">
+                      <input id="tb_mw_tc_auto_scroll" type="checkbox" />
+                      自动滚动
+                    </label>
+                    <label class="toggle-row">
+                      <input id="tb_mw_tc_limit_max" type="checkbox" />
+                      限制最大字符数
+                    </label>
+                    <label class="toggle-row">
+                      <input id="tb_mw_tc_limit_max_per_line" type="checkbox" />
+                      限制每行长度
+                    </label>
+                    <label class="toggle-row">
+                      <input id="tb_mw_tc_font_bold" type="checkbox" />
+                      粗体
+                    </label>
+                    <label class="toggle-row">
+                      <input id="tb_mw_tc_use_conf_color" type="checkbox" />
+                      使用置信度颜色
+                    </label>
+                  </div>
+                </section>
+
+                <section class="settings-section-card">
+                  <div class="settings-section-title">主翻译区域</div>
+                  <div class="form-grid compact-form-grid">
+                    <label>
+                      <span>字体</span>
+                      <input id="tb_mw_tl_font" type="text" placeholder="TKDefaultFont" />
+                    </label>
+                    <label>
+                      <span>字号</span>
+                      <input id="tb_mw_tl_font_size" type="number" min="8" max="48" step="1" />
+                    </label>
+                    <label>
+                      <span>字体颜色</span>
+                      <input id="tb_mw_tl_font_color" type="text" placeholder="#FFFFFF" />
+                    </label>
+                    <label>
+                      <span>最大字符数</span>
+                      <input id="tb_mw_tl_max" type="number" min="20" max="5000" step="1" />
+                    </label>
+                    <label>
+                      <span>每行最大字符</span>
+                      <input id="tb_mw_tl_max_per_line" type="number" min="10" max="500" step="1" />
+                    </label>
+                    <label class="toggle-row">
+                      <input id="tb_mw_tl_auto_scroll" type="checkbox" />
+                      自动滚动
+                    </label>
+                    <label class="toggle-row">
+                      <input id="tb_mw_tl_limit_max" type="checkbox" />
+                      限制最大字符数
+                    </label>
+                    <label class="toggle-row">
+                      <input id="tb_mw_tl_limit_max_per_line" type="checkbox" />
+                      限制每行长度
+                    </label>
+                    <label class="toggle-row">
+                      <input id="tb_mw_tl_font_bold" type="checkbox" />
+                      粗体
+                    </label>
+                    <label class="toggle-row">
+                      <input id="tb_mw_tl_use_conf_color" type="checkbox" />
+                      使用置信度颜色
+                    </label>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </details>
+
+          <details class="advanced-panel">
+            <summary>运行与保护策略</summary>
+            <div class="advanced-panel-body">
+              <div class="form-grid">
+                <label class="toggle-row"><input id="rec_ask_confirmation_first" type="checkbox" /> 录制前确认</label>
+                <label class="toggle-row"><input id="supress_hidden_to_tray" type="checkbox" /> 隐藏到托盘不提示</label>
+                <label class="toggle-row"><input id="supress_record_warning" type="checkbox" /> 忽略录制警告</label>
+                <label class="toggle-row"><input id="debug_realtime_record" type="checkbox" /> 记录实时转写调试日志</label>
+                <label class="toggle-row"><input id="debug_translate" type="checkbox" /> 记录翻译调试日志</label>
+              </div>
+            </div>
+          </details>
+
+          <details class="advanced-panel settings-panel-wide">
+            <summary>Whisper 解码参数</summary>
+            <div class="advanced-panel-body">
+              <div class="decode-settings-shell">
+                <div class="decode-settings-main">
+                  <div class="settings-section-card settings-section-card-muted decode-hero-card">
+                    <div class="decode-card-head">
+                      <div class="settings-section-title">核心预设</div>
+                      <p>先定预设和温度，再碰阈值与附加参数。</p>
+                    </div>
+                    <div class="decode-kpi-row">
+                      <div class="decode-kpi">
+                        <span class="decode-kpi-label">预设</span>
+                        <span class="decode-kpi-value" id="decode_preset_kpi">greedy</span>
+                        <span class="decode-kpi-meta">当前解码策略</span>
+                      </div>
+                      <div class="decode-kpi">
+                        <span class="decode-kpi-label">温度</span>
+                        <span class="decode-kpi-value" id="decode_temperature_kpi">0.0</span>
+                        <span class="decode-kpi-meta">稳定性与探索度</span>
+                      </div>
+                      <div class="decode-kpi">
+                        <span class="decode-kpi-label">输出</span>
+                        <span class="decode-kpi-value" id="decode_output_kpi">Whisper</span>
+                        <span class="decode-kpi-meta">核心推理链路</span>
+                      </div>
+                    </div>
+                    <div class="form-grid compact-form-grid">
+                      <label>
+                        <span>解码预设</span>
+                        <select id="decoding_preset">
+                          <option value="greedy">greedy</option>
+                          <option value="beam search">beam search</option>
+                          <option value="custom">custom</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>Temperature</span>
+                        <input id="temperature" type="text" placeholder="0.0, 0.2, 0.4, 0.6, 0.8, 1.0" />
+                      </label>
+                      <label>
+                        <span>Best Of</span>
+                        <input id="best_of" type="number" min="1" max="20" step="1" />
+                      </label>
+                      <label>
+                        <span>Beam Size</span>
+                        <input id="beam_size" type="number" min="1" max="20" step="1" />
+                      </label>
+                      <label>
+                        <span>Patience</span>
+                        <input id="patience" type="number" min="0" max="10" step="0.1" />
+                      </label>
+                      <label>
+                        <span>Max Initial Timestamp</span>
+                        <input id="max_initial_timestamp" type="number" min="0" max="10" step="0.1" />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="settings-section-card">
+                    <div class="settings-section-title">稳定性与阈值</div>
+                    <div class="form-grid compact-form-grid">
+                      <label>
+                        <span>Compression Ratio Threshold</span>
+                        <input id="compression_ratio_threshold" type="number" min="0" max="10" step="0.1" />
+                      </label>
+                      <label>
+                        <span>Logprob Threshold</span>
+                        <input id="logprob_threshold" type="number" min="-10" max="10" step="0.1" />
+                      </label>
+                      <label>
+                        <span>No Speech Threshold</span>
+                        <input id="no_speech_threshold" type="number" min="0" max="1" step="0.01" />
+                      </label>
+                      <label>
+                        <span>Suppress Tokens</span>
+                        <input id="suppress_tokens" type="text" placeholder="-1 或 1,2,3" />
+                      </label>
+                    </div>
+                    <div class="decode-toggle-grid">
+                      <label class="toggle-row">
+                        <input id="use_en_model" type="checkbox" />
+                        英语优先使用 `.en` 模型
+                      </label>
+                      <label class="toggle-row">
+                        <input id="fp16" type="checkbox" />
+                        启用 FP16
+                      </label>
+                      <label class="toggle-row">
+                        <input id="suppress_blank" type="checkbox" />
+                        抑制空白片段
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="settings-section-card">
+                    <div class="settings-section-title">引导与附加参数</div>
+                    <div class="form-grid compact-form-grid">
+                      <label class="field-span-2">
+                        <span>Initial Prompt</span>
+                        <textarea id="initial_prompt" rows="3" placeholder="留空则使用多语言引导词逻辑"></textarea>
+                      </label>
+                      <label class="field-span-2">
+                        <span>Prefix</span>
+                        <input id="prefix" type="text" placeholder="可选前缀" />
+                      </label>
+                      <label class="field-span-2">
+                        <span>附加 Whisper Args</span>
+                        <textarea id="whisper_args" rows="4" placeholder="例如 --vad True --vad_threshold 0.35"></textarea>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <aside class="decode-settings-rail">
+                  <div class="recording-rail-head">
+                    <span class="settings-section-title">参数提示</span>
+                    <p>先从预设和温度开始调，只有当输出稳定性不足时再深入修改阈值与附加参数。</p>
+                  </div>
+                  <div class="recording-guide-list" aria-label="解码调参建议">
+                    <div class="recording-guide-item"><strong>1</strong><span>`greedy` 适合快速、低成本场景；`beam search` 更稳但更慢。</span></div>
+                    <div class="recording-guide-item"><strong>2</strong><span>温度和 `best_of` 先小步调，避免一次改动太多造成结果难以归因。</span></div>
+                    <div class="recording-guide-item"><strong>3</strong><span>附加参数用于高级调试，不建议当作日常主调参入口。</span></div>
+                  </div>
+                </aside>
+              </div>
+            </div>
+          </details>
+
+          <details class="advanced-panel settings-panel-wide">
+            <summary>Selenium 翻译窗口</summary>
+            <div class="floating-action-row">
+              <button class="btn-icon" data-action="save-selenium-settings" data-tooltip="保存 Selenium 设置"
+                title="保存 Selenium 设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+            </div>
+            <div class="advanced-panel-body">
+              <div class="selenium-settings-shell">
+                <div class="selenium-settings-main">
+                  <div class="settings-section-card settings-section-card-muted selenium-hero-card">
+                    <div class="selenium-card-head">
+                      <div class="settings-section-title">窗口策略</div>
+                      <p>以低干扰为默认，必要时再切回完整窗口。</p>
+                    </div>
+                    <div class="selenium-kpi-row">
+                      <div class="selenium-kpi">
+                        <span class="selenium-kpi-label">模式</span>
+                        <span class="selenium-kpi-value" id="selenium_mode_kpi">紧凑+低干扰</span>
+                        <span class="selenium-kpi-meta">默认展示策略</span>
+                      </div>
+                      <div class="selenium-kpi">
+                        <span class="selenium-kpi-label">层级</span>
+                        <span class="selenium-kpi-value" id="selenium_zorder_kpi">主窗体后层</span>
+                        <span class="selenium-kpi-meta">窗口遮挡策略</span>
+                      </div>
+                      <div class="selenium-kpi">
+                        <span class="selenium-kpi-label">关闭</span>
+                        <span class="selenium-kpi-value" id="selenium_auto_close_kpi">任务完成后</span>
+                        <span class="selenium-kpi-meta">资源回收策略</span>
+                      </div>
+                    </div>
+                    <div class="form-grid compact-form-grid">
+                      <label>
+                        <span>窗口模式</span>
+                        <select id="selenium_compact_level">
+                          <option value="0">标准窗口（完整显示）</option>
+                          <option value="1">紧凑模式（较小窗口）</option>
+                          <option value="2">紧凑+低干扰（推荐）</option>
+                          <option value="3">最小化干扰（最小窗口）</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>窗口层级</span>
+                        <select id="selenium_z_order_mode">
+                          <option value="behind-main">主窗体后层</option>
+                          <option value="bottom">全局底层</option>
+                          <option value="normal">常规层级</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div class="decode-toggle-grid">
+                      <label class="toggle-row"><input id="selenium_auto_close_on_task_done" type="checkbox" /> 转写任务结束后自动关闭
+                        Selenium Chrome</label>
+                    </div>
+                  </div>
+
+                  <div class="settings-section-card">
+                    <div class="settings-section-title">浏览器环境</div>
+                    <div class="form-grid compact-form-grid">
+                      <label class="field-span-2">
+                        <span>Chrome 用户目录</span>
+                        <div class="input-action-row">
+                          <input id="selenium_chrome_user_data_dir" type="text" placeholder="可手动输入目录，留空使用默认目录" />
+                          <div class="inline-actions compact-gap">
+                            <button type="button" class="btn-icon" data-action="pick-selenium-chrome-dir"
+                              data-tooltip="选择 Chrome 用户目录" title="选择 Chrome 用户目录"><span class="btn-glyph glyph-folder"
+                                aria-hidden="true"></span></button>
+                            <button type="button" class="btn-icon btn-icon-blue" data-open-dir="selenium_chrome"
+                              data-tooltip="打开 Chrome 用户目录" title="打开 Chrome 用户目录"><span class="btn-glyph glyph-detach-tc"
+                                aria-hidden="true"></span></button>
+                          </div>
+                        </div>
+                        <small class="field-note">留空默认：speech_translate/_user/selenium_chrome_profile</small>
+                      </label>
+                    </div>
+                    <div class="status-row import-status">
+                      <span class="pill pill-muted">仅在 Windows 有效</span>
+                    </div>
+                  </div>
+                </div>
+
+                <aside class="selenium-settings-rail">
+                  <div class="recording-rail-head">
+                    <span class="settings-section-title">使用提示</span>
+                    <p>Selenium 窗口只在需要网页翻译链路时参与工作。默认保持低干扰，不要把它当成主界面长期显示。</p>
+                  </div>
+                  <div class="recording-guide-list" aria-label="Selenium 使用建议">
+                    <div class="recording-guide-item"><strong>1</strong><span>优先使用“紧凑+低干扰”，只在排查页面问题时切到完整显示。</span></div>
+                    <div class="recording-guide-item"><strong>2</strong><span>默认用户目录能满足多数场景，只有需要独立登录态时再单独指定。</span></div>
+                    <div class="recording-guide-item"><strong>3</strong><span>任务自动关闭建议保持开启，避免残留浏览器进程长期占资源。</span></div>
+                  </div>
+                </aside>
+              </div>
+            </div>
+          </details>
+
+          <details class="advanced-panel settings-panel-wide">
+            <summary>独立窗口（TC / TL）</summary>
+            <div class="advanced-panel-body">
+              <div class="settings-dual-card-grid">
+                <section class="settings-section-card">
+                  <div class="section-inline-head">
+                    <div class="settings-section-title">转写窗口 (TC)</div>
+                    <button type="button" class="btn-with-icon" data-action="create-detached-tc">打开窗口</button>
+                  </div>
+                  <div class="form-grid compact-form-grid">
+                    <label>
+                      <span>窗口尺寸</span>
+                      <input id="ex_tc_geometry" type="text" placeholder="900x240" />
+                    </label>
+                    <label>
+                      <span>透明度</span>
+                      <input id="ex_tc_opacity" type="range" min="0.1" max="1" step="0.05" />
+                    </label>
+                    <label>
+                      <span>字体</span>
+                      <input id="tb_ex_tc_font" type="text" placeholder="Arial" />
+                    </label>
+                    <label>
+                      <span>字号 (px)</span>
+                      <input id="tb_ex_tc_font_size" type="number" min="8" max="48" step="1" />
+                    </label>
+                    <label>
+                      <span>字体颜色</span>
+                      <input id="tb_ex_tc_font_color" type="text" placeholder="#FFFFFF" />
+                    </label>
+                    <label>
+                      <span>背景颜色</span>
+                      <input id="tb_ex_tc_bg_color" type="text" placeholder="#000000" />
+                    </label>
+                    <label>
+                      <span>最大字符数</span>
+                      <input id="tb_ex_tc_max" type="number" min="20" max="5000" step="1" />
+                    </label>
+                    <label>
+                      <span>每行最大字符</span>
+                      <input id="tb_ex_tc_max_per_line" type="number" min="10" max="500" step="1" />
+                    </label>
+                    <label class="toggle-row"><input id="ex_tc_always_on_top" type="checkbox" /> 窗口置顶</label>
+                    <label class="toggle-row"><input id="ex_tc_no_title_bar" type="checkbox" /> 隐藏标题栏</label>
+                    <label class="toggle-row"><input id="ex_tc_click_through" type="checkbox" /> 点击穿透</label>
+                    <label class="toggle-row"><input id="tb_ex_tc_font_bold" type="checkbox" /> 粗体</label>
+                    <label class="toggle-row"><input id="tb_ex_tc_limit_max" type="checkbox" /> 限制最大字符数</label>
+                    <label class="toggle-row"><input id="tb_ex_tc_limit_max_per_line" type="checkbox" /> 限制每行长度</label>
+                    <label class="toggle-row"><input id="tb_ex_tc_use_conf_color" type="checkbox" /> 使用置信度颜色</label>
+                  </div>
+                </section>
+
+                <section class="settings-section-card">
+                  <div class="section-inline-head">
+                    <div class="settings-section-title">翻译窗口 (TL)</div>
+                    <button type="button" class="btn-with-icon" data-action="create-detached-tl">打开窗口</button>
+                  </div>
+                  <div class="form-grid compact-form-grid">
+                    <label>
+                      <span>窗口尺寸</span>
+                      <input id="ex_tl_geometry" type="text" placeholder="900x240" />
+                    </label>
+                    <label>
+                      <span>透明度</span>
+                      <input id="ex_tl_opacity" type="range" min="0.1" max="1" step="0.05" />
+                    </label>
+                    <label>
+                      <span>字体</span>
+                      <input id="tb_ex_tl_font" type="text" placeholder="Arial" />
+                    </label>
+                    <label>
+                      <span>字号 (px)</span>
+                      <input id="tb_ex_tl_font_size" type="number" min="8" max="48" step="1" />
+                    </label>
+                    <label>
+                      <span>字体颜色</span>
+                      <input id="tb_ex_tl_font_color" type="text" placeholder="#FFFFFF" />
+                    </label>
+                    <label>
+                      <span>背景颜色</span>
+                      <input id="tb_ex_tl_bg_color" type="text" placeholder="#000000" />
+                    </label>
+                    <label>
+                      <span>最大字符数</span>
+                      <input id="tb_ex_tl_max" type="number" min="20" max="5000" step="1" />
+                    </label>
+                    <label>
+                      <span>每行最大字符</span>
+                      <input id="tb_ex_tl_max_per_line" type="number" min="10" max="500" step="1" />
+                    </label>
+                    <label class="toggle-row"><input id="ex_tl_always_on_top" type="checkbox" /> 窗口置顶</label>
+                    <label class="toggle-row"><input id="ex_tl_no_title_bar" type="checkbox" /> 隐藏标题栏</label>
+                    <label class="toggle-row"><input id="ex_tl_click_through" type="checkbox" /> 点击穿透</label>
+                    <label class="toggle-row"><input id="tb_ex_tl_font_bold" type="checkbox" /> 粗体</label>
+                    <label class="toggle-row"><input id="tb_ex_tl_limit_max" type="checkbox" /> 限制最大字符数</label>
+                    <label class="toggle-row"><input id="tb_ex_tl_limit_max_per_line" type="checkbox" /> 限制每行长度</label>
+                    <label class="toggle-row"><input id="tb_ex_tl_use_conf_color" type="checkbox" /> 使用置信度颜色</label>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </details>
+
+          <details class="advanced-panel settings-panel-wide">
+            <summary>录制设置（麦克风 / 扬声器）</summary>
+            <div class="floating-action-row">
+              <button class="btn-icon" data-action="save-record-settings" data-tooltip="保存录制设置" title="保存录制设置"><span
+                  class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+            </div>
+            <div class="advanced-panel-body">
+              <div class="recording-settings-shell">
+                <div class="recording-settings-main">
+                  <div class="settings-section-card recording-general-card">
+                    <div class="recording-section-head">
+                      <div>
+                        <div class="settings-section-title">录制参数</div>
+                        <p class="recording-section-meta">统一调整采集节流、转换模式和设备偏好，不用在麦克风与扬声器两套参数之间来回跳。</p>
+                      </div>
+                    </div>
+                    <div class="form-grid compact-form-grid">
+                      <label>
+                        <span>详细录制日志</span>
+                        <select id="verbose_record">
+                          <option value="true">true</option>
+                          <option value="false">false</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>模型设备</span>
+                        <select id="model_device_preference">
+                          <option value="auto">Auto（自动）</option>
+                          <option value="cpu">CPU</option>
+                          <option value="cuda">CUDA (GPU)</option>
+                        </select>
+                        <small class="field-note">选择 CUDA 需要当前环境安装 GPU 版 torch/torchaudio。</small>
+                      </label>
+                      <label>
+                        <span>转写间隔 (ms)</span>
+                        <input id="transcribe_rate" type="number" min="1" max="1000" step="1" />
+                      </label>
+                      <label>
+                        <span>分隔符</span>
+                        <input id="separate_with" type="text" placeholder="\n" />
+                      </label>
+                    </div>
+
+                    <div class="recording-mode-cluster">
+                      <label class="toggle-row"><input id="use_temp" type="radio" name="conversion_mode" value="numpy" />
+                        Numpy 数组</label>
+                      <label class="toggle-row"><input id="use_temp_alt" type="radio" name="conversion_mode" value="temp" />
+                        临时 wav 文件</label>
+                      <label class="toggle-row"><input id="keep_temp" type="checkbox" /> 保留临时文件</label>
+                      <label class="toggle-row"><input id="file_use_official_whisper" type="checkbox" /> 文件转写使用后端原生
+                        transcribe</label>
+                    </div>
+                  </div>
+
+                  <div class="record-grid">
+                    <div class="record-device-card">
+                      <div class="record-device-head">
+                        <div>
+                          <h3>麦克风</h3>
+                          <p>优先用于本地讲话采集，适合较低延迟与更灵敏的断句。</p>
+                        </div>
+                      </div>
+                      <div class="form-grid record-subgrid">
+                        <label><span>采样率</span><input id="sample_rate_mic" type="number" min="4000" max="384000"
+                            step="1" /></label>
+                        <label><span>块大小</span><input id="chunk_size_mic" type="number" min="320" max="1280"
+                            step="1" /></label>
+                        <label><span>声道</span><input id="channels_mic" type="text" placeholder="单声道" /></label>
+                        <label><span>最小输入时长</span><input id="min_input_length_mic" type="number" min="0.1" max="10"
+                            step="0.1" /></label>
+                        <label><span>最大缓冲</span><input id="max_buffer_mic" type="number" min="1" max="30"
+                            step="1" /></label>
+                        <label><span>最大句子数</span><input id="max_sentences_mic" type="number" min="1" max="100"
+                            step="1" /></label>
+                      </div>
+                      <div class="record-device-toggle-grid">
+                        <label class="toggle-row"><input id="auto_sample_rate_mic" type="checkbox" /> 自动采样率</label>
+                        <label class="toggle-row"><input id="auto_channels_mic" type="checkbox" /> 自动声道</label>
+                        <label class="toggle-row"><input id="mic_no_limit" type="checkbox" /> 不限长度</label>
+                        <label class="toggle-row"><input id="threshold_enable_mic" type="checkbox" /> 启用阈值</label>
+                        <label class="toggle-row"><input id="threshold_auto_mic" type="checkbox" /> 自动阈值</label>
+                        <label class="toggle-row"><input id="threshold_auto_silero_mic" type="checkbox" /> 使用 Silero</label>
+                        <label class="toggle-row"><input id="auto_break_buffer_mic" type="checkbox" /> 静音断句</label>
+                      </div>
+                      <div class="form-grid record-subgrid">
+                        <label><span>自动级别</span><input id="threshold_auto_level_mic" type="number" min="1" max="3"
+                            step="1" /></label>
+                        <label><span>Silero 最小值</span><input id="threshold_silero_mic_min" type="number" min="0.1" max="1"
+                            step="0.05" /></label>
+                        <label class="field-span-2"><span>阈值 dB</span><input id="threshold_db_mic" type="range" min="-60" max="0"
+                            step="0.5" /><span class="range-value" id="threshold_db_mic_value">-30.0 dB</span></label>
+                      </div>
+                    </div>
+
+                    <div class="record-device-card">
+                      <div class="record-device-head">
+                        <div>
+                          <h3>扬声器</h3>
+                          <p>用于系统声音回采，建议保持更保守的阈值与更稳定的缓冲区。</p>
+                        </div>
+                      </div>
+                      <div class="form-grid record-subgrid">
+                        <label><span>采样率</span><input id="sample_rate_speaker" type="number" min="4000" max="384000"
+                            step="1" /></label>
+                        <label><span>块大小</span><input id="chunk_size_speaker" type="number" min="320" max="1280"
+                            step="1" /></label>
+                        <label><span>声道</span><input id="channels_speaker" type="text" placeholder="立体声" /></label>
+                        <label><span>最小输入时长</span><input id="min_input_length_speaker" type="number" min="0.1" max="10"
+                            step="0.1" /></label>
+                        <label><span>最大缓冲</span><input id="max_buffer_speaker" type="number" min="1" max="30"
+                            step="1" /></label>
+                        <label><span>最大句子数</span><input id="max_sentences_speaker" type="number" min="1" max="100"
+                            step="1" /></label>
+                      </div>
+                      <div class="record-device-toggle-grid">
+                        <label class="toggle-row"><input id="auto_sample_rate_speaker" type="checkbox" /> 自动采样率</label>
+                        <label class="toggle-row"><input id="auto_channels_speaker" type="checkbox" /> 自动声道</label>
+                        <label class="toggle-row"><input id="speaker_no_limit" type="checkbox" /> 不限长度</label>
+                        <label class="toggle-row"><input id="threshold_enable_speaker" type="checkbox" /> 启用阈值</label>
+                        <label class="toggle-row"><input id="threshold_auto_speaker" type="checkbox" /> 自动阈值</label>
+                        <label class="toggle-row"><input id="threshold_auto_silero_speaker" type="checkbox" /> 使用
+                          Silero</label>
+                        <label class="toggle-row"><input id="auto_break_buffer_speaker" type="checkbox" /> 静音断句</label>
+                      </div>
+                      <div class="form-grid record-subgrid">
+                        <label><span>自动级别</span><input id="threshold_auto_level_speaker" type="number" min="1" max="3"
+                            step="1" /></label>
+                        <label><span>Silero 最小值</span><input id="threshold_silero_speaker_min" type="number" min="0.1"
+                            max="1" step="0.05" /></label>
+                        <label class="field-span-2"><span>阈值 dB</span><input id="threshold_db_speaker" type="range" min="-60" max="0"
+                            step="0.5" /><span class="range-value" id="threshold_db_speaker_value">-30.0 dB</span></label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <aside class="recording-settings-rail">
+                  <div class="recording-rail-head">
+                    <span class="settings-section-title">录制摘要</span>
+                    <p>这里汇总当前输入模式、转换策略和调参建议，方便快速确认是否在正确的采集路径上。</p>
+                  </div>
+                  <div class="recording-rail-summary">
+                    <div class="settings-section-card recording-summary-card">
+                      <div class="settings-section-title">当前采集</div>
+                      <div class="status-row compact-status-row">
+                        <span class="pill pill-muted" id="record-input-pill">输入</span>
+                        <span class="pill pill-muted" id="record-mode-pill">模式</span>
+                      </div>
+                    </div>
+                    <div class="recording-guide-list" aria-label="录制调参指引">
+                      <div class="recording-guide-item"><strong>1</strong><span>先确认当前输入源，再调整阈值和缓冲，不要反过来调。</span></div>
+                      <div class="recording-guide-item"><strong>2</strong><span>麦克风优先压低延迟，扬声器优先保证稳定性。</span></div>
+                      <div class="recording-guide-item"><strong>3</strong><span>只有在需要兼容特定后端时才切到临时 wav 模式。</span></div>
+                    </div>
+                  </div>
+                </aside>
+              </div>
+            </div>
+          </details>
+
+          <details class="advanced-panel">
+            <summary>幻觉过滤 (Hallucination Filter)</summary>
+            <div class="advanced-panel-body">
+              <div class="filter-workbench-grid">
+                <section class="settings-section-card filter-workbench-card">
+                  <div class="filter-workbench-head">
+                    <div>
+                      <div class="section-inline-head">
+                        <h3 class="section-inline-title">实时转写过滤 (Record)</h3>
+                        <button class="btn-icon btn-icon-blue btn-icon-sm" data-action="open-filter-rec" data-tooltip="打开实时配置词典" title="打开实时配置词典"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                        <button class="btn-icon btn-icon-sm" data-action="save-settings" data-tooltip="保存录音配置" title="保存录音配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+                      </div>
+                      <p class="section-inline-meta">过滤 Whisper 在录音静音期间生成的幻觉文本。</p>
+                    </div>
+                  </div>
+                  <div class="form-grid">
+                    <label class="field-span-2">
+                      <span>实时转写词典路径</span>
+                      <input id="path_filter_rec" type="text" placeholder="auto" />
+                    </label>
+                    <label class="toggle-row"><input id="filter_rec" type="checkbox" /> 启用实时转写过滤</label>
+                    <label class="toggle-row"><input id="filter_rec_case_sensitive" type="checkbox" /> 区分大小写</label>
+                    <label class="toggle-row"><input id="filter_rec_strip" type="checkbox" /> 去除首尾空格</label>
+                    <label class="toggle-row"><input id="filter_rec_exact_match" type="checkbox" /> 精准匹配 (Exact Match)</label>
+                  </div>
+                  <div class="form-grid">
+                    <label>
+                      <span>忽略标点符号</span>
+                      <input id="filter_rec_ignore_punctuations" type="text" placeholder=".,?!" />
+                    </label>
+                    <label>
+                      <span>模糊匹配相似度阈值</span>
+                      <input id="filter_rec_similarity" type="number" min="0.1" max="1.0" step="0.01" />
+                    </label>
+                  </div>
+                </section>
+
+                <section class="settings-section-card filter-workbench-card">
+                  <div class="filter-workbench-head">
+                    <div>
+                      <div class="section-inline-head">
+                        <h3 class="section-inline-title">文件导入过滤 (File Import)</h3>
+                        <button class="btn-icon btn-icon-blue btn-icon-sm" data-action="open-filter-file" data-tooltip="打开文件导入配置词典" title="打开文件导入配置词典"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                        <button class="btn-icon btn-icon-sm" data-action="save-import-settings" data-tooltip="保存导入配置" title="保存导入配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+                      </div>
+                      <p class="section-inline-meta">过滤文件导入解析期间的幻觉文本。</p>
+                    </div>
+                  </div>
+                  <div class="form-grid">
+                    <label class="field-span-2">
+                      <span>文件导入词典路径</span>
+                      <input id="path_filter_file_import" type="text" placeholder="auto" />
+                    </label>
+                    <label class="toggle-row"><input id="filter_file_import" type="checkbox" /> 启用文件导入过滤</label>
+                    <label class="toggle-row"><input id="filter_file_import_case_sensitive" type="checkbox" /> 区分大小写</label>
+                    <label class="toggle-row"><input id="filter_file_import_strip" type="checkbox" /> 去除首尾空格</label>
+                    <label class="toggle-row"><input id="filter_file_import_exact_match" type="checkbox" /> 精准匹配 (Exact
+                      Match)</label>
+                  </div>
+                  <div class="form-grid">
+                    <label>
+                      <span>忽略标点符号</span>
+                      <input id="filter_file_import_ignore_punctuations" type="text" placeholder=".,?!" />
+                    </label>
+                    <label>
+                      <span>模糊匹配相似度阈值</span>
+                      <input id="filter_file_import_similarity" type="number" min="0.1" max="1.0" step="0.01" />
+                    </label>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </details>
+
+          <details class="advanced-panel">
+            <summary>引导词</summary>
+            <div class="floating-action-row">
+              <button class="btn-icon btn-icon-blue" id="add_custom_initial_prompt" data-tooltip="新增自定义语言引导词" title="新增自定义语言引导词"><span
+                  class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+              <button class="btn-icon" id="reset_initial_prompts" data-tooltip="清空当前可见引导词内容" title="清空当前可见引导词内容"><span
+                  class="btn-glyph glyph-trash" aria-hidden="true"></span></button>
+              <button class="btn-icon" id="clear_initial_prompts" data-tooltip="清空并移除自定义语言行" title="清空并移除自定义语言行"><span
+                  class="btn-glyph glyph-trash" aria-hidden="true"></span></button>
+              <button class="btn-icon" data-action="save-initial-prompts" data-tooltip="保存引导词" title="保存引导词"><span
+                  class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+            </div>
+            <div class="advanced-panel-body">
+              <div class="prompt-workbench">
+                <aside class="prompt-workbench-intro settings-section-card">
+                  <div class="settings-section-title">引导词策略</div>
+                  <label class="toggle-row"><input id="enable_initial_prompt" type="checkbox" /> 使用引导词（全局）</label>
+                  <p class="prompt-workbench-meta">默认展示常用语言；新增自定义语言代码后会一起保存。留空表示回退到内置默认引导词。</p>
+                  <div class="recording-guide-list" aria-label="引导词使用说明">
+                    <div class="recording-guide-item"><strong>1</strong><span>常用语言直接编辑即可，适合固定工作流。</span></div>
+                    <div class="recording-guide-item"><strong>2</strong><span>自定义语言代码可用于小语种或地区变体。</span></div>
+                    <div class="recording-guide-item"><strong>3</strong><span>若启用历史上下文，会与当前语言引导词共同生效。</span></div>
+                  </div>
+                </aside>
+                <div class="prompt-workbench-main">
+                  <div class="section-head">
+                    <div>
+                      <h3>按语言引导词</h3>
+                    </div>
+                  </div>
+                  <div class="form-grid form-grid-loose" id="initial_prompts_container">
+                    <!-- per-language inputs generated by JS -->
+                  </div>
+                </div>
+              </div>
+            </div>
+          </details>
+
+        </section>
+      </div>
+    </div>
+
+    <section class="global-statusbar" id="global-statusbar" role="status" aria-live="polite">
+      <div class="statusbar-group statusbar-left">
+        <span class="statusbar-label">模型状态</span>
+        <span class="statusbar-value" id="global-model-state">未加载</span>
+        <span class="statusbar-meta" id="global-model-meta">等待同步</span>
+      </div>
+      <div class="statusbar-group statusbar-right">
+        <span class="statusbar-label">任务状态</span>
+        <span class="statusbar-value" id="global-task-state">空闲</span>
+        <span class="statusbar-meta" id="global-task-message">等待任务</span>
+      </div>
+      <div class="statusbar-progress-wrap" id="global-task-progress-wrap" aria-label="任务进度">
+        <span class="statusbar-progress-text" id="global-task-progress-text">0%</span>
+        <div class="statusbar-progress-track" aria-hidden="true">
+          <div class="statusbar-progress-fill" id="global-task-progress-fill"></div>
+        </div>
+      </div>
+    </section>
+    <div class="page-scroll-indicator" id="page-scroll-indicator" aria-hidden="true">
+      <div class="page-scroll-thumb" id="page-scroll-thumb"></div>
+    </div>
+  </main>
+
+  <script src="app.js?v=20260617-ui-cn-8"></script>
+</body>
+
+</html>
