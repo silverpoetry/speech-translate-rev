@@ -5803,6 +5803,15 @@ button.btn-icon:hover {
   border-radius: 16px;
 }
 
+.file-queue-box,
+.file-ops-card,
+.model-selection-main-card,
+.model-selection-side-card,
+.model-selection-status-rail,
+.settings-workbench-board .settings-workbench-card {
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+}
+
 .file-queue-title,
 .model-selection-kicker,
 .file-ops-kicker {
