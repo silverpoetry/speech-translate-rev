@@ -18,21 +18,17 @@ class FakeWindow:
         self.native = types.SimpleNamespace(
             ShowInTaskbar=True,
             TopMost=False,
-            Activate=lambda: self.calls.append("activate"),
             Handle=types.SimpleNamespace(ToInt32=lambda: 10),
         )
 
     def move(self, x: int, y: int):
         self.calls.append(("move", x, y))
 
+    def bring_to_front(self):
+        self.calls.append("front")
+
     def restore(self):
         self.calls.append("restore")
-
-    def show(self):
-        self.calls.append("show")
-
-    def hide(self):
-        self.calls.append("hide")
 
     def destroy(self):
         self.calls.append("destroy")
@@ -112,7 +108,7 @@ class AppTrayTests(unittest.TestCase):
         self.assertEqual(bridge.directory_calls, ["log"])
         self.assertEqual(hide_calls, ["hide", "hide", "hide", "hide"])
 
-    def test_ensure_panel_creates_webview_window_lazily(self) -> None:
+    def test_create_panel_window_creates_webview_window_lazily(self) -> None:
         fake_panel = FakeWindow()
         fake_webview = FakeWebviewModule(fake_panel)
         tray = TrayInitGuard(FakeBridge())
@@ -125,7 +121,7 @@ class AppTrayTests(unittest.TestCase):
         load_webview_runtime_original = app_tray_module.load_webview_runtime
         app_tray_module.load_webview_runtime = lambda: fake_webview
         try:
-            panel = tray._ensure_panel()
+            panel = tray._create_panel_window()
         finally:
             app_tray_module.load_webview_runtime = load_webview_runtime_original
             if original is not None:
@@ -136,10 +132,42 @@ class AppTrayTests(unittest.TestCase):
         _args, kwargs = fake_webview.calls[0]
         self.assertEqual(kwargs["width"], tray.PANEL_WIDTH)
         self.assertEqual(kwargs["height"], tray.PANEL_HEIGHT)
-        self.assertTrue(kwargs["hidden"])
         self.assertEqual(fake_panel.calls, ["native-settings"])
 
-    def test_open_panel_moves_and_shows_window(self) -> None:
+    def test_open_panel_creates_panel_when_missing(self) -> None:
+        fake_panel = FakeWindow()
+        fake_webview = FakeWebviewModule(fake_panel)
+        tray = TrayInitGuard(FakeBridge())
+        tray._cursor_position = lambda: (1200, 820)
+
+        original = sys.modules.get("speech_translate.webview_runtime")
+        import speech_translate.app_tray as app_tray_module
+
+        original_get = ctypes.windll.user32.GetWindowLongW if hasattr(ctypes.windll.user32, "GetWindowLongW") else None
+        original_set = ctypes.windll.user32.SetWindowLongW if hasattr(ctypes.windll.user32, "SetWindowLongW") else None
+        original_pos = ctypes.windll.user32.SetWindowPos if hasattr(ctypes.windll.user32, "SetWindowPos") else None
+        ctypes.windll.user32.GetWindowLongW = lambda *_args: 0
+        ctypes.windll.user32.SetWindowLongW = lambda *_args: 0
+        ctypes.windll.user32.SetWindowPos = lambda *_args: 0
+        load_webview_runtime_original = app_tray_module.load_webview_runtime
+        app_tray_module.load_webview_runtime = lambda: fake_webview
+        try:
+            tray.open_panel()
+        finally:
+            app_tray_module.load_webview_runtime = load_webview_runtime_original
+            if original is not None:
+                sys.modules["speech_translate.webview_runtime"] = original
+            if original_get is not None:
+                ctypes.windll.user32.GetWindowLongW = original_get
+            if original_set is not None:
+                ctypes.windll.user32.SetWindowLongW = original_set
+            if original_pos is not None:
+                ctypes.windll.user32.SetWindowPos = original_pos
+
+        self.assertIs(tray.panel_window, fake_panel)
+        self.assertIn("front", fake_panel.calls)
+
+    def test_open_panel_repositions_existing_window(self) -> None:
         fake_panel = FakeWindow()
         tray = TrayInitGuard(FakeBridge())
         tray.panel_window = fake_panel
@@ -161,9 +189,7 @@ class AppTrayTests(unittest.TestCase):
             if original_pos is not None:
                 ctypes.windll.user32.SetWindowPos = original_pos
 
-        self.assertIn("restore", fake_panel.calls)
-        self.assertIn("show", fake_panel.calls)
-        self.assertIn("activate", fake_panel.calls)
+        self.assertIn("front", fake_panel.calls)
         self.assertTrue(any(isinstance(call, tuple) and call[0] == "move" for call in fake_panel.calls))
 
     def test_show_app_restores_and_shows_main_window(self) -> None:
@@ -174,6 +200,15 @@ class AppTrayTests(unittest.TestCase):
         tray.show_app()
 
         self.assertEqual(bridge.window.calls, ["restore", "show", "front"])
+
+    def test_hide_panel_destroys_existing_panel(self) -> None:
+        fake_panel = FakeWindow()
+        tray = TrayInitGuard(FakeBridge())
+        tray.panel_window = fake_panel
+
+        tray.hide_panel()
+
+        self.assertIn("destroy", fake_panel.calls)
 
     def test_install_pointer_actions_replaces_win32_notify_handler(self) -> None:
         tray = AppTray.__new__(AppTray)
