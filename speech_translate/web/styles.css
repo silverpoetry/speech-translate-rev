@@ -5659,7 +5659,7 @@ button.btn-icon:hover {
 }
 
 .file-workbench-shell {
-  grid-template-columns: minmax(0, 1.56fr) minmax(320px, 1.06fr);
+  grid-template-columns: minmax(0, 1.5fr) minmax(336px, 1.1fr);
   gap: 14px;
 }
 
@@ -5668,15 +5668,15 @@ button.btn-icon:hover {
 }
 
 .file-ops-card {
-  padding: 11px 11px 10px;
+  padding: 12px 12px 11px;
   gap: 7px;
   border-radius: 16px;
 }
 
 .file-ops-summary .status-overview-card,
 .file-ops-summary-secondary .status-overview-card {
-  min-height: 54px;
-  padding: 7px 8px;
+  min-height: 50px;
+  padding: 8px 9px;
 }
 
 .file-ops-summary .status-overview-meta,
@@ -5690,11 +5690,11 @@ button.btn-icon:hover {
 }
 
 .file-ops-actions .btn-with-icon {
-  justify-content: center;
-  min-height: 29px;
-  padding-inline: 10px;
+  justify-content: flex-start;
+  min-height: 30px;
+  padding-inline: 12px;
   font-size: var(--ui-text-xs);
-  border-radius: 999px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.98);
 }
 
@@ -5726,6 +5726,7 @@ button.btn-icon:hover {
 
 .file-ops-step span {
   font-size: var(--ui-text-xs);
+  line-height: 1.38;
 }
 
 .file-queue-box {
