@@ -5623,15 +5623,15 @@ button.btn-icon:hover {
 }
 
 .file-ops-card {
-  padding: 12px 12px 11px;
-  gap: 8px;
+  padding: 11px 11px 10px;
+  gap: 7px;
   border-radius: 16px;
 }
 
 .file-ops-summary .status-overview-card,
 .file-ops-summary-secondary .status-overview-card {
-  min-height: 58px;
-  padding: 8px 9px;
+  min-height: 54px;
+  padding: 7px 8px;
 }
 
 .file-ops-summary .status-overview-meta,
@@ -5640,8 +5640,8 @@ button.btn-icon:hover {
 }
 
 .file-ops-actions {
-  gap: 4px;
-  padding: 4px;
+  gap: 3px;
+  padding: 3px;
 }
 
 .file-ops-actions .btn-with-icon {
@@ -5669,8 +5669,12 @@ button.btn-icon:hover {
 }
 
 .file-ops-steps {
-  grid-template-columns: 1fr;
-  gap: 5px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.file-ops-steps > .file-ops-step:last-child {
+  grid-column: 1 / -1;
 }
 
 .file-ops-step span {
