@@ -61,10 +61,7 @@ class AppStartupController:
         return str(Path(__file__).with_name("web") / "index.html")
 
     def prepare_main_window_size(self) -> str:
-        raw_main_size = str(self.settings.cache.get("mw_size", "980x620") or "980x620").strip()
-        if raw_main_size == "1140x680":
-            self.settings.save_key("mw_size", "980x620")
-            raw_main_size = "980x620"
+        raw_main_size = str(self.settings.cache.get("mw_size", "1140x680") or "1140x680").strip()
         return raw_main_size
 
     def _create_startup_context(self) -> StartupContext:
@@ -104,7 +101,7 @@ class AppStartupController:
         return bridge
 
     def _create_main_window(self, *, webview, bridge: StartupBridge, raw_main_size: str):
-        main_placement = resolve_window_placement(raw_main_size, 980, 620)
+        main_placement = resolve_window_placement(raw_main_size, 1140, 680)
         bridge.log_startup_marker("before_create_main_window")
         window = webview.create_window(
             APP_NAME,
@@ -114,7 +111,7 @@ class AppStartupController:
             height=main_placement.height,
             x=main_placement.x,
             y=main_placement.y,
-            min_size=(880, 560),
+            min_size=(1040, 620),
             hidden=True,
         )
         bridge.log_startup_marker("after_create_main_window")

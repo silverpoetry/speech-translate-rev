@@ -612,7 +612,7 @@ function renderSettings(data) {
   if (els.exportTsv) els.exportTsv.checked = exportTo.includes('tsv');
   if (els.exportMp4) els.exportMp4.checked = exportTo.includes('mp4');
   if (els.mainWindowSize) {
-    els.mainWindowSize.value = String(settings.mw_size ?? '980x620');
+    els.mainWindowSize.value = String(settings.mw_size ?? '1140x680');
   }
   if (els.seleniumCompactLevel) {
     els.seleniumCompactLevel.value = String(settings.selenium_compact_level ?? 2);
@@ -666,7 +666,7 @@ function renderSettings(data) {
     els.segmentMaxChars.value = String(settings.segment_max_chars ?? '');
   }
   if (els.segmentSplitOrNewline) {
-    els.segmentSplitOrNewline.value = String(settings.segment_split_or_newline ?? 'Split');
+    els.segmentSplitOrNewline.value = String(settings.segment_split_or_newline ?? 'split');
   }
   if (els.segmentEvenSplit) {
     els.segmentEvenSplit.checked = Boolean(settings.segment_even_split ?? true);
@@ -1078,7 +1078,7 @@ function renderImportSettings(data) {
     );
   }
   if (els.fileImportSliceMeta) {
-    const splitMode = String(settings.segment_split_or_newline || 'Split');
+    const splitMode = String(settings.segment_split_or_newline || 'split');
     const limits = [];
     if (String(settings.segment_max_words ?? '').trim()) {
       limits.push(`${settings.segment_max_words}词`);
@@ -1436,6 +1436,8 @@ function renderSettingsToolbarOverview(data) {
   syncToolbarMirrorValue(els.exportFormatToolbar, els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}');
   syncToolbarMirrorChecked(els.autoOpenDirExportToolbar, els.autoOpenDirExport, true);
   syncToolbarMirrorValue(els.segmentMaxWordsToolbar, els.segmentMaxWords, '');
+  syncToolbarMirrorValue(els.segmentMaxCharsToolbar, els.segmentMaxChars, '');
+  syncToolbarMirrorValue(els.segmentSplitOrNewlineToolbar, els.segmentSplitOrNewline, 'Split');
   syncToolbarMirrorChecked(els.exportTxtToolbar, els.exportTxt, true);
   syncToolbarMirrorChecked(els.exportSrtToolbar, els.exportSrt, true);
   syncToolbarMirrorChecked(els.exportVttToolbar, els.exportVtt, true);
@@ -1464,6 +1466,10 @@ function renderSettingsToolbarOverview(data) {
   syncToolbarMirrorChecked(els.supressRecordWarningToolbar, els.supressRecordWarning, false);
   syncToolbarMirrorChecked(els.debugRealtimeRecordToolbar, els.debugRealtimeRecord, false);
   syncToolbarMirrorChecked(els.debugTranslateToolbar, els.debugTranslate, false);
+  syncToolbarMirrorChecked(els.segmentEvenSplitToolbar, els.segmentEvenSplit, true);
+  syncToolbarMirrorChecked(els.segmentLevelToolbar, els.segmentLevel, true);
+  syncToolbarMirrorChecked(els.wordLevelToolbar, els.wordLevel, true);
+  syncToolbarMirrorValue(els.modelDevicePreferenceToolbar, els.modelDevicePreference, 'auto');
   if (els.hostAPIToolbar && els.hostAPI) {
     populateSelect(
       els.hostAPIToolbar,
@@ -1890,6 +1896,7 @@ function renderRecordingVisualizer(recordingState, recordUi = null) {
   if (els.recordVisualizerFill) {
     els.recordVisualizerFill.style.width = `${Math.round(normalizedLevel * 100)}%`;
   }
+  visualizerCard.style.setProperty('--record-level', `${Math.round(normalizedLevel * 100)}%`);
   if (els.recordVisualizerThreshold) {
     els.recordVisualizerThreshold.style.left = `${Math.round(normalizedThreshold * 100)}%`;
   }
@@ -2479,6 +2486,8 @@ async function saveSettings(shouldRefresh = true) {
   syncToolbarMirrorValue(els.libreApiKey, els.libreApiKeyToolbar, '');
   syncToolbarMirrorValue(els.exportFormat, els.exportFormatToolbar, '%Y-%m-%d %f {file}/{task-lang}');
   syncToolbarMirrorValue(els.segmentMaxWords, els.segmentMaxWordsToolbar, '');
+  syncToolbarMirrorValue(els.segmentMaxChars, els.segmentMaxCharsToolbar, '');
+  syncToolbarMirrorValue(els.segmentSplitOrNewline, els.segmentSplitOrNewlineToolbar, 'Split');
   syncToolbarMirrorValue(els.transcribeRate, els.transcribeRateToolbar, '300');
   syncToolbarMirrorValue(els.decodingPreset, els.decodingPresetToolbar, 'beam search');
   syncToolbarMirrorValue(els.temperature, els.temperatureToolbar, '0.0, 0.2, 0.4, 0.6, 0.8, 1.0');
@@ -2511,6 +2520,10 @@ async function saveSettings(shouldRefresh = true) {
   syncToolbarMirrorChecked(els.supressRecordWarning, els.supressRecordWarningToolbar, false);
   syncToolbarMirrorChecked(els.debugRealtimeRecord, els.debugRealtimeRecordToolbar, false);
   syncToolbarMirrorChecked(els.debugTranslate, els.debugTranslateToolbar, false);
+  syncToolbarMirrorChecked(els.segmentEvenSplit, els.segmentEvenSplitToolbar, true);
+  syncToolbarMirrorChecked(els.segmentLevel, els.segmentLevelToolbar, true);
+  syncToolbarMirrorChecked(els.wordLevel, els.wordLevelToolbar, true);
+  syncToolbarMirrorValue(els.modelDevicePreference, els.modelDevicePreferenceToolbar, 'auto');
   if (els.hostAPI && els.hostAPIToolbar) {
     els.hostAPI.value = els.hostAPIToolbar.value;
   }
@@ -2529,7 +2542,7 @@ async function saveSettings(shouldRefresh = true) {
     ['dir_export', els.dirExport ? valueOf(els.dirExport, 'auto') : currentSetting('dir_export', 'auto')],
     ['dir_log', valueOf(els.dirLog, currentSetting('dir_log', 'auto'))],
     ['log_level', valueOf(els.logLevel, currentSetting('log_level', 'DEBUG'))],
-    ['mw_size', valueOf(els.mainWindowSize, currentSetting('mw_size', '980x620'))],
+    ['mw_size', valueOf(els.mainWindowSize, currentSetting('mw_size', '1140x680'))],
     ['export_to', exportTo],
     ['input', valueOf(els.inputMode, 'mic')],
     ['use_faster_whisper', valueOf(els.backendMain, currentSetting('use_faster_whisper', true) ? 'faster-whisper' : 'whisper') === 'faster-whisper'],
@@ -2559,7 +2572,7 @@ async function saveSettings(shouldRefresh = true) {
     ['remove_repetition_amount', numberOf(els.removeRepetitionAmount, 1)],
     ['segment_max_words', valueOf(els.segmentMaxWords, '')],
     ['segment_max_chars', valueOf(els.segmentMaxChars, '')],
-    ['segment_split_or_newline', valueOf(els.segmentSplitOrNewline, 'Split')],
+    ['segment_split_or_newline', valueOf(els.segmentSplitOrNewline, 'split')],
     ['segment_even_split', checkedOf(els.segmentEvenSplit, true)],
     ['segment_level', checkedOf(els.segmentLevel, true)],
     ['word_level', checkedOf(els.wordLevel, true)],
@@ -3782,6 +3795,8 @@ function bindEvents() {
     bindToolbarMirror(els.libreApiKeyToolbar, els.libreApiKey, 'value');
     bindToolbarMirror(els.exportFormatToolbar, els.exportFormat, 'value');
     bindToolbarMirror(els.segmentMaxWordsToolbar, els.segmentMaxWords, 'value');
+    bindToolbarMirror(els.segmentMaxCharsToolbar, els.segmentMaxChars, 'value');
+    bindToolbarMirror(els.segmentSplitOrNewlineToolbar, els.segmentSplitOrNewline, 'value');
     bindToolbarMirror(els.transcribeRateToolbar, els.transcribeRate, 'value');
     bindToolbarMirror(els.decodingPresetToolbar, els.decodingPreset, 'value');
     bindToolbarMirror(els.temperatureToolbar, els.temperature, 'value');
@@ -3814,7 +3829,11 @@ function bindEvents() {
     bindToolbarMirror(els.supressRecordWarningToolbar, els.supressRecordWarning, 'checked');
     bindToolbarMirror(els.debugRealtimeRecordToolbar, els.debugRealtimeRecord, 'checked');
     bindToolbarMirror(els.debugTranslateToolbar, els.debugTranslate, 'checked');
+    bindToolbarMirror(els.segmentEvenSplitToolbar, els.segmentEvenSplit, 'checked');
+    bindToolbarMirror(els.segmentLevelToolbar, els.segmentLevel, 'checked');
+    bindToolbarMirror(els.wordLevelToolbar, els.wordLevel, 'checked');
     bindToolbarMirror(els.hostAPIToolbar, els.hostAPI, 'value');
+    bindToolbarMirror(els.modelDevicePreferenceToolbar, els.modelDevicePreference, 'value');
     if (els.hostAPIToolbar) {
       els.hostAPIToolbar.addEventListener('change', async () => {
         if (els.hostAPI) {
@@ -3922,10 +3941,15 @@ async function init() {
     els.segmentMaxWords = $('segment_max_words');
     els.segmentMaxWordsToolbar = $('segment_max_words_toolbar');
     els.segmentMaxChars = $('segment_max_chars');
+    els.segmentMaxCharsToolbar = $('segment_max_chars_toolbar');
     els.segmentSplitOrNewline = $('segment_split_or_newline');
+    els.segmentSplitOrNewlineToolbar = $('segment_split_or_newline_toolbar');
     els.segmentEvenSplit = $('segment_even_split');
+    els.segmentEvenSplitToolbar = $('segment_even_split_toolbar');
     els.segmentLevel = $('segment_level');
+    els.segmentLevelToolbar = $('segment_level_toolbar');
     els.wordLevel = $('word_level');
+    els.wordLevelToolbar = $('word_level_toolbar');
     els.useEnModel = $('use_en_model');
     els.useEnModelToolbar = $('use_en_model_toolbar');
     els.decodingPreset = $('decoding_preset');
@@ -4034,6 +4058,7 @@ async function init() {
     els.speaker = $('speaker');
     els.verboseRecord = $('verbose_record');
     els.modelDevicePreference = $('model_device_preference');
+    els.modelDevicePreferenceToolbar = $('model_device_preference_toolbar');
     els.transcribeRate = $('transcribe_rate');
     els.transcribeRateToolbar = $('transcribe_rate_toolbar');
     els.separateWith = $('separate_with');

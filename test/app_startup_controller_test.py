@@ -81,7 +81,7 @@ class AppStartupControllerTests(unittest.TestCase):
         self.ffmpeg_calls = []
         self.log_levels = []
         self.bridge_binding = FakeBridgeBinding()
-        self.settings = FakeSettings({"log_level": "INFO", "mw_size": "980x620"})
+        self.settings = FakeSettings({"log_level": "INFO", "mw_size": "1140x680"})
         self.controller = AppStartupController(
             bridge_factory=lambda: self.bridge,
             ffmpeg_path_adder=lambda weak=False: self.ffmpeg_calls.append(weak) or True,
@@ -91,13 +91,13 @@ class AppStartupControllerTests(unittest.TestCase):
             settings=self.settings,
         )
 
-    def test_prepare_main_window_size_migrates_legacy_default(self) -> None:
+    def test_prepare_main_window_size_keeps_configured_size(self) -> None:
         self.settings.cache["mw_size"] = "1140x680"
 
         result = self.controller.prepare_main_window_size()
 
-        self.assertEqual(result, "980x620")
-        self.assertEqual(self.settings.saved, [("mw_size", "980x620")])
+        self.assertEqual(result, "1140x680")
+        self.assertEqual(self.settings.saved, [])
 
     def test_start_bootstraps_bridge_and_window(self) -> None:
         fake_tray_calls = []

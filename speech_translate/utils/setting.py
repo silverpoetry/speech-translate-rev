@@ -24,7 +24,6 @@ except ModuleNotFoundError:  # pragma: no cover - optional runtime dependency fa
 
 default_setting: SettingDict = {
     "version": __setting_version__,
-    "checkUpdateOnStart": True,
     "first_open": True,
     # ------------------ #
     # App settings
@@ -36,51 +35,37 @@ default_setting: SettingDict = {
     "translate_f_import": True,
     "model_mw": "⛵ Small [2GB VRAM] (Moderate)",
     "model_f_import": "⛵ Small [2GB VRAM] (Moderate)",
-    "model_f_alignment": "⛵ Small [2GB VRAM] (Moderate)",
-    "model_f_refinement": "⛵ Small [2GB VRAM] (Moderate)",
     "source_lang_mw": "English",
     "target_lang_mw": "Indonesian",
     "source_lang_f_import": "English",
     "target_lang_f_import": "Indonesian",
-    "target_lang_f_result": "Indonesian",
     "tl_engine_mw": "Google Translate",
     "tl_engine_f_import": "Google Translate",
-    "tl_engine_f_result": "Google Translate",
     "mic": "",
     "speaker": "",
     "hostAPI": "",
     "verbose_record": False,
     "separate_with": "\\n",
-    "show_audio_visualizer_in_record": True,
-    "show_audio_visualizer_in_setting": True,
     "supress_hidden_to_tray": False,
-    "supress_device_warning": False,
     "supress_record_warning": False,
-    "bypass_no_internet": False,
-    "mw_size": "980x620",
-    "mw_position": "120,80",
-    "sw_size": "1100x630",
+    "mw_size": "1140x680",
     "dir_log": "auto",
     "dir_model": "auto",
-    "auto_verify_model_on_first_setting_open": False,
     "file_slice_start": "",  # empty will be read as None
     "file_slice_end": "",  # empty will be read as None
     # ------------------ #
     # logging
-    "keep_log": False,
     "log_level": "DEBUG",  # INFO DEBUG WARNING ERROR
     "auto_scroll_log": True,
     "auto_refresh_log": True,
     "debug_realtime_record": False,
     "debug_translate": False,
-    "debug_recorded_audio": False,
     # ------------------ #
     # Tl Settings
     "https_proxy": "",
     "https_proxy_enable": False,
     "http_proxy": "",
     "http_proxy_enable": False,
-    "supress_libre_api_key_warning": False,
     "libre_api_key": "",
     "libre_link": "",
     # ------------------ #
@@ -150,8 +135,6 @@ default_setting: SettingDict = {
     "filter_file_import_exact_match": True,
     "filter_file_import_similarity": 0.75,
     "remove_repetition_file_import": False,
-    "remove_repetition_result_refinement": False,
-    "remove_repetition_result_alignment": False,
     "remove_repetition_amount": 1,
     # * Independent
     # {file}
@@ -168,7 +151,6 @@ default_setting: SettingDict = {
     "segment_even_split": True,
     "segment_level": True,  # 1 of this must be true
     "word_level": True,  # 1 of this must be true
-    "visualize_suppression": False,
     "use_faster_whisper": True,
     "use_en_model": True,
     "transcribe_rate": 300,
@@ -210,6 +192,7 @@ default_setting: SettingDict = {
     "tb_mw_tc_font": "TKDefaultFont",
     "tb_mw_tc_font_bold": False,
     "tb_mw_tc_font_size": 10,
+    "tb_mw_tc_font_color": "#FFFFFF",
     "tb_mw_tc_use_conf_color": True,
     # mw tl
     "tb_mw_tl_auto_scroll": True,
@@ -220,16 +203,14 @@ default_setting: SettingDict = {
     "tb_mw_tl_font": "TKDefaultFont",
     "tb_mw_tl_font_bold": False,
     "tb_mw_tl_font_size": 10,
+    "tb_mw_tl_font_color": "#FFFFFF",
     "tb_mw_tl_use_conf_color": True,
     # Tc sub
     "ex_tc_geometry": "900x240",
-    "ex_tc_position": "100,100",
     "ex_tc_always_on_top": 1,
     "ex_tc_click_through": 0,
     "ex_tc_no_title_bar": 1,
-    "ex_tc_no_tooltip": 0,
     "ex_tc_opacity": 1.0,
-    "tb_ex_tc_auto_scroll": True,
     "tb_ex_tc_limit_max": False,
     "tb_ex_tc_limit_max_per_line": False,
     "tb_ex_tc_max": 120,
@@ -242,23 +223,60 @@ default_setting: SettingDict = {
     "tb_ex_tc_use_conf_color": True,
     # Tl sub
     "ex_tl_geometry": "900x240",
-    "ex_tl_position": "100,100",
     "ex_tl_always_on_top": 1,
     "ex_tl_click_through": 0,
     "ex_tl_no_title_bar": 1,
-    "ex_tl_no_tooltip": 0,
     "ex_tl_opacity": 1.0,
-    "tb_ex_tl_auto_scroll": True,
     "tb_ex_tl_limit_max": False,
     "tb_ex_tl_limit_max_per_line": False,
     "tb_ex_tl_max": 120,
     "tb_ex_tl_max_per_line": 30,
     "tb_ex_tl_font": "Arial",
+    "tb_ex_tl_font_bold": True,
+    "tb_ex_tl_font_size": 13,
+    "tb_ex_tl_font_color": "#FFFFFF",
+    "tb_ex_tl_bg_color": "#000000",
+    "tb_ex_tl_use_conf_color": True,
 
     # Whisper initial prompts (per-language guidance)
     "enable_initial_prompt": False,
     "initial_prompts_map": {},
 }
+
+
+def _migrate_legacy_setting_keys(data: SettingDict) -> SettingDict:
+    legacy_pairs = (
+        ("threshold_auto_mode_mic", "threshold_auto_level_mic"),
+        ("threshold_auto_mode_speaker", "threshold_auto_level_speaker"),
+    )
+    legacy_removed_keys = (
+        "auto_verify_model_on_first_setting_open",
+        "checkUpdateOnStart",
+        "ex_tc_no_tooltip",
+        "ex_tl_no_tooltip",
+        "model_f_alignment",
+        "model_f_refinement",
+        "remove_repetition_result_alignment",
+        "remove_repetition_result_refinement",
+        "show_audio_visualizer_in_record",
+        "show_audio_visualizer_in_setting",
+        "sw_size",
+        "supress_device_warning",
+        "bypass_no_internet",
+        "target_lang_f_result",
+        "theme",
+        "tl_engine_f_result",
+        "debug_recorded_audio",
+        "keep_log",
+        "supress_libre_api_key_warning",
+        "visualize_suppression",
+    )
+    for legacy_key, current_key in legacy_pairs:
+        if current_key not in data and legacy_key in data:
+            data[current_key] = data[legacy_key]
+    for legacy_key in legacy_removed_keys:
+        data.pop(legacy_key, None)
+    return data
 
 
 class SettingJson:
@@ -443,6 +461,7 @@ class SettingJson:
         success: bool = False
         msg: str = ""
         try:
+            data = _migrate_legacy_setting_keys(data)
             # check each key
             for key in default_setting:  # pylint: disable=consider-using-dict-items
                 if key not in data:

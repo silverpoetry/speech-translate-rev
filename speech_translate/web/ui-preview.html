@@ -13,7 +13,7 @@
     settings: {
       dir_export: 'auto',
       dir_log: 'auto',
-      mw_size: '1035x628',
+      mw_size: '1140x680',
       log_level: 'INFO',
       auto_scroll_log: true,
       auto_refresh_log: false,
@@ -468,7 +468,7 @@
                       <div class="form-grid form-grid-spaced model-selection-side-grid">
                         <label>
                           <span>主窗口尺寸</span>
-                          <input id="mw_size" type="text" placeholder="980x620" />
+                          <input id="mw_size" type="text" placeholder="1140x680" />
                           <small class="field-note">格式：宽x高。重启应用后按该尺寸启动。</small>
                         </label>
                         <label class="toggle-row"><input id="condition_on_previous_text" type="checkbox" />
@@ -1259,7 +1259,7 @@
                         <span>导出命名格式</span>
                         <input id="export_format_toolbar" type="text" placeholder="%Y-%m-%d %f {file}/{task-lang}" value="txt" />
                       </label>
-                      <label class="toggle-row">
+                      <label class="toggle-row field-span-2">
                         <input id="auto_open_dir_export_toolbar" type="checkbox" checked />
                         完成后打开目录
                       </label>
@@ -1312,7 +1312,7 @@
                           <option value="cuda">CUDA</option>
                         </select>
                       </label>
-                      <label class="toggle-row"><input id="segment_even_split_toolbar" type="checkbox" checked /> 平均切分</label>
+                      <label class="toggle-row field-span-2"><input id="segment_even_split_toolbar" type="checkbox" checked /> 平均切分</label>
                     </div>
                   </section>
                   <section class="settings-workbench-section">
@@ -1320,11 +1320,13 @@
                       <span class="settings-workbench-section-title">段级输出</span>
                       <span class="settings-workbench-section-meta">控制导出粒度</span>
                     </div>
-                    <div class="settings-workbench-toggle-grid">
+                    <div class="settings-workbench-toggle-grid settings-workbench-toggle-grid-single">
                       <label class="toggle-row"><input id="segment_level_toolbar" type="checkbox" checked /> 保留 Segment 级</label>
                       <label class="toggle-row"><input id="word_level_toolbar" type="checkbox" checked /> 保留 Word 级</label>
-                      <label class="toggle-row"><input id="rec_ask_confirmation_first_toolbar" type="checkbox" checked /> 录前确认</label>
-                      <label class="toggle-row"><input id="supress_hidden_to_tray_toolbar" type="checkbox" /> 托盘静默</label>
+                      <div class="detached-config-mini-grid settings-workbench-mini-grid">
+                        <label class="toggle-row"><input id="rec_ask_confirmation_first_toolbar" type="checkbox" checked /> 录前确认</label>
+                        <label class="toggle-row"><input id="supress_hidden_to_tray_toolbar" type="checkbox" /> 托盘静默</label>
+                      </div>
                     </div>
                   </section>
                 </div>
@@ -1368,7 +1370,7 @@
                       <span>温度</span>
                       <input id="temperature_toolbar" type="text" placeholder="0.0, 0.2, 0.4, 0.6, 0.8, 1.0" value="0" />
                     </label>
-                    <label class="toggle-row"><input id="use_en_model_toolbar" type="checkbox" /> 优先 .en 模型</label>
+                    <label class="toggle-row field-span-2"><input id="use_en_model_toolbar" type="checkbox" /> 优先 .en 模型</label>
                     <label class="toggle-row"><input id="fp16_toolbar" type="checkbox" checked /> 启用 FP16</label>
                   </div>
                 </section>
@@ -1412,7 +1414,7 @@
                       <span>Suppress Tokens</span>
                       <input id="suppress_tokens_toolbar" type="text" placeholder="-1 或 1,2,3" value="" />
                     </label>
-                    <label class="toggle-row"><input id="suppress_blank_toolbar" type="checkbox" checked /> 抑制空白片段</label>
+                    <label class="toggle-row field-span-2"><input id="suppress_blank_toolbar" type="checkbox" checked /> 抑制空白片段</label>
                   </div>
                 </section>
               </section>
