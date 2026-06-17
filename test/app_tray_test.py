@@ -196,6 +196,16 @@ class AppTrayTests(unittest.TestCase):
         self.assertIn("activate", fake_panel.calls)
         self.assertTrue(any(isinstance(call, tuple) and call[0] == "move" for call in fake_panel.calls))
 
+    def test_native_panel_size_uses_logical_units_on_high_dpi(self) -> None:
+        fake_panel = FakeWindow()
+        fake_panel.native.scale_factor = 2.25
+        tray = TrayInitGuard(FakeBridge())
+
+        tray._apply_panel_native_settings(fake_panel)
+
+        self.assertEqual(fake_panel.native.ClientSize.Width, tray.PANEL_WIDTH)
+        self.assertEqual(fake_panel.native.ClientSize.Height, tray.PANEL_HEIGHT)
+
     def test_show_app_restores_and_shows_main_window(self) -> None:
         bridge = FakeBridge()
         bridge.window = FakeBridgeWindow()

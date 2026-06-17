@@ -201,10 +201,10 @@ class AppTray:
         self._panel_blur_handler_bound = False
 
     def _on_panel_loaded(self) -> None:
+        self._panel_ignore_deactivate_until = time.monotonic() + 0.75
         self._apply_panel_native_settings_when_ready()
         if self.panel_window is None:
             return
-        self._panel_ignore_deactivate_until = time.monotonic() + 0.25
         try:
             self.panel_window.show()
         except Exception:
@@ -238,13 +238,13 @@ class AppTray:
             from System.Drawing.Drawing2D import GraphicsPath
 
             scale_factor = float(getattr(native, "scale_factor", 1.0) or 1.0)
-            client_width = int(round(self.PANEL_WIDTH * scale_factor))
-            client_height = int(round(self.PANEL_HEIGHT * scale_factor))
+            client_width = self.PANEL_WIDTH
+            client_height = self.PANEL_HEIGHT
             fixed_size = Size(client_width, client_height)
             native.MinimumSize = fixed_size
             native.MaximumSize = fixed_size
             native.ClientSize = fixed_size
-            radius = max(8, int(round(10 * scale_factor)))
+            radius = 10
             diameter = min(client_width, client_height, radius * 2)
             path = GraphicsPath()
             path.AddArc(0, 0, diameter, diameter, 180, 90)
@@ -255,7 +255,7 @@ class AppTray:
             native.Region = Region(path)
             logger.info(
                 f"[Tray] sync_panel_size logical={self.PANEL_WIDTH}x{self.PANEL_HEIGHT} "
-                f"raw_client={client_width}x{client_height} scale={scale_factor:.3f}"
+                f"client={client_width}x{client_height} scale={scale_factor:.3f}"
             )
         except Exception:
             logger.exception("Failed to sync tray panel client size")
