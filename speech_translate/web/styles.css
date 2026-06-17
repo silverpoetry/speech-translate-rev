@@ -750,7 +750,7 @@ body {
 #tab-file .hero-toolbar-main .btn-with-icon {
   min-height: 30px;
   padding-inline: 10px;
-  font-size: 0.74rem;
+  font-size: var(--ui-text-xs);
 }
 
 #tab-file .hero-toolbar-pills {
@@ -758,9 +758,9 @@ body {
 }
 
 #tab-file .hero-toolbar-pills .toggle-row {
-  min-height: 24px;
+  min-height: 25px;
   padding: 2px 7px;
-  font-size: 0.74rem;
+  font-size: var(--ui-text-xs);
 }
 
 #tab-file .file-import-overview-grid {
@@ -3707,7 +3707,7 @@ button.btn-icon[data-tooltip]::before {
 .detached-workbench-title {
   margin: 0;
   color: #0f172a;
-  font-size: 0.84rem;
+  font-size: var(--ui-text-md);
   font-weight: 700;
   line-height: 1.28;
 }
@@ -3715,21 +3715,21 @@ button.btn-icon[data-tooltip]::before {
 .detached-workbench-meta {
   margin: 0;
   color: #64748b;
-  font-size: 0.7rem;
+  font-size: var(--ui-text-xs);
   line-height: 1.38;
 }
 
 .detached-workbench-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
 .detached-workbench-card {
   display: grid;
-  gap: 7px;
-  padding: 11px 11px 10px;
+  gap: 6px;
+  padding: 10px 10px 9px;
   border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 12px;
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 0.96));
@@ -3746,14 +3746,14 @@ button.btn-icon[data-tooltip]::before {
 .detached-workbench-action-cluster {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px;
+  gap: 4px;
 }
 
 .detached-workbench-action-group {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 5px;
-  padding: 6px;
+  gap: 4px;
+  padding: 5px;
   border-radius: 10px;
   background: rgba(248, 250, 252, 0.92);
   border: 1px solid rgba(148, 163, 184, 0.16);
@@ -3766,8 +3766,8 @@ button.btn-icon[data-tooltip]::before {
 .detached-workbench-action-group .btn-with-icon {
   width: 100%;
   justify-content: flex-start;
-  min-height: 29px;
-  padding: 0 10px;
+  min-height: 27px;
+  padding: 0 9px;
   font-size: var(--ui-text-xs);
   border-radius: 10px;
 }
@@ -3812,18 +3812,18 @@ button.btn-icon[data-tooltip]::before {
 
 .detached-config-mini-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px 8px;
-  padding: 2px 0 0;
+  gap: 6px 7px;
+  padding: 1px 0 0;
 }
 
 .detached-config-mini-grid .toggle-row {
   min-height: 22px;
   padding: 1px 0;
-  font-size: 0.72rem;
+  font-size: var(--ui-text-xs);
 }
 
 .detached-config-mini-grid > label:not(.toggle-row) {
-  padding: 8px 9px;
+  padding: 7px 8px;
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.78);
   border: 1px solid rgba(148, 163, 184, 0.12);
@@ -3950,8 +3950,8 @@ button.btn-icon[data-tooltip]::before {
 
 #tab-file .file-export-block .realtime-config-group {
   display: grid;
-  gap: 5px;
-  padding: 8px 9px;
+  gap: 4px;
+  padding: 8px;
   border-radius: 10px;
   background: rgba(248, 250, 252, 0.9);
   border: 1px solid rgba(148, 163, 184, 0.12);
@@ -3963,15 +3963,15 @@ button.btn-icon[data-tooltip]::before {
 }
 
 #tab-file .file-export-block .realtime-config-group-title {
-  font-size: 0.74rem;
+  font-size: var(--ui-text-md);
   font-weight: 700;
   color: #0f172a;
 }
 
 #tab-file .file-export-block .realtime-config-group-meta {
   color: #64748b;
-  font-size: 0.66rem;
-  line-height: 1.26;
+  font-size: var(--ui-text-xs);
+  line-height: 1.34;
 }
 
 #tab-file .realtime-config-panel .floating-action-row {
@@ -3997,14 +3997,23 @@ button.btn-icon[data-tooltip]::before {
   gap: 8px;
 }
 
+#tab-file .file-export-block .realtime-config-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+#tab-file .file-export-block .realtime-config-grid > .realtime-config-group:last-child {
+  grid-column: 1 / -1;
+}
+
 #tab-file .file-export-formats {
-  gap: 6px 8px;
+  gap: 4px 6px;
 }
 
 #tab-file .file-export-formats .toggle-row,
 #tab-file .file-export-grid .toggle-row {
-  min-height: 24px;
-  font-size: 0.7rem;
+  min-height: 23px;
+  font-size: var(--ui-text-xs);
 }
 
 #tab-realtime .realtime-config-panel .floating-action-row {
@@ -4039,7 +4048,7 @@ button.btn-icon[data-tooltip]::before {
 }
 
 #tab-realtime .advanced-panel label > span {
-  font-size: 0.74rem;
+  font-size: var(--ui-text-sm);
 }
 
 @media (max-width: 700px) {
@@ -4639,7 +4648,8 @@ textarea:focus {
 }
 
 .model-selection-status-head p {
-  font-size: 0.72rem;
+  font-size: var(--ui-text-xs);
+  line-height: 1.36;
 }
 
 #tab-model .model-selection-status-grid .status-overview-card {
@@ -5852,13 +5862,28 @@ button.btn-icon:hover {
   gap: 5px;
 }
 
+.model-selection-quick-actions-primary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.model-selection-quick-actions-primary > :last-child:nth-child(odd),
+.model-selection-quick-actions-secondary > :last-child:nth-child(odd) {
+  grid-column: auto;
+}
+
 .model-selection-quick-actions .btn-with-icon {
   justify-content: flex-start;
-  min-height: 28px;
-  padding-inline: 11px;
+  min-height: 27px;
+  padding-inline: 10px;
   font-size: var(--ui-text-xs);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.98);
+}
+
+.model-selection-quick-actions-primary .btn-with-icon {
+  justify-content: center;
+  padding-inline: 6px;
+  font-size: 0.68rem;
 }
 
 #tab-model .model-selection-status-grid .status-overview-card {
@@ -5871,7 +5896,7 @@ button.btn-icon:hover {
 }
 
 #tab-model .model-selection-status-grid .status-overview-card-compact {
-  min-height: 54px;
+  min-height: 48px;
 }
 
 #tab-model .model-selection-status-grid .status-overview-card-compact .status-overview-meta {
@@ -5895,9 +5920,9 @@ button.btn-icon:hover {
 }
 
 .model-selection-quick-actions-secondary .btn-with-icon {
-  min-height: 26px;
-  padding-inline: 10px;
-  justify-content: flex-start;
+  min-height: 24px;
+  padding-inline: 6px;
+  justify-content: center;
   font-size: var(--ui-text-xs);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.96);
