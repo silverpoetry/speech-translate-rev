@@ -203,8 +203,8 @@ class AppTrayTests(unittest.TestCase):
 
         tray._apply_panel_native_settings(fake_panel)
 
-        self.assertEqual(fake_panel.native.ClientSize.Width, tray.PANEL_WIDTH)
-        self.assertEqual(fake_panel.native.ClientSize.Height, tray.PANEL_HEIGHT)
+        self.assertEqual(fake_panel.native.ClientSize.Width, 356)
+        self.assertEqual(fake_panel.native.ClientSize.Height, 387)
 
     def test_show_app_restores_and_shows_main_window(self) -> None:
         bridge = FakeBridge()

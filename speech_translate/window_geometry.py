@@ -86,6 +86,31 @@ MIN_VISIBLE_WIDTH = 120
 MIN_VISIBLE_HEIGHT = 80
 
 
+def normalize_scale_factor(raw_scale_factor: Any) -> float:
+    try:
+        scale_factor = float(raw_scale_factor or 1.0)
+        if scale_factor > 0:
+            return scale_factor
+    except Exception:
+        pass
+    return 1.0
+
+
+def logical_to_native_size(width: int, height: int, *, scale_factor: float) -> tuple[int, int]:
+    scale = normalize_scale_factor(scale_factor)
+    return int(round(width * scale)), int(round(height * scale))
+
+
+def native_to_logical_size(width: int, height: int, *, scale_factor: float) -> tuple[int, int]:
+    scale = normalize_scale_factor(scale_factor)
+    return int(round(width / scale)), int(round(height / scale))
+
+
+def physical_to_logical_point(x: int, y: int, *, scale_factor: float) -> tuple[int, int]:
+    scale = normalize_scale_factor(scale_factor)
+    return int(round(x / scale)), int(round(y / scale))
+
+
 def _clamp_window_size(width: int, height: int) -> tuple[int, int]:
     return max(MIN_WINDOW_WIDTH, width), max(MIN_WINDOW_HEIGHT, height)
 
@@ -194,13 +219,7 @@ def resolve_window_placement(
 def resolve_native_scale_factor(native_window: object | None) -> float:
     if native_window is None:
         return 1.0
-    try:
-        scale_factor = float(getattr(native_window, "scale_factor", 1.0) or 1.0)
-        if scale_factor > 0:
-            return scale_factor
-    except Exception:
-        pass
-    return 1.0
+    return normalize_scale_factor(getattr(native_window, "scale_factor", 1.0))
 
 
 def extract_native_window_geometry(native_window: object | None) -> NativeWindowGeometry:
@@ -215,8 +234,7 @@ def extract_native_window_geometry(native_window: object | None) -> NativeWindow
 
         raw_width = int(getattr(client_size, "Width"))
         raw_height = int(getattr(client_size, "Height"))
-        width = int(round(raw_width / scale_factor))
-        height = int(round(raw_height / scale_factor))
+        width, height = native_to_logical_size(raw_width, raw_height, scale_factor=scale_factor)
         return NativeWindowGeometry(width, height, raw_width, raw_height, scale_factor)
     except Exception:
         return NativeWindowGeometry(None, None, None, None, scale_factor)

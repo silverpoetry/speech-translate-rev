@@ -9,6 +9,12 @@ from speech_translate._path import p_app_icon
 from speech_translate.controller_protocols import AppTrayBridge
 from speech_translate.log_helpers import logger
 from speech_translate.webview_runtime import load_webview_runtime
+from speech_translate.window_geometry import (
+    DEFAULT_METRICS_PROVIDER,
+    logical_to_native_size,
+    physical_to_logical_point,
+    resolve_native_scale_factor,
+)
 
 
 _tray_panel_owner_ref: weakref.ReferenceType["AppTray"] | None = None
@@ -111,13 +117,7 @@ class AppTray:
 
     @staticmethod
     def _screen_scale_factor() -> float:
-        try:
-            scale = float(ctypes.windll.shcore.GetScaleFactorForDevice(0)) / 100.0
-            if scale > 0:
-                return scale
-        except Exception:
-            pass
-        return 1.0
+        return DEFAULT_METRICS_PROVIDER.scale_factor()
 
     @staticmethod
     def _cursor_position_physical() -> tuple[int, int]:
@@ -131,9 +131,8 @@ class AppTray:
             return 1200, 800
 
     def _cursor_position(self) -> tuple[int, int]:
-        scale = self._screen_scale_factor()
         x, y = self._cursor_position_physical()
-        return int(round(x / scale)), int(round(y / scale))
+        return physical_to_logical_point(x, y, scale_factor=self._screen_scale_factor())
 
     def _panel_placement(self, width: int, height: int) -> tuple[int, int]:
         x, y = self._cursor_position()
@@ -237,14 +236,17 @@ class AppTray:
             from System.Drawing import Region, Size
             from System.Drawing.Drawing2D import GraphicsPath
 
-            scale_factor = float(getattr(native, "scale_factor", 1.0) or 1.0)
-            client_width = self.PANEL_WIDTH
-            client_height = self.PANEL_HEIGHT
+            scale_factor = resolve_native_scale_factor(native)
+            client_width, client_height = logical_to_native_size(
+                self.PANEL_WIDTH,
+                self.PANEL_HEIGHT,
+                scale_factor=scale_factor,
+            )
             fixed_size = Size(client_width, client_height)
             native.MinimumSize = fixed_size
             native.MaximumSize = fixed_size
             native.ClientSize = fixed_size
-            radius = 10
+            radius = max(10, int(round(10 * scale_factor)))
             diameter = min(client_width, client_height, radius * 2)
             path = GraphicsPath()
             path.AddArc(0, 0, diameter, diameter, 180, 90)
@@ -255,7 +257,7 @@ class AppTray:
             native.Region = Region(path)
             logger.info(
                 f"[Tray] sync_panel_size logical={self.PANEL_WIDTH}x{self.PANEL_HEIGHT} "
-                f"client={client_width}x{client_height} scale={scale_factor:.3f}"
+                f"native_client={client_width}x{client_height} scale={scale_factor:.3f}"
             )
         except Exception:
             logger.exception("Failed to sync tray panel client size")
