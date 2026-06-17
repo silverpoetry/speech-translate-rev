@@ -5584,14 +5584,14 @@ button.btn-icon:hover {
 }
 
 .transcript-shell {
-  gap: 7px;
-  padding: 7px;
+  gap: 6px;
+  padding: 6px;
   border-radius: 14px;
 }
 
 .live-output {
-  min-height: clamp(122px, 21vh, 172px);
-  max-height: 196px;
+  min-height: clamp(108px, 18.5vh, 156px);
+  max-height: 182px;
   font-size: 0.88rem;
   line-height: 1.55;
 }
@@ -5599,7 +5599,7 @@ button.btn-icon:hover {
 .live-output.is-empty {
   gap: 3px;
   padding-top: 0;
-  font-size: 0.8rem;
+  font-size: 0.79rem;
 }
 
 .live-output.is-empty::before {
