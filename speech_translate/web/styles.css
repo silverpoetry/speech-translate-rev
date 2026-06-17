@@ -5971,12 +5971,12 @@ button.btn-icon:hover {
 
 .settings-workbench-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .settings-workbench-card {
-  padding: 13px 14px;
-  gap: 11px;
+  padding: 12px 13px;
+  gap: 9px;
   border-radius: 12px;
   background: var(--ui-surface-soft);
 }
@@ -5988,16 +5988,16 @@ button.btn-icon:hover {
 
 .settings-workbench-meta {
   font-size: 0.72rem;
-  line-height: 1.45;
+  line-height: 1.38;
 }
 
 .settings-workbench-section-grid {
-  gap: 13px;
+  gap: 10px;
 }
 
 .settings-workbench-section {
-  padding: 10px 11px;
-  gap: 8px;
+  padding: 9px 10px;
+  gap: 7px;
   border-radius: 10px;
 }
 
@@ -6008,7 +6008,7 @@ button.btn-icon:hover {
 
 .settings-workbench-section-meta {
   font-size: 0.68rem;
-  line-height: 1.4;
+  line-height: 1.34;
 }
 
 .settings-toolbar .form-grid label > span {
@@ -6025,7 +6025,7 @@ button.btn-icon:hover {
 }
 
 #settings-shell .form-grid {
-  gap: 11px 13px;
+  gap: 9px 11px;
 }
 
 @media (max-width: 1080px) {
