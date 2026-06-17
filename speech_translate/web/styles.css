@@ -3687,7 +3687,7 @@ button.btn-icon[data-tooltip]::before {
 .detached-workbench-head {
   display: grid;
   gap: 2px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .detached-workbench-title {
@@ -3708,14 +3708,14 @@ button.btn-icon[data-tooltip]::before {
 .detached-workbench-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
 }
 
 .detached-workbench-card {
   display: grid;
-  gap: 8px;
-  padding: 13px;
+  gap: 7px;
+  padding: 11px 11px 10px;
   border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 12px;
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 0.96));
@@ -3732,14 +3732,14 @@ button.btn-icon[data-tooltip]::before {
 .detached-workbench-action-cluster {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: 5px;
 }
 
 .detached-workbench-action-group {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 6px;
-  padding: 7px;
+  gap: 5px;
+  padding: 6px;
   border-radius: 10px;
   background: rgba(248, 250, 252, 0.92);
   border: 1px solid rgba(148, 163, 184, 0.16);
@@ -3751,10 +3751,11 @@ button.btn-icon[data-tooltip]::before {
 
 .detached-workbench-action-group .btn-with-icon {
   width: 100%;
-  justify-content: center;
-  min-height: 30px;
-  padding: 0 9px;
-  font-size: 0.72rem;
+  justify-content: flex-start;
+  min-height: 29px;
+  padding: 0 10px;
+  font-size: var(--ui-text-xs);
+  border-radius: 10px;
 }
 
 .compact-status-row {
@@ -3770,7 +3771,7 @@ button.btn-icon[data-tooltip]::before {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 5px 8px 0;
+  padding: 4px 7px 0;
   margin: 0 -2px -2px;
   border-top: 1px solid rgba(226, 232, 240, 0.9);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(248, 250, 252, 0.92));
@@ -3797,8 +3798,8 @@ button.btn-icon[data-tooltip]::before {
 
 .detached-config-mini-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 10px;
-  padding: 4px 0 0;
+  gap: 7px 8px;
+  padding: 2px 0 0;
 }
 
 .detached-config-mini-grid .toggle-row {
@@ -3808,8 +3809,8 @@ button.btn-icon[data-tooltip]::before {
 }
 
 .detached-config-mini-grid > label:not(.toggle-row) {
-  padding: 9px 10px;
-  border-radius: 10px;
+  padding: 8px 9px;
+  border-radius: 9px;
   background: rgba(255, 255, 255, 0.78);
   border: 1px solid rgba(148, 163, 184, 0.12);
 }
