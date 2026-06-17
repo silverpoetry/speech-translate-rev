@@ -5584,14 +5584,14 @@ button.btn-icon:hover {
 }
 
 .transcript-shell {
-  gap: 8px;
-  padding: 8px;
+  gap: 7px;
+  padding: 7px;
   border-radius: 14px;
 }
 
 .live-output {
-  min-height: clamp(140px, 24vh, 196px);
-  max-height: 224px;
+  min-height: clamp(122px, 21vh, 172px);
+  max-height: 196px;
   font-size: 0.88rem;
   line-height: 1.55;
 }
@@ -5599,7 +5599,7 @@ button.btn-icon:hover {
 .live-output.is-empty {
   gap: 3px;
   padding-top: 0;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
 }
 
 .live-output.is-empty::before {
@@ -5662,18 +5662,19 @@ button.btn-icon:hover {
 }
 
 .file-ops-step {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+  padding: 7px 9px;
+}
+
+.file-ops-steps {
   grid-template-columns: 1fr;
-  gap: 6px;
-  padding: 6px 9px;
+  gap: 5px;
 }
 
 .file-ops-step span {
   font-size: var(--ui-text-xs);
-}
-
-.file-ops-steps {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
 }
 
 .file-queue-box {
