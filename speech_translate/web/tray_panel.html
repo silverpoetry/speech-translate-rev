@@ -4,21 +4,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>托盘面板</title>
+  <title>托盘菜单</title>
   <style>
     :root {
       color-scheme: light;
       font-family: "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", sans-serif;
-      --bg: #f7fafc;
-      --panel: rgba(255, 255, 255, 0.96);
-      --panel-soft: rgba(244, 247, 251, 0.98);
-      --line: rgba(148, 163, 184, 0.18);
-      --text: #10203a;
-      --muted: #667892;
-      --primary: #2456d6;
-      --primary-soft: #dfeaff;
-      --danger: #c53a31;
-      --shadow: 0 14px 34px rgba(15, 23, 42, 0.14);
+      --menu-bg: rgba(255, 255, 255, 0.985);
+      --menu-border: rgba(208, 216, 228, 0.9);
+      --menu-shadow: 0 14px 36px rgba(15, 23, 42, 0.18);
+      --text: #16233a;
+      --muted: #607089;
+      --hover: #f3f6fb;
+      --hover-primary: #edf3ff;
+      --danger: #c53b32;
+      --separator: rgba(226, 232, 240, 0.92);
+      --icon-bg: rgba(241, 245, 249, 0.96);
     }
 
     * {
@@ -31,218 +31,179 @@
       margin: 0;
       width: 100%;
       height: 100%;
-      background: var(--bg);
+      background: transparent;
       overflow: hidden;
     }
 
     body {
+      padding: 6px;
       color: var(--text);
-    }
-
-    .tray-shell {
-      position: relative;
-      display: grid;
-      grid-template-rows: auto auto 1fr;
-      gap: 8px;
-      width: 100vw;
-      height: 100vh;
-      padding: 10px;
-      border-radius: 14px;
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 249, 252, 0.98));
-      box-shadow: var(--shadow);
-      border: 1px solid rgba(220, 228, 239, 0.92);
-      overflow: hidden;
-    }
-
-    .tray-shell::before {
-      content: "";
-      position: absolute;
-      inset: 0 0 auto 0;
-      height: 58px;
-      background:
-        radial-gradient(circle at 0% 0%, rgba(36, 86, 214, 0.12), transparent 58%),
-        linear-gradient(135deg, rgba(255, 255, 255, 0.72), transparent 70%);
-      pointer-events: none;
-    }
-
-    .tray-head,
-    .tray-main,
-    .tray-footer {
-      position: relative;
-      z-index: 1;
-    }
-
-    .tray-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-    }
-
-    .tray-title {
-      min-width: 0;
-      display: grid;
-      gap: 3px;
-    }
-
-    .tray-kicker {
-      display: inline-flex;
-      align-items: center;
-      width: fit-content;
-      min-height: 18px;
-      padding: 0 7px;
-      border-radius: 999px;
-      background: rgba(227, 234, 244, 0.96);
-      color: #4c5f7d;
-      font-size: 0.58rem;
-      font-weight: 800;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-    }
-
-    h1 {
-      margin: 0;
-      font-size: 0.84rem;
-      line-height: 1.12;
-      font-weight: 700;
-    }
-
-    .tray-subtitle {
-      margin: 0;
-      font-size: 0.62rem;
-      line-height: 1.35;
-      color: var(--muted);
-    }
-
-    .tray-close {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 26px;
-      height: 26px;
-      padding: 0;
-      border: 1px solid rgba(148, 163, 184, 0.14);
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.82);
-      color: #475569;
-      font-size: 0.95rem;
-      cursor: pointer;
-      transition: background-color 140ms ease, color 140ms ease;
-    }
-
-    .tray-close:hover {
-      background: rgba(226, 232, 240, 0.95);
-      color: #0f172a;
-    }
-
-    .tray-main {
-      display: grid;
-      gap: 6px;
     }
 
     .tray-menu {
+      width: 100%;
+      height: 100%;
+      padding: 6px;
+      border-radius: 13px;
+      border: 1px solid var(--menu-border);
+      background: var(--menu-bg);
+      box-shadow: var(--menu-shadow);
       display: grid;
-      gap: 6px;
+      grid-auto-rows: min-content;
+      gap: 3px;
+      overflow: hidden;
     }
 
-    .tray-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+    .menu-separator {
+      height: 1px;
+      margin: 2px 4px;
+      background: var(--separator);
+    }
+
+    .menu-item {
       width: 100%;
-      min-height: 34px;
-      padding: 8px 10px;
-      border: 1px solid rgba(220, 228, 239, 0.96);
+      min-height: 36px;
+      padding: 0 11px;
+      border: 0;
       border-radius: 10px;
-      background: rgba(255, 255, 255, 0.86);
-      color: var(--text);
+      background: transparent;
+      color: inherit;
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      align-items: center;
+      gap: 10px;
       text-align: left;
       cursor: pointer;
-      transition: border-color 140ms ease, background-color 140ms ease, transform 120ms ease;
+      transition: background-color 120ms ease, color 120ms ease;
     }
 
-    .tray-item strong {
-      font-size: 0.71rem;
-      font-weight: 700;
+    .menu-item:hover {
+      background: var(--hover);
     }
 
-    .tray-item span {
-      font-size: 0.61rem;
-      color: var(--muted);
+    .menu-item.primary:hover {
+      background: var(--hover-primary);
     }
 
-    .tray-item:hover,
-    .tray-close:hover {
-      transform: translateY(-1px);
-    }
-
-    .tray-item:hover {
-      border-color: rgba(160, 178, 207, 0.92);
-      background: rgba(250, 252, 255, 0.98);
-    }
-
-    .tray-item.primary {
-      border-color: rgba(126, 167, 255, 0.22);
-      background: linear-gradient(135deg, rgba(223, 234, 255, 0.98), rgba(241, 246, 255, 0.98));
-      color: var(--primary);
-    }
-
-    .tray-item.primary span {
-      color: #5f769a;
-    }
-
-    .tray-item.danger {
-      border-color: rgba(248, 113, 113, 0.2);
-      background: linear-gradient(135deg, rgba(255, 240, 240, 0.98), rgba(255, 247, 247, 0.98));
+    .menu-item.danger {
       color: var(--danger);
+    }
+
+    .menu-item.danger:hover {
+      background: rgba(255, 241, 241, 0.98);
+    }
+
+    .menu-icon {
+      width: 28px;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      background: var(--icon-bg);
+      color: currentColor;
+    }
+
+    .menu-item.primary .menu-icon {
+      background: rgba(232, 241, 255, 0.98);
+      color: #2957c8;
+    }
+
+    .menu-item.danger .menu-icon {
+      background: rgba(255, 241, 241, 0.98);
+    }
+
+    .menu-label {
+      min-width: 0;
+      font-size: 0.86rem;
+      line-height: 1.1;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    svg {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      stroke-width: 1.85;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
     }
   </style>
 </head>
 
 <body>
-  <main class="tray-shell">
-    <header class="tray-head">
-      <div class="tray-title">
-        <div class="tray-kicker">Tray</div>
-        <h1>Speech Translate</h1>
-        <p class="tray-subtitle">右键打开快捷入口</p>
-      </div>
-      <button type="button" class="tray-close" id="tray_close" aria-label="关闭">×</button>
-    </header>
+  <main class="tray-menu" role="menu" aria-label="Speech Translate 托盘菜单">
+    <button type="button" class="menu-item primary" data-action="show-app">
+      <span class="menu-icon" aria-hidden="true">
+        <svg viewBox="0 0 20 20">
+          <rect x="3" y="4" width="14" height="12" rx="2"></rect>
+          <path d="M7 16V18"></path>
+          <path d="M13 16V18"></path>
+          <path d="M6 8H14"></path>
+        </svg>
+      </span>
+      <span class="menu-label">打开主窗口</span>
+    </button>
 
-    <section class="tray-main">
-      <div class="tray-menu">
-        <button type="button" class="tray-item primary" data-action="show-app">
-          <strong>打开主窗口</strong>
-          <span>完整界面</span>
-        </button>
+    <div class="menu-separator" aria-hidden="true"></div>
 
-        <button type="button" class="tray-item" data-action="open-model">
-          <strong>模型目录</strong>
-          <span>本地模型</span>
-        </button>
+    <button type="button" class="menu-item" data-action="open-model">
+      <span class="menu-icon" aria-hidden="true">
+        <svg viewBox="0 0 20 20">
+          <path d="M4 6.5 10 3l6 3.5-6 3-6-3Z"></path>
+          <path d="M4 6.5V13.5L10 17l6-3.5V6.5"></path>
+          <path d="M10 9.5V17"></path>
+        </svg>
+      </span>
+      <span class="menu-label">模型目录</span>
+    </button>
 
-        <button type="button" class="tray-item" data-action="open-export">
-          <strong>导出目录</strong>
-          <span>结果输出</span>
-        </button>
+    <button type="button" class="menu-item" data-action="open-export">
+      <span class="menu-icon" aria-hidden="true">
+        <svg viewBox="0 0 20 20">
+          <path d="M10 3V11"></path>
+          <path d="M7 8 10 11 13 8"></path>
+          <path d="M4 13.5V15a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-1.5"></path>
+        </svg>
+      </span>
+      <span class="menu-label">导出目录</span>
+    </button>
 
-        <button type="button" class="tray-item" data-action="open-log">
-          <strong>日志目录</strong>
-          <span>运行日志</span>
-        </button>
+    <button type="button" class="menu-item" data-action="open-log">
+      <span class="menu-icon" aria-hidden="true">
+        <svg viewBox="0 0 20 20">
+          <path d="M5 4h7l3 3v9a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 4 16V5.5A1.5 1.5 0 0 1 5.5 4Z"></path>
+          <path d="M12 4v3h3"></path>
+          <path d="M7 10h6"></path>
+          <path d="M7 13h4"></path>
+        </svg>
+      </span>
+      <span class="menu-label">日志目录</span>
+    </button>
 
-        <button type="button" class="tray-item" data-action="hide-panel">
-          <strong>关闭面板</strong>
-          <span>保留托盘</span>
-        </button>
+    <div class="menu-separator" aria-hidden="true"></div>
 
-        <button type="button" class="tray-item danger" data-action="quit-app">
-          <strong>退出程序</strong>
-          <span>结束后台</span>
-        </button>
-      </div>
-    </section>
+    <button type="button" class="menu-item" data-action="hide-panel">
+      <span class="menu-icon" aria-hidden="true">
+        <svg viewBox="0 0 20 20">
+          <path d="M3 10s2.7-4 7-4 7 4 7 4-2.7 4-7 4-7-4-7-4Z"></path>
+          <path d="M3 3 17 17"></path>
+        </svg>
+      </span>
+      <span class="menu-label">隐藏托盘面板</span>
+    </button>
+
+    <button type="button" class="menu-item danger" data-action="quit-app">
+      <span class="menu-icon" aria-hidden="true">
+        <svg viewBox="0 0 20 20">
+          <path d="M10 3v8"></path>
+          <path d="M6.2 5.4a7 7 0 1 0 7.6 0"></path>
+        </svg>
+      </span>
+      <span class="menu-label">退出程序</span>
+    </button>
   </main>
 
   <script>
@@ -273,8 +234,10 @@
       await callTray(target.dataset.action);
     });
 
-    document.getElementById('tray_close')?.addEventListener('click', async () => {
-      await callTray('hide-panel');
+    document.addEventListener('keydown', async (event) => {
+      if (event.key === 'Escape') {
+        await callTray('hide-panel');
+      }
     });
   </script>
 </body>

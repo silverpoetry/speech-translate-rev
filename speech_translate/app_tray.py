@@ -51,8 +51,8 @@ class TrayPanelApi:
 
 
 class AppTray:
-    PANEL_WIDTH = 220
-    PANEL_HEIGHT = 224
+    PANEL_WIDTH = 228
+    PANEL_HEIGHT = 266
 
     def __init__(self, bridge: AppTrayBridge):
         self.bridge = bridge
