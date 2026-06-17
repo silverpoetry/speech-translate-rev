@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import time
 import weakref
 from pathlib import Path
 
@@ -51,8 +52,8 @@ class TrayPanelApi:
 
 
 class AppTray:
-    PANEL_WIDTH = 212
-    PANEL_HEIGHT = 210
+    PANEL_WIDTH = 176
+    PANEL_HEIGHT = 176
 
     def __init__(self, bridge: AppTrayBridge):
         self.bridge = bridge
@@ -60,6 +61,8 @@ class AppTray:
         self.panel_window = None
         self._panel_destroying = False
         self._panel_native_settings_applied = False
+        self._panel_blur_handler_bound = False
+        self._panel_ignore_deactivate_until = 0.0
         self._create_tray()
 
     def _fallback_image(self, width: int, height: int, color1: str, color2: str):
@@ -171,14 +174,37 @@ class AppTray:
             pass
 
     def _on_panel_closed(self):
+        self._detach_panel_native_handlers()
         self.panel_window = None
         self._panel_destroying = False
         self._panel_native_settings_applied = False
+        self._panel_ignore_deactivate_until = 0.0
+
+    def _on_panel_native_deactivate(self, *_args) -> None:
+        if self.panel_window is None or self._panel_destroying:
+            return
+        if time.monotonic() < self._panel_ignore_deactivate_until:
+            return
+        logger.debug("[Tray] panel lost focus; hiding")
+        self.hide_panel()
+
+    def _detach_panel_native_handlers(self) -> None:
+        if not self._panel_blur_handler_bound or self.panel_window is None:
+            self._panel_blur_handler_bound = False
+            return
+        native = getattr(self.panel_window, "native", None)
+        if native is not None:
+            try:
+                native.Deactivate -= self._on_panel_native_deactivate
+            except Exception:
+                pass
+        self._panel_blur_handler_bound = False
 
     def _on_panel_loaded(self) -> None:
         self._apply_panel_native_settings_when_ready()
         if self.panel_window is None:
             return
+        self._panel_ignore_deactivate_until = time.monotonic() + 0.25
         try:
             self.panel_window.show()
         except Exception:
@@ -208,8 +234,7 @@ class AppTray:
             import clr
 
             clr.AddReference("System.Drawing")
-            from System.Drawing import Region, Size
-            from System.Drawing.Drawing2D import GraphicsPath
+            from System.Drawing import Size
 
             scale_factor = float(getattr(native, "scale_factor", 1.0) or 1.0)
             client_width = int(round(self.PANEL_WIDTH * scale_factor))
@@ -218,21 +243,19 @@ class AppTray:
             native.MinimumSize = fixed_size
             native.MaximumSize = fixed_size
             native.ClientSize = fixed_size
-            radius = max(8, int(round(12 * scale_factor)))
-            diameter = min(client_width, client_height, radius * 2)
-            path = GraphicsPath()
-            path.AddArc(0, 0, diameter, diameter, 180, 90)
-            path.AddArc(client_width - diameter, 0, diameter, diameter, 270, 90)
-            path.AddArc(client_width - diameter, client_height - diameter, diameter, diameter, 0, 90)
-            path.AddArc(0, client_height - diameter, diameter, diameter, 90, 90)
-            path.CloseFigure()
-            native.Region = Region(path)
             logger.info(
                 f"[Tray] sync_panel_size logical={self.PANEL_WIDTH}x{self.PANEL_HEIGHT} "
                 f"raw_client={client_width}x{client_height} scale={scale_factor:.3f}"
             )
         except Exception:
             logger.exception("Failed to sync tray panel client size")
+
+        if not self._panel_blur_handler_bound and hasattr(native, "Deactivate"):
+            try:
+                native.Deactivate += self._on_panel_native_deactivate
+                self._panel_blur_handler_bound = True
+            except Exception:
+                logger.exception("Failed to bind tray panel blur handler")
 
         try:
             native.ShowInTaskbar = False
@@ -285,9 +308,10 @@ class AppTray:
             hidden=True,
             frameless=True,
             easy_drag=False,
-            shadow=True,
-            background_color="#f7fafc",
+            shadow=False,
+            background_color="#000000",
             on_top=True,
+            transparent=True,
         )
         self._bind_panel_events(self.panel_window)
         return self.panel_window
@@ -301,6 +325,7 @@ class AppTray:
             x, y = self._panel_placement(self.PANEL_WIDTH, self.PANEL_HEIGHT)
             logger.debug(f"[Tray] reopen_panel x={x} y={y} scale={self._screen_scale_factor():.3f}")
             try:
+                self._panel_ignore_deactivate_until = time.monotonic() + 0.18
                 self.panel_window.move(x, y)
             except Exception:
                 logger.exception("Failed to move tray panel")
