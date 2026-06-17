@@ -134,6 +134,8 @@ class AppTrayTests(unittest.TestCase):
         _args, kwargs = fake_webview.calls[0]
         self.assertEqual(kwargs["width"], tray.PANEL_WIDTH)
         self.assertEqual(kwargs["height"], tray.PANEL_HEIGHT)
+        self.assertEqual(kwargs["min_size"], (120, 120))
+        self.assertNotIn("transparent", kwargs)
         self.assertEqual(fake_panel.calls, [])
 
     def test_open_panel_creates_panel_when_missing(self) -> None:
