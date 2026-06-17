@@ -5870,18 +5870,39 @@ button.btn-icon:hover {
 }
 
 .settings-toolbar {
-  gap: 14px;
-  padding: 13px 14px 15px;
+  gap: 15px;
+  padding: 14px 15px 16px;
   border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
+  border: 1px solid rgba(203, 213, 225, 0.92);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.055);
 }
 
 .settings-toolbar-head {
-  gap: 10px;
+  gap: 12px;
   align-items: end;
 }
 
+.settings-search {
+  gap: 6px;
+}
+
 .settings-search span {
-  font-size: var(--ui-text-xs);
+  font-size: var(--ui-text-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.settings-search input {
+  min-height: 38px;
+  padding-inline: 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(203, 213, 225, 0.9);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 1px 2px rgba(15, 23, 42, 0.02);
 }
 
 .settings-shortcut {
@@ -5895,22 +5916,50 @@ button.btn-icon:hover {
   font-weight: 600;
 }
 
+.settings-shortcut:hover,
+.settings-shortcut.is-active {
+  background: linear-gradient(135deg, rgba(224, 239, 255, 0.96), rgba(243, 248, 255, 1));
+  border-color: rgba(147, 197, 253, 0.58);
+  color: #1d4ed8;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.settings-search-meta {
+  font-size: var(--ui-text-xs);
+  font-weight: 600;
+  color: #64748b;
+}
+
 .settings-toolbar-actions {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 9px;
 }
 
 .settings-toolbar-actions .btn-with-icon {
   justify-content: flex-start;
-  min-height: 31px;
+  min-height: 32px;
   padding-inline: 11px;
   font-size: var(--ui-text-xs);
   background: rgba(255, 255, 255, 0.96);
   border-color: rgba(203, 213, 225, 0.9);
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
 }
 
 .settings-toolbar-overview {
-  gap: 8px;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1.12fr) repeat(2, minmax(0, 1fr));
+}
+
+.settings-toolbar-overview .settings-overview-card {
+  min-height: 58px;
+  padding: 10px 11px;
+}
+
+.settings-toolbar-overview .settings-overview-card-primary {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 8px 20px rgba(37, 99, 235, 0.06);
 }
 
 .settings-workbench-grid {
