@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import ctypes
 from pathlib import Path
 
 from speech_translate._path import p_app_icon
 from speech_translate.controller_protocols import AppTrayBridge
+from speech_translate.log_helpers import logger
 from speech_translate.webview_runtime import load_webview_runtime
 
 
@@ -87,9 +89,18 @@ class AppTray:
         self.icon._message_handlers[win32.WM_NOTIFY] = _patched_on_notify
 
     @staticmethod
-    def _cursor_position() -> tuple[int, int]:
+    def _screen_scale_factor() -> float:
         try:
-            import ctypes
+            scale = float(ctypes.windll.shcore.GetScaleFactorForDevice(0)) / 100.0
+            if scale > 0:
+                return scale
+        except Exception:
+            pass
+        return 1.0
+
+    @staticmethod
+    def _cursor_position_physical() -> tuple[int, int]:
+        try:
             from ctypes import wintypes
 
             point = wintypes.POINT()
@@ -97,6 +108,11 @@ class AppTray:
             return int(point.x), int(point.y)
         except Exception:
             return 1200, 800
+
+    def _cursor_position(self) -> tuple[int, int]:
+        scale = self._screen_scale_factor()
+        x, y = self._cursor_position_physical()
+        return int(round(x / scale)), int(round(y / scale))
 
     def _panel_placement(self, width: int, height: int) -> tuple[int, int]:
         x, y = self._cursor_position()
@@ -119,6 +135,31 @@ class AppTray:
 
     def _on_panel_closed(self):
         self.panel_window = None
+
+    def _apply_panel_native_settings(self, window) -> None:
+        native = getattr(window, "native", None)
+        if native is None:
+            return
+
+        try:
+            native.ShowInTaskbar = False
+        except Exception:
+            pass
+
+        try:
+            native.TopMost = True
+        except Exception:
+            pass
+
+        try:
+            hwnd = int(native.Handle.ToInt32())
+            style = int(ctypes.windll.user32.GetWindowLongW(hwnd, -20))
+            style |= 0x00000080  # WS_EX_TOOLWINDOW
+            style &= ~0x00040000  # WS_EX_APPWINDOW
+            ctypes.windll.user32.SetWindowLongW(hwnd, -20, style)
+            ctypes.windll.user32.SetWindowPos(hwnd, None, 0, 0, 0, 0, 0x0027)
+        except Exception:
+            pass
 
     def _ensure_panel(self):
         if self.panel_window is not None:
@@ -144,26 +185,32 @@ class AppTray:
             shadow=True,
         )
         self._bind_panel_events(self.panel_window)
+        self._apply_panel_native_settings(self.panel_window)
         return self.panel_window
 
     def open_panel(self, *_args):
-        window = self._ensure_panel()
-        if window is None:
-            return
-        x, y = self._panel_placement(320, 264)
         try:
-            if hasattr(window, "move"):
-                window.move(x, y)
+            window = self._ensure_panel()
+            if window is None:
+                return
+            x, y = self._panel_placement(320, 264)
+            logger.debug(f"[Tray] open_panel x={x} y={y} scale={self._screen_scale_factor():.3f}")
+            try:
+                if hasattr(window, "move"):
+                    window.move(x, y)
+            except Exception:
+                logger.exception("Failed to move tray panel")
+            try:
+                self._apply_panel_native_settings(window)
+                window.show()
+            except Exception:
+                logger.exception("Failed to show tray panel")
+            try:
+                window.bring_to_front()
+            except Exception:
+                logger.exception("Failed to bring tray panel to front")
         except Exception:
-            pass
-        try:
-            window.show()
-        except Exception:
-            pass
-        try:
-            window.bring_to_front()
-        except Exception:
-            pass
+            logger.exception("Failed to open tray panel")
 
     def show_app(self, *_args):
         self.hide_panel()
