@@ -3739,7 +3739,7 @@ button.btn-icon[data-tooltip]::before {
 .detached-workbench-card-meta {
   margin-top: 3px;
   color: #64748b;
-  font-size: 0.7rem;
+  font-size: var(--ui-text-xs);
   line-height: 1.35;
 }
 
@@ -3751,7 +3751,7 @@ button.btn-icon[data-tooltip]::before {
 
 .detached-workbench-action-group {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
   padding: 5px;
   border-radius: 10px;
@@ -3765,9 +3765,9 @@ button.btn-icon[data-tooltip]::before {
 
 .detached-workbench-action-group .btn-with-icon {
   width: 100%;
-  justify-content: flex-start;
+  justify-content: center;
   min-height: 27px;
-  padding: 0 9px;
+  padding: 0 6px;
   font-size: var(--ui-text-xs);
   border-radius: 10px;
 }
@@ -5883,7 +5883,7 @@ button.btn-icon:hover {
 .model-selection-quick-actions-primary .btn-with-icon {
   justify-content: center;
   padding-inline: 6px;
-  font-size: 0.68rem;
+  font-size: var(--ui-text-xs);
 }
 
 #tab-model .model-selection-status-grid .status-overview-card {
@@ -6011,7 +6011,7 @@ button.btn-icon:hover {
   justify-content: center;
   min-height: 31px;
   padding-inline: 8px;
-  font-size: 0.68rem;
+  font-size: var(--ui-text-xs);
   background: rgba(255, 255, 255, 0.96);
   border-color: rgba(203, 213, 225, 0.9);
   border-radius: 10px;
@@ -6156,6 +6156,20 @@ button.btn-icon:hover {
 .settings-workbench-board .settings-workbench-card-thresholds .settings-workbench-form > .toggle-row.field-span-2,
 .settings-workbench-board .settings-workbench-card-thresholds .settings-workbench-form > label.toggle-row.field-span-2 {
   grid-column: span 2;
+}
+
+.settings-workbench-board .settings-workbench-card-export .settings-workbench-section {
+  padding: 8px 9px;
+  gap: 6px;
+}
+
+.settings-workbench-board .settings-workbench-card-export .settings-workbench-toggle-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px 8px;
+}
+
+.settings-workbench-board .settings-workbench-card-export .toggle-row {
+  min-height: 24px;
 }
 
 .settings-workbench-mini-grid .toggle-row {
