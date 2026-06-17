@@ -4182,9 +4182,9 @@ button.btn-icon[data-tooltip]::before {
 }
 
 .model-select-inline {
-  grid-template-columns: minmax(240px, 1fr) minmax(220px, 1fr);
+  grid-template-columns: minmax(0, 1.24fr) minmax(128px, 0.88fr);
   align-items: end;
-  column-gap: 12px;
+  column-gap: 10px;
 }
 
 .model-select-engine-inline {
@@ -4206,11 +4206,13 @@ button.btn-icon[data-tooltip]::before {
 .model-select-inline .model-engine-titlebar {
   width: 100%;
   flex-wrap: nowrap;
-  min-width: 240px;
+  min-width: 0;
 }
 
 .model-select-inline .model-engine-tab {
   flex: 1 1 0;
+  min-width: 0;
+  padding-inline: 8px;
   text-align: center;
   white-space: nowrap;
   overflow-wrap: normal;
@@ -5955,7 +5957,7 @@ button.btn-icon:hover {
 }
 
 #tab-model .model-selection-status-grid .status-overview-meta {
-  font-size: 0.67rem;
+  font-size: 0.68rem;
   line-height: 1.28;
 }
 
