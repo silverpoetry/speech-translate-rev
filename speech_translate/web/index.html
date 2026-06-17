@@ -504,7 +504,7 @@
                   <div class="hero-toolbar-main">
                     <button class="primary btn-with-icon btn-recording" data-action="start-recording"
                       id="btn-recording-toggle">开始录制</button>
-                    <span class="hero-toolbar-caption">开始录制后持续转写与翻译。</span>
+                    <span class="hero-toolbar-caption">持续监听并输出结果</span>
                   </div>
                   <div class="hero-toolbar-pills">
                     <label class="toggle-row"><input id="transcribe_mw" type="checkbox" checked /> 转写</label>
@@ -515,30 +515,44 @@
                 <div class="realtime-hero-shell">
                   <div class="realtime-control-card">
                     <div class="realtime-control-head">
-                      <span class="realtime-control-kicker">录制摘要</span>
-                      <span class="realtime-control-meta">输入、模型与翻译链路</span>
-                    </div>
-                    <div class="realtime-control-strip">
-                      <div class="record-visualizer-card realtime-live-meter" id="record_visualizer_card" aria-live="polite">
-                        <div class="record-visualizer-head">
-                          <span class="sr-only">输入电平</span>
-                          <span id="record_visualizer_label">等待录制</span>
-                        </div>
-                        <div class="record-visualizer-track" aria-hidden="true">
-                          <div class="record-visualizer-threshold" id="record_visualizer_threshold"></div>
-                          <div class="record-visualizer-fill" id="record_visualizer_fill"></div>
-                        </div>
-                        <div class="record-visualizer-meta">
-                          <span id="record_visualizer_db">-</span>
-                          <span id="record_visualizer_threshold_text">阈值 - dB</span>
+                      <div class="realtime-control-heading">
+                        <span class="realtime-control-kicker">录制摘要</span>
+                        <span class="realtime-control-meta">输入状态</span>
+                      </div>
+                      <div class="realtime-control-strip">
+                        <div class="record-visualizer-card realtime-live-meter" id="record_visualizer_card" aria-live="polite">
+                          <div class="record-visualizer-head">
+                            <span class="sr-only">输入电平</span>
+                            <span id="record_visualizer_label">等待录制</span>
+                          </div>
+                          <div class="record-visualizer-track" aria-hidden="true">
+                            <div class="record-visualizer-threshold" id="record_visualizer_threshold"></div>
+                            <div class="record-visualizer-fill" id="record_visualizer_fill"></div>
+                          </div>
+                          <div class="record-visualizer-meta">
+                            <span id="record_visualizer_db">-</span>
+                            <span id="record_visualizer_threshold_text">阈值 - dB</span>
+                          </div>
                         </div>
                       </div>
                     </div>
                     <div class="realtime-control-badges">
-                      <span class="pill pill-muted" id="main-input-pill">输入</span>
-                      <span class="pill pill-muted" id="main-model-pill">模型 / 后端</span>
-                      <span class="pill pill-muted" id="main-lang-pill">语言对</span>
-                      <span class="pill pill-muted" id="main-engine-pill">翻译引擎</span>
+                      <span class="pill pill-muted realtime-summary-pill">
+                        <span class="realtime-summary-pill-label">输入</span>
+                        <span class="realtime-summary-pill-value" id="main-input-pill">未设置</span>
+                      </span>
+                      <span class="pill pill-muted realtime-summary-pill">
+                        <span class="realtime-summary-pill-label">模型</span>
+                        <span class="realtime-summary-pill-value" id="main-model-pill">未设置</span>
+                      </span>
+                      <span class="pill pill-muted realtime-summary-pill">
+                        <span class="realtime-summary-pill-label">语言</span>
+                        <span class="realtime-summary-pill-value" id="main-lang-pill">未设置</span>
+                      </span>
+                      <span class="pill pill-muted realtime-summary-pill">
+                        <span class="realtime-summary-pill-label">翻译</span>
+                        <span class="realtime-summary-pill-value" id="main-engine-pill">未设置</span>
+                      </span>
                     </div>
                   </div>
 
@@ -570,22 +584,22 @@
                   <section class="live-output-panel">
                     <div class="live-output-panel-head">
                       <div>
-                        <div id="main-transcribed-label" class="live-output-preview-label">转写输出</div>
-                        <div class="live-output-panel-meta">原文结果会持续追加。</div>
+                        <div id="main-transcribed-label" class="live-output-preview-label">转写结果</div>
+                        <div class="live-output-panel-meta">原文</div>
                       </div>
                       <span class="live-output-panel-badge">TC</span>
                     </div>
-                    <div id="main-transcribed-output" class="live-output is-preview">等待输入。</div>
+                    <div id="main-transcribed-output" class="live-output is-preview">等待转写</div>
                   </section>
                   <section class="live-output-panel">
                     <div class="live-output-panel-head">
                       <div>
-                        <div id="main-translated-label" class="live-output-preview-label">翻译输出</div>
-                        <div class="live-output-panel-meta">目标语言结果会同步追加。</div>
+                        <div id="main-translated-label" class="live-output-preview-label">翻译结果</div>
+                        <div class="live-output-panel-meta">译文</div>
                       </div>
                       <span class="live-output-panel-badge">TL</span>
                     </div>
-                    <div id="main-translated-output" class="live-output is-preview">等待输入。</div>
+                    <div id="main-translated-output" class="live-output is-preview">等待翻译</div>
                   </section>
                 </div>
               </section>

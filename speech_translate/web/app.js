@@ -989,12 +989,14 @@ function renderMainControls(data) {
 
   if (els.transcribeMain) els.transcribeMain.checked = Boolean(mainUi.transcribe ?? true);
   if (els.translateMain) els.translateMain.checked = Boolean(mainUi.translate ?? true);
-  els.mainInputPill.textContent = `输入 ${mainUi.selected_input || '未知'}`;
+  els.mainInputPill.textContent = mainUi.selected_input || '未设置';
   if (els.mainModelPill) {
-    els.mainModelPill.textContent = `${mainUi.selected_model || '未选择'} · ${mainUi.selected_backend || '未知后端'}`;
+    const modelLabel = mainUi.selected_model || '未设置';
+    const backendLabel = mainUi.selected_backend || '未设置';
+    els.mainModelPill.textContent = `${modelLabel} / ${backendLabel}`;
   }
-  els.mainLangPill.textContent = `${mainUi.selected_source || '未知'} → ${mainUi.selected_target || '未知'}`;
-  els.mainEnginePill.textContent = `${mainUi.selected_engine || '未知'}`;
+  els.mainLangPill.textContent = `${mainUi.selected_source || '自动'} → ${mainUi.selected_target || '自动'}`;
+  els.mainEnginePill.textContent = mainUi.selected_engine || '未启用';
   if (els.btnLoadMainModel) {
     const hasModel = Array.isArray(mainUi.model_options) && mainUi.model_options.length > 0;
     els.btnLoadMainModel.disabled = !hasModel;
@@ -1735,7 +1737,7 @@ function renderLiveOutputs(data) {
     els.mainTranscribedOutput,
     live.main_transcribed_html,
     live.main_transcribed_text || '',
-    '开始录制后，新的转写结果会出现在这里。',
+    '等待转写',
     settings,
     'tc'
   );
@@ -1743,17 +1745,17 @@ function renderLiveOutputs(data) {
     els.mainTranslatedOutput,
     live.main_translated_html,
     live.main_translated_text || '',
-    '启用翻译后，目标语言内容会同步显示在这里。',
+    '等待翻译',
     settings,
     'tl'
   );
   if (els.mainTranscribedLabel) {
     els.mainTranscribedLabel.classList.toggle('is-live', tcHasLive);
-    els.mainTranscribedLabel.textContent = tcHasLive ? '转写实时输出' : '转写输出';
+    els.mainTranscribedLabel.textContent = '转写结果';
   }
   if (els.mainTranslatedLabel) {
     els.mainTranslatedLabel.classList.toggle('is-live', tlHasLive);
-    els.mainTranslatedLabel.textContent = tlHasLive ? '翻译实时输出' : '翻译输出';
+    els.mainTranslatedLabel.textContent = '翻译结果';
   }
   applyOutputScroll(els.mainTranscribedOutput, Boolean(settings.tb_mw_tc_auto_scroll ?? true));
   applyOutputScroll(els.mainTranslatedOutput, Boolean(settings.tb_mw_tl_auto_scroll ?? true));
@@ -3505,16 +3507,76 @@ function jumpToSettingsSection(sectionTitle) {
   return resolvedTitle || true;
 }
 
+function collectSearchTerms(root, selectors) {
+  if (!root) {
+    return '';
+  }
+
+  const parts = [];
+  for (const selector of selectors) {
+    for (const node of root.querySelectorAll(selector)) {
+      const fragments = [];
+      const text = String(node.textContent || '').trim();
+      if (text) {
+        fragments.push(text);
+      }
+      if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) {
+        const value = String(node.value || '').trim();
+        const placeholder = String(node.placeholder || '').trim();
+        if (value) {
+          fragments.push(value);
+        }
+        if (placeholder) {
+          fragments.push(placeholder);
+        }
+      } else if (node instanceof HTMLSelectElement) {
+        const value = String(node.value || '').trim();
+        if (value) {
+          fragments.push(value);
+        }
+        const selectedText = Array.from(node.selectedOptions || [])
+          .map((option) => String(option.textContent || '').trim())
+          .filter(Boolean)
+          .join(' ');
+        if (selectedText) {
+          fragments.push(selectedText);
+        }
+      }
+      const ariaLabel = String(node.getAttribute?.('aria-label') || '').trim();
+      if (ariaLabel) {
+        fragments.push(ariaLabel);
+      }
+      for (const fragment of fragments) {
+        parts.push(fragment);
+      }
+    }
+  }
+  return normalizeSearchText(parts.join(' '));
+}
+
 function applySettingsFilter(rawQuery = '') {
   const query = normalizeSearchText(rawQuery);
   const panels = getSettingsPanels();
+  const overviewCards = Array.from(document.querySelectorAll('.settings-toolbar-overview .settings-overview-card'));
+  const workbenchCards = Array.from(document.querySelectorAll('.settings-workbench-card'));
   let visibleCount = 0;
+  let overviewMatchCount = 0;
+  let workbenchMatchCount = 0;
 
   for (const panel of panels) {
     const summary = panel.querySelector('summary');
     const haystack = normalizeSearchText([
       getSettingsPanelTitle(summary),
-      panel.textContent || '',
+      collectSearchTerms(panel, [
+        '.settings-panel-title',
+        '.settings-panel-meta',
+        '.settings-section-title',
+        '.settings-workbench-section-title',
+        '.settings-workbench-section-meta',
+        'label > span',
+        'label.toggle-row',
+        'button',
+      ]),
     ].join(' '));
     const matched = !query || haystack.includes(query);
     panel.classList.toggle('settings-panel-hidden', !matched);
@@ -3527,6 +3589,37 @@ function applySettingsFilter(rawQuery = '') {
     }
   }
 
+  for (const card of workbenchCards) {
+    const haystack = collectSearchTerms(card, [
+      '.settings-workbench-title',
+      '.settings-workbench-meta',
+      '.settings-workbench-section-title',
+      '.settings-workbench-section-meta',
+      'label > span',
+      'label.toggle-row',
+    ]);
+    const matched = Boolean(query && haystack.includes(query));
+    card.classList.toggle('settings-workbench-card-match', matched);
+    card.classList.toggle('settings-workbench-card-hidden', Boolean(query && !matched));
+    if (matched) {
+      workbenchMatchCount += 1;
+    }
+  }
+
+  for (const card of overviewCards) {
+    const haystack = collectSearchTerms(card, [
+      '.settings-overview-label',
+      '.settings-overview-value',
+      '.settings-overview-meta',
+    ]);
+    const matched = Boolean(query && haystack.includes(query));
+    card.classList.toggle('settings-overview-card-match', matched);
+    card.classList.toggle('settings-overview-card-hidden', Boolean(query && !matched));
+    if (matched) {
+      overviewMatchCount += 1;
+    }
+  }
+
   const shortcuts = Array.from(document.querySelectorAll('[data-settings-jump]'));
   for (const shortcut of shortcuts) {
     const target = normalizeSearchText(shortcut.getAttribute('data-settings-jump') || '');
@@ -3535,7 +3628,7 @@ function applySettingsFilter(rawQuery = '') {
 
   if (els.settingsSearchMeta) {
     els.settingsSearchMeta.textContent = query
-      ? `筛选结果：${visibleCount} / ${panels.length}`
+      ? `筛选结果：${visibleCount} 个设置面板，${overviewMatchCount} 个总览卡片，${workbenchMatchCount} 个工作台卡片`
       : '显示全部设置';
   }
 
