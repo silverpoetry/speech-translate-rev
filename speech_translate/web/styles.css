@@ -3254,7 +3254,7 @@ button.btn-icon[data-tooltip]::before {
   list-style: none;
   cursor: pointer;
   /* 默认只预留 48px 给单按钮空间，防止挤压较长标题 */
-  padding: 9px 48px 9px 32px;
+  padding: 9px 48px 9px 18px;
   font-weight: 600;
   color: var(--text);
   background: #ffffff;
@@ -3321,10 +3321,10 @@ button.btn-icon[data-tooltip]::before {
 .advanced-panel>summary::after {
   content: "";
   position: absolute;
-  left: 14px;
+  left: 7px;
   top: 50%;
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-right: 1.6px solid #64748b;
   border-bottom: 1.6px solid #64748b;
   transform: translateY(-62%) rotate(-45deg);
