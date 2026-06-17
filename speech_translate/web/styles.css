@@ -583,28 +583,27 @@ body {
 }
 
 #tab-model .model-selection-status-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 0;
-  gap: 6px;
+  gap: 5px;
 }
 
-#tab-model .model-selection-status-grid .status-overview-card-primary,
 #tab-model .model-selection-status-grid .status-overview-card-wide {
   grid-column: 1 / -1;
 }
 
 #tab-model .model-selection-status-grid .status-overview-card-primary {
-  min-height: 72px;
+  min-height: 64px;
   background: linear-gradient(135deg, rgba(219, 234, 254, 0.78), rgba(255, 255, 255, 0.98));
   border-color: rgba(96, 165, 250, 0.24);
 }
 
 #tab-model .model-selection-status-grid .status-overview-card-wide {
-  min-height: 82px;
+  min-height: 70px;
 }
 
 #tab-model .model-selection-status-grid .status-overview-card-compact {
-  min-height: 76px;
+  min-height: 62px;
 }
 
 .file-workbench-shell {
@@ -3628,15 +3627,16 @@ button.btn-icon[data-tooltip]::before {
 .detached-workbench-title {
   margin: 0;
   color: #0f172a;
-  font-size: 0.8rem;
+  font-size: 0.84rem;
   font-weight: 700;
+  line-height: 1.28;
 }
 
 .detached-workbench-meta {
   margin: 0;
   color: #64748b;
-  font-size: 0.72rem;
-  line-height: 1.3;
+  font-size: 0.7rem;
+  line-height: 1.38;
 }
 
 .detached-workbench-grid {
@@ -3648,8 +3648,8 @@ button.btn-icon[data-tooltip]::before {
 
 .detached-workbench-card {
   display: grid;
-  gap: 7px;
-  padding: 12px;
+  gap: 8px;
+  padding: 13px;
   border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 12px;
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 0.96));
@@ -3659,7 +3659,7 @@ button.btn-icon[data-tooltip]::before {
 .detached-workbench-card-meta {
   margin-top: 3px;
   color: #64748b;
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   line-height: 1.35;
 }
 
@@ -3672,8 +3672,8 @@ button.btn-icon[data-tooltip]::before {
 .detached-workbench-action-group {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 5px;
-  padding: 6px;
+  gap: 6px;
+  padding: 7px;
   border-radius: 10px;
   background: rgba(248, 250, 252, 0.92);
   border: 1px solid rgba(148, 163, 184, 0.16);
@@ -3686,9 +3686,9 @@ button.btn-icon[data-tooltip]::before {
 .detached-workbench-action-group .btn-with-icon {
   width: 100%;
   justify-content: center;
-  min-height: 28px;
-  padding: 0 8px;
-  font-size: 0.7rem;
+  min-height: 30px;
+  padding: 0 9px;
+  font-size: 0.72rem;
 }
 
 .compact-status-row {
@@ -3697,7 +3697,7 @@ button.btn-icon[data-tooltip]::before {
 }
 
 .compact-status-row .pill {
-  font-size: 0.62rem;
+  font-size: 0.64rem;
 }
 
 .compact-status-row-merged {
@@ -3731,25 +3731,25 @@ button.btn-icon[data-tooltip]::before {
 
 .detached-config-mini-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px 8px;
-  padding: 2px 0 0;
+  gap: 8px 10px;
+  padding: 4px 0 0;
 }
 
 .detached-config-mini-grid .toggle-row {
-  min-height: 20px;
+  min-height: 22px;
   padding: 1px 0;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
 }
 
 .detached-config-mini-grid > label:not(.toggle-row) {
-  padding: 8px 9px;
+  padding: 9px 10px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.78);
   border: 1px solid rgba(148, 163, 184, 0.12);
 }
 
 .detached-config-mini-grid > label:not(.toggle-row) > span {
-  font-size: 0.68rem;
+  font-size: 0.7rem;
 }
 
 .detached-config-mini-grid input[type="text"] {
@@ -5684,18 +5684,44 @@ button.btn-icon:hover {
   border-radius: 999px;
 }
 
+#tab-model .model-selection-status-grid .status-overview-card {
+  min-height: 64px;
+  padding: 7px 9px;
+}
+
+#tab-model .model-selection-status-grid .status-overview-value {
+  font-size: 0.86rem;
+}
+
 #tab-model .model-selection-status-grid .status-overview-card-compact {
-  min-height: 68px;
+  min-height: 60px;
 }
 
 #tab-model .model-selection-status-grid .status-overview-card-compact .status-overview-meta {
-  font-size: 0.66rem;
-  line-height: 1.3;
+  font-size: 0.64rem;
+  line-height: 1.28;
+}
+
+#tab-model .model-selection-status-grid .status-overview-meta {
+  font-size: 0.67rem;
+  line-height: 1.32;
+}
+
+.model-selection-status-rail {
+  gap: 8px;
 }
 
 .model-selection-quick-actions-secondary {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   padding-top: 4px;
+}
+
+.model-selection-quick-actions-secondary .btn-with-icon {
+  grid-column: span 2;
+}
+
+.model-selection-quick-actions-secondary .btn-with-icon:nth-last-child(-n+2) {
+  grid-column: span 3;
 }
 
 .model-selection-quick-actions-secondary .btn-with-icon {
