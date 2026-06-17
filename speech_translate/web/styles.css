@@ -3313,14 +3313,14 @@ button.btn-icon[data-tooltip]::before {
 
 .settings-panel-meta {
   min-width: 0;
-  max-width: 52%;
+  max-width: none;
   color: #64748b;
   font-size: 0.72rem;
   font-weight: 500;
-  line-height: 1.35;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.34;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .advanced-panel>summary::-webkit-details-marker {
@@ -5389,12 +5389,12 @@ textarea:focus {
   --ui-surface: #ffffff;
   --ui-surface-soft: linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(255, 255, 255, 0.99));
   --ui-surface-tint: linear-gradient(135deg, rgba(239, 246, 255, 0.88), rgba(255, 255, 255, 0.99));
-  --ui-text-2xs: 0.64rem;
-  --ui-text-xs: 0.7rem;
-  --ui-text-sm: 0.76rem;
-  --ui-text-md: 0.82rem;
-  --ui-text-lg: 0.9rem;
-  --ui-text-xl: 0.98rem;
+  --ui-text-2xs: 0.63rem;
+  --ui-text-xs: 0.69rem;
+  --ui-text-sm: 0.75rem;
+  --ui-text-md: 0.8rem;
+  --ui-text-lg: 0.88rem;
+  --ui-text-xl: 0.95rem;
 }
 
 .dashboard-layout {
@@ -5547,7 +5547,7 @@ textarea:focus {
 .file-queue-subtitle,
 .live-output-panel-meta {
   font-size: var(--ui-text-xs);
-  line-height: 1.4;
+  line-height: 1.36;
 }
 
 label span {
@@ -5703,7 +5703,7 @@ button.btn-icon:hover {
 .live-output.is-empty {
   gap: 3px;
   padding-top: 0;
-  font-size: 0.79rem;
+  font-size: 0.76rem;
 }
 
 .live-output.is-empty::before {
@@ -5741,7 +5741,7 @@ button.btn-icon:hover {
 }
 
 .file-workbench-shell {
-  grid-template-columns: minmax(0, 1.5fr) minmax(336px, 1.1fr);
+  grid-template-columns: minmax(0, 1.44fr) minmax(352px, 1.16fr);
   gap: 14px;
 }
 
@@ -5757,13 +5757,14 @@ button.btn-icon:hover {
 
 .file-ops-summary .status-overview-card,
 .file-ops-summary-secondary .status-overview-card {
-  min-height: 50px;
-  padding: 8px 9px;
+  min-height: 46px;
+  padding: 7px 8px;
 }
 
 .file-ops-summary .status-overview-meta,
 .file-ops-summary-secondary .status-overview-meta {
-  line-height: 1.28;
+  font-size: 0.66rem;
+  line-height: 1.24;
 }
 
 .file-ops-actions {
@@ -5881,12 +5882,12 @@ button.btn-icon:hover {
 }
 
 .model-selection-workbench {
-  grid-template-columns: minmax(0, 1.7fr) minmax(344px, 1.02fr);
+  grid-template-columns: minmax(0, 1.6fr) minmax(356px, 1.08fr);
   gap: 16px;
 }
 
 .model-selection-shell {
-  grid-template-columns: minmax(0, 1.62fr) minmax(280px, 0.98fr);
+  grid-template-columns: minmax(0, 1.54fr) minmax(292px, 1.02fr);
   gap: 14px;
 }
 
@@ -5955,7 +5956,7 @@ button.btn-icon:hover {
 
 #tab-model .model-selection-status-grid .status-overview-meta {
   font-size: 0.67rem;
-  line-height: 1.32;
+  line-height: 1.28;
 }
 
 .model-selection-status-rail {
@@ -6052,14 +6053,14 @@ button.btn-icon:hover {
 }
 
 .settings-toolbar-actions {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 7px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .settings-toolbar-actions .btn-with-icon {
-  justify-content: center;
+  justify-content: flex-start;
   min-height: 31px;
-  padding-inline: 8px;
+  padding-inline: 12px;
   font-size: var(--ui-text-xs);
   background: rgba(255, 255, 255, 0.96);
   border-color: rgba(203, 213, 225, 0.9);
@@ -6068,17 +6069,17 @@ button.btn-icon:hover {
 }
 
 .settings-toolbar-overview {
-  gap: 8px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .settings-toolbar-overview .settings-overview-card {
-  min-height: 48px;
-  padding: 8px 9px;
+  min-height: 54px;
+  padding: 9px 10px;
 }
 
 .settings-toolbar-overview .settings-overview-card-primary {
-  grid-column: span 2;
+  grid-column: 1 / -1;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.82),
     0 6px 16px rgba(37, 99, 235, 0.05);
@@ -6111,11 +6112,11 @@ button.btn-icon:hover {
 }
 
 .settings-workbench-head {
-  gap: 2px;
+  gap: 3px;
 }
 
 .settings-workbench-title {
-  font-size: 0.82rem;
+  font-size: var(--ui-text-md);
   line-height: 1.3;
 }
 
@@ -6125,6 +6126,7 @@ button.btn-icon:hover {
 }
 
 .settings-workbench-board .settings-workbench-section-grid {
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 
@@ -6136,6 +6138,7 @@ button.btn-icon:hover {
 }
 
 .settings-workbench-board .settings-workbench-card-wide .settings-workbench-section-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -6145,12 +6148,12 @@ button.btn-icon:hover {
 }
 
 .settings-workbench-section-title {
-  font-size: 0.76rem;
+  font-size: var(--ui-text-sm);
   line-height: 1.3;
 }
 
 .settings-workbench-section-meta {
-  font-size: 0.68rem;
+  font-size: 0.67rem;
   line-height: 1.34;
 }
 
@@ -6183,7 +6186,7 @@ button.btn-icon:hover {
 }
 
 .settings-workbench-board .settings-workbench-section .settings-workbench-form {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .settings-workbench-board .settings-workbench-card-network-export .settings-workbench-form,

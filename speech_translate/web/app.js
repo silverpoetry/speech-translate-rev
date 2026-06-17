@@ -1065,7 +1065,7 @@ function renderImportSettings(data) {
   }
   if (els.fileImportExportFormatMeta) {
     const formats = Array.isArray(settings.export_to) ? settings.export_to : [];
-    const autoOpen = settings.auto_open_dir_export ? '完成后自动打开目录' : '完成后不自动打开目录';
+    const autoOpen = settings.auto_open_dir_export ? '自动打开目录' : '不自动打开';
     const exportFormats = formats.length > 0
       ? formats.map((item) => String(item).toUpperCase()).join(' / ')
       : '未设置格式';
@@ -1407,7 +1407,7 @@ function renderSettingsToolbarOverview(data) {
     els.settingsToolbarModelMeta.textContent = runtime.loaded ? '已加载模型' : '待加载模型';
   }
   if (els.settingsToolbarExportMeta) {
-    els.settingsToolbarExportMeta.textContent = settings.auto_open_dir_export ? '完成后打开目录' : '完成后不打开';
+    els.settingsToolbarExportMeta.textContent = settings.auto_open_dir_export ? '自动打开目录' : '不自动打开';
   }
   if (els.settingsToolbarRecordMeta) {
     els.settingsToolbarRecordMeta.textContent = `${settings.rec_ask_confirmation_first ? '录前确认' : '直接录制'} · ${settings.model_device_preference || 'auto'}`;
@@ -1599,7 +1599,7 @@ function renderSettingsPanelSummaries(data) {
     ]],
     ['导出与切分', [
       summarizeExportFormats(settings),
-      settings.auto_open_dir_export ? '完成后打开目录' : '完成后不自动打开',
+      settings.auto_open_dir_export ? '自动打开目录' : '不自动打开',
     ]],
     ['主界面文本显示', [
       settings.colorize_per_word ? '按词着色' : settings.colorize_per_segment ? '按段着色' : '纯文本',
