@@ -3181,7 +3181,8 @@ button.btn-icon[data-tooltip]::before {
 }
 
 #settings-shell > .settings-toolbar,
-#settings-shell > .advanced-panel[open] {
+#settings-shell > .advanced-panel[open],
+#settings-shell > .settings-panel-wide {
   grid-column: 1 / -1;
 }
 
@@ -3351,6 +3352,10 @@ button.btn-icon[data-tooltip]::before {
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 1));
   border: 1px solid rgba(203, 213, 225, 0.86);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
+}
+
+#settings-shell > .settings-panel-wide:not([open]) > summary {
+  grid-template-columns: minmax(0, 1.34fr) minmax(216px, 0.72fr);
 }
 
 #settings-shell .advanced-panel:not([open]) > summary:hover {
@@ -3557,7 +3562,7 @@ button.btn-icon[data-tooltip]::before {
 
 .decode-settings-shell .compact-form-grid,
 .selenium-settings-shell .compact-form-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .decode-settings-rail,
@@ -3669,6 +3674,15 @@ button.btn-icon[data-tooltip]::before {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+#settings-shell > .settings-panel-wide .advanced-panel-body {
+  gap: 12px;
+  padding: 12px;
+}
+
+#settings-shell > .settings-panel-wide .settings-dual-card-grid {
+  gap: 14px;
 }
 
 .compact-form-grid {
