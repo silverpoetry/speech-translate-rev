@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>语音翻译</title>
-  <link rel="stylesheet" href="styles.css?v=20260617-ui-cn-44" />
+  <link rel="stylesheet" href="styles.css?v=20260617-ui-cn-53" />
 
 <script>
 (function () {
@@ -425,7 +425,12 @@
                 <div class="model-selection-workbench">
                   <div class="model-selection-shell">
                     <div class="model-selection-main-card">
-                      <div class="model-selection-kicker">运行配置</div>
+                      <div class="model-selection-card-head">
+                        <div>
+                          <div class="model-selection-kicker">运行配置</div>
+                          <p class="model-selection-card-meta">先确定后端与模型，再统一加载到运行时。</p>
+                        </div>
+                      </div>
                       <div class="form-grid import-grid model-select-grid model-select-inline">
                         <div class="model-select-engine-inline">
                           <span>Whisper 后端</span>
@@ -454,7 +459,12 @@
                     </div>
 
                     <div class="model-selection-side-card">
-                      <div class="model-selection-kicker">窗口与提示策略</div>
+                      <div class="model-selection-card-head">
+                        <div>
+                          <div class="model-selection-kicker">辅助策略</div>
+                          <p class="model-selection-card-meta">只放和加载决策强相关的补充项。</p>
+                        </div>
+                      </div>
                       <div class="form-grid form-grid-spaced model-selection-side-grid">
                         <label>
                           <span>主窗口尺寸</span>
@@ -470,22 +480,22 @@
                     <div class="model-selection-status-head">
                       <div>
                         <span class="model-selection-kicker">启动摘要</span>
-                        <p>模型状态与检查入口集中在这里。</p>
+                        <p>右侧只保留运行判断所需的核心状态与跳转。</p>
                       </div>
                       <button type="button" class="btn-with-icon btn-with-icon-quiet" data-action="load-model">加载模型</button>
                     </div>
                     <div class="status-overview-grid model-selection-status-grid" aria-label="模型选择概览">
-                      <div class="status-overview-card">
+                      <div class="status-overview-card status-overview-card-primary">
                         <span class="status-overview-label">当前模型</span>
                         <span class="status-overview-value" id="model-selection-current">未选择</span>
                         <span class="status-overview-meta" id="model-selection-current-meta">等待同步</span>
                       </div>
-                      <div class="status-overview-card">
+                      <div class="status-overview-card status-overview-card-primary">
                         <span class="status-overview-label">运行状态</span>
                         <span class="status-overview-value" id="model-selection-runtime">未加载</span>
                         <span class="status-overview-meta" id="model-selection-runtime-meta">等待加载</span>
                       </div>
-                      <div class="status-overview-card">
+                      <div class="status-overview-card status-overview-card-wide">
                         <span class="status-overview-label">后端</span>
                         <span class="status-overview-value" id="model-selection-backend">未知</span>
                         <span class="status-overview-meta" id="model-selection-backend-meta">模型选择页</span>
@@ -506,13 +516,14 @@
                         <span class="status-overview-meta" id="model-selection-cache-meta">已下载 7 个，本引擎仍缺 7 个</span>
                       </div>
                     </div>
-                    <div class="model-selection-quick-actions">
+                    <div class="model-selection-quick-actions model-selection-quick-actions-primary">
                       <button type="button" class="btn-with-icon" data-action="check-model-current">检查当前</button>
                       <button type="button" class="btn-with-icon" data-action="check-all-models">检查全部</button>
                       <button type="button" class="btn-with-icon" data-open-dir="model">打开目录</button>
-                      <button type="button" class="btn-with-icon" data-settings-jump="录制设置（麦克风 / 扬声器）">录制</button>
+                      <button type="button" class="btn-with-icon" data-action="pick-model-dir">设置目录</button>
                     </div>
                     <div class="model-selection-quick-actions model-selection-quick-actions-secondary">
+                      <button type="button" class="btn-with-icon" data-settings-jump="录制设置（麦克风 / 扬声器）">录制</button>
                       <button type="button" class="btn-with-icon" data-settings-jump="Whisper 解码参数">解码</button>
                       <button type="button" class="btn-with-icon" data-settings-jump="Selenium 翻译窗口">Selenium</button>
                       <button type="button" class="btn-with-icon" data-settings-jump="翻译网络与 LibreTranslate">网络</button>
@@ -1206,26 +1217,20 @@
               </article>
             </div>
             <div class="settings-workbench-grid">
-              <section class="settings-workbench-card settings-workbench-card-wide">
+              <section class="settings-workbench-card">
                 <div class="settings-workbench-head">
-                  <div class="settings-workbench-title">网络、导出与录制</div>
-                  <p class="settings-workbench-meta">代理、导出命名和录制入口集中在首屏。</p>
+                  <div class="settings-workbench-title">网络与导出</div>
+                  <p class="settings-workbench-meta">代理、导出命名和目录策略集中在这里。</p>
                 </div>
-                <div class="settings-workbench-section-grid">
+                <div class="settings-workbench-section-grid settings-workbench-section-grid-single">
                   <section class="settings-workbench-section">
                     <div class="settings-workbench-section-head">
                       <span class="settings-workbench-section-title">网络</span>
                       <span class="settings-workbench-section-meta">代理与 LibreTranslate</span>
                     </div>
                     <div class="form-grid settings-workbench-form">
-                      <label class="toggle-row">
-                        <input id="http_proxy_enable_toolbar" type="checkbox" checked />
-                        HTTP 代理
-                      </label>
-                      <label class="toggle-row">
-                        <input id="https_proxy_enable_toolbar" type="checkbox" checked />
-                        HTTPS 代理
-                      </label>
+                      <label class="toggle-row"><input id="http_proxy_enable_toolbar" type="checkbox" checked /> HTTP 代理</label>
+                      <label class="toggle-row"><input id="https_proxy_enable_toolbar" type="checkbox" checked /> HTTPS 代理</label>
                       <label>
                         <span>HTTP 代理</span>
                         <input id="http_proxy_toolbar" type="text" placeholder="http://127.0.0.1:7890" value="http://127.0.0.1:7890" />
@@ -1246,8 +1251,8 @@
                   </section>
                   <section class="settings-workbench-section">
                     <div class="settings-workbench-section-head">
-                      <span class="settings-workbench-section-title">导出与录制</span>
-                      <span class="settings-workbench-section-meta">命名、切分与输入节流</span>
+                      <span class="settings-workbench-section-title">导出</span>
+                      <span class="settings-workbench-section-meta">命名、切分与目录策略</span>
                     </div>
                     <div class="form-grid settings-workbench-form">
                       <label class="field-span-2">
@@ -1263,15 +1268,63 @@
                         <input id="segment_max_words_toolbar" type="text" placeholder="留空表示不限制" value="16" />
                       </label>
                       <label>
+                        <span>分段最大字符数</span>
+                        <input id="segment_max_chars_toolbar" type="text" placeholder="留空表示不限制" value="42" />
+                      </label>
+                      <label>
+                        <span>切分模式</span>
+                        <select id="segment_split_or_newline_toolbar">
+                          <option value="split" selected>Split</option>
+                          <option value="newline">Newline</option>
+                        </select>
+                      </label>
+                      <label>
                         <span>主机 API</span>
                         <select id="hostAPI_toolbar">
                           <option value="Windows WASAPI" selected>Windows WASAPI</option>
                         </select>
                       </label>
+                    </div>
+                  </section>
+                </div>
+              </section>
+              <section class="settings-workbench-card">
+                <div class="settings-workbench-head">
+                  <div class="settings-workbench-title">录制与设备</div>
+                  <p class="settings-workbench-meta">节流、设备策略和关键开关。</p>
+                </div>
+                <div class="settings-workbench-section-grid">
+                  <section class="settings-workbench-section">
+                    <div class="settings-workbench-section-head">
+                      <span class="settings-workbench-section-title">录制</span>
+                      <span class="settings-workbench-section-meta">输入节流与设备策略</span>
+                    </div>
+                    <div class="form-grid settings-workbench-form">
                       <label>
                         <span>转写间隔 (ms)</span>
                         <input id="transcribe_rate_toolbar" type="number" min="1" max="1000" step="1" value="300" />
                       </label>
+                      <label>
+                        <span>模型设备策略</span>
+                        <select id="model_device_preference_toolbar">
+                          <option value="auto" selected>AUTO</option>
+                          <option value="cpu">CPU</option>
+                          <option value="cuda">CUDA</option>
+                        </select>
+                      </label>
+                      <label class="toggle-row"><input id="segment_even_split_toolbar" type="checkbox" checked /> 平均切分</label>
+                    </div>
+                  </section>
+                  <section class="settings-workbench-section">
+                    <div class="settings-workbench-section-head">
+                      <span class="settings-workbench-section-title">段级输出</span>
+                      <span class="settings-workbench-section-meta">控制导出粒度</span>
+                    </div>
+                    <div class="settings-workbench-toggle-grid">
+                      <label class="toggle-row"><input id="segment_level_toolbar" type="checkbox" checked /> 保留 Segment 级</label>
+                      <label class="toggle-row"><input id="word_level_toolbar" type="checkbox" checked /> 保留 Word 级</label>
+                      <label class="toggle-row"><input id="rec_ask_confirmation_first_toolbar" type="checkbox" checked /> 录前确认</label>
+                      <label class="toggle-row"><input id="supress_hidden_to_tray_toolbar" type="checkbox" /> 托盘静默</label>
                     </div>
                   </section>
                 </div>
@@ -1290,106 +1343,112 @@
                   <label class="toggle-row"><input id="export_csv_toolbar" type="checkbox" /> CSV</label>
                   <label class="toggle-row"><input id="export_tsv_toolbar" type="checkbox" /> TSV</label>
                   <label class="toggle-row"><input id="export_mp4_toolbar" type="checkbox" /> MP4</label>
-                  <label class="toggle-row"><input id="rec_ask_confirmation_first_toolbar" type="checkbox" checked /> 录前确认</label>
-                  <label class="toggle-row"><input id="supress_hidden_to_tray_toolbar" type="checkbox" /> 托盘静默</label>
                 </div>
               </section>
-              <section class="settings-workbench-card settings-workbench-card-wide">
+              <section class="settings-workbench-card">
                 <div class="settings-workbench-head">
-                  <div class="settings-workbench-title">解码控制中心</div>
-                  <p class="settings-workbench-meta">预设、精度和稳定性阈值集中到同一处。</p>
+                  <div class="settings-workbench-title">解码核心</div>
+                  <p class="settings-workbench-meta">预设、温度与精度控制。</p>
                 </div>
-                <div class="settings-workbench-section-grid">
-                  <section class="settings-workbench-section">
-                    <div class="settings-workbench-section-head">
-                      <span class="settings-workbench-section-title">核心参数</span>
-                      <span class="settings-workbench-section-meta">预设、温度与精度</span>
-                    </div>
-                    <div class="form-grid settings-workbench-form">
-                      <label>
-                        <span>解码预设</span>
-                        <select id="decoding_preset_toolbar">
-                          <option value="greedy">greedy</option>
-                          <option value="beam search" selected>beam search</option>
-                          <option value="custom">custom</option>
-                        </select>
-                      </label>
-                      <label>
-                        <span>温度</span>
-                        <input id="temperature_toolbar" type="text" placeholder="0.0, 0.2, 0.4, 0.6, 0.8, 1.0" value="0" />
-                      </label>
-                      <label class="toggle-row"><input id="use_en_model_toolbar" type="checkbox" /> 优先 .en 模型</label>
-                      <label class="toggle-row"><input id="fp16_toolbar" type="checkbox" checked /> 启用 FP16</label>
-                    </div>
-                  </section>
-                  <section class="settings-workbench-section">
-                    <div class="settings-workbench-section-head">
-                      <span class="settings-workbench-section-title">稳定性阈值</span>
-                      <span class="settings-workbench-section-meta">抑制空白与漏识别排查</span>
-                    </div>
-                    <div class="form-grid settings-workbench-form">
-                      <label>
-                        <span>Best Of</span>
-                        <input id="best_of_toolbar" type="number" min="1" max="20" step="1" value="5" />
-                      </label>
-                      <label>
-                        <span>Beam Size</span>
-                        <input id="beam_size_toolbar" type="number" min="1" max="20" step="1" value="5" />
-                      </label>
-                      <label>
-                        <span>No Speech Threshold</span>
-                        <input id="no_speech_threshold_toolbar" type="number" min="0" max="1" step="0.01" value="0.6" />
-                      </label>
-                      <label>
-                        <span>Logprob Threshold</span>
-                        <input id="logprob_threshold_toolbar" type="number" min="-10" max="10" step="0.1" value="-1.0" />
-                      </label>
-                      <label>
-                        <span>Patience</span>
-                        <input id="patience_toolbar" type="number" min="0" max="10" step="0.1" value="1.0" />
-                      </label>
-                      <label>
-                        <span>Compression Ratio</span>
-                        <input id="compression_ratio_threshold_toolbar" type="number" min="0" max="10" step="0.1" value="2.4" />
-                      </label>
-                      <label class="field-span-2">
-                        <span>Suppress Tokens</span>
-                        <input id="suppress_tokens_toolbar" type="text" placeholder="-1 或 1,2,3" value="" />
-                      </label>
-                      <label class="toggle-row field-span-2"><input id="suppress_blank_toolbar" type="checkbox" checked /> 抑制空白片段</label>
-                    </div>
-                  </section>
-                </div>
+                <section class="settings-workbench-section">
+                  <div class="settings-workbench-section-head">
+                    <span class="settings-workbench-section-title">核心参数</span>
+                    <span class="settings-workbench-section-meta">预设、温度与精度</span>
+                  </div>
+                  <div class="form-grid settings-workbench-form">
+                    <label>
+                      <span>解码预设</span>
+                      <select id="decoding_preset_toolbar">
+                        <option value="greedy">greedy</option>
+                        <option value="beam search" selected>beam search</option>
+                        <option value="custom">custom</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>温度</span>
+                      <input id="temperature_toolbar" type="text" placeholder="0.0, 0.2, 0.4, 0.6, 0.8, 1.0" value="0" />
+                    </label>
+                    <label class="toggle-row"><input id="use_en_model_toolbar" type="checkbox" /> 优先 .en 模型</label>
+                    <label class="toggle-row"><input id="fp16_toolbar" type="checkbox" checked /> 启用 FP16</label>
+                  </div>
+                </section>
               </section>
-              <section class="settings-workbench-card settings-workbench-card-wide">
+              <section class="settings-workbench-card">
                 <div class="settings-workbench-head">
-                  <div class="settings-workbench-title">文件转写与调试开关</div>
-                  <p class="settings-workbench-meta">临时文件策略、原生后端与调试日志入口集中到首屏。</p>
+                  <div class="settings-workbench-title">解码阈值</div>
+                  <p class="settings-workbench-meta">抑制空白与漏识别排查。</p>
                 </div>
-                <div class="settings-workbench-section-grid">
-                  <section class="settings-workbench-section">
-                    <div class="settings-workbench-section-head">
-                      <span class="settings-workbench-section-title">文件转写运行策略</span>
-                      <span class="settings-workbench-section-meta">转换模式、临时文件和后端实现</span>
-                    </div>
-                    <div class="settings-workbench-toggle-grid">
-                      <label class="toggle-row"><input id="use_temp_alt_toolbar" type="checkbox" checked /> 临时 WAV 模式</label>
-                      <label class="toggle-row"><input id="keep_temp_toolbar" type="checkbox" /> 保留临时文件</label>
-                      <label class="toggle-row"><input id="file_use_official_whisper_toolbar" type="checkbox" /> 文件转写走后端原生</label>
-                      <label class="toggle-row"><input id="supress_record_warning_toolbar" type="checkbox" /> 忽略录制警告</label>
-                    </div>
-                  </section>
-                  <section class="settings-workbench-section">
-                    <div class="settings-workbench-section-head">
-                      <span class="settings-workbench-section-title">调试与排障</span>
-                      <span class="settings-workbench-section-meta">记录关键日志，方便排查录制和翻译链路</span>
-                    </div>
-                    <div class="settings-workbench-toggle-grid">
-                      <label class="toggle-row"><input id="debug_realtime_record_toolbar" type="checkbox" /> 实时转写调试日志</label>
-                      <label class="toggle-row"><input id="debug_translate_toolbar" type="checkbox" /> 翻译调试日志</label>
-                    </div>
-                  </section>
+                <section class="settings-workbench-section">
+                  <div class="settings-workbench-section-head">
+                    <span class="settings-workbench-section-title">稳定性阈值</span>
+                    <span class="settings-workbench-section-meta">精度、空白抑制和候选策略</span>
+                  </div>
+                  <div class="form-grid settings-workbench-form">
+                    <label>
+                      <span>Best Of</span>
+                      <input id="best_of_toolbar" type="number" min="1" max="20" step="1" value="5" />
+                    </label>
+                    <label>
+                      <span>Beam Size</span>
+                      <input id="beam_size_toolbar" type="number" min="1" max="20" step="1" value="5" />
+                    </label>
+                    <label>
+                      <span>No Speech Threshold</span>
+                      <input id="no_speech_threshold_toolbar" type="number" min="0" max="1" step="0.01" value="0.6" />
+                    </label>
+                    <label>
+                      <span>Logprob Threshold</span>
+                      <input id="logprob_threshold_toolbar" type="number" min="-10" max="10" step="0.1" value="-1.0" />
+                    </label>
+                    <label>
+                      <span>Patience</span>
+                      <input id="patience_toolbar" type="number" min="0" max="10" step="0.1" value="1.0" />
+                    </label>
+                    <label>
+                      <span>Compression Ratio</span>
+                      <input id="compression_ratio_threshold_toolbar" type="number" min="0" max="10" step="0.1" value="2.4" />
+                    </label>
+                    <label class="field-span-2">
+                      <span>Suppress Tokens</span>
+                      <input id="suppress_tokens_toolbar" type="text" placeholder="-1 或 1,2,3" value="" />
+                    </label>
+                    <label class="toggle-row field-span-2"><input id="suppress_blank_toolbar" type="checkbox" checked /> 抑制空白片段</label>
+                  </div>
+                </section>
+              </section>
+              <section class="settings-workbench-card">
+                <div class="settings-workbench-head">
+                  <div class="settings-workbench-title">文件转写策略</div>
+                  <p class="settings-workbench-meta">转换模式、临时文件和后端实现。</p>
                 </div>
+                <section class="settings-workbench-section">
+                  <div class="settings-workbench-section-head">
+                    <span class="settings-workbench-section-title">运行策略</span>
+                    <span class="settings-workbench-section-meta">仅保留高频切换项</span>
+                  </div>
+                  <div class="settings-workbench-toggle-grid">
+                    <label class="toggle-row"><input id="use_temp_alt_toolbar" type="checkbox" checked /> 临时 WAV 模式</label>
+                    <label class="toggle-row"><input id="keep_temp_toolbar" type="checkbox" /> 保留临时文件</label>
+                    <label class="toggle-row"><input id="file_use_official_whisper_toolbar" type="checkbox" /> 文件转写走后端原生</label>
+                    <label class="toggle-row"><input id="supress_record_warning_toolbar" type="checkbox" /> 忽略录制警告</label>
+                  </div>
+                </section>
+              </section>
+              <section class="settings-workbench-card">
+                <div class="settings-workbench-head">
+                  <div class="settings-workbench-title">调试与排障</div>
+                  <p class="settings-workbench-meta">记录关键日志，方便排查录制和翻译链路。</p>
+                </div>
+                <section class="settings-workbench-section">
+                  <div class="settings-workbench-section-head">
+                    <span class="settings-workbench-section-title">调试开关</span>
+                    <span class="settings-workbench-section-meta">保持问题暴露，不做隐藏兜底</span>
+                  </div>
+                  <div class="settings-workbench-toggle-grid">
+                    <label class="toggle-row"><input id="debug_realtime_record_toolbar" type="checkbox" /> 实时转写调试日志</label>
+                    <label class="toggle-row"><input id="debug_translate_toolbar" type="checkbox" /> 翻译调试日志</label>
+                  </div>
+                </section>
               </section>
             </div>
           </section>
@@ -1565,8 +1624,8 @@
                 <label>
                   <span>切分模式</span>
                   <select id="segment_split_or_newline">
-                    <option value="Split">Split</option>
-                    <option value="Newline">Newline</option>
+                    <option value="split">Split</option>
+                    <option value="newline">Newline</option>
                   </select>
                 </label>
                 <label class="toggle-row">
@@ -2366,7 +2425,7 @@
     </div>
   </main>
 
-  <script src="app.js?v=20260617-ui-cn-44"></script>
+  <script src="app.js?v=20260617-ui-cn-53"></script>
 </body>
 
 </html>
