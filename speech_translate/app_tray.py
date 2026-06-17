@@ -51,8 +51,8 @@ class TrayPanelApi:
 
 
 class AppTray:
-    PANEL_WIDTH = 336
-    PANEL_HEIGHT = 272
+    PANEL_WIDTH = 220
+    PANEL_HEIGHT = 224
 
     def __init__(self, bridge: AppTrayBridge):
         self.bridge = bridge
@@ -166,7 +166,7 @@ class AppTray:
             if hasattr(window, "events") and hasattr(window.events, "closed"):
                 window.events.closed += lambda *_: self._on_panel_closed()
             if hasattr(window, "events") and hasattr(window.events, "loaded"):
-                window.events.loaded += lambda *_: self._apply_panel_native_settings_when_ready()
+                window.events.loaded += lambda *_: self._on_panel_loaded()
         except Exception:
             pass
 
@@ -174,6 +174,21 @@ class AppTray:
         self.panel_window = None
         self._panel_destroying = False
         self._panel_native_settings_applied = False
+
+    def _on_panel_loaded(self) -> None:
+        self._apply_panel_native_settings_when_ready()
+        if self.panel_window is None:
+            return
+        try:
+            self.panel_window.show()
+        except Exception:
+            logger.exception("Failed to show tray panel after load")
+        try:
+            native = getattr(self.panel_window, "native", None)
+            if native is not None and hasattr(native, "Activate"):
+                self._run_on_ui_thread(lambda: native.Activate())
+        except Exception:
+            logger.exception("Failed to activate tray panel after load")
 
     def _apply_panel_native_settings_when_ready(self) -> None:
         if self.panel_window is None or self._panel_native_settings_applied:
@@ -237,8 +252,11 @@ class AppTray:
             x=x,
             y=y,
             resizable=False,
-            background_color="#0b1220",
-            transparent=True,
+            hidden=True,
+            frameless=True,
+            easy_drag=False,
+            shadow=True,
+            background_color="#f7fafc",
             on_top=True,
         )
         self._bind_panel_events(self.panel_window)
