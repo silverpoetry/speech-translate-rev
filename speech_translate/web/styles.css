@@ -5550,18 +5550,20 @@ button.btn-icon:hover {
 
 .file-ops-card {
   padding: 12px 12px 11px;
-  gap: 7px;
+  gap: 8px;
   border-radius: 16px;
 }
 
 .file-ops-actions {
-  gap: 5px;
-  padding: 5px;
+  gap: 4px;
+  padding: 4px;
 }
 
 .file-ops-actions .btn-with-icon {
-  justify-content: flex-start;
-  font-size: 0.72rem;
+  justify-content: center;
+  min-height: 28px;
+  font-size: 0.7rem;
+  border-radius: 999px;
 }
 
 .file-ops-step {
@@ -5611,13 +5613,14 @@ button.btn-icon:hover {
 }
 
 .model-selection-quick-actions {
-  gap: 5px;
+  gap: 4px;
 }
 
 .model-selection-quick-actions .btn-with-icon {
-  justify-content: flex-start;
-  min-height: 30px;
-  font-size: 0.72rem;
+  justify-content: center;
+  min-height: 28px;
+  font-size: 0.7rem;
+  border-radius: 999px;
 }
 
 #tab-model .model-selection-status-grid .status-overview-card-compact {
@@ -5627,6 +5630,17 @@ button.btn-icon:hover {
 #tab-model .model-selection-status-grid .status-overview-card-compact .status-overview-meta {
   font-size: 0.66rem;
   line-height: 1.3;
+}
+
+.model-selection-quick-actions-secondary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding-top: 4px;
+}
+
+.model-selection-quick-actions-secondary .btn-with-icon {
+  min-height: 26px;
+  font-size: 0.68rem;
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .model-manager-overview {
@@ -5655,7 +5669,8 @@ button.btn-icon:hover {
 }
 
 .settings-toolbar-actions {
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .settings-toolbar-actions .btn-with-icon {
@@ -5663,10 +5678,12 @@ button.btn-icon:hover {
   min-height: 30px;
   padding-inline: 10px;
   font-size: 0.72rem;
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(203, 213, 225, 0.9);
 }
 
 .settings-toolbar-overview {
-  gap: 8px;
+  gap: 6px;
 }
 
 .settings-workbench-grid {
