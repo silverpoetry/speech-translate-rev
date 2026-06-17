@@ -51,8 +51,8 @@ class TrayPanelApi:
 
 
 class AppTray:
-    PANEL_WIDTH = 228
-    PANEL_HEIGHT = 266
+    PANEL_WIDTH = 212
+    PANEL_HEIGHT = 210
 
     def __init__(self, bridge: AppTrayBridge):
         self.bridge = bridge
@@ -203,6 +203,36 @@ class AppTray:
         native = getattr(window, "native", None)
         if native is None:
             return
+
+        try:
+            import clr
+
+            clr.AddReference("System.Drawing")
+            from System.Drawing import Region, Size
+            from System.Drawing.Drawing2D import GraphicsPath
+
+            scale_factor = float(getattr(native, "scale_factor", 1.0) or 1.0)
+            client_width = int(round(self.PANEL_WIDTH * scale_factor))
+            client_height = int(round(self.PANEL_HEIGHT * scale_factor))
+            fixed_size = Size(client_width, client_height)
+            native.MinimumSize = fixed_size
+            native.MaximumSize = fixed_size
+            native.ClientSize = fixed_size
+            radius = max(8, int(round(12 * scale_factor)))
+            diameter = min(client_width, client_height, radius * 2)
+            path = GraphicsPath()
+            path.AddArc(0, 0, diameter, diameter, 180, 90)
+            path.AddArc(client_width - diameter, 0, diameter, diameter, 270, 90)
+            path.AddArc(client_width - diameter, client_height - diameter, diameter, diameter, 0, 90)
+            path.AddArc(0, client_height - diameter, diameter, diameter, 90, 90)
+            path.CloseFigure()
+            native.Region = Region(path)
+            logger.info(
+                f"[Tray] sync_panel_size logical={self.PANEL_WIDTH}x{self.PANEL_HEIGHT} "
+                f"raw_client={client_width}x{client_height} scale={scale_factor:.3f}"
+            )
+        except Exception:
+            logger.exception("Failed to sync tray panel client size")
 
         try:
             native.ShowInTaskbar = False
