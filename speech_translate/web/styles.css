@@ -6033,6 +6033,7 @@ button.btn-icon:hover {
 
 .settings-workbench-board .settings-workbench-card-wide {
   grid-column: 1 / -1;
+  gap: 8px;
 }
 
 .settings-workbench-title {
@@ -6055,6 +6056,15 @@ button.btn-icon:hover {
   border-radius: 10px;
 }
 
+.settings-workbench-board .settings-workbench-card-wide .settings-workbench-section-grid {
+  gap: 8px;
+}
+
+.settings-workbench-board .settings-workbench-card-wide .settings-workbench-section {
+  padding: 8px 9px;
+  gap: 6px;
+}
+
 .settings-workbench-section-title {
   font-size: 0.76rem;
   line-height: 1.3;
@@ -6072,6 +6082,11 @@ button.btn-icon:hover {
 .settings-workbench-board .form-grid,
 .settings-workbench-board .settings-workbench-toggle-grid {
   gap: 8px 10px;
+}
+
+.settings-workbench-board .settings-workbench-card-wide .form-grid,
+.settings-workbench-board .settings-workbench-card-wide .settings-workbench-toggle-grid {
+  gap: 7px 9px;
 }
 
 .settings-workbench-board .form-grid label {
@@ -6098,7 +6113,7 @@ button.btn-icon:hover {
 }
 
 .settings-workbench-board .settings-workbench-card-thresholds .settings-workbench-form {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .settings-workbench-board .settings-workbench-card-thresholds .settings-workbench-form > .field-span-2,
@@ -6110,6 +6125,11 @@ button.btn-icon:hover {
 
 .settings-workbench-board .settings-workbench-card-thresholds .settings-workbench-form > .field-span-2-cols,
 .settings-workbench-board .settings-workbench-card-thresholds .settings-workbench-form > label.field-span-2-cols {
+  grid-column: span 2;
+}
+
+.settings-workbench-board .settings-workbench-card-thresholds .settings-workbench-form > .toggle-row.field-span-2,
+.settings-workbench-board .settings-workbench-card-thresholds .settings-workbench-form > label.toggle-row.field-span-2 {
   grid-column: span 2;
 }
 
