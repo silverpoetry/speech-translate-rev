@@ -5510,14 +5510,14 @@ button.btn-icon:hover {
 }
 
 .transcript-shell {
-  gap: 10px;
-  padding: 10px;
+  gap: 8px;
+  padding: 8px;
   border-radius: 14px;
 }
 
 .live-output {
-  min-height: clamp(156px, 28vh, 224px);
-  max-height: 252px;
+  min-height: clamp(140px, 24vh, 196px);
+  max-height: 224px;
   font-size: 0.88rem;
   line-height: 1.55;
 }
@@ -5554,6 +5554,17 @@ button.btn-icon:hover {
   border-radius: 16px;
 }
 
+.file-ops-summary .status-overview-card,
+.file-ops-summary-secondary .status-overview-card {
+  min-height: 58px;
+  padding: 8px 9px;
+}
+
+.file-ops-summary .status-overview-meta,
+.file-ops-summary-secondary .status-overview-meta {
+  line-height: 1.28;
+}
+
 .file-ops-actions {
   gap: 4px;
   padding: 4px;
@@ -5566,12 +5577,29 @@ button.btn-icon:hover {
   border-radius: 999px;
 }
 
+#tab-file .file-ops-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+#tab-file .file-ops-actions .btn-with-icon {
+  width: 100%;
+}
+
 .file-ops-step {
+  grid-template-columns: 1fr;
+  gap: 6px;
   padding: 6px 9px;
 }
 
 .file-ops-step span {
   font-size: 0.74rem;
+}
+
+.file-ops-steps {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .file-queue-box {
