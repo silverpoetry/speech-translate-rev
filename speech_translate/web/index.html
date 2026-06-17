@@ -469,11 +469,11 @@
                             <span class="realtime-config-group-title">完成动作</span>
                             <span class="realtime-config-group-meta">控制任务结束后自动打开的目录</span>
                           </div>
-                          <div class="file-export-grid form-grid compact-form-grid">
-                            <label class="toggle-row"><input id="auto_open_dir_export_file" type="checkbox" /> 任务完成后自动打开目录</label>
-                            <label class="toggle-row"><input id="auto_open_dir_translate_file" type="checkbox" /> 翻译完成后自动打开目录</label>
-                            <label class="toggle-row"><input id="auto_open_dir_refinement_file" type="checkbox" /> 精修完成后自动打开目录</label>
-                            <label class="toggle-row"><input id="auto_open_dir_alignment_file" type="checkbox" /> 对齐完成后自动打开目录</label>
+                          <div class="file-export-grid file-export-actions-grid form-grid compact-form-grid">
+                            <label class="toggle-row file-export-action-toggle"><input id="auto_open_dir_export_file" type="checkbox" /> 任务完成后自动打开目录</label>
+                            <label class="toggle-row file-export-action-toggle"><input id="auto_open_dir_translate_file" type="checkbox" /> 翻译完成后自动打开目录</label>
+                            <label class="toggle-row file-export-action-toggle"><input id="auto_open_dir_refinement_file" type="checkbox" /> 精修完成后自动打开目录</label>
+                            <label class="toggle-row file-export-action-toggle"><input id="auto_open_dir_alignment_file" type="checkbox" /> 对齐完成后自动打开目录</label>
                           </div>
                         </section>
                       </div>
@@ -890,7 +890,7 @@
                   <p class="settings-workbench-meta">代理、命名与目录策略集中在这里。</p>
                 </div>
                 <div class="settings-workbench-section-grid settings-workbench-section-grid-single">
-                  <section class="settings-workbench-section">
+                  <section class="settings-workbench-section settings-workbench-section-compact">
                     <div class="settings-workbench-section-head">
                       <span class="settings-workbench-section-title">网络</span>
                       <span class="settings-workbench-section-meta">代理与 LibreTranslate</span>
@@ -1106,12 +1106,12 @@
                   </section>
                 </div>
               </section>
-              <section class="settings-workbench-card settings-workbench-card-wide">
+              <section class="settings-workbench-card settings-workbench-card-wide settings-workbench-card-debug">
                 <div class="settings-workbench-head">
                   <div class="settings-workbench-title">调试与排障</div>
                   <p class="settings-workbench-meta">记录关键日志，方便排查录制和翻译链路。</p>
                 </div>
-                <section class="settings-workbench-section">
+                <section class="settings-workbench-section settings-workbench-section-compact">
                   <div class="settings-workbench-section-head">
                     <span class="settings-workbench-section-title">调试开关</span>
                     <span class="settings-workbench-section-meta">保持问题暴露，不做隐藏兜底</span>

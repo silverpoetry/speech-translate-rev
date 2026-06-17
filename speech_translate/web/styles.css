@@ -3713,8 +3713,8 @@ button.btn-icon[data-tooltip]::before {
 
 .detached-workbench-head {
   display: grid;
-  gap: 2px;
-  margin-bottom: 4px;
+  gap: 3px;
+  margin-bottom: 6px;
 }
 
 .detached-workbench-title {
@@ -3728,46 +3728,46 @@ button.btn-icon[data-tooltip]::before {
 .detached-workbench-meta {
   margin: 0;
   color: #64748b;
-  font-size: var(--ui-text-xs);
-  line-height: 1.38;
+  font-size: 0.73rem;
+  line-height: 1.42;
 }
 
 .detached-workbench-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
 }
 
 .detached-workbench-card {
   display: grid;
-  gap: 6px;
-  padding: 10px 10px 9px;
+  gap: 8px;
+  padding: 11px 11px 10px;
   border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 12px;
+  border-radius: 14px;
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 0.96));
   min-width: 0;
 }
 
 .detached-workbench-card-meta {
-  margin-top: 3px;
+  margin-top: 4px;
   color: #64748b;
-  font-size: var(--ui-text-xs);
-  line-height: 1.35;
+  font-size: 0.73rem;
+  line-height: 1.42;
 }
 
 .detached-workbench-action-cluster {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
+  gap: 6px;
 }
 
 .detached-workbench-action-group {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  padding: 5px;
-  border-radius: 10px;
+  gap: 5px;
+  padding: 6px;
+  border-radius: 11px;
   background: rgba(248, 250, 252, 0.92);
   border: 1px solid rgba(148, 163, 184, 0.16);
 }
@@ -3779,9 +3779,9 @@ button.btn-icon[data-tooltip]::before {
 .detached-workbench-action-group .btn-with-icon {
   width: 100%;
   justify-content: center;
-  min-height: 27px;
-  padding: 0 6px;
-  font-size: var(--ui-text-xs);
+  min-height: 29px;
+  padding: 0 8px;
+  font-size: 0.72rem;
   border-radius: 10px;
 }
 
@@ -3872,30 +3872,31 @@ button.btn-icon[data-tooltip]::before {
 }
 
 #tab-realtime .realtime-config-panel > summary {
-  padding-top: 8px;
-  padding-bottom: 8px;
+  padding-top: 9px;
+  padding-bottom: 9px;
   background: transparent;
 }
 
 #tab-realtime .realtime-config-panel .advanced-panel-body {
-  gap: 6px;
-  padding-top: 6px;
+  gap: 8px;
+  padding-top: 8px;
 }
 
 #tab-realtime .realtime-config-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 6px;
 }
 
 #tab-realtime .realtime-config-summary .pill {
-  min-height: 18px;
-  padding: 1px 8px;
-  font-size: 0.58rem;
+  min-height: 20px;
+  padding: 2px 8px;
+  font-size: 0.66rem;
+  font-weight: 600;
   letter-spacing: 0.04em;
-  background: rgba(255, 255, 255, 0.92);
-  border-color: rgba(148, 163, 184, 0.14);
-  color: #64748b;
+  background: rgba(241, 245, 249, 0.95);
+  border-color: rgba(148, 163, 184, 0.18);
+  color: #5b6b80;
 }
 
 #tab-realtime .realtime-config-grid {
@@ -3905,9 +3906,9 @@ button.btn-icon[data-tooltip]::before {
 
 #tab-realtime .realtime-config-group {
   display: grid;
-  gap: 6px;
-  padding: 8px 9px;
-  border-radius: 10px;
+  gap: 7px;
+  padding: 10px 11px;
+  border-radius: 12px;
   background: rgba(248, 250, 252, 0.88);
   border: 1px solid rgba(148, 163, 184, 0.14);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
@@ -3915,19 +3916,19 @@ button.btn-icon[data-tooltip]::before {
 
 #tab-realtime .realtime-config-group-head {
   display: grid;
-  gap: 1px;
+  gap: 2px;
 }
 
 #tab-realtime .realtime-config-group-title {
-  font-size: 0.76rem;
+  font-size: 0.84rem;
   font-weight: 700;
   color: #0f172a;
 }
 
 #tab-realtime .realtime-config-group-meta {
   color: #64748b;
-  font-size: 0.68rem;
-  line-height: 1.35;
+  font-size: 0.73rem;
+  line-height: 1.42;
 }
 
 #tab-realtime .advanced-panel .form-grid {
@@ -3961,10 +3962,11 @@ button.btn-icon[data-tooltip]::before {
   min-height: 20px;
   padding: 2px 8px;
   font-size: 0.66rem;
+  font-weight: 600;
   letter-spacing: 0.04em;
-  background: rgba(255, 255, 255, 0.92);
-  border-color: rgba(148, 163, 184, 0.12);
-  color: #64748b;
+  background: rgba(241, 245, 249, 0.95);
+  border-color: rgba(148, 163, 184, 0.18);
+  color: #5b6b80;
 }
 
 #tab-file .realtime-config-grid {
@@ -4039,6 +4041,26 @@ button.btn-icon[data-tooltip]::before {
 #tab-file .file-export-grid .toggle-row {
   min-height: 26px;
   font-size: 0.72rem;
+}
+
+#tab-file .file-export-actions-grid {
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+#tab-file .file-export-action-toggle {
+  min-height: 38px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(255, 255, 255, 0.78);
+  line-height: 1.42;
+  font-size: 0.74rem;
+}
+
+#tab-file .file-export-action-toggle input[type="checkbox"] {
+  margin-top: 1px !important;
 }
 
 #tab-realtime .realtime-config-panel .floating-action-row {
@@ -6243,6 +6265,7 @@ button.btn-icon:hover {
 .settings-workbench-board .settings-workbench-section-grid {
   grid-template-columns: 1fr;
   gap: 10px;
+  align-items: start;
 }
 
 .settings-workbench-board .settings-workbench-section {
@@ -6252,22 +6275,34 @@ button.btn-icon:hover {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
+.settings-workbench-board .settings-workbench-section-compact {
+  max-width: 376px;
+  justify-self: start;
+}
+
 .settings-workbench-board .settings-workbench-card-wide .settings-workbench-section-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+  align-items: start;
 }
 
 .settings-workbench-board .settings-workbench-card-recording .settings-workbench-section-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
 }
 
 .settings-workbench-board .settings-workbench-card-file-pipeline .settings-workbench-section-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
 }
 
 .settings-workbench-board .settings-workbench-card-wide .settings-workbench-section {
   padding: 8px 9px;
   gap: 6px;
+}
+
+.settings-workbench-board .settings-workbench-card-debug .settings-workbench-section-compact {
+  max-width: 520px;
 }
 
 .settings-workbench-section-title {
@@ -6360,6 +6395,11 @@ button.btn-icon:hover {
 
 .settings-workbench-board .settings-workbench-card-export .toggle-row {
   min-height: 24px;
+}
+
+.settings-workbench-board .settings-workbench-card-debug .settings-workbench-toggle-grid {
+  grid-template-columns: repeat(2, minmax(180px, 240px));
+  justify-content: start;
 }
 
 .settings-workbench-mini-grid .toggle-row {
