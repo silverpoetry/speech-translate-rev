@@ -9,7 +9,7 @@ import unittest
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
-from speech_translate.app_tray import AppTray, TrayPanelApi
+from speech_translate.app_tray import AppTray, TrayPanelApi, _bind_tray_panel_owner
 
 
 class FakeWindow:
@@ -18,6 +18,7 @@ class FakeWindow:
         self.native = types.SimpleNamespace(
             ShowInTaskbar=True,
             TopMost=False,
+            Activate=lambda: self.calls.append("activate"),
             Handle=types.SimpleNamespace(ToInt32=lambda: 10),
         )
 
@@ -96,9 +97,10 @@ class AppTrayTests(unittest.TestCase):
         tray.show_app = lambda *_args: show_calls.append("show")
         tray.exit_app = lambda *_args: quit_calls.append("quit")
 
-        api = TrayPanelApi(tray)
+        _bind_tray_panel_owner(tray)
+        api = TrayPanelApi()
 
-        self.assertFalse(hasattr(api, "tray"))
+        self.assertFalse(hasattr(api, "__dict__"))
         self.assertEqual(api.show_app(), {"ok": True})
         self.assertEqual(api.open_directory("log"), {"ok": True, "name": "log"})
         self.assertEqual(api.hide_panel(), {"ok": True})
@@ -132,7 +134,7 @@ class AppTrayTests(unittest.TestCase):
         _args, kwargs = fake_webview.calls[0]
         self.assertEqual(kwargs["width"], tray.PANEL_WIDTH)
         self.assertEqual(kwargs["height"], tray.PANEL_HEIGHT)
-        self.assertEqual(fake_panel.calls, ["native-settings"])
+        self.assertEqual(fake_panel.calls, [])
 
     def test_open_panel_creates_panel_when_missing(self) -> None:
         fake_panel = FakeWindow()
@@ -165,7 +167,7 @@ class AppTrayTests(unittest.TestCase):
                 ctypes.windll.user32.SetWindowPos = original_pos
 
         self.assertIs(tray.panel_window, fake_panel)
-        self.assertIn("front", fake_panel.calls)
+        self.assertEqual(fake_panel.calls, [])
 
     def test_open_panel_repositions_existing_window(self) -> None:
         fake_panel = FakeWindow()
@@ -189,7 +191,7 @@ class AppTrayTests(unittest.TestCase):
             if original_pos is not None:
                 ctypes.windll.user32.SetWindowPos = original_pos
 
-        self.assertIn("front", fake_panel.calls)
+        self.assertIn("activate", fake_panel.calls)
         self.assertTrue(any(isinstance(call, tuple) and call[0] == "move" for call in fake_panel.calls))
 
     def test_show_app_restores_and_shows_main_window(self) -> None:

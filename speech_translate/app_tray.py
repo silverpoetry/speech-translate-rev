@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import weakref
 from pathlib import Path
 
 from speech_translate._path import p_app_icon
@@ -9,26 +10,43 @@ from speech_translate.log_helpers import logger
 from speech_translate.webview_runtime import load_webview_runtime
 
 
+_tray_panel_owner_ref: weakref.ReferenceType["AppTray"] | None = None
+
+
+def _bind_tray_panel_owner(tray: "AppTray") -> None:
+    global _tray_panel_owner_ref
+    _tray_panel_owner_ref = weakref.ref(tray)
+
+
+def _get_tray_panel_owner() -> "AppTray":
+    tray = _tray_panel_owner_ref() if _tray_panel_owner_ref is not None else None
+    if tray is None:
+        raise RuntimeError("Tray panel owner is unavailable")
+    return tray
+
+
 class TrayPanelApi:
-    def __init__(self, tray: "AppTray"):
-        self._tray = tray
+    __slots__ = ()
 
     def show_app(self):
-        self._tray.hide_panel()
-        self._tray.show_app()
+        tray = _get_tray_panel_owner()
+        tray.hide_panel()
+        tray.show_app()
         return {"ok": True}
 
     def open_directory(self, name: str):
-        self._tray.hide_panel()
-        return self._tray.bridge.open_directory(name)
+        tray = _get_tray_panel_owner()
+        tray.hide_panel()
+        return tray.bridge.open_directory(name)
 
     def hide_panel(self):
-        self._tray.hide_panel()
+        _get_tray_panel_owner().hide_panel()
         return {"ok": True}
 
     def quit_app(self):
-        self._tray.hide_panel()
-        self._tray.exit_app()
+        tray = _get_tray_panel_owner()
+        tray.hide_panel()
+        tray.exit_app()
         return {"ok": True}
 
 
@@ -41,6 +59,7 @@ class AppTray:
         self.icon = None
         self.panel_window = None
         self._panel_destroying = False
+        self._panel_native_settings_applied = False
         self._create_tray()
 
     def _fallback_image(self, width: int, height: int, color1: str, color2: str):
@@ -146,12 +165,24 @@ class AppTray:
         try:
             if hasattr(window, "events") and hasattr(window.events, "closed"):
                 window.events.closed += lambda *_: self._on_panel_closed()
+            if hasattr(window, "events") and hasattr(window.events, "loaded"):
+                window.events.loaded += lambda *_: self._apply_panel_native_settings_when_ready()
         except Exception:
             pass
 
     def _on_panel_closed(self):
         self.panel_window = None
         self._panel_destroying = False
+        self._panel_native_settings_applied = False
+
+    def _apply_panel_native_settings_when_ready(self) -> None:
+        if self.panel_window is None or self._panel_native_settings_applied:
+            return
+        try:
+            self._run_on_ui_thread(lambda: self._apply_panel_native_settings(self.panel_window))
+            self._panel_native_settings_applied = True
+        except Exception:
+            logger.exception("Failed to apply tray panel native settings")
 
     def _apply_panel_native_settings(self, window) -> None:
         native = getattr(window, "native", None)
@@ -196,10 +227,11 @@ class AppTray:
         html_path = str(Path(__file__).with_name("web") / "tray_panel.html")
         x, y = self._panel_placement(self.PANEL_WIDTH, self.PANEL_HEIGHT)
         logger.debug(f"[Tray] create_panel x={x} y={y} scale={self._screen_scale_factor():.3f}")
+        _bind_tray_panel_owner(self)
         self.panel_window = webview.create_window(
             "Speech Translate",
             html_path,
-            js_api=TrayPanelApi(self),
+            js_api=TrayPanelApi(),
             width=self.PANEL_WIDTH,
             height=self.PANEL_HEIGHT,
             x=x,
@@ -210,17 +242,12 @@ class AppTray:
             on_top=True,
         )
         self._bind_panel_events(self.panel_window)
-        self._run_on_ui_thread(lambda: self._apply_panel_native_settings(self.panel_window))
         return self.panel_window
 
     def open_panel(self, *_args):
         try:
             if self.panel_window is None:
-                window = self._create_panel_window()
-                try:
-                    window.bring_to_front()
-                except Exception:
-                    pass
+                self._create_panel_window()
                 return
 
             x, y = self._panel_placement(self.PANEL_WIDTH, self.PANEL_HEIGHT)
@@ -231,7 +258,9 @@ class AppTray:
                 logger.exception("Failed to move tray panel")
             try:
                 self._run_on_ui_thread(lambda: self._apply_panel_native_settings(self.panel_window))
-                self.panel_window.bring_to_front()
+                native = getattr(self.panel_window, "native", None)
+                if native is not None and hasattr(native, "Activate"):
+                    self._run_on_ui_thread(lambda: native.Activate())
             except Exception:
                 logger.exception("Failed to activate tray panel")
         except Exception:
