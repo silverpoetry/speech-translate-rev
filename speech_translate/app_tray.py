@@ -45,6 +45,7 @@ class AppTray:
         self.panel_window = None
         self._panel_destroying = False
         self._create_tray()
+        self._prewarm_panel()
 
     def _fallback_image(self, width: int, height: int, color1: str, color2: str):
         from PIL import Image, ImageDraw
@@ -138,6 +139,36 @@ class AppTray:
     def _on_panel_closed(self):
         self.panel_window = None
 
+    def _run_on_ui_thread(self, callback):
+        window = self.bridge.get_window()
+        native = getattr(window, "native", None) if window is not None else None
+        if native is None:
+            return callback()
+        try:
+            if getattr(native, "InvokeRequired", False):
+                import clr
+
+                clr.AddReference("System")
+                from System import Action
+
+                result_box = {"value": None}
+                error_box = {"error": None}
+
+                def _wrapped():
+                    try:
+                        result_box["value"] = callback()
+                    except Exception as exc:
+                        error_box["error"] = exc
+
+                native.Invoke(Action(_wrapped))
+                if error_box["error"] is not None:
+                    raise error_box["error"]
+                return result_box["value"]
+        except Exception:
+            logger.exception("Failed to marshal tray callback onto UI thread")
+            raise
+        return callback()
+
     def _apply_panel_native_settings(self, window) -> None:
         native = getattr(window, "native", None)
         if native is None:
@@ -176,47 +207,65 @@ class AppTray:
         if self.panel_window is not None:
             return self.panel_window
 
-        webview = load_webview_runtime()
-        html_path = str(Path(__file__).with_name("web") / "tray_panel.html")
-        x, y = self._panel_placement(self.PANEL_WIDTH, self.PANEL_HEIGHT)
-        self.panel_window = webview.create_window(
-            "Speech Translate",
-            html_path,
-            js_api=TrayPanelApi(self),
-            width=self.PANEL_WIDTH,
-            height=self.PANEL_HEIGHT,
-            x=x,
-            y=y,
-            resizable=False,
-            hidden=True,
-            frameless=True,
-            easy_drag=False,
-            on_top=True,
-            shadow=True,
-        )
-        self._bind_panel_events(self.panel_window)
-        self._apply_panel_native_settings(self.panel_window)
-        return self.panel_window
+        def _create_panel():
+            if self.panel_window is not None:
+                return self.panel_window
+            webview = load_webview_runtime()
+            html_path = str(Path(__file__).with_name("web") / "tray_panel.html")
+            x, y = self._panel_placement(self.PANEL_WIDTH, self.PANEL_HEIGHT)
+            self.panel_window = webview.create_window(
+                "Speech Translate",
+                html_path,
+                js_api=TrayPanelApi(self),
+                width=self.PANEL_WIDTH,
+                height=self.PANEL_HEIGHT,
+                x=x,
+                y=y,
+                resizable=False,
+                hidden=True,
+                frameless=True,
+                easy_drag=False,
+                on_top=True,
+                shadow=True,
+            )
+            self._bind_panel_events(self.panel_window)
+            self._apply_panel_native_settings(self.panel_window)
+            return self.panel_window
+
+        return self._run_on_ui_thread(_create_panel)
+
+    def _prewarm_panel(self) -> None:
+        window = self.bridge.get_window()
+        if window is None or getattr(window, "native", None) is None:
+            return
+        try:
+            self._ensure_panel()
+            logger.debug("[Tray] panel prewarmed")
+        except Exception:
+            logger.exception("Failed to prewarm tray panel")
 
     def open_panel(self, *_args):
         try:
-            window = self._ensure_panel()
-            if window is None:
-                return
-            x, y = self._panel_placement(self.PANEL_WIDTH, self.PANEL_HEIGHT)
-            logger.debug(f"[Tray] open_panel x={x} y={y} scale={self._screen_scale_factor():.3f}")
-            try:
-                window.move(x, y)
-            except Exception:
-                logger.exception("Failed to move tray panel")
-            try:
-                self._apply_panel_native_settings(window)
-                if hasattr(window, "restore"):
-                    window.restore()
-                window.show()
-                self._activate_panel_native(window)
-            except Exception:
-                logger.exception("Failed to show tray panel")
+            def _show_panel():
+                window = self._ensure_panel()
+                if window is None:
+                    return
+                x, y = self._panel_placement(self.PANEL_WIDTH, self.PANEL_HEIGHT)
+                logger.debug(f"[Tray] open_panel x={x} y={y} scale={self._screen_scale_factor():.3f}")
+                try:
+                    window.move(x, y)
+                except Exception:
+                    logger.exception("Failed to move tray panel")
+                try:
+                    self._apply_panel_native_settings(window)
+                    if hasattr(window, "restore"):
+                        window.restore()
+                    window.show()
+                    self._activate_panel_native(window)
+                except Exception:
+                    logger.exception("Failed to show tray panel")
+
+            self._run_on_ui_thread(_show_panel)
         except Exception:
             logger.exception("Failed to open tray panel")
 
@@ -242,15 +291,20 @@ class AppTray:
         if self.panel_window is None:
             return
         try:
-            self.panel_window.hide()
+            self._run_on_ui_thread(lambda: self.panel_window.hide() if self.panel_window is not None else None)
         except Exception:
             pass
 
     def stop(self):
         if self.panel_window is not None:
             try:
-                self._panel_destroying = True
-                self.panel_window.destroy()
+                def _destroy():
+                    if self.panel_window is None:
+                        return
+                    self._panel_destroying = True
+                    self.panel_window.destroy()
+
+                self._run_on_ui_thread(_destroy)
             except Exception:
                 pass
             self.panel_window = None
