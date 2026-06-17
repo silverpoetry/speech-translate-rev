@@ -58,8 +58,8 @@ class TrayPanelApi:
 
 
 class AppTray:
-    PANEL_WIDTH = 158
-    PANEL_HEIGHT = 172
+    PANEL_WIDTH = 152
+    PANEL_HEIGHT = 168
 
     def __init__(self, bridge: AppTrayBridge):
         self.bridge = bridge
@@ -246,7 +246,7 @@ class AppTray:
             native.MinimumSize = fixed_size
             native.MaximumSize = fixed_size
             native.ClientSize = fixed_size
-            radius = max(10, int(round(10 * scale_factor)))
+            radius = max(7, int(round(7 * scale_factor)))
             diameter = min(client_width, client_height, radius * 2)
             path = GraphicsPath()
             path.AddArc(0, 0, diameter, diameter, 180, 90)
