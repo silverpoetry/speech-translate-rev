@@ -136,7 +136,7 @@ body {
   gap: 12px;
   background: #ececec;
   border-radius: 10px;
-  padding: 10px;
+  padding: 10px 10px 72px;
   height: 100%;
   min-height: 0;
   overflow-y: auto;
@@ -1506,6 +1506,17 @@ body {
   flex-wrap: nowrap;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 -8px 22px rgba(15, 23, 42, 0.18);
+}
+
+.global-statusbar::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -10px;
+  height: 10px;
+  background: linear-gradient(180deg, rgba(236, 236, 236, 0), rgba(236, 236, 236, 0.84));
+  pointer-events: none;
 }
 
 .global-statusbar .statusbar-group {
@@ -4647,7 +4658,7 @@ textarea:focus {
 }
 
 .model-selection-shell {
-  grid-template-columns: minmax(0, 1.55fr) minmax(250px, 0.78fr);
+  grid-template-columns: minmax(0, 1.58fr) minmax(230px, 0.7fr);
   align-items: start;
 }
 
@@ -4742,6 +4753,7 @@ textarea:focus {
 
 .model-selection-status-rail {
   min-width: 0;
+  gap: 7px;
 }
 
 .model-selection-status-head {
@@ -4749,8 +4761,8 @@ textarea:focus {
 }
 
 .model-selection-status-head p {
-  font-size: var(--ui-text-xs);
-  line-height: 1.36;
+  font-size: 0.72rem;
+  line-height: 1.4;
 }
 
 #tab-model .model-selection-status-grid .status-overview-card {
@@ -4763,9 +4775,108 @@ textarea:focus {
   white-space: nowrap;
 }
 
+#tab-model .model-selection-status-grid .status-overview-label {
+  font-size: 0.62rem;
+}
+
+#tab-model .model-selection-status-grid .status-overview-meta {
+  font-size: 0.66rem;
+  line-height: 1.25;
+}
+
 .model-selection-side-card .field-note {
   margin-top: 4px;
   font-size: 0.7rem;
+}
+
+#tab-model .model-manager-head {
+  gap: 10px;
+  align-items: flex-start;
+}
+
+#tab-model .model-engine-titlebar {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 0.98));
+}
+
+#tab-model .model-engine-tab {
+  min-height: 28px;
+  font-size: 0.76rem;
+}
+
+#tab-model .model-manager-tools {
+  gap: 4px;
+}
+
+#tab-model .model-manager-tools .btn-icon {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-radius: 8px;
+}
+
+#tab-model .model-manager-workspace {
+  grid-template-columns: minmax(0, 1.08fr) minmax(262px, 0.82fr);
+  gap: 10px;
+}
+
+#tab-model .model-manager-overview {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 7px;
+}
+
+#tab-model .model-manager-overview-card {
+  padding: 7px 9px;
+  border-radius: 10px;
+  gap: 2px;
+}
+
+#tab-model .model-manager-overview-label {
+  font-size: 0.6rem;
+}
+
+#tab-model .model-manager-overview-value {
+  font-size: 0.76rem;
+}
+
+#tab-model .model-manager-overview-meta {
+  font-size: 0.62rem;
+  line-height: 1.22;
+}
+
+#tab-model .model-manager-hint-wrap {
+  padding: 7px 8px;
+  border-radius: 10px;
+}
+
+#tab-model .model-manager-hint-wrap p {
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: #475569;
+}
+
+#tab-model .model-manager-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 6px;
+}
+
+#tab-model .model-manager-summary-row .pill {
+  justify-content: flex-start;
+  flex: 1 1 calc(50% - 6px);
+  min-width: 0;
+  max-width: 100%;
+  min-height: 22px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(241, 245, 249, 0.72);
+  border-color: rgba(148, 163, 184, 0.16);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.63rem;
 }
 
 @media (max-width: 920px) {
@@ -4884,6 +4995,11 @@ textarea:focus {
   overflow-wrap: anywhere;
 }
 
+.model-status-item:has(.model-status-value.is-missing) {
+  border-color: rgba(248, 113, 113, 0.24);
+  background: linear-gradient(180deg, rgba(254, 242, 242, 0.46), rgba(255, 255, 255, 0.98));
+}
+
 .model-status-name {
   font-size: 0.82rem;
   font-weight: 700;
@@ -4899,7 +5015,10 @@ textarea:focus {
 }
 
 .model-status-value.is-missing {
-  color: #b45309;
+  color: #b91c1c;
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .model-download-btn {
