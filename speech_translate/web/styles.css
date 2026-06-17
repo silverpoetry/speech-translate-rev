@@ -1161,6 +1161,10 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+#settings_toolbar .settings-workbench-card-network-export .settings-workbench-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 #settings_toolbar .settings-workbench-section .settings-workbench-form > .toggle-row,
 #settings_toolbar .settings-workbench-section .settings-workbench-form > label.toggle-row {
   min-height: 22px;
@@ -1174,6 +1178,11 @@ body {
 .settings-workbench-section .settings-workbench-form > .field-span-2,
 .settings-workbench-section .settings-workbench-form > label.field-span-2 {
   grid-column: 1 / -1;
+}
+
+.settings-workbench-section .settings-workbench-form > .field-span-2-cols,
+.settings-workbench-section .settings-workbench-form > label.field-span-2-cols {
+  grid-column: span 2;
 }
 
 .settings-toolbar .toggle-row {

@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>语音翻译</title>
-  <link rel="stylesheet" href="styles.css?v=20260617-ui-cn-53" />
+  <link rel="stylesheet" href="styles.css?v=20260617-ui-cn-54" />
 
 <script>
 (function () {
@@ -1217,7 +1217,7 @@
               </article>
             </div>
             <div class="settings-workbench-grid">
-              <section class="settings-workbench-card">
+              <section class="settings-workbench-card settings-workbench-card-network-export">
                 <div class="settings-workbench-head">
                   <div class="settings-workbench-title">网络与导出</div>
                   <p class="settings-workbench-meta">代理、导出命名和目录策略集中在这里。</p>
@@ -1278,12 +1278,6 @@
                           <option value="newline">Newline</option>
                         </select>
                       </label>
-                      <label>
-                        <span>主机 API</span>
-                        <select id="hostAPI_toolbar">
-                          <option value="Windows WASAPI" selected>Windows WASAPI</option>
-                        </select>
-                      </label>
                     </div>
                   </section>
                 </div>
@@ -1303,6 +1297,12 @@
                       <label>
                         <span>转写间隔 (ms)</span>
                         <input id="transcribe_rate_toolbar" type="number" min="1" max="1000" step="1" value="300" />
+                      </label>
+                      <label>
+                        <span>主机 API</span>
+                        <select id="hostAPI_toolbar">
+                          <option value="Windows WASAPI" selected>Windows WASAPI</option>
+                        </select>
                       </label>
                       <label>
                         <span>模型设备策略</span>
@@ -1408,11 +1408,11 @@
                       <span>Compression Ratio</span>
                       <input id="compression_ratio_threshold_toolbar" type="number" min="0" max="10" step="0.1" value="2.4" />
                     </label>
-                    <label class="field-span-2">
+                    <label class="field-span-2-cols">
                       <span>Suppress Tokens</span>
                       <input id="suppress_tokens_toolbar" type="text" placeholder="-1 或 1,2,3" value="" />
                     </label>
-                    <label class="toggle-row field-span-2"><input id="suppress_blank_toolbar" type="checkbox" checked /> 抑制空白片段</label>
+                    <label class="toggle-row"><input id="suppress_blank_toolbar" type="checkbox" checked /> 抑制空白片段</label>
                   </div>
                 </section>
               </section>
@@ -2425,7 +2425,7 @@
     </div>
   </main>
 
-  <script src="app.js?v=20260617-ui-cn-53"></script>
+  <script src="app.js?v=20260617-ui-cn-54"></script>
 </body>
 
 </html>
