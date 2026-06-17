@@ -83,7 +83,6 @@ class SettingDict(TypedDict):
     Type class for setting.json
     """
     version: str
-    checkUpdateOnStart: bool
     first_open: bool
     # ------------------ #
     # App settings
@@ -94,50 +93,38 @@ class SettingDict(TypedDict):
     translate_f_import: bool
     model_mw: str
     model_f_import: str
-    model_f_alignment: str
-    model_f_refinement: str
     source_lang_mw: str
     target_lang_mw: str
     source_lang_f_import: str
     target_lang_f_import: str
-    target_lang_f_result: str
     tl_engine_mw: str
     tl_engine_f_import: str
-    tl_engine_f_result: str
     verbose_record: bool
     mic: str
     speaker: str
     hostAPI: str
     separate_with: str
-    show_audio_visualizer_in_record: bool
-    show_audio_visualizer_in_setting: bool
+    close_to_tray_on_close: bool
     supress_hidden_to_tray: bool
-    supress_device_warning: bool
     supress_record_warning: bool
-    bypass_no_internet: bool
     mw_size: str
-    sw_size: str
     dir_log: str
     dir_model: str
-    auto_verify_model_on_first_setting_open: bool
     file_slice_start: str
     file_slice_end: str
     # ------------------ #
     # logging
-    keep_log: bool
     log_level: str
     auto_scroll_log: bool
     auto_refresh_log: bool
     debug_realtime_record: bool
     debug_translate: bool
-    debug_recorded_audio: bool
     # ------------------ #
     # Tl Settings
     https_proxy: str
     https_proxy_enable: bool
     http_proxy: str
     http_proxy_enable: bool
-    supress_libre_api_key_warning: bool
     libre_api_key: str
     libre_link: str
     # ------------------ #
@@ -207,8 +194,6 @@ class SettingDict(TypedDict):
     filter_file_import_exact_match: bool
     filter_file_import_similarity: float
     remove_repetition_file_import: bool
-    remove_repetition_result_refinement: bool
-    remove_repetition_result_alignment: bool
     remove_repetition_amount: int
     # export
     # {file} {task} {task-short} {lang-source} {lang-target} {model} {engine}
@@ -232,7 +217,6 @@ class SettingDict(TypedDict):
     segment_even_split: bool
     segment_level: bool  # 1 of this must be bool
     word_level: bool  # 1 of this must be bool
-    visualize_suppression: bool
     use_faster_whisper: bool
     use_en_model: bool
     transcribe_rate: int
@@ -272,6 +256,7 @@ class SettingDict(TypedDict):
     tb_mw_tc_font: str
     tb_mw_tc_font_bold: bool
     tb_mw_tc_font_size: int
+    tb_mw_tc_font_color: str
     tb_mw_tc_use_conf_color: bool
     # mw tl
     tb_mw_tl_auto_scroll: bool
@@ -282,15 +267,14 @@ class SettingDict(TypedDict):
     tb_mw_tl_font: str
     tb_mw_tl_font_bold: bool
     tb_mw_tl_font_size: int
+    tb_mw_tl_font_color: str
     tb_mw_tl_use_conf_color: bool
     # Tc sub
     ex_tc_geometry: str
     ex_tc_always_on_top: Literal[0, 1]
     ex_tc_click_through: Literal[0, 1]
     ex_tc_no_title_bar: Literal[0, 1]
-    ex_tc_no_tooltip: Literal[0, 1]
     ex_tc_opacity: float
-    tb_ex_tc_auto_scroll: bool
     tb_ex_tc_limit_max: bool
     tb_ex_tc_limit_max_per_line: bool
     tb_ex_tc_max: int
@@ -306,9 +290,7 @@ class SettingDict(TypedDict):
     ex_tl_always_on_top: Literal[0, 1]
     ex_tl_click_through: Literal[0, 1]
     ex_tl_no_title_bar: Literal[0, 1]
-    ex_tl_no_tooltip: Literal[0, 1]
     ex_tl_opacity: float
-    tb_ex_tl_auto_scroll: bool
     tb_ex_tl_limit_max: bool
     tb_ex_tl_limit_max_per_line: bool
     tb_ex_tl_max: int

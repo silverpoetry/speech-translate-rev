@@ -74,9 +74,16 @@ class DetachedWindowManagerLike(Protocol):
 
 
 class DetachedWindowManagerApi(Protocol):
-    windows: MutableMapping[str, WebviewWindowLike]
-
     def create_window(self, mode: str, x: int, y: int, width: int, height: int) -> None:
+        ...
+
+    def has_window(self, mode: str) -> bool:
+        ...
+
+    def get_window(self, mode: str) -> WebviewWindowLike | None:
+        ...
+
+    def move_window(self, mode: str, x: int, y: int) -> bool:
         ...
 
     def close_window(self, mode: str) -> None:
@@ -110,6 +117,15 @@ class ModelManagerControllerApi(Protocol):
     model_manager_model: str
 
     def clear_model_status_cache(self) -> None:
+        ...
+
+    def is_runtime_model_loading(self) -> bool:
+        ...
+
+    def set_runtime_model_loading(self, loading: bool) -> None:
+        ...
+
+    def is_runtime_model_ready(self, model_key: str | None = None) -> bool:
         ...
 
     def mark_runtime_model_pending(self, model_key: str, *, loaded: bool = False, message: str | None = None) -> None:
@@ -186,12 +202,7 @@ class ModelManagerControllerApi(Protocol):
 
 
 class SystemSettingsBridge(Protocol):
-    model_manager_controller: ModelManagerControllerApi
-
     def get_window(self) -> FolderDialogWindow | None:
-        ...
-
-    def resolve_model_dir(self) -> str:
         ...
 
 
@@ -276,6 +287,9 @@ class MainWindowBridge(Protocol):
     def get_tray(self) -> TrayLike | None:
         ...
 
+    def quit_app(self) -> None:
+        ...
+
 
 class DetachedWindowBridge(Protocol):
     def snapshot_live_state(self) -> JsonDict:
@@ -337,6 +351,9 @@ class MainWindowControllerApi(Protocol):
         ...
 
     def show_main_window(self) -> None:
+        ...
+
+    def hide_main_window_to_tray(self) -> JsonDict:
         ...
 
     def save_main_window_geometry(self, force: bool = False) -> None:
@@ -452,6 +469,9 @@ class RecordingControllerApi(Protocol):
     def get_recording_state(self) -> JsonDict:
         ...
 
+    def rerender_live_text(self) -> JsonDict:
+        ...
+
     def start_recording(
         self,
         device: str = "mic",
@@ -509,18 +529,10 @@ class ImportQueueControllerApi(Protocol):
 
 
 class RecordingBridge(Protocol):
-    model_manager_controller: ModelManagerControllerApi
-
     def emit_ui_update(self, sections: Sequence[str]) -> None:
         ...
 
     def get_settings_snapshot(self) -> JsonDict:
-        ...
-
-    def normalize_engine_name(self, value: str) -> str:
-        ...
-
-    def normalize_model_key(self, value: str) -> str:
         ...
 
     def clear_live(self) -> None:
@@ -557,38 +569,19 @@ WhisperLoadApiGetter = Callable[[], WhisperLoadApi]
 
 
 class ImportQueueBridge(Protocol):
-    model_manager_controller: ModelManagerControllerApi
     TL_ENGINE_SOURCE_DICT_REF: dict[str, list[str]]
     TL_ENGINE_TARGET_DICT_REF: dict[str, list[str]]
 
     def emit_ui_update(self, sections: Sequence[str]) -> None:
         ...
 
-    def wait_recording_idle(self, timeout_s: float = 12.0) -> bool:
-        ...
-
-    def get_recording_state(self) -> JsonDict:
-        ...
-
     def get_window(self) -> FolderDialogWindow | None:
-        ...
-
-    def normalize_engine_name(self, value: str) -> str:
-        ...
-
-    def normalize_model_key(self, value: str) -> str:
-        ...
-
-    def resolve_model_dir(self) -> str:
         ...
 
     def reset_task_state(self, title: str) -> None:
         ...
 
     def set_task_title(self, title: str) -> None:
-        ...
-
-    def clear_live(self) -> None:
         ...
 
     def finish_task(self, message: str) -> None:

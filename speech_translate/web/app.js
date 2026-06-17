@@ -19,6 +19,8 @@ const state = {
   fileImportQueue: [],
   fileProcessingState: null,
   modelManagerState: null,
+  modalBound: false,
+  modalResolver: null,
 };
 
 const els = {};
@@ -112,6 +114,112 @@ function bindToolbarMirror(source, target, kind = 'value') {
       return;
     }
     target.value = source.value;
+  });
+}
+
+function setAppModalHidden(hidden) {
+  if (!els.appModalBackdrop || !els.appModalCard) {
+    return;
+  }
+  els.appModalBackdrop.classList.toggle('is-hidden', Boolean(hidden));
+  els.appModalBackdrop.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+}
+
+function resolveAppModal(result) {
+  if (typeof state.modalResolver === 'function') {
+    const resolver = state.modalResolver;
+    state.modalResolver = null;
+    resolver(Boolean(result));
+  }
+  setAppModalHidden(true);
+}
+
+function bindAppModalEvents() {
+  if (state.modalBound || !els.appModalBackdrop) {
+    return;
+  }
+  state.modalBound = true;
+
+  els.appModalConfirm?.addEventListener('click', () => resolveAppModal(true));
+  els.appModalCancel?.addEventListener('click', () => resolveAppModal(false));
+  els.appModalClose?.addEventListener('click', () => resolveAppModal(false));
+  els.appModalBackdrop.addEventListener('click', (event) => {
+    if (event.target === els.appModalBackdrop && !els.appModalBackdrop.dataset.locked) {
+      resolveAppModal(false);
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && state.modalResolver) {
+      resolveAppModal(false);
+    }
+  });
+}
+
+async function showAppModal({
+  title = '确认操作',
+  message = '',
+  kicker = '确认操作',
+  confirmLabel = '确认',
+  cancelLabel = '取消',
+  tone = 'default',
+  dismissible = true,
+  singleAction = false,
+} = {}) {
+  if (!els.appModalBackdrop || !els.appModalCard) {
+    if (singleAction) {
+      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+        window.alert(message || title);
+      }
+      return true;
+    }
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+      return window.confirm(message || title);
+    }
+    return true;
+  }
+
+  bindAppModalEvents();
+  if (state.modalResolver) {
+    resolveAppModal(false);
+  }
+
+  els.appModalKicker.textContent = kicker;
+  els.appModalTitle.textContent = title;
+  els.appModalMessage.textContent = message;
+  els.appModalConfirm.textContent = confirmLabel;
+  els.appModalCancel.textContent = cancelLabel;
+  els.appModalConfirm.classList.toggle('btn-danger-soft', tone === 'danger');
+  els.appModalConfirm.classList.toggle('btn-major', tone !== 'danger');
+  els.appModalCancel.classList.toggle('is-hidden', Boolean(singleAction));
+  els.appModalClose.classList.toggle('is-hidden', !dismissible);
+  if (dismissible) {
+    delete els.appModalBackdrop.dataset.locked;
+  } else {
+    els.appModalBackdrop.dataset.locked = 'true';
+  }
+  setAppModalHidden(false);
+
+  return new Promise((resolve) => {
+    state.modalResolver = resolve;
+  });
+}
+
+function showConfirmDialog(options = {}) {
+  return showAppModal({
+    kicker: '请确认',
+    confirmLabel: '确认',
+    cancelLabel: '取消',
+    ...options,
+  });
+}
+
+async function showAlertDialog(options = {}) {
+  await showAppModal({
+    kicker: '提示',
+    confirmLabel: '知道了',
+    cancelLabel: '取消',
+    singleAction: true,
+    ...options,
   });
 }
 
@@ -751,6 +859,9 @@ function renderSettings(data) {
   }
   if (els.recAskConfirmationFirst) {
     els.recAskConfirmationFirst.checked = Boolean(settings.rec_ask_confirmation_first ?? true);
+  }
+  if (els.closeToTrayOnClose) {
+    els.closeToTrayOnClose.checked = Boolean(settings.close_to_tray_on_close ?? true);
   }
   if (els.supressHiddenToTray) {
     els.supressHiddenToTray.checked = Boolean(settings.supress_hidden_to_tray ?? false);
@@ -1609,7 +1720,7 @@ function renderSettingsPanelSummaries(data) {
     ]],
     ['运行与保护策略', [
       settings.rec_ask_confirmation_first ? '录制前确认' : '直接录制',
-      settings.supress_hidden_to_tray ? '托盘提示关闭' : '托盘提示开启',
+      settings.close_to_tray_on_close ? '关闭即托盘' : '关闭即退出',
     ]],
     ['Whisper 解码参数', [
       String(settings.decoding_preset || 'beam search'),
@@ -2602,6 +2713,7 @@ async function saveSettings(shouldRefresh = true) {
     ['auto_open_dir_refinement', checkedOf(els.autoOpenDirRefinement, true)],
     ['auto_open_dir_alignment', checkedOf(els.autoOpenDirAlignment, true)],
     ['rec_ask_confirmation_first', checkedOf(els.recAskConfirmationFirst, true)],
+    ['close_to_tray_on_close', checkedOf(els.closeToTrayOnClose, true)],
     ['supress_hidden_to_tray', checkedOf(els.supressHiddenToTray, false)],
     ['supress_record_warning', checkedOf(els.supressRecordWarning, false)],
     ['debug_realtime_record', checkedOf(els.debugRealtimeRecord, false)],
@@ -3019,7 +3131,7 @@ const AUTO_SAVE_BUCKETS = {
     'fp16', 'initial_prompt', 'prefix', 'max_initial_timestamp', 'whisper_args',
     'path_filter_rec',
     'file_slice_start', 'file_slice_end', 'auto_open_dir_translate', 'auto_open_dir_refinement', 'auto_open_dir_alignment',
-    'rec_ask_confirmation_first', 'supress_hidden_to_tray',
+    'rec_ask_confirmation_first', 'close_to_tray_on_close', 'supress_hidden_to_tray',
     'supress_record_warning', 'debug_realtime_record', 'debug_translate',
     'colorize_per_segment', 'colorize_per_word', 'gradient_low_conf', 'gradient_high_conf',
     'tb_mw_tc_auto_scroll', 'tb_mw_tc_limit_max', 'tb_mw_tc_limit_max_per_line', 'tb_mw_tc_max',
@@ -3216,11 +3328,13 @@ async function startRecording() {
       return;
     }
 
-    if (Boolean(settings.rec_ask_confirmation_first) && typeof window !== 'undefined' && typeof window.confirm === 'function') {
+    if (Boolean(settings.rec_ask_confirmation_first)) {
       const modeLabel = isTc && isTl ? '转写 + 翻译' : (isTc ? '转写' : '翻译');
-      const confirmed = window.confirm(
-        `确认开始录制？\n输入：${device}\n模式：${modeLabel}\n源语言：${langSource}\n目标语言：${langTarget}\n引擎：${engine}`
-      );
+      const confirmed = await showConfirmDialog({
+        title: '开始录制',
+        message: `输入：${device}\n模式：${modeLabel}\n源语言：${langSource}\n目标语言：${langTarget}\n引擎：${engine}`,
+        confirmLabel: '开始录制',
+      });
       if (!confirmed) {
         return;
       }
@@ -3246,9 +3360,11 @@ async function startRecording() {
     } catch (_syncError) {
       // ignore follow-up sync errors
     }
-    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
-      window.alert(`启动录制失败：${error && error.message ? error.message : error}`);
-    }
+    await showAlertDialog({
+      title: '启动录制失败',
+      message: `${error && error.message ? error.message : error}`,
+      tone: 'danger',
+    });
   }
 }
 
@@ -3363,8 +3479,12 @@ function switchWorkflowTab(targetId) {
 
 async function hideToTray() {
   const settings = state.data?.settings || {};
-  if (!Boolean(settings.supress_hidden_to_tray) && typeof window !== 'undefined' && typeof window.confirm === 'function') {
-    const confirmed = window.confirm('确认隐藏到托盘？可通过系统托盘菜单重新显示主窗口。');
+  if (!Boolean(settings.supress_hidden_to_tray)) {
+    const confirmed = await showConfirmDialog({
+      title: '隐藏到托盘',
+      message: '主窗口会隐藏到系统托盘，可通过托盘入口重新打开。',
+      confirmLabel: '隐藏到托盘',
+    });
     if (!confirmed) {
       return;
     }
@@ -3400,11 +3520,14 @@ async function openCurrentLogFile() {
 }
 
 async function quitApp() {
-  if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-    const confirmed = window.confirm('确认退出应用？这会关闭主窗口与所有独立窗口。');
-    if (!confirmed) {
-      return;
-    }
+  const confirmed = await showConfirmDialog({
+    title: '退出程序',
+    message: '这会关闭主窗口、独立窗口以及后台翻译进程。',
+    confirmLabel: '退出程序',
+    tone: 'danger',
+  });
+  if (!confirmed) {
+    return;
   }
   await apiCall('quit_app');
 }
@@ -4081,6 +4204,7 @@ async function init() {
     els.autoOpenDirAlignmentFile = $('auto_open_dir_alignment_file');
     els.recAskConfirmationFirst = $('rec_ask_confirmation_first');
     els.recAskConfirmationFirstToolbar = $('rec_ask_confirmation_first_toolbar');
+    els.closeToTrayOnClose = $('close_to_tray_on_close');
     els.supressHiddenToTray = $('supress_hidden_to_tray');
     els.supressHiddenToTrayToolbar = $('supress_hidden_to_tray_toolbar');
     els.supressRecordWarning = $('supress_record_warning');
@@ -4311,6 +4435,14 @@ async function init() {
     els.seleniumModeKpi = $('selenium_mode_kpi');
     els.seleniumZorderKpi = $('selenium_zorder_kpi');
     els.seleniumAutoCloseKpi = $('selenium_auto_close_kpi');
+    els.appModalBackdrop = $('app_modal_backdrop');
+    els.appModalCard = $('app_modal_card');
+    els.appModalKicker = $('app_modal_kicker');
+    els.appModalTitle = $('app_modal_title');
+    els.appModalMessage = $('app_modal_message');
+    els.appModalClose = $('app_modal_close');
+    els.appModalCancel = $('app_modal_cancel');
+    els.appModalConfirm = $('app_modal_confirm');
     els.taskCard = $('task-card');
     els.taskBadge = $('task-badge');
     els.taskTitle = $('task-title');
@@ -4387,7 +4519,11 @@ async function init() {
             await saveInitialPromptsSettings(true);
           } catch (e) {
             console.error(e);
-            window.alert('保存按语言引导词失败：' + (e && e.message ? e.message : e));
+            await showAlertDialog({
+              title: '保存引导词失败',
+              message: String(e && e.message ? e.message : e),
+              tone: 'danger',
+            });
           }
         });
       });
@@ -4404,7 +4540,11 @@ async function init() {
             await saveInitialPromptsSettings(true);
           } catch (e) {
             console.error(e);
-            window.alert('重置失败：' + (e && e.message ? e.message : e));
+            await showAlertDialog({
+              title: '重置引导词失败',
+              message: String(e && e.message ? e.message : e),
+              tone: 'danger',
+            });
           }
         });
       }
@@ -4418,7 +4558,11 @@ async function init() {
             await saveInitialPromptsSettings(true);
           } catch (e) {
             console.error(e);
-            window.alert('清空失败：' + (e && e.message ? e.message : e));
+            await showAlertDialog({
+              title: '清空引导词失败',
+              message: String(e && e.message ? e.message : e),
+              tone: 'danger',
+            });
           }
         });
       }

@@ -46,6 +46,7 @@ default_setting: SettingDict = {
     "hostAPI": "",
     "verbose_record": False,
     "separate_with": "\\n",
+    "close_to_tray_on_close": True,
     "supress_hidden_to_tray": False,
     "supress_record_warning": False,
     "mw_size": "1140x680",

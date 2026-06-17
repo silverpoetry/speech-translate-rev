@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>语音翻译</title>
-  <link rel="stylesheet" href="styles.css?v=20260617-ui-cn-54" />
+  <link rel="stylesheet" href="styles.css?v=20260618-ui-cn-55" />
 </head>
 
 <body>
@@ -34,6 +34,7 @@
           <button class="btn-with-icon" data-open-dir="export">导出目录</button>
           <button class="btn-with-icon" data-open-dir="log">日志目录</button>
           <button class="btn-with-icon" data-action="hide-to-tray">隐藏到托盘</button>
+          <button class="btn-with-icon btn-danger-soft" data-action="quit-app">退出程序</button>
         </div>
       </aside>
 
@@ -1476,6 +1477,7 @@
             <div class="advanced-panel-body">
               <div class="form-grid">
                 <label class="toggle-row"><input id="rec_ask_confirmation_first" type="checkbox" /> 录制前确认</label>
+                <label class="toggle-row"><input id="close_to_tray_on_close" type="checkbox" /> 关闭主窗口时隐藏到托盘</label>
                 <label class="toggle-row"><input id="supress_hidden_to_tray" type="checkbox" /> 隐藏到托盘不提示</label>
                 <label class="toggle-row"><input id="supress_record_warning" type="checkbox" /> 忽略录制警告</label>
                 <label class="toggle-row"><input id="debug_realtime_record" type="checkbox" /> 记录实时转写调试日志</label>
@@ -2111,7 +2113,24 @@
     </div>
   </main>
 
-  <script src="app.js?v=20260617-ui-cn-54"></script>
+  <div class="app-modal-backdrop is-hidden" id="app_modal_backdrop" aria-hidden="true">
+    <section class="app-modal-card" id="app_modal_card" role="dialog" aria-modal="true" aria-labelledby="app_modal_title">
+      <div class="app-modal-head">
+        <div class="app-modal-kicker" id="app_modal_kicker">确认操作</div>
+        <button type="button" class="app-modal-close" id="app_modal_close" aria-label="关闭弹窗">×</button>
+      </div>
+      <div class="app-modal-body">
+        <h3 id="app_modal_title">确认操作</h3>
+        <p id="app_modal_message"></p>
+      </div>
+      <div class="app-modal-actions">
+        <button type="button" class="btn-with-icon" id="app_modal_cancel">取消</button>
+        <button type="button" class="btn-with-icon btn-danger-soft" id="app_modal_confirm">确认</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js?v=20260618-ui-cn-55"></script>
 </body>
 
 </html>

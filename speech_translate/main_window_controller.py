@@ -20,6 +20,7 @@ class MainWindowController:
         self.main_window_show_allowed = False
         self.main_geometry_lock = Lock()
         self.main_geometry_last_saved = ""
+        self.quit_in_progress = False
 
     def set_startup_t0(self, started_at: float) -> None:
         self.startup_t0 = started_at
@@ -50,6 +51,8 @@ class MainWindowController:
             window.events.shown += lambda *_: self.on_main_window_shown(window)
         if hasattr(window.events, "loaded"):
             window.events.loaded += lambda *_: self.log_startup_marker("main_window_loaded")
+        if hasattr(window.events, "closing"):
+            window.events.closing += lambda *_: self.on_main_window_closing(window)
         if hasattr(window.events, "closed"):
             window.events.closed += lambda *_: self.save_main_window_geometry(force=True)
 
@@ -75,6 +78,43 @@ class MainWindowController:
         except Exception:
             pass
         self.log_startup_marker("main_window_shown_after_init")
+
+    def hide_main_window_to_tray(self) -> dict[str, object]:
+        window = self.bridge.get_window()
+        tray = self.bridge.get_tray()
+        if window is None:
+            return {"ok": False, "message": "Window not ready"}
+        if tray is None:
+            return {"ok": False, "message": "Tray not available"}
+        try:
+            window.hide()
+        except Exception as exc:
+            return {"ok": False, "message": str(exc)}
+        self.log_startup_marker("main_window_hidden_to_tray")
+        return {"ok": True}
+
+    def should_hide_to_tray_on_close(self) -> bool:
+        return bool(self.settings.cache.get("close_to_tray_on_close", True))
+
+    def on_main_window_closing(self, window: FolderDialogWindow) -> bool | None:
+        if self.quit_in_progress:
+            return None
+
+        tray = self.bridge.get_tray()
+        if self.should_hide_to_tray_on_close() and tray is not None:
+            try:
+                window.hide()
+                self.log_startup_marker("main_window_close_redirected_to_tray")
+                return False
+            except Exception:
+                pass
+
+        try:
+            self.bridge.quit_app()
+            return False
+        except Exception:
+            logger.exception("Failed to quit app from main window close event")
+            return None
 
     def _extract_window_size(self, window: FolderDialogWindow) -> tuple[int | None, int | None]:
         try:
@@ -117,6 +157,7 @@ class MainWindowController:
             )
 
     def quit_app(self) -> None:
+        self.quit_in_progress = True
         self.bridge.detached_window_manager.close_all()
         if tray := self.bridge.get_tray():
             try:

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>托盘控制面板</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Segoe UI", "Noto Sans", "Microsoft YaHei UI", sans-serif;
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #2563eb;
+      --danger: #dc2626;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: transparent;
+    }
+
+    body {
+      padding: 12px;
+      color: var(--text);
+    }
+
+    .tray-panel {
+      display: grid;
+      gap: 14px;
+      padding: 16px;
+      border-radius: 18px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.98)),
+        #ffffff;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      box-shadow:
+        0 18px 42px rgba(15, 23, 42, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.88);
+    }
+
+    .tray-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .tray-title {
+      display: grid;
+      gap: 4px;
+    }
+
+    .tray-kicker {
+      font-size: 0.7rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.05rem;
+      line-height: 1.2;
+    }
+
+    .tray-meta {
+      margin: 0;
+      font-size: 0.82rem;
+      line-height: 1.55;
+      color: #475569;
+    }
+
+    .tray-close {
+      width: 32px;
+      height: 32px;
+      border: none;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.12);
+      color: #334155;
+      font-size: 1.2rem;
+      cursor: pointer;
+    }
+
+    .tray-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .tray-action {
+      border: none;
+      border-radius: 14px;
+      padding: 12px 12px;
+      text-align: left;
+      background: rgba(248, 250, 252, 0.96);
+      box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.12);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .tray-action strong {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 0.9rem;
+    }
+
+    .tray-action span {
+      display: block;
+      font-size: 0.76rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .tray-action.primary {
+      background: linear-gradient(135deg, rgba(219, 234, 254, 0.95), rgba(239, 246, 255, 0.98));
+      box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.2);
+    }
+
+    .tray-action.danger {
+      background: linear-gradient(135deg, rgba(254, 226, 226, 0.96), rgba(255, 241, 242, 0.98));
+      box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.18);
+      color: var(--danger);
+    }
+  </style>
+</head>
+
+<body>
+  <main class="tray-panel">
+    <header class="tray-head">
+      <div class="tray-title">
+        <div class="tray-kicker">Tray Control</div>
+        <h1>语音翻译</h1>
+      </div>
+      <button type="button" class="tray-close" id="tray_close" aria-label="关闭">×</button>
+    </header>
+    <p class="tray-meta">右键托盘图标即可打开这里。只保留高频入口：回到主界面、打开目录、直接退出。</p>
+    <section class="tray-actions">
+      <button type="button" class="tray-action primary" data-action="show-app">
+        <strong>显示主窗口</strong>
+        <span>回到主界面继续操作</span>
+      </button>
+      <button type="button" class="tray-action" data-action="open-model">
+        <strong>模型目录</strong>
+        <span>查看与整理模型缓存</span>
+      </button>
+      <button type="button" class="tray-action" data-action="open-export">
+        <strong>导出目录</strong>
+        <span>打开转写输出位置</span>
+      </button>
+      <button type="button" class="tray-action" data-action="open-log">
+        <strong>日志目录</strong>
+        <span>查看运行日志</span>
+      </button>
+      <button type="button" class="tray-action danger" data-action="quit-app" style="grid-column: 1 / -1;">
+        <strong>退出程序</strong>
+        <span>关闭主窗口与后台进程</span>
+      </button>
+    </section>
+  </main>
+
+  <script>
+    async function callTray(action) {
+      if (typeof pywebview === 'undefined' || !pywebview.api) {
+        return;
+      }
+      if (action === 'show-app') {
+        await pywebview.api.show_app();
+      } else if (action === 'open-model') {
+        await pywebview.api.open_directory('model');
+      } else if (action === 'open-export') {
+        await pywebview.api.open_directory('export');
+      } else if (action === 'open-log') {
+        await pywebview.api.open_directory('log');
+      } else if (action === 'quit-app') {
+        await pywebview.api.quit_app();
+      } else if (action === 'hide-panel') {
+        await pywebview.api.hide_panel();
+      }
+    }
+
+    document.addEventListener('click', async (event) => {
+      const target = event.target.closest('[data-action]');
+      if (!target) {
+        return;
+      }
+      await callTray(target.dataset.action);
+    });
+
+    document.getElementById('tray_close')?.addEventListener('click', async () => {
+      await callTray('hide-panel');
+    });
+  </script>
+</body>
+
+</html>
