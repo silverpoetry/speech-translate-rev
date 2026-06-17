@@ -819,7 +819,7 @@ body {
 
 #tab-file .file-import-overview-grid .status-overview-value,
 #tab-model .model-selection-status-grid .status-overview-value {
-  font-size: 0.9rem;
+  font-size: 0.86rem;
 }
 
 #tab-model .model-selection-status-grid .status-overview-card {
@@ -4551,12 +4551,12 @@ textarea:focus {
 }
 
 .model-selection-main-card .model-selection-kicker {
-  font-size: 0.72rem;
-  letter-spacing: 0.09em;
+  font-size: 0.66rem;
+  letter-spacing: 0.07em;
 }
 
 .model-selection-main-card .model-selection-card-meta {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
 }
 
 .model-selection-card-head {
@@ -5524,6 +5524,8 @@ select,
 textarea {
   min-height: 34px;
   padding: 8px 10px;
+  font-size: 0.82rem;
+  line-height: 1.35;
 }
 
 button.btn-with-icon {
@@ -5583,16 +5585,16 @@ button.btn-icon:hover {
 .realtime-status-value,
 .settings-overview-value,
 .model-manager-overview-value {
-  font-size: 0.9rem;
-  line-height: 1.2;
+  font-size: 0.86rem;
+  line-height: 1.24;
 }
 
 .status-overview-meta,
 .realtime-status-meta,
 .settings-overview-meta,
 .model-manager-overview-meta {
-  font-size: 0.7rem;
-  line-height: 1.35;
+  font-size: 0.68rem;
+  line-height: 1.32;
 }
 
 .realtime-hero-shell {
@@ -5657,6 +5659,29 @@ button.btn-icon:hover {
 
 .live-output-preview-note {
   font-size: var(--ui-text-sm);
+}
+
+.realtime-control-kicker,
+.live-output-preview-label,
+.model-selection-kicker,
+.file-queue-title,
+.file-ops-kicker {
+  font-size: 0.66rem;
+  letter-spacing: 0.07em;
+}
+
+.realtime-control-meta,
+.live-output-panel-meta,
+.model-selection-card-meta,
+.file-queue-subtitle,
+.file-ops-title {
+  font-size: 0.68rem;
+  line-height: 1.34;
+}
+
+.live-output-panel-badge {
+  font-size: 0.64rem;
+  letter-spacing: 0.07em;
 }
 
 .file-workbench-shell {
@@ -5738,7 +5763,7 @@ button.btn-icon:hover {
 .file-queue-title,
 .model-selection-kicker,
 .file-ops-kicker {
-  font-size: var(--ui-text-2xs);
+  font-size: 0.66rem;
   letter-spacing: 0.07em;
 }
 
@@ -5803,7 +5828,7 @@ button.btn-icon:hover {
 .model-selection-main-card,
 .model-selection-side-card,
 .model-selection-status-rail {
-  padding: 12px;
+  padding: 11px;
   gap: 10px;
   border-radius: 16px;
 }
@@ -5823,8 +5848,8 @@ button.btn-icon:hover {
 }
 
 #tab-model .model-selection-status-grid .status-overview-card {
-  min-height: 64px;
-  padding: 7px 9px;
+  min-height: 62px;
+  padding: 7px 8px;
 }
 
 #tab-model .model-selection-status-grid .status-overview-value {
@@ -5832,7 +5857,7 @@ button.btn-icon:hover {
 }
 
 #tab-model .model-selection-status-grid .status-overview-card-compact {
-  min-height: 56px;
+  min-height: 54px;
 }
 
 #tab-model .model-selection-status-grid .status-overview-card-compact .status-overview-meta {
@@ -5850,22 +5875,14 @@ button.btn-icon:hover {
 }
 
 .model-selection-quick-actions-secondary {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 5px;
-  padding-top: 4px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding-top: 3px;
 }
 
 .model-selection-quick-actions-secondary .btn-with-icon {
-  grid-column: span 2;
-}
-
-.model-selection-quick-actions-secondary > :last-child:nth-child(odd) {
-  grid-column: 1 / -1;
-}
-
-.model-selection-quick-actions-secondary .btn-with-icon {
-  min-height: 27px;
-  padding-inline: 11px;
+  min-height: 26px;
+  padding-inline: 10px;
   justify-content: flex-start;
   font-size: var(--ui-text-xs);
   border-radius: 10px;
@@ -5904,12 +5921,21 @@ button.btn-icon:hover {
 .settings-search input {
   min-height: 38px;
   padding-inline: 14px;
+  font-size: 0.82rem;
+  line-height: 1.35;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.98);
   border-color: rgba(203, 213, 225, 0.9);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.88),
     0 1px 2px rgba(15, 23, 42, 0.02);
+}
+
+#settings-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+#settings-shell select,
+#settings-shell textarea {
+  font-size: 0.82rem;
+  line-height: 1.35;
 }
 
 .settings-shortcut {
@@ -5959,8 +5985,8 @@ button.btn-icon:hover {
 }
 
 .settings-toolbar-overview .settings-overview-card {
-  min-height: 58px;
-  padding: 10px 11px;
+  min-height: 54px;
+  padding: 9px 10px;
 }
 
 .settings-toolbar-overview .settings-overview-card-primary {
@@ -5975,14 +6001,14 @@ button.btn-icon:hover {
 }
 
 .settings-workbench-card {
-  padding: 12px 13px;
+  padding: 11px 12px;
   gap: 9px;
   border-radius: 12px;
   background: var(--ui-surface-soft);
 }
 
 .settings-workbench-title {
-  font-size: 0.84rem;
+  font-size: 0.82rem;
   line-height: 1.3;
 }
 
