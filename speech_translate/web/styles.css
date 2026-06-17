@@ -3206,6 +3206,10 @@ button.btn-icon[data-tooltip]::before {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+#settings-shell .settings-workbench-card-thresholds .settings-workbench-form {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 #settings-shell input,
 #settings-shell select,
 #settings-shell textarea {
@@ -3811,9 +3815,14 @@ button.btn-icon[data-tooltip]::before {
 }
 
 .detached-config-mini-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px 7px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px 7px;
   padding: 1px 0 0;
+}
+
+.detached-config-mini-grid > .toggle-row,
+.detached-config-mini-grid > label.toggle-row {
+  grid-column: auto;
 }
 
 .detached-config-mini-grid .toggle-row {
@@ -3823,7 +3832,8 @@ button.btn-icon[data-tooltip]::before {
 }
 
 .detached-config-mini-grid > label:not(.toggle-row) {
-  padding: 7px 8px;
+  gap: 4px;
+  padding: 6px 7px;
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.78);
   border: 1px solid rgba(148, 163, 184, 0.12);
@@ -3834,7 +3844,11 @@ button.btn-icon[data-tooltip]::before {
 }
 
 .detached-config-mini-grid input[type="text"] {
-  height: 30px;
+  height: 28px;
+}
+
+.detached-config-mini-grid > label:has(input[type="range"]) {
+  gap: 4px 8px;
 }
 
 #tab-realtime .advanced-panel .advanced-panel-body {
@@ -4278,6 +4292,11 @@ label {
 .form-grid>.toggle-row,
 .form-grid>label.toggle-row {
   grid-column: 1 / -1;
+}
+
+.detached-config-mini-grid.form-grid > .toggle-row,
+.detached-config-mini-grid.form-grid > label.toggle-row {
+  grid-column: auto;
 }
 
 .toggle-row input[type="checkbox"],
@@ -6138,7 +6157,8 @@ button.btn-icon:hover {
 }
 
 .settings-workbench-board .settings-workbench-card-thresholds .settings-workbench-form {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px 8px;
 }
 
 .settings-workbench-board .settings-workbench-card-thresholds .settings-workbench-form > .field-span-2,
@@ -6150,12 +6170,21 @@ button.btn-icon:hover {
 
 .settings-workbench-board .settings-workbench-card-thresholds .settings-workbench-form > .field-span-2-cols,
 .settings-workbench-board .settings-workbench-card-thresholds .settings-workbench-form > label.field-span-2-cols {
-  grid-column: span 2;
+  grid-column: 1 / -1;
 }
 
 .settings-workbench-board .settings-workbench-card-thresholds .settings-workbench-form > .toggle-row.field-span-2,
 .settings-workbench-board .settings-workbench-card-thresholds .settings-workbench-form > label.toggle-row.field-span-2 {
-  grid-column: span 2;
+  grid-column: 1 / -1;
+}
+
+.settings-workbench-board .settings-workbench-card-thresholds .settings-workbench-form label {
+  gap: 5px;
+}
+
+#settings-shell .settings-workbench-card-thresholds input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+#settings-shell .settings-workbench-card-thresholds select {
+  padding: 8px 9px;
 }
 
 .settings-workbench-board .settings-workbench-card-export .settings-workbench-section {
