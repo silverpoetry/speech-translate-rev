@@ -735,7 +735,16 @@ body {
 
 #tab-file .core-status-bottom {
   gap: 4px;
-  padding-top: 4px;
+  padding-top: 0;
+}
+
+#tab-file.workflow-card {
+  gap: 4px;
+}
+
+#tab-file .core-card {
+  gap: 6px;
+  padding-bottom: 8px;
 }
 
 #tab-file .hero-toolbar.hero-toolbar-compact {
@@ -5921,6 +5930,14 @@ button.btn-icon:hover {
 #tab-model .model-selection-status-grid .status-overview-card {
   min-height: 62px;
   padding: 7px 8px;
+}
+
+#tab-model.workflow-card {
+  gap: 6px;
+}
+
+#tab-model > .advanced-panel {
+  margin-top: 2px;
 }
 
 #tab-model .model-selection-status-grid .status-overview-value {
