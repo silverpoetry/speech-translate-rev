@@ -18,6 +18,7 @@ const state = {
   autoSaveTimers: {},
   fileImportQueue: [],
   fileProcessingState: null,
+  modelManagerState: null,
 };
 
 const els = {};
@@ -48,6 +49,70 @@ function formatBytes(value) {
     unitIndex += 1;
   }
   return unitIndex === 0 ? `${Math.round(next)} ${units[unitIndex]}` : `${next.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function summarizeSettingText(value, fallback = '未设置', maxLength = 40) {
+  const text = String(value ?? '').trim();
+  if (!text) {
+    return fallback;
+  }
+  return text.length > maxLength ? `${text.slice(0, Math.max(0, maxLength - 1))}…` : text;
+}
+
+function summarizeFileSliceRange(start, end) {
+  const from = String(start ?? '').trim();
+  const to = String(end ?? '').trim();
+  if (!from && !to) {
+    return '全量';
+  }
+  return `${from || '起点'} → ${to || '末尾'}`;
+}
+
+function summarizeFilterDictionaryPath(pathValue) {
+  const normalized = String(pathValue ?? '').trim();
+  if (!normalized || normalized.toLowerCase() === 'auto') {
+    return '词典 auto';
+  }
+  return `词典 ${summarizeSettingText(normalized, '词典 auto', 22)}`;
+}
+
+function summarizeModelDevicePreference(value) {
+  const normalized = String(value ?? 'auto').trim().toLowerCase();
+  if (normalized === 'cuda') {
+    return { label: 'CUDA', meta: '优先使用 GPU 进行推理' };
+  }
+  if (normalized === 'cpu') {
+    return { label: 'CPU', meta: '固定使用 CPU，避免 GPU 依赖' };
+  }
+  return { label: 'AUTO', meta: '自动选择可用设备' };
+}
+
+function syncToolbarMirrorValue(target, source, fallback = '') {
+  if (!target || !source) {
+    return;
+  }
+  target.value = source.value ?? fallback;
+}
+
+function syncToolbarMirrorChecked(target, source, fallback = false) {
+  if (!target || !source) {
+    return;
+  }
+  target.checked = typeof source.checked === 'boolean' ? source.checked : fallback;
+}
+
+function bindToolbarMirror(source, target, kind = 'value') {
+  if (!source || !target) {
+    return;
+  }
+  const eventName = source.tagName === 'SELECT' || kind === 'checked' ? 'change' : 'input';
+  source.addEventListener(eventName, () => {
+    if (kind === 'checked') {
+      target.checked = source.checked;
+      return;
+    }
+    target.value = source.value;
+  });
 }
 
 const DETACHED_SETTINGS_SECTION_TITLE = '独立窗口（TC / TL）';
@@ -241,6 +306,10 @@ async function startupMark(marker) {
 
 function sleep(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function isCompactViewport(maxWidth = 780) {
+  return window.innerWidth <= maxWidth;
 }
 
 function updatePageScrollIndicator() {
@@ -832,13 +901,20 @@ function renderAbout(data) {
   }
 
   const about = data?.about || {};
+  const settings = data?.settings || {};
+  const exportDir = settings.dir_export || about.export_dir || 'auto';
+  const logDir = settings.dir_log || 'auto';
+  const modelDir = settings.dir_model || about.model_dir || 'auto';
+  const mainSize = settings.mw_size || '未知';
   const rows = [
     ['应用', about.name || data?.app_name || 'Speech Translate'],
     ['版本', about.version || data?.version || '未知'],
     ['系统', about.os || [data?.os_name, data?.os_release, data?.os_version].filter(Boolean).join(' ') || '未知'],
     ['CPU', about.cpu || data?.cpu || '未知'],
-    ['模型目录', about.model_dir || '未知'],
-    ['导出目录', about.export_dir || '未知'],
+    ['主窗口', mainSize],
+    ['模型目录', modelDir],
+    ['导出目录', exportDir],
+    ['日志目录', logDir],
     ['日志文件', about.log_file || data?.current_log || '未知'],
   ];
 
@@ -852,6 +928,14 @@ function renderAbout(data) {
           </div>
         `)
         .join('')}
+    </div>
+    <div class="inline-actions compact-gap about-card-actions">
+      <button type="button" class="btn-with-icon" data-action="save-window-geometry">保存窗口尺寸</button>
+      <button type="button" class="btn-with-icon" data-action="show-main-window">显示主窗口</button>
+      <button type="button" class="btn-with-icon" data-open-dir="model">打开模型目录</button>
+      <button type="button" class="btn-with-icon" data-open-dir="export">打开导出目录</button>
+      <button type="button" class="btn-with-icon" data-open-dir="log">打开日志目录</button>
+      <button type="button" class="btn-with-icon" data-action="open-current-log">打开当前日志</button>
     </div>
   `;
 }
@@ -905,12 +989,12 @@ function renderMainControls(data) {
 
   if (els.transcribeMain) els.transcribeMain.checked = Boolean(mainUi.transcribe ?? true);
   if (els.translateMain) els.translateMain.checked = Boolean(mainUi.translate ?? true);
-  els.mainInputPill.textContent = `输入：${mainUi.selected_input || '未知'}`;
+  els.mainInputPill.textContent = `输入 ${mainUi.selected_input || '未知'}`;
   if (els.mainModelPill) {
-    els.mainModelPill.textContent = `模型：${mainUi.selected_model || '未选择'} / ${mainUi.selected_backend || '未知后端'}`;
+    els.mainModelPill.textContent = `${mainUi.selected_model || '未选择'} · ${mainUi.selected_backend || '未知后端'}`;
   }
-  els.mainLangPill.textContent = `语言：${mainUi.selected_source || '未知'} → ${mainUi.selected_target || '未知'}`;
-  els.mainEnginePill.textContent = `引擎：${mainUi.selected_engine || '未知'}`;
+  els.mainLangPill.textContent = `${mainUi.selected_source || '未知'} → ${mainUi.selected_target || '未知'}`;
+  els.mainEnginePill.textContent = `${mainUi.selected_engine || '未知'}`;
   if (els.btnLoadMainModel) {
     const hasModel = Array.isArray(mainUi.model_options) && mainUi.model_options.length > 0;
     els.btnLoadMainModel.disabled = !hasModel;
@@ -972,15 +1056,45 @@ function renderImportSettings(data) {
     const engine = importUi.selected_engine || '未知';
     els.fileImportExportMeta.textContent = `引擎：${engine}`;
   }
-  if (els.fileImportExportFormats) {
-    const formats = Array.isArray(settings.export_to) ? settings.export_to : [];
-    els.fileImportExportFormats.textContent = formats.length > 0
-      ? formats.map((item) => String(item).toUpperCase()).join(' / ')
-      : '未设置';
+  if (els.fileImportExportFormat) {
+    els.fileImportExportFormat.textContent = summarizeSettingText(
+      settings.export_format,
+      '%Y-%m-%d %f {file}/{task-lang}',
+      34
+    );
   }
-  if (els.fileImportExportFormatsMeta) {
+  if (els.fileImportExportFormatMeta) {
+    const formats = Array.isArray(settings.export_to) ? settings.export_to : [];
     const autoOpen = settings.auto_open_dir_export ? '完成后自动打开目录' : '完成后不自动打开目录';
-    els.fileImportExportFormatsMeta.textContent = autoOpen;
+    const exportFormats = formats.length > 0
+      ? formats.map((item) => String(item).toUpperCase()).join(' / ')
+      : '未设置格式';
+    els.fileImportExportFormatMeta.textContent = `${exportFormats} · ${autoOpen}`;
+  }
+  if (els.fileImportSliceRange) {
+    els.fileImportSliceRange.textContent = summarizeFileSliceRange(
+      settings.file_slice_start,
+      settings.file_slice_end
+    );
+  }
+  if (els.fileImportSliceMeta) {
+    const splitMode = String(settings.segment_split_or_newline || 'Split');
+    const limits = [];
+    if (String(settings.segment_max_words ?? '').trim()) {
+      limits.push(`${settings.segment_max_words}词`);
+    }
+    if (String(settings.segment_max_chars ?? '').trim()) {
+      limits.push(`${settings.segment_max_chars}字`);
+    }
+    const limitText = limits.length > 0 ? limits.join(' / ') : '不限长';
+    els.fileImportSliceMeta.textContent = `${splitMode} · ${limitText}`;
+  }
+  if (els.fileImportFilterState) {
+    els.fileImportFilterState.textContent = settings.filter_file_import ? '已启用' : '已关闭';
+  }
+  if (els.fileImportFilterMeta) {
+    const mode = settings.filter_file_import_exact_match ? '精准匹配' : `相似度 ${Number(settings.filter_file_import_similarity ?? 0.75).toFixed(2)}`;
+    els.fileImportFilterMeta.textContent = `${summarizeFilterDictionaryPath(settings.path_filter_file_import)} · ${mode}`;
   }
 
   if (els.btnLoadModel) {
@@ -1118,18 +1232,28 @@ function renderModelSelectionOverview(data) {
   const importUi = data?.import_ui || {};
   const runtime = data?.runtime_model || {};
   const settings = data?.settings || {};
+  const modelManager = state.modelManagerState || {};
   const selectedModel = importUi.selected_model_key || importUi.selected_model || '未选择';
   const backend = importUi.selected_backend || '未知';
   const runtimeLoaded = Boolean(runtime.loaded);
   const runtimeLoading = Boolean(runtime.loading);
   const runtimeMessage = String(runtime.message || '').trim();
+  const devicePref = summarizeModelDevicePreference(settings.model_device_preference);
+  const managerRows = Array.isArray(modelManager.rows) ? modelManager.rows : [];
+  const scopedRows = managerRows.filter((row) => String(row?.engine || '') === String(modelManager.selected_engine || backend || ''));
+  const downloadedCount = scopedRows.filter((row) => row && row.downloaded === true).length;
+  const missingCount = scopedRows.filter((row) => row && row.downloaded === false).length;
+  const coverageTotal = scopedRows.length || (Array.isArray(modelManager.model_options) ? modelManager.model_options.length : 0);
+  const checked = modelManager.checked || null;
 
   if (els.modelSelectionCurrent) {
     els.modelSelectionCurrent.textContent = selectedModel;
   }
   if (els.modelSelectionCurrentMeta) {
     const optionCount = Array.isArray(importUi.model_options) ? importUi.model_options.length : 0;
-    els.modelSelectionCurrentMeta.textContent = `可用模型 ${optionCount} 个`;
+    const selectedEstimateBytes = Number(modelManager.selected_model_estimate_bytes || 0);
+    const estimateText = selectedEstimateBytes > 0 ? formatBytes(selectedEstimateBytes) : `${optionCount} 个候选`;
+    els.modelSelectionCurrentMeta.textContent = `预计体积 ${estimateText}`;
   }
   if (els.modelSelectionRuntime) {
     els.modelSelectionRuntime.textContent = runtimeLoaded
@@ -1139,14 +1263,20 @@ function renderModelSelectionOverview(data) {
         : '未加载';
   }
   if (els.modelSelectionRuntimeMeta) {
-    els.modelSelectionRuntimeMeta.textContent = runtimeMessage || (runtimeLoaded ? `当前运行：${runtime.key || selectedModel}` : '等待加载');
+    if (checked) {
+      const checkedStatus = checked.downloaded ? '已校验可用' : (checked.error ? `检查失败：${checked.error}` : '本地缺失');
+      els.modelSelectionRuntimeMeta.textContent = runtimeMessage || `${checked.model} · ${checkedStatus}`;
+    } else {
+      els.modelSelectionRuntimeMeta.textContent = runtimeMessage || (runtimeLoaded ? `当前运行：${runtime.key || selectedModel}` : '等待加载');
+    }
   }
   if (els.modelSelectionBackend) {
     els.modelSelectionBackend.textContent = backend;
   }
   if (els.modelSelectionBackendMeta) {
     const selectedEngine = importUi.selected_engine || '未设置翻译引擎';
-    els.modelSelectionBackendMeta.textContent = `翻译引擎：${selectedEngine}`;
+    const modelDir = modelManager.model_dir || settings.dir_model || 'auto';
+    els.modelSelectionBackendMeta.textContent = `翻译：${selectedEngine} · 目录：${summarizeSettingText(modelDir, 'auto', 18)}`;
   }
   if (els.modelSelectionHistory) {
     els.modelSelectionHistory.textContent = settings.condition_on_previous_text ? '已启用' : '已关闭';
@@ -1158,6 +1288,26 @@ function renderModelSelectionOverview(data) {
     els.modelSelectionHistoryMeta.textContent = settings.condition_on_previous_text
       ? '将使用上次输出作为提示'
       : '每次独立转写';
+  }
+  if (els.modelSelectionDevice) {
+    els.modelSelectionDevice.textContent = devicePref.label;
+  }
+  if (els.modelSelectionDeviceMeta) {
+    els.modelSelectionDeviceMeta.textContent = devicePref.meta;
+  }
+  if (els.modelSelectionCache) {
+    els.modelSelectionCache.textContent = coverageTotal > 0 ? `${downloadedCount} / ${coverageTotal}` : '等待检查';
+  }
+  if (els.modelSelectionCacheMeta) {
+    if (modelManager.download_running) {
+      els.modelSelectionCacheMeta.textContent = '下载进行中，缓存状态持续刷新';
+    } else if (coverageTotal > 0) {
+      els.modelSelectionCacheMeta.textContent = missingCount > 0
+        ? `已下载 ${downloadedCount} 个，本引擎仍缺 ${missingCount} 个`
+        : `本引擎 ${coverageTotal} 个模型均已就绪`;
+    } else {
+      els.modelSelectionCacheMeta.textContent = '检查后显示已下载模型数量';
+    }
   }
 }
 
@@ -1225,6 +1375,9 @@ function renderSettingsToolbarOverview(data) {
   const importUi = data?.import_ui || {};
   const recordUi = data?.record_ui || {};
   const exportFormats = summarizeExportFormats(settings);
+  const networkText = settings.http_proxy_enable || settings.https_proxy_enable ? '代理已启用' : '无代理';
+  const decodePreset = String(settings.decoding_preset || 'beam search');
+  const temperature = String(settings.temperature ?? '').trim() || '默认';
   const modelText = runtime.loaded
     ? `${runtime.key || importUi.selected_model || '未知'} / ${importUi.selected_backend || '后端未知'}`
     : `${importUi.selected_model || '未选择'} / ${importUi.selected_backend || '后端未知'}`;
@@ -1243,18 +1396,82 @@ function renderSettingsToolbarOverview(data) {
   if (els.settingsToolbarDetached) {
     els.settingsToolbarDetached.textContent = detachedText;
   }
+  if (els.settingsToolbarNetwork) {
+    els.settingsToolbarNetwork.textContent = networkText;
+  }
+  if (els.settingsToolbarDecode) {
+    const precision = settings.fp16 ? 'FP16' : 'FP32';
+    els.settingsToolbarDecode.textContent = `${decodePreset} · ${precision}`;
+  }
   if (els.settingsToolbarModelMeta) {
-    els.settingsToolbarModelMeta.textContent = runtime.loaded ? '当前运行后端与已加载模型' : '当前后端选择与待加载模型';
+    els.settingsToolbarModelMeta.textContent = runtime.loaded ? '已加载模型' : '待加载模型';
   }
   if (els.settingsToolbarExportMeta) {
-    els.settingsToolbarExportMeta.textContent = settings.auto_open_dir_export ? '任务完成后自动打开导出目录' : '任务完成后不自动打开目录';
+    els.settingsToolbarExportMeta.textContent = settings.auto_open_dir_export ? '完成后打开目录' : '完成后不打开';
   }
   if (els.settingsToolbarRecordMeta) {
-    els.settingsToolbarRecordMeta.textContent = `${settings.rec_ask_confirmation_first ? '开始前会二次确认' : '开始时不再确认'} · ${settings.model_device_preference || 'auto'}`;
+    els.settingsToolbarRecordMeta.textContent = `${settings.rec_ask_confirmation_first ? '录前确认' : '直接录制'} · ${settings.model_device_preference || 'auto'}`;
   }
   if (els.settingsToolbarDetachedMeta) {
     els.settingsToolbarDetachedMeta.textContent = `${settings.ex_tc_always_on_top ? 'TC置顶' : 'TC常规'} · ${settings.ex_tl_always_on_top ? 'TL置顶' : 'TL常规'}`;
   }
+  if (els.settingsToolbarNetworkMeta) {
+    els.settingsToolbarNetworkMeta.textContent = [
+      settings.http_proxy_enable ? 'HTTP 开' : null,
+      settings.https_proxy_enable ? 'HTTPS 开' : null,
+      settings.libre_link ? 'LT 已配' : 'LT 未配',
+      settings.libre_api_key ? 'Key 已配' : null,
+    ].filter(Boolean).join(' · ') || '网络设置';
+  }
+  if (els.settingsToolbarDecodeMeta) {
+    els.settingsToolbarDecodeMeta.textContent = `${temperature} · ${settings.use_en_model ? '.en' : '多语'}`;
+  }
+
+  syncToolbarMirrorChecked(els.httpProxyEnableToolbar, els.httpProxyEnable, false);
+  syncToolbarMirrorChecked(els.httpsProxyEnableToolbar, els.httpsProxyEnable, false);
+  syncToolbarMirrorValue(els.httpProxyToolbar, els.httpProxy, '');
+  syncToolbarMirrorValue(els.httpsProxyToolbar, els.httpsProxy, '');
+  syncToolbarMirrorValue(els.libreLinkToolbar, els.libreLink, '');
+  syncToolbarMirrorValue(els.libreApiKeyToolbar, els.libreApiKey, '');
+  syncToolbarMirrorValue(els.exportFormatToolbar, els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}');
+  syncToolbarMirrorChecked(els.autoOpenDirExportToolbar, els.autoOpenDirExport, true);
+  syncToolbarMirrorValue(els.segmentMaxWordsToolbar, els.segmentMaxWords, '');
+  syncToolbarMirrorChecked(els.exportTxtToolbar, els.exportTxt, true);
+  syncToolbarMirrorChecked(els.exportSrtToolbar, els.exportSrt, true);
+  syncToolbarMirrorChecked(els.exportVttToolbar, els.exportVtt, true);
+  syncToolbarMirrorChecked(els.exportJsonToolbar, els.exportJson, true);
+  syncToolbarMirrorChecked(els.exportAssToolbar, els.exportAss, true);
+  syncToolbarMirrorChecked(els.exportCsvToolbar, els.exportCsv, false);
+  syncToolbarMirrorChecked(els.exportTsvToolbar, els.exportTsv, false);
+  syncToolbarMirrorChecked(els.exportMp4Toolbar, els.exportMp4, false);
+  syncToolbarMirrorChecked(els.recAskConfirmationFirstToolbar, els.recAskConfirmationFirst, true);
+  syncToolbarMirrorChecked(els.supressHiddenToTrayToolbar, els.supressHiddenToTray, false);
+  syncToolbarMirrorValue(els.decodingPresetToolbar, els.decodingPreset, 'beam search');
+  syncToolbarMirrorValue(els.temperatureToolbar, els.temperature, '0.0, 0.2, 0.4, 0.6, 0.8, 1.0');
+  syncToolbarMirrorValue(els.bestOfToolbar, els.bestOf, '3');
+  syncToolbarMirrorValue(els.beamSizeToolbar, els.beamSize, '3');
+  syncToolbarMirrorValue(els.noSpeechThresholdToolbar, els.noSpeechThreshold, '0.72');
+  syncToolbarMirrorValue(els.logprobThresholdToolbar, els.logprobThreshold, '-1.0');
+  syncToolbarMirrorValue(els.patienceToolbar, els.patience, '1.0');
+  syncToolbarMirrorValue(els.compressionRatioThresholdToolbar, els.compressionRatioThreshold, '2.4');
+  syncToolbarMirrorValue(els.suppressTokensToolbar, els.suppressTokens, '');
+  syncToolbarMirrorChecked(els.useEnModelToolbar, els.useEnModel, true);
+  syncToolbarMirrorChecked(els.fp16Toolbar, els.fp16, true);
+  syncToolbarMirrorChecked(els.suppressBlankToolbar, els.suppressBlank, true);
+  syncToolbarMirrorChecked(els.useTempAltToolbar, els.useTempAlt, false);
+  syncToolbarMirrorChecked(els.keepTempToolbar, els.keepTemp, false);
+  syncToolbarMirrorChecked(els.fileUseOfficialWhisperToolbar, els.fileUseOfficialWhisper, false);
+  syncToolbarMirrorChecked(els.supressRecordWarningToolbar, els.supressRecordWarning, false);
+  syncToolbarMirrorChecked(els.debugRealtimeRecordToolbar, els.debugRealtimeRecord, false);
+  syncToolbarMirrorChecked(els.debugTranslateToolbar, els.debugTranslate, false);
+  if (els.hostAPIToolbar && els.hostAPI) {
+    populateSelect(
+      els.hostAPIToolbar,
+      Array.from(els.hostAPI.options || []).map((option) => option.value),
+      els.hostAPI.value || ''
+    );
+  }
+  syncToolbarMirrorValue(els.transcribeRateToolbar, els.transcribeRate, '300');
 
   if (els.decodePresetKpi) {
     els.decodePresetKpi.textContent = String(settings.decoding_preset || 'greedy');
@@ -1287,6 +1504,30 @@ function renderSettingsToolbarOverview(data) {
   }
   if (els.seleniumAutoCloseKpi) {
     els.seleniumAutoCloseKpi.textContent = settings.selenium_auto_close_on_task_done ? '任务完成后' : '手动关闭';
+  }
+}
+
+function renderTaskRuntimePills(data) {
+  const settings = data?.settings || {};
+  const runtime = data?.runtime_model || {};
+  const importUi = data?.import_ui || {};
+  const modelText = runtime.loaded
+    ? `${runtime.key || importUi.selected_model || '未知'} / ${importUi.selected_backend || '后端未知'}`
+    : `${importUi.selected_model || '未选择'} / ${importUi.selected_backend || '后端未知'}`;
+  const exportText = settings.dir_export && settings.dir_export !== 'auto' ? settings.dir_export : '导出:auto';
+  const logText = [
+    `日志:${String(settings.log_level || 'INFO').toUpperCase()}`,
+    settings.auto_refresh_log ? '自动刷新' : '手动刷新',
+  ].join(' · ');
+
+  if (els.taskRuntimeModelPill) {
+    els.taskRuntimeModelPill.textContent = `模型：${modelText}`;
+  }
+  if (els.taskRuntimeExportPill) {
+    els.taskRuntimeExportPill.textContent = `导出：${exportText}`;
+  }
+  if (els.taskRuntimeLogPill) {
+    els.taskRuntimeLogPill.textContent = logText;
   }
 }
 
@@ -1457,29 +1698,25 @@ function renderLiveOutputNode(el, htmlValue, liveText, emptyMessage, previewText
   const plain = liveText || '';
   if (html.trim()) {
     el.classList.remove('is-preview');
+    el.classList.remove('is-empty');
     el.innerHTML = html;
     return true;
   }
   if (plain.trim()) {
     el.classList.remove('is-preview');
+    el.classList.remove('is-empty');
     el.textContent = plain;
     return true;
   }
-  const previewHtml = buildPreviewHtml({
-    text: previewText || 'Preview text',
-    settings,
-    mode,
-  });
   el.classList.add('is-preview');
-  el.innerHTML = `${previewHtml}<span class="live-output-preview-note">${escapeHtml(emptyMessage || '当前无实时内容，以下为样式预览。')}</span>`;
+  el.classList.add('is-empty');
+  el.textContent = emptyMessage || '等待输入。';
   return false;
 }
 
 function renderLiveOutputs(data) {
   const live = data.live_ui || {};
   const settings = data.settings || {};
-  const tcPreviewText = '这是实时转写预览，用于展示当前字体、字号、粗体和置信度着色效果。';
-  const tlPreviewText = '这是翻译预览，用于展示当前排版、颜色和每行长度限制效果。';
 
   const applyOutputScroll = (el, enabled) => {
     if (!el || !enabled) {
@@ -1492,8 +1729,7 @@ function renderLiveOutputs(data) {
     els.mainTranscribedOutput,
     live.main_transcribed_html,
     live.main_transcribed_text || '',
-    '当前无转写内容，以下为样式预览。',
-    tcPreviewText,
+    '开始录制后，新的转写结果会出现在这里。',
     settings,
     'tc'
   );
@@ -1501,18 +1737,17 @@ function renderLiveOutputs(data) {
     els.mainTranslatedOutput,
     live.main_translated_html,
     live.main_translated_text || '',
-    '当前无翻译内容，以下为样式预览。',
-    tlPreviewText,
+    '启用翻译后，目标语言内容会同步显示在这里。',
     settings,
     'tl'
   );
   if (els.mainTranscribedLabel) {
     els.mainTranscribedLabel.classList.toggle('is-live', tcHasLive);
-    els.mainTranscribedLabel.textContent = tcHasLive ? '转写实时输出' : '转写预览';
+    els.mainTranscribedLabel.textContent = tcHasLive ? '转写实时输出' : '转写输出';
   }
   if (els.mainTranslatedLabel) {
     els.mainTranslatedLabel.classList.toggle('is-live', tlHasLive);
-    els.mainTranslatedLabel.textContent = tlHasLive ? '翻译实时输出' : '翻译预览';
+    els.mainTranslatedLabel.textContent = tlHasLive ? '翻译实时输出' : '翻译输出';
   }
   applyOutputScroll(els.mainTranscribedOutput, Boolean(settings.tb_mw_tc_auto_scroll ?? true));
   applyOutputScroll(els.mainTranslatedOutput, Boolean(settings.tb_mw_tl_auto_scroll ?? true));
@@ -1671,6 +1906,17 @@ function renderRecordingVisualizer(recordingState, recordUi = null) {
       ? `阈值 ${thresholdDb.toFixed(1)} dB`
       : '阈值 - dB';
   }
+  const stateLabel = active
+    ? (Number.isFinite(currentDb) ? 'active' : 'waiting')
+    : 'idle';
+  visualizerCard.dataset.state = stateLabel;
+  const visualizerTitle = [
+    els.recordVisualizerLabel?.textContent || '输入电平',
+    els.recordVisualizerDb?.textContent || '- dB',
+    els.recordVisualizerThresholdText?.textContent || '阈值 - dB',
+  ].join(' · ');
+  visualizerCard.title = visualizerTitle;
+  visualizerCard.setAttribute('aria-label', visualizerTitle);
 }
 
 function renderTaskState(task) {
@@ -1794,9 +2040,15 @@ function renderGlobalStatusBar(task, data, recordingState = null) {
   const idleTaskState = hasError ? '错误' : '空闲';
   const recordingSummary = recActive
     ? [
-        `计时 ${recordingState?.timer || '--:--:--'}`,
-        `缓冲 ${recordingState?.buffer || `${recordingState?.buffer_seconds || 0}/${recordingState?.max_buffer_seconds || 0} sec`}`,
-        `句子 ${recordingState?.sentences || '0'}`,
+        isCompactViewport()
+          ? `${recordingState?.timer || '--:--:--'} · ${recordingState?.sentences || '0'}句`
+          : `计时 ${recordingState?.timer || '--:--:--'}`,
+        isCompactViewport()
+          ? null
+          : `缓冲 ${recordingState?.buffer || `${recordingState?.buffer_seconds || 0}/${recordingState?.max_buffer_seconds || 0} sec`}`,
+        isCompactViewport()
+          ? null
+          : `句子 ${recordingState?.sentences || '0'}`,
       ].filter(Boolean).join(' | ')
     : '';
 
@@ -1844,26 +2096,44 @@ function renderGlobalStatusBar(task, data, recordingState = null) {
     els.realtimeModelState.textContent = modelState;
   }
   if (els.realtimeModelMeta) {
-    els.realtimeModelMeta.textContent = els.globalModelMeta ? els.globalModelMeta.textContent : '';
+    const globalModelMeta = els.globalModelMeta ? els.globalModelMeta.textContent : '';
+    els.realtimeModelMeta.textContent = globalModelMeta
+      .replace('模型缓存可用', '缓存可用')
+      .replace('可点击 Load Model 预加载', '可预加载')
+      .replace('正在准备模型缓存', '准备缓存')
+      .replace('模型未预加载', '未预加载');
   }
   if (els.realtimeTaskState) {
     els.realtimeTaskState.textContent = (active || recActive) ? taskState : idleTaskState;
   }
   if (els.realtimeTaskMessage) {
-    els.realtimeTaskMessage.textContent = recActive ? (recordingSummary || taskMessage) : taskMessage;
+    const realtimeBufferText = recordingState?.buffer
+      || `${recordingState?.buffer_seconds || 0}/${recordingState?.max_buffer_seconds || 0}s`;
+    const realtimeTaskMeta = recActive
+      ? [
+          `缓冲 ${realtimeBufferText}`,
+          `已收 ${recordingState?.sentences || '0'} 段`,
+        ].filter(Boolean).join(' · ')
+      : String(taskMessage || '').replace(/^等待任务$/u, '等待开始');
+    els.realtimeTaskMessage.textContent = realtimeTaskMeta;
   }
   if (els.realtimeRecordingTimer) {
     els.realtimeRecordingTimer.textContent = recordingState?.timer || '--:--:--';
   }
   if (els.realtimeRecordingBuffer) {
-    const bufferText = recordingState?.buffer || `${recordingState?.buffer_seconds || 0}/${recordingState?.max_buffer_seconds || 0} sec`;
+    const bufferText = recordingState?.buffer || `${recordingState?.buffer_seconds || 0}/${recordingState?.max_buffer_seconds || 0}s`;
     els.realtimeRecordingBuffer.textContent = `缓冲 ${bufferText}`;
   }
   if (els.realtimeRecordingSentences) {
     els.realtimeRecordingSentences.textContent = recordingState?.sentences || '0';
   }
   if (els.realtimeRecordingDevice) {
-    const deviceLabel = recordingState?.device ? `输入 ${recordingState.device}` : '输入 -';
+    const deviceKey = String(recordingState?.device || '').toLowerCase();
+    const deviceLabel = deviceKey === 'mic'
+      ? 'Mic'
+      : deviceKey === 'speaker'
+        ? 'Speaker'
+        : '未绑定';
     els.realtimeRecordingDevice.textContent = deviceLabel;
   }
 
@@ -1930,6 +2200,7 @@ function setSelectedModelManagerEngine(engine) {
 
 function renderModelManagerState(data) {
   const modelUi = data || {};
+  state.modelManagerState = modelUi;
   const selectedEngine = modelUi.selected_engine || 'whisper';
   const selectedModel = String(modelUi.selected_model || 'small');
   const selectedEstimateBytes = Number(modelUi.selected_model_estimate_bytes || 0);
@@ -2128,6 +2399,7 @@ async function refreshState(options = {}) {
   renderFileImportProcessingOverview();
   renderLiveOutputs(data);
   renderAbout(data);
+  renderTaskRuntimePills(data);
   renderSettingsPanelSummaries(data);
   renderSettingsToolbarOverview(data);
   syncLogAutoRefresh();
@@ -2177,6 +2449,7 @@ async function refreshTaskState() {
   renderModelSelectionOverview(state.data || {});
   renderDetachedWindowOverview(state.data || {});
   renderFileImportProcessingOverview();
+  renderTaskRuntimePills(state.data || {});
   try {
     const live = await apiCall('get_live_state');
     renderLiveOutputs({ live_ui: live, settings: state.data?.settings || {} });
@@ -2199,6 +2472,48 @@ async function saveSettings(shouldRefresh = true) {
     const value = settings ? settings[key] : undefined;
     return value === undefined ? fallback : value;
   };
+
+  syncToolbarMirrorValue(els.httpProxy, els.httpProxyToolbar, '');
+  syncToolbarMirrorValue(els.httpsProxy, els.httpsProxyToolbar, '');
+  syncToolbarMirrorValue(els.libreLink, els.libreLinkToolbar, '');
+  syncToolbarMirrorValue(els.libreApiKey, els.libreApiKeyToolbar, '');
+  syncToolbarMirrorValue(els.exportFormat, els.exportFormatToolbar, '%Y-%m-%d %f {file}/{task-lang}');
+  syncToolbarMirrorValue(els.segmentMaxWords, els.segmentMaxWordsToolbar, '');
+  syncToolbarMirrorValue(els.transcribeRate, els.transcribeRateToolbar, '300');
+  syncToolbarMirrorValue(els.decodingPreset, els.decodingPresetToolbar, 'beam search');
+  syncToolbarMirrorValue(els.temperature, els.temperatureToolbar, '0.0, 0.2, 0.4, 0.6, 0.8, 1.0');
+  syncToolbarMirrorValue(els.bestOf, els.bestOfToolbar, '3');
+  syncToolbarMirrorValue(els.beamSize, els.beamSizeToolbar, '3');
+  syncToolbarMirrorValue(els.noSpeechThreshold, els.noSpeechThresholdToolbar, '0.72');
+  syncToolbarMirrorValue(els.logprobThreshold, els.logprobThresholdToolbar, '-1.0');
+  syncToolbarMirrorValue(els.patience, els.patienceToolbar, '1.0');
+  syncToolbarMirrorValue(els.compressionRatioThreshold, els.compressionRatioThresholdToolbar, '2.4');
+  syncToolbarMirrorValue(els.suppressTokens, els.suppressTokensToolbar, '');
+  syncToolbarMirrorChecked(els.httpProxyEnable, els.httpProxyEnableToolbar, false);
+  syncToolbarMirrorChecked(els.httpsProxyEnable, els.httpsProxyEnableToolbar, false);
+  syncToolbarMirrorChecked(els.autoOpenDirExport, els.autoOpenDirExportToolbar, true);
+  syncToolbarMirrorChecked(els.exportTxt, els.exportTxtToolbar, true);
+  syncToolbarMirrorChecked(els.exportSrt, els.exportSrtToolbar, true);
+  syncToolbarMirrorChecked(els.exportVtt, els.exportVttToolbar, true);
+  syncToolbarMirrorChecked(els.exportJson, els.exportJsonToolbar, true);
+  syncToolbarMirrorChecked(els.exportAss, els.exportAssToolbar, true);
+  syncToolbarMirrorChecked(els.exportCsv, els.exportCsvToolbar, false);
+  syncToolbarMirrorChecked(els.exportTsv, els.exportTsvToolbar, false);
+  syncToolbarMirrorChecked(els.exportMp4, els.exportMp4Toolbar, false);
+  syncToolbarMirrorChecked(els.recAskConfirmationFirst, els.recAskConfirmationFirstToolbar, true);
+  syncToolbarMirrorChecked(els.supressHiddenToTray, els.supressHiddenToTrayToolbar, false);
+  syncToolbarMirrorChecked(els.useEnModel, els.useEnModelToolbar, true);
+  syncToolbarMirrorChecked(els.fp16, els.fp16Toolbar, true);
+  syncToolbarMirrorChecked(els.suppressBlank, els.suppressBlankToolbar, true);
+  syncToolbarMirrorChecked(els.useTempAlt, els.useTempAltToolbar, false);
+  syncToolbarMirrorChecked(els.keepTemp, els.keepTempToolbar, false);
+  syncToolbarMirrorChecked(els.fileUseOfficialWhisper, els.fileUseOfficialWhisperToolbar, false);
+  syncToolbarMirrorChecked(els.supressRecordWarning, els.supressRecordWarningToolbar, false);
+  syncToolbarMirrorChecked(els.debugRealtimeRecord, els.debugRealtimeRecordToolbar, false);
+  syncToolbarMirrorChecked(els.debugTranslate, els.debugTranslateToolbar, false);
+  if (els.hostAPI && els.hostAPIToolbar) {
+    els.hostAPI.value = els.hostAPIToolbar.value;
+  }
 
   const exportTo = [];
   if (els.exportTxt && checkedOf(els.exportTxt)) exportTo.push('txt');
@@ -2461,6 +2776,20 @@ async function saveInitialPromptsSettings(shouldRefresh = true) {
 async function saveImportSettings(shouldRefresh = true) {
   const backend = getSelectedImportModelEngine();
   await apiCall('set_setting', 'use_faster_whisper', backend === 'faster-whisper');
+
+  syncToolbarMirrorValue(els.exportFormat, els.exportFormatToolbar, '%Y-%m-%d %f {file}/{task-lang}');
+  syncToolbarMirrorChecked(els.autoOpenDirExport, els.autoOpenDirExportToolbar, true);
+  syncToolbarMirrorChecked(els.exportTxt, els.exportTxtToolbar, true);
+  syncToolbarMirrorChecked(els.exportSrt, els.exportSrtToolbar, true);
+  syncToolbarMirrorChecked(els.exportVtt, els.exportVttToolbar, true);
+  syncToolbarMirrorChecked(els.exportJson, els.exportJsonToolbar, true);
+  syncToolbarMirrorChecked(els.exportAss, els.exportAssToolbar, true);
+  syncToolbarMirrorChecked(els.exportCsv, els.exportCsvToolbar, false);
+  syncToolbarMirrorChecked(els.exportTsv, els.exportTsvToolbar, false);
+  syncToolbarMirrorChecked(els.exportMp4, els.exportMp4Toolbar, false);
+  syncToolbarMirrorChecked(els.useTempAlt, els.useTempAltToolbar, false);
+  syncToolbarMirrorChecked(els.keepTemp, els.keepTempToolbar, false);
+  syncToolbarMirrorChecked(els.fileUseOfficialWhisper, els.fileUseOfficialWhisperToolbar, false);
 
   if (els.dirExport && els.dirExportFile) {
     const normalizedExportDir = String(els.dirExportFile.value || els.dirExport.value || 'auto');
@@ -3032,6 +3361,39 @@ async function hideToTray() {
   }
 }
 
+async function saveMainWindowGeometry() {
+  await apiCall('save_main_window_geometry', true);
+  await refreshState();
+}
+
+async function showMainWindow() {
+  await apiCall('show_main_window');
+}
+
+async function openCurrentLogFile() {
+  const about = state.data?.about || {};
+  const logDir = String(about.log_dir || state.data?.settings?.dir_log || '').trim();
+  const logFile = String(els.currentLog?.value || about.log_file || '').trim();
+  if (!logFile) {
+    throw new Error('当前日志文件不可用');
+  }
+  if (logDir) {
+    await apiCall('open_link', `file:///${logDir.replace(/\\\\/g, '/').replace(/\\/g, '/')}/${logFile}`);
+    return;
+  }
+  await openDirectory('log');
+}
+
+async function quitApp() {
+  if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+    const confirmed = window.confirm('确认退出应用？这会关闭主窗口与所有独立窗口。');
+    if (!confirmed) {
+      return;
+    }
+  }
+  await apiCall('quit_app');
+}
+
 function getSettingsPanels() {
   return Array.from(document.querySelectorAll('#settings-shell .advanced-panel'));
 }
@@ -3182,6 +3544,10 @@ function switchSidebarMenu(target) {
     els.settingsShell.classList.toggle('is-hidden', !showSettings);
   }
 
+  if (els.dashboardContent) {
+    els.dashboardContent.scrollTop = 0;
+  }
+
   if (showSettings) {
     applySettingsFilter(els.settingsSearch ? els.settingsSearch.value : '');
   }
@@ -3240,6 +3606,12 @@ function bindEvents() {
         await openDirectory(openDir);
       } else if (action === 'refresh') {
         await refreshState();
+      } else if (action === 'show-main-window') {
+        await showMainWindow();
+      } else if (action === 'refresh-audio-devices') {
+        await refreshAudioSourceOptions(els.hostAPI ? els.hostAPI.value : '', true);
+      } else if (action === 'save-window-geometry') {
+        await saveMainWindowGeometry();
       } else if (action === 'pick-export-dir') {
         await pickDirectory('export');
       } else if (action === 'pick-log-dir') {
@@ -3298,8 +3670,12 @@ function bindEvents() {
         await refreshState();
       } else if (action === 'hide-to-tray') {
         await hideToTray();
+      } else if (action === 'quit-app') {
+        await quitApp();
       } else if (action === 'open-repo') {
         await apiCall('open_link', 'https://github.com/Dadangdut33/Speech-Translate');
+      } else if (action === 'open-current-log') {
+        await openCurrentLogFile();
       } else if (action === 'open-filter-rec') {
         await apiCall('open_hallucination_filter', 'rec');
       } else if (action === 'open-filter-file') {
@@ -3394,11 +3770,59 @@ function bindEvents() {
     }
   });
 
-  if (els.hostAPI) {
-    els.hostAPI.addEventListener('change', async () => {
-      await refreshAudioSourceOptions(els.hostAPI.value, true);
-    });
-  }
+    if (els.hostAPI) {
+      els.hostAPI.addEventListener('change', async () => {
+        await refreshAudioSourceOptions(els.hostAPI.value, true);
+      });
+    }
+
+    bindToolbarMirror(els.httpProxyToolbar, els.httpProxy, 'value');
+    bindToolbarMirror(els.httpsProxyToolbar, els.httpsProxy, 'value');
+    bindToolbarMirror(els.libreLinkToolbar, els.libreLink, 'value');
+    bindToolbarMirror(els.libreApiKeyToolbar, els.libreApiKey, 'value');
+    bindToolbarMirror(els.exportFormatToolbar, els.exportFormat, 'value');
+    bindToolbarMirror(els.segmentMaxWordsToolbar, els.segmentMaxWords, 'value');
+    bindToolbarMirror(els.transcribeRateToolbar, els.transcribeRate, 'value');
+    bindToolbarMirror(els.decodingPresetToolbar, els.decodingPreset, 'value');
+    bindToolbarMirror(els.temperatureToolbar, els.temperature, 'value');
+    bindToolbarMirror(els.bestOfToolbar, els.bestOf, 'value');
+    bindToolbarMirror(els.beamSizeToolbar, els.beamSize, 'value');
+    bindToolbarMirror(els.noSpeechThresholdToolbar, els.noSpeechThreshold, 'value');
+    bindToolbarMirror(els.logprobThresholdToolbar, els.logprobThreshold, 'value');
+    bindToolbarMirror(els.patienceToolbar, els.patience, 'value');
+    bindToolbarMirror(els.compressionRatioThresholdToolbar, els.compressionRatioThreshold, 'value');
+    bindToolbarMirror(els.suppressTokensToolbar, els.suppressTokens, 'value');
+    bindToolbarMirror(els.httpProxyEnableToolbar, els.httpProxyEnable, 'checked');
+    bindToolbarMirror(els.httpsProxyEnableToolbar, els.httpsProxyEnable, 'checked');
+    bindToolbarMirror(els.autoOpenDirExportToolbar, els.autoOpenDirExport, 'checked');
+    bindToolbarMirror(els.exportTxtToolbar, els.exportTxt, 'checked');
+    bindToolbarMirror(els.exportSrtToolbar, els.exportSrt, 'checked');
+    bindToolbarMirror(els.exportVttToolbar, els.exportVtt, 'checked');
+    bindToolbarMirror(els.exportJsonToolbar, els.exportJson, 'checked');
+    bindToolbarMirror(els.exportAssToolbar, els.exportAss, 'checked');
+    bindToolbarMirror(els.exportCsvToolbar, els.exportCsv, 'checked');
+    bindToolbarMirror(els.exportTsvToolbar, els.exportTsv, 'checked');
+    bindToolbarMirror(els.exportMp4Toolbar, els.exportMp4, 'checked');
+    bindToolbarMirror(els.recAskConfirmationFirstToolbar, els.recAskConfirmationFirst, 'checked');
+    bindToolbarMirror(els.supressHiddenToTrayToolbar, els.supressHiddenToTray, 'checked');
+    bindToolbarMirror(els.useEnModelToolbar, els.useEnModel, 'checked');
+    bindToolbarMirror(els.suppressBlankToolbar, els.suppressBlank, 'checked');
+    bindToolbarMirror(els.fp16Toolbar, els.fp16, 'checked');
+    bindToolbarMirror(els.useTempAltToolbar, els.useTempAlt, 'checked');
+    bindToolbarMirror(els.keepTempToolbar, els.keepTemp, 'checked');
+    bindToolbarMirror(els.fileUseOfficialWhisperToolbar, els.fileUseOfficialWhisper, 'checked');
+    bindToolbarMirror(els.supressRecordWarningToolbar, els.supressRecordWarning, 'checked');
+    bindToolbarMirror(els.debugRealtimeRecordToolbar, els.debugRealtimeRecord, 'checked');
+    bindToolbarMirror(els.debugTranslateToolbar, els.debugTranslate, 'checked');
+    bindToolbarMirror(els.hostAPIToolbar, els.hostAPI, 'value');
+    if (els.hostAPIToolbar) {
+      els.hostAPIToolbar.addEventListener('change', async () => {
+        if (els.hostAPI) {
+          els.hostAPI.value = els.hostAPIToolbar.value;
+        }
+        await refreshAudioSourceOptions(els.hostAPIToolbar.value, true);
+      });
+    }
 
   if (els.mic) {
     els.mic.addEventListener('change', async () => {
@@ -3482,20 +3906,39 @@ async function init() {
     els.httpsProxy = $('https_proxy');
     els.libreLink = $('libre_link');
     els.libreApiKey = $('libre_api_key');
+    els.httpProxyEnableToolbar = $('http_proxy_enable_toolbar');
+    els.httpProxyToolbar = $('http_proxy_toolbar');
+    els.httpsProxyEnableToolbar = $('https_proxy_enable_toolbar');
+    els.httpsProxyToolbar = $('https_proxy_toolbar');
+    els.libreLinkToolbar = $('libre_link_toolbar');
+    els.libreApiKeyToolbar = $('libre_api_key_toolbar');
     els.autoOpenDirExport = $('auto_open_dir_export');
     els.autoOpenDirExportFile = $('auto_open_dir_export_file');
     els.exportFormat = $('export_format');
+    els.autoOpenDirExportToolbar = $('auto_open_dir_export_toolbar');
+    els.exportFormatToolbar = $('export_format_toolbar');
     els.removeRepetitionFileImport = $('remove_repetition_file_import');
     els.removeRepetitionAmount = $('remove_repetition_amount');
     els.segmentMaxWords = $('segment_max_words');
+    els.segmentMaxWordsToolbar = $('segment_max_words_toolbar');
     els.segmentMaxChars = $('segment_max_chars');
     els.segmentSplitOrNewline = $('segment_split_or_newline');
     els.segmentEvenSplit = $('segment_even_split');
     els.segmentLevel = $('segment_level');
     els.wordLevel = $('word_level');
     els.useEnModel = $('use_en_model');
+    els.useEnModelToolbar = $('use_en_model_toolbar');
     els.decodingPreset = $('decoding_preset');
+    els.decodingPresetToolbar = $('decoding_preset_toolbar');
     els.temperature = $('temperature');
+    els.temperatureToolbar = $('temperature_toolbar');
+    els.bestOfToolbar = $('best_of_toolbar');
+    els.beamSizeToolbar = $('beam_size_toolbar');
+    els.noSpeechThresholdToolbar = $('no_speech_threshold_toolbar');
+    els.logprobThresholdToolbar = $('logprob_threshold_toolbar');
+    els.patienceToolbar = $('patience_toolbar');
+    els.compressionRatioThresholdToolbar = $('compression_ratio_threshold_toolbar');
+    els.suppressTokensToolbar = $('suppress_tokens_toolbar');
     els.bestOf = $('best_of');
     els.beamSize = $('beam_size');
     els.patience = $('patience');
@@ -3504,7 +3947,9 @@ async function init() {
     els.noSpeechThreshold = $('no_speech_threshold');
     els.suppressTokens = $('suppress_tokens');
     els.suppressBlank = $('suppress_blank');
+    els.suppressBlankToolbar = $('suppress_blank_toolbar');
     els.fp16 = $('fp16');
+    els.fp16Toolbar = $('fp16_toolbar');
     els.initialPrompt = $('initial_prompt');
     els.prefix = $('prefix');
     els.maxInitialTimestamp = $('max_initial_timestamp');
@@ -3518,7 +3963,9 @@ async function init() {
     els.autoOpenDirAlignment = $('auto_open_dir_alignment');
     els.autoOpenDirAlignmentFile = $('auto_open_dir_alignment_file');
     els.recAskConfirmationFirst = $('rec_ask_confirmation_first');
+    els.recAskConfirmationFirstToolbar = $('rec_ask_confirmation_first_toolbar');
     els.supressHiddenToTray = $('supress_hidden_to_tray');
+    els.supressHiddenToTrayToolbar = $('supress_hidden_to_tray_toolbar');
     els.supressRecordWarning = $('supress_record_warning');
     els.debugRealtimeRecord = $('debug_realtime_record');
     els.debugTranslate = $('debug_translate');
@@ -3560,6 +4007,14 @@ async function init() {
     els.exportCsv = $('export_csv');
     els.exportTsv = $('export_tsv');
     els.exportMp4 = $('export_mp4');
+    els.exportTxtToolbar = $('export_txt_toolbar');
+    els.exportSrtToolbar = $('export_srt_toolbar');
+    els.exportVttToolbar = $('export_vtt_toolbar');
+    els.exportJsonToolbar = $('export_json_toolbar');
+    els.exportAssToolbar = $('export_ass_toolbar');
+    els.exportCsvToolbar = $('export_csv_toolbar');
+    els.exportTsvToolbar = $('export_tsv_toolbar');
+    els.exportMp4Toolbar = $('export_mp4_toolbar');
     els.inputMode = $('input_mode');
     els.backendMain = $('backend_mw');
     els.modelMain = $('model_mw');
@@ -3574,16 +4029,24 @@ async function init() {
     els.mainEnginePill = $('main-engine-pill');
     els.btnLoadMainModel = document.querySelector('button[data-action="load-main-model"]');
     els.hostAPI = $('hostAPI');
+    els.hostAPIToolbar = $('hostAPI_toolbar');
     els.mic = $('mic');
     els.speaker = $('speaker');
     els.verboseRecord = $('verbose_record');
     els.modelDevicePreference = $('model_device_preference');
     els.transcribeRate = $('transcribe_rate');
+    els.transcribeRateToolbar = $('transcribe_rate_toolbar');
     els.separateWith = $('separate_with');
     els.useTemp = $('use_temp');
     els.useTempAlt = $('use_temp_alt');
+    els.useTempAltToolbar = $('use_temp_alt_toolbar');
     els.keepTemp = $('keep_temp');
+    els.keepTempToolbar = $('keep_temp_toolbar');
     els.fileUseOfficialWhisper = $('file_use_official_whisper');
+    els.fileUseOfficialWhisperToolbar = $('file_use_official_whisper_toolbar');
+    els.supressRecordWarningToolbar = $('supress_record_warning_toolbar');
+    els.debugRealtimeRecordToolbar = $('debug_realtime_record_toolbar');
+    els.debugTranslateToolbar = $('debug_translate_toolbar');
     els.recordInputPill = $('record-input-pill');
     els.recordModePill = $('record-mode-pill');
     els.recordVisualizerCard = $('record_visualizer_card');
@@ -3677,6 +4140,10 @@ async function init() {
     els.modelSelectionHistory = $('model-selection-history');
     els.modelSelectionHistoryCard = $('model-selection-history-card');
     els.modelSelectionHistoryMeta = $('model-selection-history-meta');
+    els.modelSelectionDevice = $('model-selection-device');
+    els.modelSelectionDeviceMeta = $('model-selection-device-meta');
+    els.modelSelectionCache = $('model-selection-cache');
+    els.modelSelectionCacheMeta = $('model-selection-cache-meta');
     els.fileImportQueueCount = $('file-import-queue-count');
     els.fileImportQueueMeta = $('file-import-queue-meta');
     els.fileImportProcessingState = $('file-import-processing-state');
@@ -3684,8 +4151,12 @@ async function init() {
     els.fileImportLanguageState = $('file-import-language-state');
     els.fileImportExportDir = $('file-import-export-dir');
     els.fileImportExportMeta = $('file-import-export-meta');
-    els.fileImportExportFormats = $('file-import-export-formats');
-    els.fileImportExportFormatsMeta = $('file-import-export-formats-meta');
+    els.fileImportExportFormat = $('file-import-export-format');
+    els.fileImportExportFormatMeta = $('file-import-export-format-meta');
+    els.fileImportSliceRange = $('file-import-slice-range');
+    els.fileImportSliceMeta = $('file-import-slice-meta');
+    els.fileImportFilterState = $('file-import-filter-state');
+    els.fileImportFilterMeta = $('file-import-filter-meta');
     els.mainTranscribedOutput = $('main-transcribed-output');
     els.mainTranslatedOutput = $('main-translated-output');
     els.mainTranscribedLabel = $('main-transcribed-label');
@@ -3708,10 +4179,14 @@ async function init() {
     els.settingsToolbarExport = $('settings_toolbar_export');
     els.settingsToolbarRecord = $('settings_toolbar_record');
     els.settingsToolbarDetached = $('settings_toolbar_detached');
+    els.settingsToolbarNetwork = $('settings_toolbar_network');
+    els.settingsToolbarDecode = $('settings_toolbar_decode');
     els.settingsToolbarModelMeta = $('settings_toolbar_model_meta');
     els.settingsToolbarExportMeta = $('settings_toolbar_export_meta');
     els.settingsToolbarRecordMeta = $('settings_toolbar_record_meta');
     els.settingsToolbarDetachedMeta = $('settings_toolbar_detached_meta');
+    els.settingsToolbarNetworkMeta = $('settings_toolbar_network_meta');
+    els.settingsToolbarDecodeMeta = $('settings_toolbar_decode_meta');
     els.decodePresetKpi = $('decode_preset_kpi');
     els.decodeTemperatureKpi = $('decode_temperature_kpi');
     els.decodeOutputKpi = $('decode_output_kpi');
@@ -3722,6 +4197,9 @@ async function init() {
     els.taskBadge = $('task-badge');
     els.taskTitle = $('task-title');
     els.taskMessage = $('task-message');
+    els.taskRuntimeModelPill = $('task-runtime-model-pill');
+    els.taskRuntimeExportPill = $('task-runtime-export-pill');
+    els.taskRuntimeLogPill = $('task-runtime-log-pill');
     els.taskProgressText = $('task-progress-text');
     els.taskProgressFill = $('task-progress-fill');
     els.aboutCard = $('about-card');

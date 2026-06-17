@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>语音翻译</title>
-  <link rel="stylesheet" href="styles.css?v=20260617-ui-cn-8" />
+  <link rel="stylesheet" href="styles.css?v=20260617-ui-cn-44" />
 
 <script>
 (function () {
@@ -392,6 +392,8 @@
         <div class="sidebar-actions">
           <button class="btn-with-icon" data-open-dir="model">模型目录</button>
           <button class="btn-with-icon" data-open-dir="export">导出目录</button>
+          <button class="btn-with-icon" data-open-dir="log">日志目录</button>
+          <button class="btn-with-icon" data-action="hide-to-tray">隐藏到托盘</button>
         </div>
       </aside>
 
@@ -466,8 +468,11 @@
                   </div>
                   <aside class="model-selection-status-rail">
                     <div class="model-selection-status-head">
-                      <span class="model-selection-kicker">启动摘要</span>
-                      <p>把当前模型、运行状态和历史提示集中放在右侧，切换配置时无需上下扫视整个页面。</p>
+                      <div>
+                        <span class="model-selection-kicker">启动摘要</span>
+                        <p>模型状态与检查入口集中在这里。</p>
+                      </div>
+                      <button type="button" class="btn-with-icon btn-with-icon-quiet" data-action="load-model">加载模型</button>
                     </div>
                     <div class="status-overview-grid model-selection-status-grid" aria-label="模型选择概览">
                       <div class="status-overview-card">
@@ -490,6 +495,28 @@
                         <span class="status-overview-value" id="model-selection-history-card">未设置</span>
                         <span class="status-overview-meta" id="model-selection-history-meta">condition_on_previous_text</span>
                       </div>
+                      <div class="status-overview-card status-overview-card-compact">
+                        <span class="status-overview-label">设备策略</span>
+                        <span class="status-overview-value" id="model-selection-device">AUTO</span>
+                        <span class="status-overview-meta" id="model-selection-device-meta">自动选择可用设备</span>
+                      </div>
+                      <div class="status-overview-card status-overview-card-compact">
+                        <span class="status-overview-label">缓存覆盖</span>
+                        <span class="status-overview-value" id="model-selection-cache">7 / 14</span>
+                        <span class="status-overview-meta" id="model-selection-cache-meta">已下载 7 个，本引擎仍缺 7 个</span>
+                      </div>
+                    </div>
+                    <div class="model-selection-quick-actions">
+                      <button type="button" class="btn-with-icon" data-action="check-model-current">检查当前</button>
+                      <button type="button" class="btn-with-icon" data-action="check-all-models">检查全部</button>
+                      <button type="button" class="btn-with-icon" data-open-dir="model">打开目录</button>
+                      <button type="button" class="btn-with-icon" data-settings-jump="录制设置（麦克风 / 扬声器）">录制</button>
+                    </div>
+                    <div class="model-selection-quick-actions model-selection-quick-actions-secondary">
+                      <button type="button" class="btn-with-icon" data-settings-jump="Whisper 解码参数">解码</button>
+                      <button type="button" class="btn-with-icon" data-settings-jump="Selenium 翻译窗口">Selenium</button>
+                      <button type="button" class="btn-with-icon" data-settings-jump="翻译网络与 LibreTranslate">网络</button>
+                      <button type="button" class="btn-with-icon" data-settings-jump="系统与日志">系统</button>
                     </div>
                   </aside>
                 </div>
@@ -616,13 +643,20 @@
                   </div>
                   <aside class="file-ops-card">
                     <div class="file-ops-head">
-                      <span class="file-ops-kicker">处理指引</span>
-                      <p class="file-ops-title">导入后即可整批启动，不必反复切换到下方设置面板。</p>
+                      <span class="file-ops-kicker">快速操作</span>
+                      <p class="file-ops-title">导入、导出和过滤控制集中在右侧。</p>
                     </div>
-                    <div class="file-ops-steps" aria-label="文件处理步骤">
-                      <div class="file-ops-step"><strong>1</strong><span>导入音频或视频文件，先确认队列顺序。</span></div>
-                      <div class="file-ops-step"><strong>2</strong><span>选择是否需要转写与翻译，再点击开始处理。</span></div>
-                      <div class="file-ops-step"><strong>3</strong><span>输出目录和格式会按右侧摘要直接生效。</span></div>
+                    <div class="file-ops-actions-group">
+                      <div class="inline-actions file-ops-actions file-ops-actions-primary">
+                        <button type="button" class="btn-with-icon" data-action="add-files-to-queue">导入</button>
+                        <button type="button" class="btn-with-icon" data-action="save-import-settings">保存配置</button>
+                        <button type="button" class="btn-with-icon" data-open-dir="export">打开导出</button>
+                        <button type="button" class="btn-with-icon" data-action="pick-export-dir">设置导出</button>
+                      </div>
+                      <div class="inline-actions file-ops-actions file-ops-actions-secondary">
+                        <button type="button" class="btn-with-icon" data-settings-jump="导出与切分">导出</button>
+                        <button type="button" class="btn-with-icon" data-settings-jump="幻觉过滤 (Hallucination Filter)">过滤</button>
+                      </div>
                     </div>
                     <div class="file-ops-summary">
                       <div class="status-overview-card status-overview-card-compact">
@@ -631,10 +665,27 @@
                         <span class="status-overview-meta" id="file-import-export-meta">输出设置</span>
                       </div>
                       <div class="status-overview-card status-overview-card-compact">
-                        <span class="status-overview-label">导出格式</span>
-                        <span class="status-overview-value" id="file-import-export-formats">未设置</span>
-                        <span class="status-overview-meta" id="file-import-export-formats-meta">TXT / SRT / VTT ...</span>
+                        <span class="status-overview-label">导出命名</span>
+                        <span class="status-overview-value" id="file-import-export-format">未设置</span>
+                        <span class="status-overview-meta" id="file-import-export-format-meta">TXT / SRT / VTT ...</span>
                       </div>
+                    </div>
+                    <div class="file-ops-summary file-ops-summary-secondary">
+                      <div class="status-overview-card status-overview-card-compact">
+                        <span class="status-overview-label">文件切片</span>
+                        <span class="status-overview-value" id="file-import-slice-range">全量</span>
+                        <span class="status-overview-meta" id="file-import-slice-meta">Split / Newline</span>
+                      </div>
+                      <div class="status-overview-card status-overview-card-compact">
+                        <span class="status-overview-label">导入过滤</span>
+                        <span class="status-overview-value" id="file-import-filter-state">已启用</span>
+                        <span class="status-overview-meta" id="file-import-filter-meta">词典 auto</span>
+                      </div>
+                    </div>
+                    <div class="file-ops-steps" aria-label="文件处理步骤">
+                      <div class="file-ops-step"><strong>1</strong><span>导入并检查队列。</span></div>
+                      <div class="file-ops-step"><strong>2</strong><span>确认输出与过滤配置。</span></div>
+                      <div class="file-ops-step"><strong>3</strong><span>按右侧摘要启动处理。</span></div>
                     </div>
                   </aside>
                 </div>
@@ -646,32 +697,62 @@
               </section>
 
               <div class="dual-advanced-grid">
-                <details class="advanced-panel panel-card" open>
-                  <summary>语言配置</summary>
+                <details class="advanced-panel panel-card realtime-config-panel" open>
+                  <summary>
+                    <span class="settings-panel-heading">
+                      <span class="settings-panel-title">语言配置</span>
+                      <span class="settings-panel-meta">文件源语言、目标语言与翻译引擎</span>
+                    </span>
+                  </summary>
                   <div class="floating-action-row">
                     <button class="btn-icon" data-action="save-import-settings" data-tooltip="保存文件语言配置"
                       title="保存文件语言配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
                   </div>
                   <div class="advanced-panel-body">
-                    <div class="form-grid">
-                      <label>
-                        <span>源语言</span>
-                        <select id="source_lang_f_import"></select>
-                      </label>
-                      <label>
-                        <span>目标语言</span>
-                        <select id="target_lang_f_import"></select>
-                      </label>
-                      <label>
-                        <span>翻译引擎</span>
-                        <select id="tl_engine_f_import"></select>
-                      </label>
+                    <div class="realtime-config-summary">
+                      <span class="pill pill-muted">识别链路</span>
+                      <span class="pill pill-muted">翻译链路</span>
+                    </div>
+                    <div class="realtime-config-grid">
+                      <section class="realtime-config-group">
+                        <div class="realtime-config-group-head">
+                          <span class="realtime-config-group-title">识别链路</span>
+                          <span class="realtime-config-group-meta">文件源语言与识别输入策略</span>
+                        </div>
+                        <div class="form-grid compact-form-grid">
+                          <label class="field-span-2">
+                            <span>源语言</span>
+                            <select id="source_lang_f_import"></select>
+                          </label>
+                        </div>
+                      </section>
+                      <section class="realtime-config-group">
+                        <div class="realtime-config-group-head">
+                          <span class="realtime-config-group-title">翻译链路</span>
+                          <span class="realtime-config-group-meta">目标语言与翻译服务</span>
+                        </div>
+                        <div class="form-grid compact-form-grid">
+                          <label>
+                            <span>目标语言</span>
+                            <select id="target_lang_f_import"></select>
+                          </label>
+                          <label>
+                            <span>翻译引擎</span>
+                            <select id="tl_engine_f_import"></select>
+                          </label>
+                        </div>
+                      </section>
                     </div>
                   </div>
                 </details>
 
-                <details class="advanced-panel panel-card" open>
-                  <summary>输出设置</summary>
+                <details class="advanced-panel panel-card realtime-config-panel" open>
+                  <summary>
+                    <span class="settings-panel-heading">
+                      <span class="settings-panel-title">输出设置</span>
+                      <span class="settings-panel-meta">格式、目录与完成后动作</span>
+                    </span>
+                  </summary>
                   <div class="floating-action-row">
                     <button class="btn-icon btn-icon-blue" data-action="pick-export-dir" data-tooltip="设置导出目录"
                       title="设置导出目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
@@ -680,36 +761,62 @@
                   </div>
                   <div class="advanced-panel-body">
                     <div class="file-export-block">
-                      <div class="inline-actions import-actions compact-gap file-export-formats">
-                        <span>输出格式</span>
-                        <label class="toggle-row"><input id="export_txt" type="checkbox" /> TXT</label>
-                        <label class="toggle-row"><input id="export_srt" type="checkbox" /> SRT</label>
-                        <label class="toggle-row"><input id="export_vtt" type="checkbox" /> VTT</label>
-                        <label class="toggle-row"><input id="export_ass" type="checkbox" /> ASS</label>
-                        <label class="toggle-row"><input id="export_json" type="checkbox" /> JSON</label>
-                        <label class="toggle-row"><input id="export_csv" type="checkbox" /> CSV</label>
-                        <label class="toggle-row"><input id="export_tsv" type="checkbox" /> TSV</label>
-                        <label class="toggle-row"><input id="export_mp4" type="checkbox" /> MP4 (带字幕)</label>
+                      <div class="realtime-config-summary">
+                        <span class="pill pill-muted">输出格式</span>
+                        <span class="pill pill-muted">目录策略</span>
+                        <span class="pill pill-muted">完成动作</span>
                       </div>
-                      <div class="file-export-grid form-grid compact-form-grid">
-                        <label class="field-span-2">
-                          <span>导出目录</span>
-                          <div class="input-action-row">
-                            <input id="dir_export_file" type="text" placeholder="auto" />
-                            <div class="inline-actions compact-gap">
-                              <button type="button" class="btn-icon btn-icon-blue" data-action="pick-export-dir"
-                                data-tooltip="选择导出目录" title="选择导出目录"><span class="btn-glyph glyph-folder"
-                                  aria-hidden="true"></span></button>
-                              <button type="button" class="btn-icon" data-open-dir="export"
-                                data-tooltip="打开导出目录" title="打开导出目录"><span class="btn-glyph glyph-detach"
-                                  aria-hidden="true"></span></button>
-                            </div>
+                      <div class="realtime-config-grid">
+                        <section class="realtime-config-group">
+                          <div class="realtime-config-group-head">
+                            <span class="realtime-config-group-title">输出格式</span>
+                            <span class="realtime-config-group-meta">选择导出的字幕与附加格式</span>
                           </div>
-                        </label>
-                        <label class="toggle-row"><input id="auto_open_dir_export_file" type="checkbox" /> 任务完成后自动打开目录</label>
-                        <label class="toggle-row"><input id="auto_open_dir_translate_file" type="checkbox" /> 翻译完成后自动打开目录</label>
-                        <label class="toggle-row"><input id="auto_open_dir_refinement_file" type="checkbox" /> 精修完成后自动打开目录</label>
-                        <label class="toggle-row"><input id="auto_open_dir_alignment_file" type="checkbox" /> 对齐完成后自动打开目录</label>
+                          <div class="file-export-formats">
+                            <label class="toggle-row"><input id="export_txt" type="checkbox" /> TXT</label>
+                            <label class="toggle-row"><input id="export_srt" type="checkbox" /> SRT</label>
+                            <label class="toggle-row"><input id="export_vtt" type="checkbox" /> VTT</label>
+                            <label class="toggle-row"><input id="export_ass" type="checkbox" /> ASS</label>
+                            <label class="toggle-row"><input id="export_json" type="checkbox" /> JSON</label>
+                            <label class="toggle-row"><input id="export_csv" type="checkbox" /> CSV</label>
+                            <label class="toggle-row"><input id="export_tsv" type="checkbox" /> TSV</label>
+                            <label class="toggle-row"><input id="export_mp4" type="checkbox" /> MP4</label>
+                          </div>
+                        </section>
+                        <section class="realtime-config-group">
+                          <div class="realtime-config-group-head">
+                            <span class="realtime-config-group-title">目录策略</span>
+                            <span class="realtime-config-group-meta">统一管理导出路径与打开方式</span>
+                          </div>
+                          <div class="file-export-grid form-grid compact-form-grid">
+                            <label class="field-span-2">
+                              <span>导出目录</span>
+                              <div class="input-action-row">
+                                <input id="dir_export_file" type="text" placeholder="auto" />
+                                <div class="inline-actions compact-gap">
+                                  <button type="button" class="btn-icon btn-icon-blue" data-action="pick-export-dir"
+                                    data-tooltip="选择导出目录" title="选择导出目录"><span class="btn-glyph glyph-folder"
+                                      aria-hidden="true"></span></button>
+                                  <button type="button" class="btn-icon" data-open-dir="export"
+                                    data-tooltip="打开导出目录" title="打开导出目录"><span class="btn-glyph glyph-detach"
+                                      aria-hidden="true"></span></button>
+                                </div>
+                              </div>
+                            </label>
+                          </div>
+                        </section>
+                        <section class="realtime-config-group">
+                          <div class="realtime-config-group-head">
+                            <span class="realtime-config-group-title">完成动作</span>
+                            <span class="realtime-config-group-meta">控制任务结束后自动打开的目录</span>
+                          </div>
+                          <div class="file-export-grid form-grid compact-form-grid">
+                            <label class="toggle-row"><input id="auto_open_dir_export_file" type="checkbox" /> 任务完成后自动打开目录</label>
+                            <label class="toggle-row"><input id="auto_open_dir_translate_file" type="checkbox" /> 翻译完成后自动打开目录</label>
+                            <label class="toggle-row"><input id="auto_open_dir_refinement_file" type="checkbox" /> 精修完成后自动打开目录</label>
+                            <label class="toggle-row"><input id="auto_open_dir_alignment_file" type="checkbox" /> 对齐完成后自动打开目录</label>
+                          </div>
+                        </section>
                       </div>
                       <div class="file-export-head file-export-foot">
                         <span class="pill pill-muted" id="file-export-dir-pill">输出目录：auto</span>
@@ -738,108 +845,151 @@
                   <div class="realtime-control-card">
                     <div class="realtime-control-head">
                       <span class="realtime-control-kicker">录制控制</span>
-                      <span class="realtime-control-meta">主操作与采集模式</span>
+                      <span class="realtime-control-meta">输入、模型与翻译链路摘要</span>
                     </div>
-                    <div class="inline-actions realtime-top-bar">
+                    <div class="realtime-control-strip">
                       <button class="primary btn-with-icon btn-recording" data-action="start-recording"
                         id="btn-recording-toggle">开始录制</button>
                       <label class="toggle-row"><input id="transcribe_mw" type="checkbox" checked /> 转写</label>
                       <label class="toggle-row"><input id="translate_mw" type="checkbox" checked /> 翻译</label>
+                      <div class="record-visualizer-card realtime-live-meter" id="record_visualizer_card" aria-live="polite">
+                        <div class="record-visualizer-head">
+                          <span class="sr-only">输入电平</span>
+                          <span id="record_visualizer_label">等待录制</span>
+                        </div>
+                        <div class="record-visualizer-track" aria-hidden="true">
+                          <div class="record-visualizer-threshold" id="record_visualizer_threshold"></div>
+                          <div class="record-visualizer-fill" id="record_visualizer_fill"></div>
+                        </div>
+                        <div class="record-visualizer-meta">
+                          <span id="record_visualizer_db">-</span>
+                          <span id="record_visualizer_threshold_text">阈值 - dB</span>
+                        </div>
+                      </div>
                     </div>
-                    <div class="status-row import-status realtime-hero-pills">
+                    <div class="realtime-control-badges">
                       <span class="pill pill-muted" id="main-input-pill">输入</span>
-                      <span class="pill pill-muted" id="main-model-pill">模型</span>
-                      <span class="pill pill-muted" id="main-lang-pill">语言</span>
-                      <span class="pill pill-muted" id="main-engine-pill">引擎</span>
+                      <span class="pill pill-muted" id="main-model-pill">模型 / 后端</span>
+                      <span class="pill pill-muted" id="main-lang-pill">语言对</span>
+                      <span class="pill pill-muted" id="main-engine-pill">翻译引擎</span>
                     </div>
                   </div>
 
-                  <div class="record-visualizer-card realtime-live-meter" id="record_visualizer_card" aria-live="polite">
-                    <div class="record-visualizer-head">
-                      <span>实时输入电平</span>
-                      <span id="record_visualizer_label">等待录制</span>
+                  <div class="realtime-status-grid" aria-label="实时录制概览">
+                    <div class="realtime-status-card">
+                      <span class="realtime-status-label">模型运行态</span>
+                      <span class="realtime-status-value" id="realtime-model-state">未加载</span>
+                      <span class="realtime-status-meta" id="realtime-model-meta">等待同步</span>
                     </div>
-                    <div class="record-visualizer-track" aria-hidden="true">
-                      <div class="record-visualizer-threshold" id="record_visualizer_threshold"></div>
-                      <div class="record-visualizer-fill" id="record_visualizer_fill"></div>
+                    <div class="realtime-status-card">
+                      <span class="realtime-status-label">采集阶段</span>
+                      <span class="realtime-status-value" id="realtime-task-state">空闲</span>
+                      <span class="realtime-status-meta" id="realtime-task-message">等待任务</span>
                     </div>
-                    <div class="record-visualizer-meta">
-                      <span id="record_visualizer_db">- dB</span>
-                      <span id="record_visualizer_threshold_text">阈值 - dB</span>
+                    <div class="realtime-status-card realtime-status-card-compact">
+                      <span class="realtime-status-label">录制计时</span>
+                      <span class="realtime-status-value" id="realtime-recording-timer">--:--:--</span>
+                      <span class="realtime-status-meta" id="realtime-recording-buffer">缓冲 0/0 sec</span>
                     </div>
-                  </div>
-                </div>
-
-                <div class="realtime-status-grid" aria-label="实时录制概览">
-                  <div class="realtime-status-card">
-                    <span class="realtime-status-label">模型</span>
-                    <span class="realtime-status-value" id="realtime-model-state">未加载</span>
-                    <span class="realtime-status-meta" id="realtime-model-meta">等待同步</span>
-                  </div>
-                  <div class="realtime-status-card">
-                    <span class="realtime-status-label">任务</span>
-                    <span class="realtime-status-value" id="realtime-task-state">空闲</span>
-                    <span class="realtime-status-meta" id="realtime-task-message">等待任务</span>
-                  </div>
-                  <div class="realtime-status-card realtime-status-card-compact">
-                    <span class="realtime-status-label">计时</span>
-                    <span class="realtime-status-value" id="realtime-recording-timer">--:--:--</span>
-                    <span class="realtime-status-meta" id="realtime-recording-buffer">缓冲 0/0 sec</span>
-                  </div>
-                  <div class="realtime-status-card realtime-status-card-compact">
-                    <span class="realtime-status-label">句子</span>
-                    <span class="realtime-status-value" id="realtime-recording-sentences">0</span>
-                    <span class="realtime-status-meta" id="realtime-recording-device">输入 -</span>
+                    <div class="realtime-status-card realtime-status-card-compact">
+                      <span class="realtime-status-label">累计片段</span>
+                      <span class="realtime-status-value" id="realtime-recording-sentences">0</span>
+                      <span class="realtime-status-meta" id="realtime-recording-device">输入 -</span>
+                    </div>
                   </div>
                 </div>
 
                 <div class="advanced-panel-body split-view transcript-shell">
-                  <div class="stack">
-                    <div id="main-transcribed-label" class="live-output-preview-label">转写预览</div>
-                    <div id="main-transcribed-output" class="live-output">转写内容将显示在这里。</div>
-                  </div>
-                  <div class="stack">
-                    <div id="main-translated-label" class="live-output-preview-label">翻译预览</div>
-                    <div id="main-translated-output" class="live-output">翻译内容将显示在这里。</div>
-                  </div>
+                  <section class="live-output-panel">
+                    <div class="live-output-panel-head">
+                      <div>
+                        <div id="main-transcribed-label" class="live-output-preview-label">转写输出</div>
+                        <div class="live-output-panel-meta">原文结果会在这里持续展开。</div>
+                      </div>
+                      <span class="live-output-panel-badge">TC</span>
+                    </div>
+                    <div id="main-transcribed-output" class="live-output is-preview">等待输入。</div>
+                  </section>
+                  <section class="live-output-panel">
+                    <div class="live-output-panel-head">
+                      <div>
+                        <div id="main-translated-label" class="live-output-preview-label">翻译输出</div>
+                        <div class="live-output-panel-meta">目标语言结果会同步显示在这里。</div>
+                      </div>
+                      <span class="live-output-panel-badge">TL</span>
+                    </div>
+                    <div id="main-translated-output" class="live-output is-preview">等待输入。</div>
+                  </section>
                 </div>
 
               </section>
 
               <div class="dual-advanced-grid">
-                <details class="advanced-panel panel-card" open>
-                  <summary>设备配置</summary>
+                <details class="advanced-panel panel-card realtime-config-panel" open>
+                  <summary>
+                    <span class="settings-panel-heading">
+                      <span class="settings-panel-title">设备配置</span>
+                      <span class="settings-panel-meta">输入源、API 与采集设备</span>
+                    </span>
+                  </summary>
                   <div class="floating-action-row">
+                    <button class="btn-icon btn-icon-blue" data-action="refresh-audio-devices" data-tooltip="刷新音频设备列表"
+                      title="刷新音频设备列表"><span class="btn-glyph glyph-refresh" aria-hidden="true"></span></button>
                     <button class="btn-icon" data-action="save-settings" data-tooltip="保存实时配置" title="保存实时配置"><span
                         class="btn-glyph glyph-save" aria-hidden="true"></span></button>
                   </div>
                   <div class="advanced-panel-body">
-                    <div class="form-grid">
-                      <label>
-                        <span>输入</span>
-                        <select id="input_mode">
-                          <option value="mic">麦克风</option>
-                          <option value="speaker">扬声器</option>
-                        </select>
-                      </label>
-                      <label>
-                        <span>主机 API</span>
-                        <select id="hostAPI"></select>
-                      </label>
-                      <label>
-                        <span>麦克风</span>
-                        <select id="mic"></select>
-                      </label>
-                      <label>
-                        <span>扬声器</span>
-                        <select id="speaker"></select>
-                      </label>
+                    <div class="realtime-config-summary">
+                      <span class="pill pill-muted">输入源</span>
+                      <span class="pill pill-muted">设备路由</span>
+                    </div>
+                    <div class="realtime-config-grid">
+                      <section class="realtime-config-group">
+                        <div class="realtime-config-group-head">
+                          <span class="realtime-config-group-title">采集入口</span>
+                          <span class="realtime-config-group-meta">输入模式与驱动层</span>
+                        </div>
+                        <div class="form-grid compact-form-grid">
+                          <label>
+                            <span>输入</span>
+                            <select id="input_mode">
+                              <option value="mic">麦克风</option>
+                              <option value="speaker">扬声器</option>
+                            </select>
+                          </label>
+                          <label>
+                            <span>主机 API</span>
+                            <select id="hostAPI"></select>
+                          </label>
+                        </div>
+                      </section>
+                      <section class="realtime-config-group">
+                        <div class="realtime-config-group-head">
+                          <span class="realtime-config-group-title">设备路由</span>
+                          <span class="realtime-config-group-meta">选择实际采集的输入设备</span>
+                        </div>
+                        <div class="form-grid compact-form-grid">
+                          <label>
+                            <span>麦克风</span>
+                            <select id="mic"></select>
+                          </label>
+                          <label>
+                            <span>扬声器</span>
+                            <select id="speaker"></select>
+                          </label>
+                        </div>
+                      </section>
                     </div>
                   </div>
                 </details>
 
-                <details class="advanced-panel panel-card" open>
-                  <summary>语言配置</summary>
+                <details class="advanced-panel panel-card realtime-config-panel" open>
+                  <summary>
+                    <span class="settings-panel-heading">
+                      <span class="settings-panel-title">语言配置</span>
+                      <span class="settings-panel-meta">语言、模型、后端与翻译链路</span>
+                    </span>
+                  </summary>
                   <div class="floating-action-row">
                     <button class="btn-icon btn-icon-blue" data-action="load-main-model" data-tooltip="加载当前实时模型"
                       title="加载当前实时模型"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
@@ -847,30 +997,50 @@
                         class="btn-glyph glyph-save" aria-hidden="true"></span></button>
                   </div>
                   <div class="advanced-panel-body">
-                    <div class="form-grid">
-                      <label>
-                        <span>源语言</span>
-                        <select id="source_lang_mw"></select>
-                      </label>
-                      <label>
-                        <span>实时模型</span>
-                        <select id="model_mw"></select>
-                      </label>
-                      <label>
-                        <span>Whisper 后端</span>
-                        <select id="backend_mw">
-                          <option value="whisper">whisper</option>
-                          <option value="faster-whisper">faster-whisper</option>
-                        </select>
-                      </label>
-                      <label>
-                        <span>目标语言</span>
-                        <select id="target_lang_mw"></select>
-                      </label>
-                      <label>
-                        <span>翻译引擎</span>
-                        <select id="tl_engine_mw"></select>
-                      </label>
+                    <div class="realtime-config-summary">
+                      <span class="pill pill-muted">识别链路</span>
+                      <span class="pill pill-muted">翻译链路</span>
+                    </div>
+                    <div class="realtime-config-grid">
+                      <section class="realtime-config-group">
+                        <div class="realtime-config-group-head">
+                          <span class="realtime-config-group-title">识别链路</span>
+                          <span class="realtime-config-group-meta">语言、模型与推理后端</span>
+                        </div>
+                        <div class="form-grid compact-form-grid">
+                          <label>
+                            <span>源语言</span>
+                            <select id="source_lang_mw"></select>
+                          </label>
+                          <label>
+                            <span>实时模型</span>
+                            <select id="model_mw"></select>
+                          </label>
+                          <label class="field-span-2">
+                            <span>Whisper 后端</span>
+                            <select id="backend_mw">
+                              <option value="whisper">whisper</option>
+                              <option value="faster-whisper">faster-whisper</option>
+                            </select>
+                          </label>
+                        </div>
+                      </section>
+                      <section class="realtime-config-group">
+                        <div class="realtime-config-group-head">
+                          <span class="realtime-config-group-title">翻译链路</span>
+                          <span class="realtime-config-group-meta">目标语言与翻译服务</span>
+                        </div>
+                        <div class="form-grid compact-form-grid">
+                          <label>
+                            <span>目标语言</span>
+                            <select id="target_lang_mw"></select>
+                          </label>
+                          <label>
+                            <span>翻译引擎</span>
+                            <select id="tl_engine_mw"></select>
+                          </label>
+                        </div>
+                      </section>
                     </div>
                   </div>
                 </details>
@@ -885,20 +1055,27 @@
                   </div>
                   <div class="advanced-panel-body">
                     <div class="detached-workbench-head">
-                      <p class="detached-workbench-title">独立窗口的样式与窗口参数已统一收口到「设置」页的 TC / TL 专属面板。</p>
-                      <p class="detached-workbench-meta">这里仅保留运行时操作，避免实时页和设置页同时维护两套配置来源。</p>
+                      <p class="detached-workbench-title">独立窗口运行台</p>
+                      <p class="detached-workbench-meta">这里只保留即时开关和调整。</p>
                     </div>
                     <div class="detached-workbench-grid">
                       <section class="detached-workbench-card">
                         <div class="section-inline-head">
-                          <div class="settings-section-title">转写窗口 (TC)</div>
-                          <button type="button" class="btn-with-icon" data-action="open-detached-settings-tc">编辑设置</button>
+                          <div>
+                            <div class="settings-section-title">转写窗口 (TC)</div>
+                            <div class="detached-workbench-card-meta">实时转写内容的独立悬浮窗。</div>
+                          </div>
+                          <button type="button" class="btn-with-icon btn-with-icon-quiet" data-action="open-detached-settings-tc">编辑设置</button>
                         </div>
-                        <div class="inline-actions import-actions compact-gap">
-                          <button type="button" class="btn-with-icon" data-action="create-detached-tc">打开 / 关闭</button>
-                          <button type="button" class="btn-with-icon" data-action="show-detached-tc">显示</button>
-                          <button type="button" class="btn-with-icon" data-action="hide-detached-tc">隐藏</button>
-                          <button type="button" class="btn-with-icon" data-action="close-detached-tc">关闭</button>
+                        <div class="detached-workbench-action-cluster">
+                          <div class="detached-workbench-action-group detached-workbench-action-group-primary">
+                            <button type="button" class="btn-with-icon" data-action="create-detached-tc">打开 / 关闭</button>
+                            <button type="button" class="btn-with-icon" data-action="close-detached-tc">关闭</button>
+                          </div>
+                          <div class="detached-workbench-action-group detached-workbench-action-group-secondary">
+                            <button type="button" class="btn-with-icon" data-action="show-detached-tc">显示</button>
+                            <button type="button" class="btn-with-icon" data-action="hide-detached-tc">隐藏</button>
+                          </div>
                         </div>
                         <div class="form-grid detached-config-mini-grid">
                           <label>
@@ -914,25 +1091,29 @@
                           <label class="toggle-row"><input id="ex_tc_click_through_main" type="checkbox" /> 点击穿透</label>
                           <label class="toggle-row"><input id="tb_ex_tc_use_conf_color_main" type="checkbox" /> 使用置信度颜色</label>
                         </div>
-                        <div class="status-row compact-status-row">
+                        <div class="status-row compact-status-row compact-status-row-merged">
                           <span class="pill pill-muted" id="detached-tc-state">状态</span>
                           <span class="pill pill-muted" id="detached-tc-geometry">尺寸</span>
-                        </div>
-                        <div class="status-row compact-status-row">
-                          <span class="pill pill-muted">设置源：TC 专属配置</span>
-                          <span class="pill pill-muted">内容源：实时转写输出</span>
+                          <span class="pill pill-muted">内容 转写</span>
                         </div>
                       </section>
                       <section class="detached-workbench-card">
                         <div class="section-inline-head">
-                          <div class="settings-section-title">翻译窗口 (TL)</div>
-                          <button type="button" class="btn-with-icon" data-action="open-detached-settings-tl">编辑设置</button>
+                          <div>
+                            <div class="settings-section-title">翻译窗口 (TL)</div>
+                            <div class="detached-workbench-card-meta">目标语言结果的独立悬浮窗。</div>
+                          </div>
+                          <button type="button" class="btn-with-icon btn-with-icon-quiet" data-action="open-detached-settings-tl">编辑设置</button>
                         </div>
-                        <div class="inline-actions import-actions compact-gap">
-                          <button type="button" class="btn-with-icon" data-action="create-detached-tl">打开 / 关闭</button>
-                          <button type="button" class="btn-with-icon" data-action="show-detached-tl">显示</button>
-                          <button type="button" class="btn-with-icon" data-action="hide-detached-tl">隐藏</button>
-                          <button type="button" class="btn-with-icon" data-action="close-detached-tl">关闭</button>
+                        <div class="detached-workbench-action-cluster">
+                          <div class="detached-workbench-action-group detached-workbench-action-group-primary">
+                            <button type="button" class="btn-with-icon" data-action="create-detached-tl">打开 / 关闭</button>
+                            <button type="button" class="btn-with-icon" data-action="close-detached-tl">关闭</button>
+                          </div>
+                          <div class="detached-workbench-action-group detached-workbench-action-group-secondary">
+                            <button type="button" class="btn-with-icon" data-action="show-detached-tl">显示</button>
+                            <button type="button" class="btn-with-icon" data-action="hide-detached-tl">隐藏</button>
+                          </div>
                         </div>
                         <div class="form-grid detached-config-mini-grid">
                           <label>
@@ -948,13 +1129,10 @@
                           <label class="toggle-row"><input id="ex_tl_click_through_main" type="checkbox" /> 点击穿透</label>
                           <label class="toggle-row"><input id="tb_ex_tl_use_conf_color_main" type="checkbox" /> 使用置信度颜色</label>
                         </div>
-                        <div class="status-row compact-status-row">
+                        <div class="status-row compact-status-row compact-status-row-merged">
                           <span class="pill pill-muted" id="detached-tl-state">状态</span>
                           <span class="pill pill-muted" id="detached-tl-geometry">尺寸</span>
-                        </div>
-                        <div class="status-row compact-status-row">
-                          <span class="pill pill-muted">设置源：TL 专属配置</span>
-                          <span class="pill pill-muted">内容源：实时翻译输出</span>
+                          <span class="pill pill-muted">内容 翻译</span>
                         </div>
                       </section>
                     </div>
@@ -987,6 +1165,14 @@
               </div>
               <span class="settings-search-meta" id="settings_search_meta">显示全部设置</span>
             </div>
+            <div class="inline-actions settings-toolbar-actions">
+              <button type="button" class="btn-with-icon" data-action="save-settings">保存全局设置</button>
+              <button type="button" class="btn-with-icon" data-action="save-record-settings">保存录制设置</button>
+              <button type="button" class="btn-with-icon" data-action="save-import-settings">保存文件设置</button>
+              <button type="button" class="btn-with-icon" data-action="refresh-audio-devices">刷新设备列表</button>
+              <button type="button" class="btn-with-icon" data-action="refresh">刷新状态</button>
+              <button type="button" class="btn-with-icon" data-action="show-main-window">显示主窗口</button>
+            </div>
             <div class="settings-toolbar-overview" aria-label="设置总览">
               <article class="settings-overview-card settings-overview-card-primary">
                 <span class="settings-overview-label">模型</span>
@@ -1008,6 +1194,203 @@
                 <span class="settings-overview-value" id="settings_toolbar_detached">等待同步</span>
                 <span class="settings-overview-meta" id="settings_toolbar_detached_meta">TC / TL 窗口尺寸与展示</span>
               </article>
+              <article class="settings-overview-card">
+                <span class="settings-overview-label">网络</span>
+                <span class="settings-overview-value" id="settings_toolbar_network">代理已启用</span>
+                <span class="settings-overview-meta" id="settings_toolbar_network_meta">HTTP / HTTPS 已配置 · LibreTranslate 未配置</span>
+              </article>
+              <article class="settings-overview-card">
+                <span class="settings-overview-label">解码</span>
+                <span class="settings-overview-value" id="settings_toolbar_decode">beam search · FP16</span>
+                <span class="settings-overview-meta" id="settings_toolbar_decode_meta">温度 0.0, 0.2, 0.4, 0.6</span>
+              </article>
+            </div>
+            <div class="settings-workbench-grid">
+              <section class="settings-workbench-card settings-workbench-card-wide">
+                <div class="settings-workbench-head">
+                  <div class="settings-workbench-title">网络、导出与录制</div>
+                  <p class="settings-workbench-meta">代理、导出命名和录制入口集中在首屏。</p>
+                </div>
+                <div class="settings-workbench-section-grid">
+                  <section class="settings-workbench-section">
+                    <div class="settings-workbench-section-head">
+                      <span class="settings-workbench-section-title">网络</span>
+                      <span class="settings-workbench-section-meta">代理与 LibreTranslate</span>
+                    </div>
+                    <div class="form-grid settings-workbench-form">
+                      <label class="toggle-row">
+                        <input id="http_proxy_enable_toolbar" type="checkbox" checked />
+                        HTTP 代理
+                      </label>
+                      <label class="toggle-row">
+                        <input id="https_proxy_enable_toolbar" type="checkbox" checked />
+                        HTTPS 代理
+                      </label>
+                      <label>
+                        <span>HTTP 代理</span>
+                        <input id="http_proxy_toolbar" type="text" placeholder="http://127.0.0.1:7890" value="http://127.0.0.1:7890" />
+                      </label>
+                      <label>
+                        <span>HTTPS 代理</span>
+                        <input id="https_proxy_toolbar" type="text" placeholder="http://127.0.0.1:7890" value="http://127.0.0.1:7890" />
+                      </label>
+                      <label class="field-span-2">
+                        <span>LibreTranslate 地址</span>
+                        <input id="libre_link_toolbar" type="text" placeholder="https://libretranslate.example.com" value="" />
+                      </label>
+                      <label class="field-span-2">
+                        <span>LibreTranslate API Key</span>
+                        <input id="libre_api_key_toolbar" type="password" placeholder="留空表示不使用 API Key" value="" />
+                      </label>
+                    </div>
+                  </section>
+                  <section class="settings-workbench-section">
+                    <div class="settings-workbench-section-head">
+                      <span class="settings-workbench-section-title">导出与录制</span>
+                      <span class="settings-workbench-section-meta">命名、切分与输入节流</span>
+                    </div>
+                    <div class="form-grid settings-workbench-form">
+                      <label class="field-span-2">
+                        <span>导出命名格式</span>
+                        <input id="export_format_toolbar" type="text" placeholder="%Y-%m-%d %f {file}/{task-lang}" value="txt" />
+                      </label>
+                      <label class="toggle-row">
+                        <input id="auto_open_dir_export_toolbar" type="checkbox" checked />
+                        完成后打开目录
+                      </label>
+                      <label>
+                        <span>分段最大词数</span>
+                        <input id="segment_max_words_toolbar" type="text" placeholder="留空表示不限制" value="16" />
+                      </label>
+                      <label>
+                        <span>主机 API</span>
+                        <select id="hostAPI_toolbar">
+                          <option value="Windows WASAPI" selected>Windows WASAPI</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>转写间隔 (ms)</span>
+                        <input id="transcribe_rate_toolbar" type="number" min="1" max="1000" step="1" value="300" />
+                      </label>
+                    </div>
+                  </section>
+                </div>
+              </section>
+              <section class="settings-workbench-card">
+                <div class="settings-workbench-head">
+                  <div class="settings-workbench-title">导出格式与启动策略</div>
+                  <p class="settings-workbench-meta">导出目标与启动保护项直接可改。</p>
+                </div>
+                <div class="settings-workbench-toggle-grid">
+                  <label class="toggle-row"><input id="export_txt_toolbar" type="checkbox" checked /> TXT</label>
+                  <label class="toggle-row"><input id="export_srt_toolbar" type="checkbox" checked /> SRT</label>
+                  <label class="toggle-row"><input id="export_vtt_toolbar" type="checkbox" checked /> VTT</label>
+                  <label class="toggle-row"><input id="export_json_toolbar" type="checkbox" checked /> JSON</label>
+                  <label class="toggle-row"><input id="export_ass_toolbar" type="checkbox" checked /> ASS</label>
+                  <label class="toggle-row"><input id="export_csv_toolbar" type="checkbox" /> CSV</label>
+                  <label class="toggle-row"><input id="export_tsv_toolbar" type="checkbox" /> TSV</label>
+                  <label class="toggle-row"><input id="export_mp4_toolbar" type="checkbox" /> MP4</label>
+                  <label class="toggle-row"><input id="rec_ask_confirmation_first_toolbar" type="checkbox" checked /> 录前确认</label>
+                  <label class="toggle-row"><input id="supress_hidden_to_tray_toolbar" type="checkbox" /> 托盘静默</label>
+                </div>
+              </section>
+              <section class="settings-workbench-card settings-workbench-card-wide">
+                <div class="settings-workbench-head">
+                  <div class="settings-workbench-title">解码控制中心</div>
+                  <p class="settings-workbench-meta">预设、精度和稳定性阈值集中到同一处。</p>
+                </div>
+                <div class="settings-workbench-section-grid">
+                  <section class="settings-workbench-section">
+                    <div class="settings-workbench-section-head">
+                      <span class="settings-workbench-section-title">核心参数</span>
+                      <span class="settings-workbench-section-meta">预设、温度与精度</span>
+                    </div>
+                    <div class="form-grid settings-workbench-form">
+                      <label>
+                        <span>解码预设</span>
+                        <select id="decoding_preset_toolbar">
+                          <option value="greedy">greedy</option>
+                          <option value="beam search" selected>beam search</option>
+                          <option value="custom">custom</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>温度</span>
+                        <input id="temperature_toolbar" type="text" placeholder="0.0, 0.2, 0.4, 0.6, 0.8, 1.0" value="0" />
+                      </label>
+                      <label class="toggle-row"><input id="use_en_model_toolbar" type="checkbox" /> 优先 .en 模型</label>
+                      <label class="toggle-row"><input id="fp16_toolbar" type="checkbox" checked /> 启用 FP16</label>
+                    </div>
+                  </section>
+                  <section class="settings-workbench-section">
+                    <div class="settings-workbench-section-head">
+                      <span class="settings-workbench-section-title">稳定性阈值</span>
+                      <span class="settings-workbench-section-meta">抑制空白与漏识别排查</span>
+                    </div>
+                    <div class="form-grid settings-workbench-form">
+                      <label>
+                        <span>Best Of</span>
+                        <input id="best_of_toolbar" type="number" min="1" max="20" step="1" value="5" />
+                      </label>
+                      <label>
+                        <span>Beam Size</span>
+                        <input id="beam_size_toolbar" type="number" min="1" max="20" step="1" value="5" />
+                      </label>
+                      <label>
+                        <span>No Speech Threshold</span>
+                        <input id="no_speech_threshold_toolbar" type="number" min="0" max="1" step="0.01" value="0.6" />
+                      </label>
+                      <label>
+                        <span>Logprob Threshold</span>
+                        <input id="logprob_threshold_toolbar" type="number" min="-10" max="10" step="0.1" value="-1.0" />
+                      </label>
+                      <label>
+                        <span>Patience</span>
+                        <input id="patience_toolbar" type="number" min="0" max="10" step="0.1" value="1.0" />
+                      </label>
+                      <label>
+                        <span>Compression Ratio</span>
+                        <input id="compression_ratio_threshold_toolbar" type="number" min="0" max="10" step="0.1" value="2.4" />
+                      </label>
+                      <label class="field-span-2">
+                        <span>Suppress Tokens</span>
+                        <input id="suppress_tokens_toolbar" type="text" placeholder="-1 或 1,2,3" value="" />
+                      </label>
+                      <label class="toggle-row field-span-2"><input id="suppress_blank_toolbar" type="checkbox" checked /> 抑制空白片段</label>
+                    </div>
+                  </section>
+                </div>
+              </section>
+              <section class="settings-workbench-card settings-workbench-card-wide">
+                <div class="settings-workbench-head">
+                  <div class="settings-workbench-title">文件转写与调试开关</div>
+                  <p class="settings-workbench-meta">临时文件策略、原生后端与调试日志入口集中到首屏。</p>
+                </div>
+                <div class="settings-workbench-section-grid">
+                  <section class="settings-workbench-section">
+                    <div class="settings-workbench-section-head">
+                      <span class="settings-workbench-section-title">文件转写运行策略</span>
+                      <span class="settings-workbench-section-meta">转换模式、临时文件和后端实现</span>
+                    </div>
+                    <div class="settings-workbench-toggle-grid">
+                      <label class="toggle-row"><input id="use_temp_alt_toolbar" type="checkbox" checked /> 临时 WAV 模式</label>
+                      <label class="toggle-row"><input id="keep_temp_toolbar" type="checkbox" /> 保留临时文件</label>
+                      <label class="toggle-row"><input id="file_use_official_whisper_toolbar" type="checkbox" /> 文件转写走后端原生</label>
+                      <label class="toggle-row"><input id="supress_record_warning_toolbar" type="checkbox" /> 忽略录制警告</label>
+                    </div>
+                  </section>
+                  <section class="settings-workbench-section">
+                    <div class="settings-workbench-section-head">
+                      <span class="settings-workbench-section-title">调试与排障</span>
+                      <span class="settings-workbench-section-meta">记录关键日志，方便排查录制和翻译链路</span>
+                    </div>
+                    <div class="settings-workbench-toggle-grid">
+                      <label class="toggle-row"><input id="debug_realtime_record_toolbar" type="checkbox" /> 实时转写调试日志</label>
+                      <label class="toggle-row"><input id="debug_translate_toolbar" type="checkbox" /> 翻译调试日志</label>
+                    </div>
+                  </section>
+                </div>
+              </section>
             </div>
           </section>
 
@@ -1088,8 +1471,14 @@
             <div class="advanced-panel-body">
               <div class="inline-actions import-actions compact-gap">
                 <button type="button" class="btn-with-icon" data-action="refresh">刷新状态</button>
+                <button type="button" class="btn-with-icon" data-action="show-main-window">显示主窗口</button>
+                <button type="button" class="btn-with-icon" data-action="save-window-geometry">保存窗口尺寸</button>
                 <button type="button" class="btn-with-icon" data-action="open-repo">项目仓库</button>
+                <button type="button" class="btn-with-icon" data-open-dir="debug">调试目录</button>
+                <button type="button" class="btn-with-icon" data-action="refresh-log">刷新日志</button>
+                <button type="button" class="btn-with-icon" data-action="clear-log">清空日志</button>
                 <button type="button" class="btn-with-icon" data-action="hide-to-tray">隐藏到托盘</button>
+                <button type="button" class="btn-with-icon btn-danger-soft" data-action="quit-app">退出应用</button>
               </div>
               <section class="task-banner">
                 <div class="task-banner-head">
@@ -1097,6 +1486,11 @@
                   <span class="task-badge" id="task-badge">空闲</span>
                 </div>
                 <div class="task-banner-message" id="task-message">等待操作。</div>
+                <div class="status-row compact-status-row task-runtime-pills">
+                  <span class="pill pill-muted" id="task-runtime-model-pill">模型</span>
+                  <span class="pill pill-muted" id="task-runtime-export-pill">导出</span>
+                  <span class="pill pill-muted" id="task-runtime-log-pill">日志</span>
+                </div>
                 <div class="task-progress-track">
                   <div class="task-progress-fill" id="task-progress-fill"></div>
                 </div>
@@ -1972,7 +2366,7 @@
     </div>
   </main>
 
-  <script src="app.js?v=20260617-ui-cn-8"></script>
+  <script src="app.js?v=20260617-ui-cn-44"></script>
 </body>
 
 </html>
