@@ -853,17 +853,25 @@
                   </div>
                 </div>
 
+                <div class="hero-toolbar hero-toolbar-compact">
+                  <div class="hero-toolbar-main">
+                    <button class="primary btn-with-icon btn-recording" data-action="start-recording"
+                      id="btn-recording-toggle">开始录制</button>
+                    <span class="hero-toolbar-caption">开始录制后持续转写与翻译。</span>
+                  </div>
+                  <div class="hero-toolbar-pills">
+                    <label class="toggle-row"><input id="transcribe_mw" type="checkbox" checked /> 转写</label>
+                    <label class="toggle-row"><input id="translate_mw" type="checkbox" checked /> 翻译</label>
+                  </div>
+                </div>
+
                 <div class="realtime-hero-shell">
                   <div class="realtime-control-card">
                     <div class="realtime-control-head">
-                      <span class="realtime-control-kicker">录制控制</span>
-                      <span class="realtime-control-meta">输入、模型与翻译链路摘要</span>
+                      <span class="realtime-control-kicker">录制摘要</span>
+                      <span class="realtime-control-meta">输入、模型与翻译链路</span>
                     </div>
                     <div class="realtime-control-strip">
-                      <button class="primary btn-with-icon btn-recording" data-action="start-recording"
-                        id="btn-recording-toggle">开始录制</button>
-                      <label class="toggle-row"><input id="transcribe_mw" type="checkbox" checked /> 转写</label>
-                      <label class="toggle-row"><input id="translate_mw" type="checkbox" checked /> 翻译</label>
                       <div class="record-visualizer-card realtime-live-meter" id="record_visualizer_card" aria-live="polite">
                         <div class="record-visualizer-head">
                           <span class="sr-only">输入电平</span>

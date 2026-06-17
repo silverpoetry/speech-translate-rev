@@ -5661,38 +5661,59 @@ button.btn-icon:hover {
 }
 
 .realtime-control-card {
-  gap: 6px;
-  padding: 10px 12px;
-  border-radius: 14px;
+  gap: 8px;
+  padding: 11px 12px;
+  border-radius: 16px;
 }
 
 .realtime-control-strip {
-  gap: 10px;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 18px;
 }
 
-.realtime-control-strip .toggle-row,
-.realtime-control-strip .btn-recording {
+#tab-realtime .hero-toolbar.hero-toolbar-compact {
+  padding: 6px 8px;
+  gap: 8px;
+}
+
+#tab-realtime .hero-toolbar-main {
+  gap: 6px;
+}
+
+#tab-realtime .hero-toolbar-main .btn-with-icon {
+  min-height: 30px;
+  padding-inline: 10px;
+  font-size: var(--ui-text-xs);
+}
+
+#tab-realtime .hero-toolbar-pills {
+  gap: 6px;
+}
+
+#tab-realtime .hero-toolbar-pills .toggle-row {
   min-height: 28px;
+  padding: 2px 7px;
   font-size: var(--ui-text-xs);
 }
 
 .realtime-live-meter {
-  min-width: 42px;
-  grid-template-columns: 42px;
+  min-width: 46px;
+  grid-template-columns: 46px;
 }
 
 .realtime-live-meter .record-visualizer-track {
-  width: 42px;
+  width: 46px;
 }
 
 .realtime-status-grid {
-  gap: 8px;
+  gap: 9px;
 }
 
 .transcript-shell {
-  gap: 6px;
-  padding: 6px;
-  border-radius: 14px;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 16px;
 }
 
 .live-output {
