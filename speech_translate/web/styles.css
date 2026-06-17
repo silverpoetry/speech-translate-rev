@@ -680,6 +680,7 @@ body {
 .file-ops-summary,
 .file-ops-summary-secondary {
   gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .about-card-actions {
@@ -5515,7 +5516,8 @@ button.btn-icon:hover {
 }
 
 .live-output {
-  min-height: clamp(188px, 35vh, 278px);
+  min-height: clamp(156px, 28vh, 224px);
+  max-height: 252px;
   font-size: 0.88rem;
   line-height: 1.55;
 }
@@ -5571,7 +5573,7 @@ button.btn-icon:hover {
 }
 
 .file-queue-box {
-  padding: 13px;
+  padding: 12px;
   border-radius: 16px;
 }
 
@@ -5584,6 +5586,10 @@ button.btn-icon:hover {
 
 .file-queue-header span {
   font-size: 0.64rem;
+}
+
+.file-queue-list {
+  max-height: 144px;
 }
 
 .model-selection-workbench {
@@ -5612,6 +5618,15 @@ button.btn-icon:hover {
   justify-content: flex-start;
   min-height: 30px;
   font-size: 0.72rem;
+}
+
+#tab-model .model-selection-status-grid .status-overview-card-compact {
+  min-height: 68px;
+}
+
+#tab-model .model-selection-status-grid .status-overview-card-compact .status-overview-meta {
+  font-size: 0.66rem;
+  line-height: 1.3;
 }
 
 .model-manager-overview {
