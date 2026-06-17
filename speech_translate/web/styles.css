@@ -5803,56 +5803,56 @@ button.btn-icon:hover {
 .model-selection-main-card,
 .model-selection-side-card,
 .model-selection-status-rail {
-  padding: 14px;
+  padding: 12px;
   gap: 10px;
   border-radius: 16px;
 }
 
 .model-selection-quick-actions {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: 5px;
 }
 
 .model-selection-quick-actions .btn-with-icon {
   justify-content: flex-start;
-  min-height: 30px;
-  padding-inline: 12px;
+  min-height: 28px;
+  padding-inline: 11px;
   font-size: var(--ui-text-xs);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.98);
 }
 
 #tab-model .model-selection-status-grid .status-overview-card {
-  min-height: 70px;
-  padding: 8px 10px;
+  min-height: 64px;
+  padding: 7px 9px;
 }
 
 #tab-model .model-selection-status-grid .status-overview-value {
-  font-size: 0.88rem;
+  font-size: 0.86rem;
 }
 
 #tab-model .model-selection-status-grid .status-overview-card-compact {
-  min-height: 60px;
+  min-height: 56px;
 }
 
 #tab-model .model-selection-status-grid .status-overview-card-compact .status-overview-meta {
-  font-size: 0.66rem;
-  line-height: 1.32;
+  font-size: 0.64rem;
+  line-height: 1.28;
 }
 
 #tab-model .model-selection-status-grid .status-overview-meta {
-  font-size: 0.69rem;
-  line-height: 1.36;
+  font-size: 0.67rem;
+  line-height: 1.32;
 }
 
 .model-selection-status-rail {
-  gap: 10px;
+  gap: 8px;
 }
 
 .model-selection-quick-actions-secondary {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-  padding-top: 6px;
+  gap: 5px;
+  padding-top: 4px;
 }
 
 .model-selection-quick-actions-secondary .btn-with-icon {
@@ -5864,8 +5864,8 @@ button.btn-icon:hover {
 }
 
 .model-selection-quick-actions-secondary .btn-with-icon {
-  min-height: 29px;
-  padding-inline: 12px;
+  min-height: 27px;
+  padding-inline: 11px;
   justify-content: flex-start;
   font-size: var(--ui-text-xs);
   border-radius: 10px;
