@@ -3954,13 +3954,13 @@ button.btn-icon[data-tooltip]::before {
 #tab-file .realtime-config-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 6px;
 }
 
 #tab-file .realtime-config-summary .pill {
-  min-height: 18px;
-  padding: 1px 7px;
-  font-size: 0.57rem;
+  min-height: 20px;
+  padding: 2px 8px;
+  font-size: 0.66rem;
   letter-spacing: 0.04em;
   background: rgba(255, 255, 255, 0.92);
   border-color: rgba(148, 163, 184, 0.12);
@@ -3974,9 +3974,9 @@ button.btn-icon[data-tooltip]::before {
 
 #tab-file .file-export-block .realtime-config-group {
   display: grid;
-  gap: 4px;
-  padding: 8px;
-  border-radius: 10px;
+  gap: 6px;
+  padding: 10px 11px;
+  border-radius: 12px;
   background: rgba(248, 250, 252, 0.9);
   border: 1px solid rgba(148, 163, 184, 0.12);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
@@ -3984,19 +3984,19 @@ button.btn-icon[data-tooltip]::before {
 
 #tab-file .file-export-block .realtime-config-group-head {
   display: grid;
-  gap: 1px;
+  gap: 2px;
 }
 
 #tab-file .file-export-block .realtime-config-group-title {
-  font-size: var(--ui-text-md);
+  font-size: 0.84rem;
   font-weight: 700;
   color: #0f172a;
 }
 
 #tab-file .file-export-block .realtime-config-group-meta {
   color: #64748b;
-  font-size: var(--ui-text-xs);
-  line-height: 1.34;
+  font-size: 0.73rem;
+  line-height: 1.42;
 }
 
 #tab-file .realtime-config-panel .floating-action-row {
@@ -4032,13 +4032,13 @@ button.btn-icon[data-tooltip]::before {
 }
 
 #tab-file .file-export-formats {
-  gap: 4px 6px;
+  gap: 6px 7px;
 }
 
 #tab-file .file-export-formats .toggle-row,
 #tab-file .file-export-grid .toggle-row {
-  min-height: 23px;
-  font-size: var(--ui-text-xs);
+  min-height: 26px;
+  font-size: 0.72rem;
 }
 
 #tab-realtime .realtime-config-panel .floating-action-row {
@@ -4294,10 +4294,10 @@ label {
 .toggle-row {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   color: var(--text);
-  line-height: 1.25;
-  min-height: 30px;
+  line-height: 1.28;
+  min-height: 28px;
   white-space: normal;
   word-break: normal;
 }
@@ -4320,13 +4320,13 @@ label {
 .toggle-row input[type="checkbox"] {
   -webkit-appearance: none;
   appearance: none;
-  width: 46px !important;
-  height: 20px !important;
+  width: 34px !important;
+  height: 18px !important;
   padding: 0 !important;
   margin: 0 !important;
   border-radius: 999px;
-  border: 1px solid #d1d5db;
-  background: #e5e7eb;
+  border: 1px solid rgba(124, 142, 164, 0.36);
+  background: rgba(123, 140, 165, 0.18);
   position: relative;
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease;
@@ -4338,36 +4338,83 @@ label {
   content: "";
   position: absolute;
   top: 50%;
-  left: 1px;
-  width: 16px;
-  height: 16px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.98);
   transform: translateY(-50%);
-  transition: transform 120ms ease, box-shadow 120ms ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 120ms ease, background 120ms ease;
+  box-shadow: none;
 }
 
 .toggle-row input[type="checkbox"]:checked {
-  background: #10b981;
-  border-color: #059669;
+  background: rgba(17, 160, 107, 0.18);
+  border-color: rgba(17, 160, 107, 0.54);
 }
 
 .toggle-row input[type="checkbox"]:checked::after {
-  transform: translate(28px, -50%);
+  background: #0f9d76;
+  transform: translate(16px, -50%);
 }
 
 .toggle-row input[type="checkbox"]:hover {
-  border-color: #9ca3af;
-}
-
-.toggle-row input[type="checkbox"]:active::after {
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  border-color: rgba(109, 131, 159, 0.52);
 }
 
 .toggle-row input[type="radio"] {
   width: 16px;
   height: 16px;
+}
+
+.format-chip-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 9px;
+}
+
+.format-chip {
+  position: relative;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(125, 145, 170, 0.26);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.02);
+  color: rgba(226, 233, 241, 0.92);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.format-chip input[type="checkbox"] {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  opacity: 0;
+  border: 0 !important;
+  background: transparent !important;
+  cursor: pointer;
+}
+
+.format-chip input[type="checkbox"]::after {
+  content: none;
+}
+
+.format-chip:has(input[type="checkbox"]:checked) {
+  border-color: rgba(88, 192, 146, 0.5);
+  background: rgba(20, 118, 84, 0.24);
+  color: #f2faf6;
+}
+
+.format-chip:hover {
+  border-color: rgba(119, 158, 198, 0.44);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 label span {
@@ -5768,6 +5815,27 @@ button.btn-icon:hover {
   gap: 14px;
 }
 
+#tab-file .status-overview-label {
+  font-size: 0.66rem;
+}
+
+#tab-file .status-overview-meta {
+  font-size: 0.71rem;
+  line-height: 1.3;
+}
+
+#tab-file .file-queue-title,
+#tab-file .file-ops-kicker {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+}
+
+#tab-file .file-queue-subtitle,
+#tab-file .file-ops-title {
+  font-size: 0.74rem;
+  line-height: 1.42;
+}
+
 .file-workbench-main {
   gap: 14px;
 }
@@ -5858,6 +5926,10 @@ button.btn-icon:hover {
 
 .file-queue-header span {
   font-size: var(--ui-text-2xs);
+}
+
+#tab-file .file-queue-header span {
+  font-size: 0.66rem;
 }
 
 .settings-workbench-title,
