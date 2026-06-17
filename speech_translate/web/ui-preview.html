@@ -1285,7 +1285,7 @@
                   </section>
                 </div>
               </section>
-              <section class="settings-workbench-card">
+              <section class="settings-workbench-card settings-workbench-card-recording">
                 <div class="settings-workbench-head">
                   <div class="settings-workbench-title">录制与设备</div>
                   <p class="settings-workbench-meta">节流、设备策略和关键开关。</p>
@@ -1405,45 +1405,41 @@
                   </div>
                 </section>
               </section>
-              <section class="settings-workbench-card settings-workbench-card-export">
+              <section class="settings-workbench-card settings-workbench-card-file-pipeline settings-workbench-card-wide">
                 <div class="settings-workbench-head">
-                  <div class="settings-workbench-title">导出格式</div>
-                  <p class="settings-workbench-meta">把常用导出格式切换集中到一处。</p>
+                  <div class="settings-workbench-title">文件导出与转写策略</div>
+                  <p class="settings-workbench-meta">格式切换与文件级运行策略放在同一工作区。</p>
                 </div>
-                <section class="settings-workbench-section">
-                  <div class="settings-workbench-section-head">
-                    <span class="settings-workbench-section-title">格式选择</span>
-                    <span class="settings-workbench-section-meta">与文件页输出设置保持一致</span>
-                  </div>
-                  <div class="settings-workbench-toggle-grid">
-                    <label class="toggle-row"><input id="export_txt_toolbar" type="checkbox" checked /> TXT</label>
-                    <label class="toggle-row"><input id="export_srt_toolbar" type="checkbox" checked /> SRT</label>
-                    <label class="toggle-row"><input id="export_vtt_toolbar" type="checkbox" checked /> VTT</label>
-                    <label class="toggle-row"><input id="export_json_toolbar" type="checkbox" checked /> JSON</label>
-                    <label class="toggle-row"><input id="export_ass_toolbar" type="checkbox" checked /> ASS</label>
-                    <label class="toggle-row"><input id="export_csv_toolbar" type="checkbox" /> CSV</label>
-                    <label class="toggle-row"><input id="export_tsv_toolbar" type="checkbox" /> TSV</label>
-                    <label class="toggle-row"><input id="export_mp4_toolbar" type="checkbox" /> MP4</label>
-                  </div>
-                </section>
-              </section>
-              <section class="settings-workbench-card">
-                <div class="settings-workbench-head">
-                  <div class="settings-workbench-title">文件转写策略</div>
-                  <p class="settings-workbench-meta">转换模式、临时文件和后端实现。</p>
+                <div class="settings-workbench-section-grid">
+                  <section class="settings-workbench-section settings-workbench-card-export">
+                    <div class="settings-workbench-section-head">
+                      <span class="settings-workbench-section-title">导出格式</span>
+                      <span class="settings-workbench-section-meta">与文件页输出设置保持一致</span>
+                    </div>
+                    <div class="settings-workbench-toggle-grid">
+                      <label class="toggle-row"><input id="export_txt_toolbar" type="checkbox" checked /> TXT</label>
+                      <label class="toggle-row"><input id="export_srt_toolbar" type="checkbox" checked /> SRT</label>
+                      <label class="toggle-row"><input id="export_vtt_toolbar" type="checkbox" checked /> VTT</label>
+                      <label class="toggle-row"><input id="export_json_toolbar" type="checkbox" checked /> JSON</label>
+                      <label class="toggle-row"><input id="export_ass_toolbar" type="checkbox" checked /> ASS</label>
+                      <label class="toggle-row"><input id="export_csv_toolbar" type="checkbox" /> CSV</label>
+                      <label class="toggle-row"><input id="export_tsv_toolbar" type="checkbox" /> TSV</label>
+                      <label class="toggle-row"><input id="export_mp4_toolbar" type="checkbox" /> MP4</label>
+                    </div>
+                  </section>
+                  <section class="settings-workbench-section">
+                    <div class="settings-workbench-section-head">
+                      <span class="settings-workbench-section-title">文件转写策略</span>
+                      <span class="settings-workbench-section-meta">仅保留高频切换项</span>
+                    </div>
+                    <div class="settings-workbench-toggle-grid">
+                      <label class="toggle-row"><input id="use_temp_alt_toolbar" type="checkbox" checked /> 临时 WAV 模式</label>
+                      <label class="toggle-row"><input id="keep_temp_toolbar" type="checkbox" /> 保留临时文件</label>
+                      <label class="toggle-row"><input id="file_use_official_whisper_toolbar" type="checkbox" /> 文件转写走后端原生</label>
+                      <label class="toggle-row"><input id="supress_record_warning_toolbar" type="checkbox" /> 忽略录制警告</label>
+                    </div>
+                  </section>
                 </div>
-                <section class="settings-workbench-section">
-                  <div class="settings-workbench-section-head">
-                    <span class="settings-workbench-section-title">运行策略</span>
-                    <span class="settings-workbench-section-meta">仅保留高频切换项</span>
-                  </div>
-                  <div class="settings-workbench-toggle-grid">
-                    <label class="toggle-row"><input id="use_temp_alt_toolbar" type="checkbox" checked /> 临时 WAV 模式</label>
-                    <label class="toggle-row"><input id="keep_temp_toolbar" type="checkbox" /> 保留临时文件</label>
-                    <label class="toggle-row"><input id="file_use_official_whisper_toolbar" type="checkbox" /> 文件转写走后端原生</label>
-                    <label class="toggle-row"><input id="supress_record_warning_toolbar" type="checkbox" /> 忽略录制警告</label>
-                  </div>
-                </section>
               </section>
               <section class="settings-workbench-card settings-workbench-card-wide">
                 <div class="settings-workbench-head">

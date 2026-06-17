@@ -6095,7 +6095,7 @@ button.btn-icon:hover {
 }
 
 .settings-workbench-board .settings-workbench-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 12px;
 }
 
@@ -6140,6 +6140,14 @@ button.btn-icon:hover {
 .settings-workbench-board .settings-workbench-card-wide .settings-workbench-section-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.settings-workbench-board .settings-workbench-card-recording .settings-workbench-section-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-workbench-board .settings-workbench-card-file-pipeline .settings-workbench-section-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .settings-workbench-board .settings-workbench-card-wide .settings-workbench-section {
@@ -6190,7 +6198,7 @@ button.btn-icon:hover {
 }
 
 .settings-workbench-board .settings-workbench-card-network-export .settings-workbench-form,
-.settings-workbench-board .settings-workbench-grid > .settings-workbench-card:nth-child(2) .settings-workbench-section:first-child .settings-workbench-form {
+.settings-workbench-board .settings-workbench-card-recording .settings-workbench-section:first-child .settings-workbench-form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
