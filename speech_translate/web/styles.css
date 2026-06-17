@@ -5256,6 +5256,11 @@ textarea:focus {
   --ui-surface: #ffffff;
   --ui-surface-soft: linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(255, 255, 255, 0.99));
   --ui-surface-tint: linear-gradient(135deg, rgba(239, 246, 255, 0.88), rgba(255, 255, 255, 0.99));
+  --ui-text-2xs: 0.66rem;
+  --ui-text-xs: 0.72rem;
+  --ui-text-sm: 0.78rem;
+  --ui-text-md: 0.84rem;
+  --ui-text-lg: 0.94rem;
 }
 
 .dashboard-layout {
@@ -5362,9 +5367,35 @@ textarea:focus {
 }
 
 .workflow-card h3 {
-  font-size: 1rem;
+  font-size: var(--ui-text-lg);
   letter-spacing: -0.01em;
+  line-height: 1.28;
   color: #0f172a;
+}
+
+.section-head h2 {
+  font-size: 1.04rem;
+  letter-spacing: -0.01em;
+  line-height: 1.24;
+}
+
+.subtle-head h3,
+.settings-panel-title,
+.section-inline-title {
+  line-height: 1.28;
+}
+
+.settings-panel-title {
+  font-size: 0.9rem;
+}
+
+.subtle-head h3 {
+  font-size: 0.84rem;
+  letter-spacing: 0.1em;
+}
+
+.section-inline-title {
+  font-size: var(--ui-text-sm);
 }
 
 .hero-toolbar-caption,
@@ -5373,13 +5404,13 @@ textarea:focus {
 .model-selection-card-meta,
 .file-queue-subtitle,
 .live-output-panel-meta {
-  font-size: 0.72rem;
+  font-size: var(--ui-text-xs);
   line-height: 1.4;
 }
 
 label span {
   color: #475569;
-  font-size: 0.78rem;
+  font-size: var(--ui-text-sm);
   font-weight: 600;
   line-height: 1.3;
 }
@@ -5388,7 +5419,7 @@ label span {
   gap: 7px;
   min-height: 28px;
   color: #334155;
-  font-size: 0.76rem;
+  font-size: var(--ui-text-sm);
   line-height: 1.3;
 }
 
@@ -5409,15 +5440,17 @@ textarea {
 }
 
 button.btn-with-icon {
-  height: 30px;
-  min-height: 30px;
-  padding: 0 12px;
+  height: 31px;
+  min-height: 31px;
+  padding: 0 11px;
   border-radius: 8px;
   border-color: var(--ui-line-strong);
   background: #f8fafc;
   color: #334155;
-  font-size: 0.74rem;
+  gap: 6px;
+  font-size: var(--ui-text-xs);
   font-weight: 600;
+  white-space: nowrap;
 }
 
 button.btn-icon {
@@ -5455,7 +5488,7 @@ button.btn-icon:hover {
 .realtime-status-label,
 .settings-overview-label,
 .model-manager-overview-label {
-  font-size: 0.61rem;
+  font-size: var(--ui-text-2xs);
   letter-spacing: 0.05em;
 }
 
@@ -5463,7 +5496,7 @@ button.btn-icon:hover {
 .realtime-status-value,
 .settings-overview-value,
 .model-manager-overview-value {
-  font-size: 0.88rem;
+  font-size: 0.9rem;
   line-height: 1.2;
 }
 
@@ -5471,12 +5504,12 @@ button.btn-icon:hover {
 .realtime-status-meta,
 .settings-overview-meta,
 .model-manager-overview-meta {
-  font-size: 0.69rem;
+  font-size: 0.7rem;
   line-height: 1.35;
 }
 
 .realtime-hero-shell {
-  grid-template-columns: minmax(0, 1.62fr) minmax(312px, 0.88fr);
+  grid-template-columns: minmax(0, 1.56fr) minmax(324px, 0.92fr);
   gap: 10px;
 }
 
@@ -5493,7 +5526,7 @@ button.btn-icon:hover {
 .realtime-control-strip .toggle-row,
 .realtime-control-strip .btn-recording {
   min-height: 28px;
-  font-size: 0.74rem;
+  font-size: var(--ui-text-xs);
 }
 
 .realtime-live-meter {
@@ -5536,11 +5569,11 @@ button.btn-icon:hover {
 }
 
 .live-output-preview-note {
-  font-size: 0.78rem;
+  font-size: var(--ui-text-sm);
 }
 
 .file-workbench-shell {
-  grid-template-columns: minmax(0, 1.7fr) minmax(286px, 0.98fr);
+  grid-template-columns: minmax(0, 1.62fr) minmax(304px, 1.02fr);
   gap: 12px;
 }
 
@@ -5573,7 +5606,7 @@ button.btn-icon:hover {
 .file-ops-actions .btn-with-icon {
   justify-content: center;
   min-height: 28px;
-  font-size: 0.7rem;
+  font-size: 0.69rem;
   border-radius: 999px;
 }
 
@@ -5594,7 +5627,7 @@ button.btn-icon:hover {
 }
 
 .file-ops-step span {
-  font-size: 0.74rem;
+  font-size: var(--ui-text-xs);
 }
 
 .file-ops-steps {
@@ -5610,12 +5643,12 @@ button.btn-icon:hover {
 .file-queue-title,
 .model-selection-kicker,
 .file-ops-kicker {
-  font-size: 0.7rem;
+  font-size: var(--ui-text-2xs);
   letter-spacing: 0.07em;
 }
 
 .file-queue-header span {
-  font-size: 0.64rem;
+  font-size: var(--ui-text-2xs);
 }
 
 .file-queue-list {
@@ -5623,12 +5656,12 @@ button.btn-icon:hover {
 }
 
 .model-selection-workbench {
-  grid-template-columns: minmax(0, 1.95fr) minmax(304px, 0.86fr);
+  grid-template-columns: minmax(0, 1.82fr) minmax(320px, 0.94fr);
   gap: 16px;
 }
 
 .model-selection-shell {
-  grid-template-columns: minmax(0, 1.84fr) minmax(236px, 0.8fr);
+  grid-template-columns: minmax(0, 1.72fr) minmax(252px, 0.86fr);
   gap: 12px;
 }
 
@@ -5647,7 +5680,7 @@ button.btn-icon:hover {
 .model-selection-quick-actions .btn-with-icon {
   justify-content: center;
   min-height: 28px;
-  font-size: 0.7rem;
+  font-size: 0.69rem;
   border-radius: 999px;
 }
 
@@ -5667,7 +5700,7 @@ button.btn-icon:hover {
 
 .model-selection-quick-actions-secondary .btn-with-icon {
   min-height: 26px;
-  font-size: 0.68rem;
+  font-size: 0.67rem;
   background: rgba(255, 255, 255, 0.72);
 }
 
@@ -5676,8 +5709,8 @@ button.btn-icon:hover {
 }
 
 .settings-toolbar {
-  gap: 12px;
-  padding: 12px 14px 14px;
+  gap: 14px;
+  padding: 13px 14px 15px;
   border-radius: 14px;
 }
 
@@ -5687,83 +5720,85 @@ button.btn-icon:hover {
 }
 
 .settings-search span {
-  font-size: 0.72rem;
+  font-size: var(--ui-text-xs);
 }
 
 .settings-shortcut {
   min-height: 30px;
   padding: 5px 11px;
-  font-size: 0.7rem;
+  font-size: 0.69rem;
 }
 
 .settings-toolbar-actions {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  gap: 8px;
 }
 
 .settings-toolbar-actions .btn-with-icon {
   justify-content: flex-start;
   min-height: 30px;
   padding-inline: 10px;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   background: rgba(255, 255, 255, 0.96);
   border-color: rgba(203, 213, 225, 0.9);
 }
 
 .settings-toolbar-overview {
-  gap: 6px;
+  gap: 8px;
 }
 
 .settings-workbench-grid {
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .settings-workbench-card {
-  padding: 10px;
-  gap: 8px;
+  padding: 12px;
+  gap: 10px;
   border-radius: 12px;
   background: var(--ui-surface-soft);
 }
 
 .settings-workbench-title {
-  font-size: 0.78rem;
+  font-size: 0.82rem;
+  line-height: 1.28;
 }
 
 .settings-workbench-meta {
-  font-size: 0.66rem;
-  line-height: 1.35;
+  font-size: 0.68rem;
+  line-height: 1.4;
 }
 
 .settings-workbench-section-grid {
-  gap: 10px;
+  gap: 12px;
 }
 
 .settings-workbench-section {
-  padding: 8px 10px;
-  gap: 6px;
+  padding: 9px 10px;
+  gap: 7px;
   border-radius: 10px;
 }
 
 .settings-workbench-section-title {
-  font-size: 0.72rem;
+  font-size: 0.74rem;
 }
 
 .settings-workbench-section-meta {
-  font-size: 0.64rem;
+  font-size: 0.66rem;
+  line-height: 1.36;
 }
 
 .settings-toolbar .form-grid label > span {
-  font-size: 0.76rem;
+  font-size: var(--ui-text-sm);
 }
 
 .settings-toolbar .toggle-row {
-  min-height: 26px;
-  font-size: 0.72rem;
+  min-height: 28px;
+  font-size: var(--ui-text-sm);
 }
 
 .settings-workbench-mini-grid .toggle-row {
-  font-size: 0.68rem;
+  font-size: var(--ui-text-xs);
 }
 
 #settings-shell .form-grid {
