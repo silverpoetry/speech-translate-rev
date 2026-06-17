@@ -1341,6 +1341,19 @@ body {
   border: 1px solid rgba(148, 163, 184, 0.16);
 }
 
+#settings-shell .import-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  align-items: stretch;
+}
+
+#settings-shell .import-actions .btn-with-icon {
+  width: 100%;
+  justify-content: center;
+  min-height: 30px;
+}
+
 #settings-shell .task-card,
 #settings-shell .about-card {
   min-height: auto;
@@ -2050,8 +2063,14 @@ button.secondary {
 
 .section-inline-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 8px;
+  min-width: 0;
+}
+
+.section-inline-head > div {
+  min-width: 0;
 }
 
 .section-inline-title {
@@ -3622,14 +3641,14 @@ button.btn-icon[data-tooltip]::before {
 .detached-workbench-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
 .detached-workbench-card {
   display: grid;
-  gap: 8px;
-  padding: 10px;
+  gap: 7px;
+  padding: 12px;
   border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 12px;
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 0.96));
@@ -3645,14 +3664,15 @@ button.btn-icon[data-tooltip]::before {
 
 .detached-workbench-action-cluster {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 
 .detached-workbench-action-group {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  padding: 5px;
+  grid-template-columns: 1fr;
+  gap: 5px;
+  padding: 6px;
   border-radius: 10px;
   background: rgba(248, 250, 252, 0.92);
   border: 1px solid rgba(148, 163, 184, 0.16);
@@ -3665,9 +3685,9 @@ button.btn-icon[data-tooltip]::before {
 .detached-workbench-action-group .btn-with-icon {
   width: 100%;
   justify-content: center;
-  min-height: 26px;
-  padding: 0 7px;
-  font-size: 0.68rem;
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 0.7rem;
 }
 
 .compact-status-row {
@@ -3683,7 +3703,7 @@ button.btn-icon[data-tooltip]::before {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 6px 8px 0;
+  padding: 5px 8px 0;
   margin: 0 -2px -2px;
   border-top: 1px solid rgba(226, 232, 240, 0.9);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(248, 250, 252, 0.92));
@@ -3710,14 +3730,14 @@ button.btn-icon[data-tooltip]::before {
 
 .detached-config-mini-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px 10px;
-  padding: 4px 0 2px;
+  gap: 6px 8px;
+  padding: 2px 0 0;
 }
 
 .detached-config-mini-grid .toggle-row {
-  min-height: 22px;
-  padding: 2px 0;
-  font-size: 0.72rem;
+  min-height: 20px;
+  padding: 1px 0;
+  font-size: 0.7rem;
 }
 
 .detached-config-mini-grid > label:not(.toggle-row) {
@@ -3848,8 +3868,8 @@ button.btn-icon[data-tooltip]::before {
 
 #tab-file .realtime-config-group {
   display: grid;
-  gap: 7px;
-  padding: 8px 9px;
+  gap: 6px;
+  padding: 9px 10px;
   border-radius: 11px;
   background: rgba(248, 250, 252, 0.9);
   border: 1px solid rgba(148, 163, 184, 0.12);
@@ -3893,6 +3913,16 @@ button.btn-icon[data-tooltip]::before {
 
 #tab-file .file-export-block {
   gap: 8px;
+}
+
+#tab-file .file-export-formats {
+  gap: 6px 8px;
+}
+
+#tab-file .file-export-formats .toggle-row,
+#tab-file .file-export-grid .toggle-row {
+  min-height: 24px;
+  font-size: 0.7rem;
 }
 
 #tab-realtime .realtime-config-panel .floating-action-row {
@@ -5508,8 +5538,8 @@ button.btn-icon:hover {
 }
 
 .file-workbench-shell {
-  grid-template-columns: minmax(0, 1.94fr) minmax(246px, 0.72fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1.7fr) minmax(286px, 0.98fr);
+  gap: 12px;
 }
 
 .file-workbench-main {
@@ -5517,8 +5547,8 @@ button.btn-icon:hover {
 }
 
 .file-ops-card {
-  padding: 11px;
-  gap: 8px;
+  padding: 12px 12px 11px;
+  gap: 7px;
   border-radius: 16px;
 }
 
@@ -5530,6 +5560,14 @@ button.btn-icon:hover {
 .file-ops-actions .btn-with-icon {
   justify-content: flex-start;
   font-size: 0.72rem;
+}
+
+.file-ops-step {
+  padding: 6px 9px;
+}
+
+.file-ops-step span {
+  font-size: 0.74rem;
 }
 
 .file-queue-box {
