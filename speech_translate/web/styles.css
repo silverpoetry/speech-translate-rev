@@ -3824,7 +3824,7 @@ button.btn-icon[data-tooltip]::before {
 }
 
 #tab-realtime .advanced-panel .advanced-panel-body {
-  padding: 10px;
+  padding: 9px;
 }
 
 #tab-realtime .realtime-config-panel {
@@ -3835,20 +3835,20 @@ button.btn-icon[data-tooltip]::before {
 }
 
 #tab-realtime .realtime-config-panel > summary {
-  padding-top: 9px;
-  padding-bottom: 9px;
+  padding-top: 8px;
+  padding-bottom: 8px;
   background: transparent;
 }
 
 #tab-realtime .realtime-config-panel .advanced-panel-body {
-  gap: 8px;
-  padding-top: 8px;
+  gap: 6px;
+  padding-top: 6px;
 }
 
 #tab-realtime .realtime-config-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
 }
 
 #tab-realtime .realtime-config-summary .pill {
@@ -3863,21 +3863,21 @@ button.btn-icon[data-tooltip]::before {
 
 #tab-realtime .realtime-config-grid {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 #tab-realtime .realtime-config-group {
   display: grid;
-  gap: 8px;
-  padding: 10px;
-  border-radius: 12px;
+  gap: 6px;
+  padding: 8px 9px;
+  border-radius: 11px;
   background: rgba(248, 250, 252, 0.88);
   border: 1px solid rgba(148, 163, 184, 0.14);
 }
 
 #tab-realtime .realtime-config-group-head {
   display: grid;
-  gap: 2px;
+  gap: 1px;
 }
 
 #tab-realtime .realtime-config-group-title {
