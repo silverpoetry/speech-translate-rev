@@ -90,6 +90,7 @@ class MainWindowControllerTests(unittest.TestCase):
         controller = MainWindowController(bridge, settings)
         bridge.window = FakeWindow()
         bridge.window._speechtranslate_target_placement = WindowPlacement(width=1140, height=680, x=180, y=120)
+        bridge.window._speechtranslate_preloaded_offscreen = True
 
         with patch("speech_translate.main_window_controller.apply_native_window_placement", return_value=True) as apply_placement:
             controller.show_main_window()
@@ -97,17 +98,30 @@ class MainWindowControllerTests(unittest.TestCase):
         apply_placement.assert_called_once()
         self.assertTrue(bridge.window.brought)
         self.assertTrue(bridge.window.shown)
+        self.assertFalse(bridge.window._speechtranslate_preloaded_offscreen)
 
-    def test_loaded_event_shows_main_window_when_startup_is_pending(self) -> None:
+    def test_preloaded_offscreen_window_does_not_hide_on_initial_shown_event(self) -> None:
         settings = FakeSettings()
         bridge = FakeBridge()
         controller = MainWindowController(bridge, settings)
-        bridge.window = FakeWindow()
+        window = FakeWindow()
+        window._speechtranslate_preloaded_offscreen = True
 
-        with patch.object(controller, "show_main_window") as show_main_window:
-            controller.on_main_window_loaded()
+        controller.on_main_window_shown(window)
 
-        show_main_window.assert_called_once()
+        self.assertFalse(window.hidden)
+
+    def test_skip_geometry_save_while_window_is_still_preloaded_offscreen(self) -> None:
+        settings = FakeSettings()
+        bridge = FakeBridge()
+        controller = MainWindowController(bridge, settings)
+        window = FakeWindow()
+        window._speechtranslate_preloaded_offscreen = True
+        bridge.window = window
+
+        controller.save_main_window_geometry()
+
+        self.assertEqual(settings.saved, {})
 
     def test_hide_main_window_to_tray_requires_tray(self) -> None:
         settings = FakeSettings()

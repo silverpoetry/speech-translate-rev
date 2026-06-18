@@ -130,8 +130,10 @@ class AppStartupControllerTests(unittest.TestCase):
         self.assertEqual((kwargs["width"], kwargs["height"]), (1140, 680))
         self.assertEqual((kwargs["x"], kwargs["y"]), (2600, 140))
         self.assertEqual(kwargs["background_color"], "#f5f5f5")
+        self.assertFalse(kwargs["hidden"])
         self.assertEqual(getattr(self.bridge.bound_window, "_speechtranslate_target_placement").x, 180)
         self.assertEqual(getattr(self.bridge.bound_window, "_speechtranslate_target_placement").y, 120)
+        self.assertTrue(getattr(self.bridge.bound_window, "_speechtranslate_preloaded_offscreen"))
 
     def test_start_disables_tray_when_flag_present(self) -> None:
         with patch(

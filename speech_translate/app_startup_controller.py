@@ -115,10 +115,11 @@ class AppStartupController:
             x=preload_x,
             y=preload_y,
             min_size=(1040, 620),
-            hidden=True,
+            hidden=False,
             background_color="#f5f5f5",
         )
         setattr(window, "_speechtranslate_target_placement", main_placement)
+        setattr(window, "_speechtranslate_preloaded_offscreen", True)
         bridge.log_startup_marker("after_create_main_window")
         bridge.bind_window(window)
         return window

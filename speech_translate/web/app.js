@@ -4624,6 +4624,16 @@ async function init() {
       throw new Error('连接 Python 桥接失败（pywebview API 未就绪）');
     }
     await startupMark('bridge_ready');
+    await startupMark('before_first_paint');
+    await nextUiTurn();
+    await nextUiTurn();
+    await startupMark('before_show_main_window');
+    try {
+      await apiCall('show_main_window');
+    } catch (error) {
+      console.debug('Show main window skipped', error);
+    }
+    await startupMark('after_show_main_window');
 
     await startupMark('before_refresh_state');
     await refreshState();
@@ -4631,7 +4641,6 @@ async function init() {
 
     updatePageScrollIndicator();
     state.initialized = true;
-    await startupMark('before_first_paint');
     await nextUiTurn();
     await nextUiTurn();
     await startupMark('init_complete');

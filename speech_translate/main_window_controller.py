@@ -55,24 +55,19 @@ class MainWindowController:
         if hasattr(window.events, "shown"):
             window.events.shown += lambda *_: self.on_main_window_shown(window)
         if hasattr(window.events, "loaded"):
-            window.events.loaded += lambda *_: self.on_main_window_loaded()
+            window.events.loaded += lambda *_: self.log_startup_marker("main_window_loaded")
         if hasattr(window.events, "closing"):
             window.events.closing += lambda *_: self.on_main_window_closing(window)
         if hasattr(window.events, "closed"):
             window.events.closed += lambda *_: self.save_main_window_geometry(force=True)
 
     def on_main_window_shown(self, window: FolderDialogWindow) -> None:
-        if not self.main_window_show_allowed:
+        if not self.main_window_show_allowed and not bool(getattr(window, "_speechtranslate_preloaded_offscreen", False)):
             try:
                 window.hide()
             except Exception:
                 pass
         self.log_startup_marker("main_window_shown")
-
-    def on_main_window_loaded(self) -> None:
-        self.log_startup_marker("main_window_loaded")
-        if not self.main_window_show_allowed:
-            self.show_main_window()
 
     def show_main_window(self) -> None:
         self.main_window_show_allowed = True
@@ -85,6 +80,7 @@ class MainWindowController:
                 apply_native_window_placement(getattr(window, "native", None), target_placement)
             except Exception:
                 logger.exception("[Startup] failed to restore main window target placement before show")
+        setattr(window, "_speechtranslate_preloaded_offscreen", False)
         try:
             window.show()
         except Exception:
@@ -144,6 +140,8 @@ class MainWindowController:
     def save_main_window_geometry(self, force: bool = False) -> None:
         window = self.bridge.get_window()
         if window is None:
+            return
+        if bool(getattr(window, "_speechtranslate_preloaded_offscreen", False)) and not self.main_window_show_allowed:
             return
         try:
             geometry = extract_window_placement(window)
