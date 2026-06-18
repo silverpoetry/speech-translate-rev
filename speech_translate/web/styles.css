@@ -4870,8 +4870,15 @@ textarea:focus {
 }
 
 .model-selection-main-actions {
+  display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.model-selection-dir-actions {
+  margin-left: auto;
 }
 
 .model-selection-kicker,
@@ -4944,7 +4951,8 @@ textarea:focus {
 
 #tab-model .model-manager-head {
   gap: 10px;
-  align-items: flex-start;
+  align-items: center;
+  flex-wrap: nowrap;
 }
 
 #tab-model .model-engine-titlebar {
@@ -4960,6 +4968,7 @@ textarea:focus {
 
 #tab-model .model-manager-tools {
   gap: 4px;
+  flex: 0 0 auto;
 }
 
 #tab-model .model-manager-tools .btn-icon {
@@ -4996,7 +5005,7 @@ textarea:focus {
 
 #tab-model .model-manager-summary-row {
   display: grid;
-  grid-template-columns: minmax(220px, 1.4fr) minmax(260px, 1.8fr) minmax(170px, 1fr) minmax(150px, 0.9fr);
+  grid-template-columns: minmax(220px, 1.55fr) minmax(280px, 1.75fr) minmax(180px, 1fr) minmax(140px, 0.82fr);
   gap: 6px 8px;
 }
 
@@ -6348,6 +6357,10 @@ button.btn-icon:hover {
 }
 
 #tab-model .model-selection-main-actions {
+  flex-wrap: nowrap;
+}
+
+#tab-model .model-selection-dir-actions {
   flex-wrap: nowrap;
 }
 

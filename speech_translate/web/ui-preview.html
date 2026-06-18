@@ -453,11 +453,13 @@
                           <span class="pill pill-muted" id="model-selection-runtime">运行：未加载</span>
                           <span class="model-selection-runtime-meta" id="model-selection-runtime-meta">加载后在这里同步当前模型</span>
                         </div>
-                        <div class="inline-actions compact-gap model-selection-main-actions">
+                        <div class="model-selection-main-actions">
                           <label class="toggle-row model-selection-inline-toggle"><input id="condition_on_previous_text" type="checkbox" />
                             使用上一次输出作为提示</label>
-                          <button type="button" class="btn-with-icon" data-action="pick-model-dir">设置模型目录</button>
-                          <button type="button" class="btn-with-icon" data-open-dir="model">打开模型目录</button>
+                          <div class="inline-actions compact-gap model-selection-dir-actions">
+                            <button type="button" class="btn-with-icon" data-action="pick-model-dir">设置模型目录</button>
+                            <button type="button" class="btn-with-icon" data-open-dir="model">打开模型目录</button>
+                          </div>
                         </div>
                       </div>
                     </div>
