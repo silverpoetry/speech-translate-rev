@@ -4986,41 +4986,25 @@ textarea:focus {
 }
 
 #tab-model .model-manager-workspace {
-  grid-template-columns: minmax(0, 1.08fr) minmax(262px, 0.82fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 
-#tab-model .model-manager-overview {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 7px;
-}
-
-#tab-model .model-manager-overview-card {
-  padding: 7px 9px;
-  border-radius: 10px;
-  gap: 2px;
-}
-
-#tab-model .model-manager-overview-label {
-  font-size: 0.6rem;
-}
-
-#tab-model .model-manager-overview-value {
-  font-size: 0.76rem;
-}
-
-#tab-model .model-manager-overview-meta {
-  font-size: 0.62rem;
-  line-height: 1.22;
+#tab-model .model-manager-topline {
+  display: grid;
+  gap: 8px;
 }
 
 #tab-model .model-manager-hint-wrap {
-  padding: 7px 8px;
-  border-radius: 10px;
+  padding: 0;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 #tab-model .model-manager-hint-wrap p {
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   line-height: 1.35;
   color: #475569;
 }
@@ -5123,7 +5107,7 @@ textarea:focus {
 
 .model-status-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
 }
 
@@ -5324,19 +5308,16 @@ textarea:focus {
   gap: 5px;
 }
 
-.model-manager-workspace {
+.model-manager-topline {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.85fr);
-  gap: 12px;
-  align-items: start;
+  gap: 10px;
 }
 
-.model-manager-side {
+.model-manager-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
-  align-content: start;
-  min-width: 0;
+  gap: 12px;
+  align-items: start;
 }
 
 .model-manager-workspace > .model-status-card {

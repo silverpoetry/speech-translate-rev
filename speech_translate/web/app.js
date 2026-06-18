@@ -2374,35 +2374,18 @@ function renderModelManagerState(data) {
   if (els.modelManagerDownloadPill) {
     els.modelManagerDownloadPill.textContent = `下载：${modelUi.download_running ? '进行中' : '空闲'}`;
   }
-  if (els.modelManagerOverviewEngine) {
-    els.modelManagerOverviewEngine.textContent = selectedEngine;
-  }
-  if (els.modelManagerOverviewEngineMeta) {
-    els.modelManagerOverviewEngineMeta.textContent = modelUi.model_dir ? `目录：${modelUi.model_dir}` : '本地缓存管理';
-  }
-  if (els.modelManagerOverviewModel) {
-    els.modelManagerOverviewModel.textContent = selectedModel;
-  }
-  if (els.modelManagerOverviewModelMeta) {
-    els.modelManagerOverviewModelMeta.textContent = `预计体积 ${selectedEstimateText}`;
-  }
-  if (els.modelManagerOverviewDownload) {
-    els.modelManagerOverviewDownload.textContent = modelUi.download_running ? '进行中' : '空闲';
-  }
-  if (els.modelManagerOverviewDownloadMeta) {
-    const missingCount = rows.filter((row) => row && row.downloaded === false).length;
-    els.modelManagerOverviewDownloadMeta.textContent = modelUi.download_running
-      ? '正在更新本地模型缓存'
-      : missingCount > 0
-        ? `仍有 ${missingCount} 个模型未下载`
-        : '暂无进行中的下载';
-  }
   if (els.modelManagerHint) {
+    const missingCount = rows.filter((row) => row && row.downloaded === false).length;
     const checked = modelUi.checked || null;
     const checkedText = checked
       ? `最近检查：${checked.model} / ${checked.engine} / ${checked.downloaded ? '已下载' : (checked.error ? `失败：${checked.error}` : '缺失')}`
       : `当前模型：${selectedModel}，预计体积 ${selectedEstimateText}。`;
-    els.modelManagerHint.textContent = `说明：当前展示 ${selectedEngine} 的全部模型。缺失项可点击下载按钮；也可以先检查当前选中模型。${checkedText}`;
+    const downloadText = modelUi.download_running
+      ? '下载进行中，列表会持续刷新。'
+      : missingCount > 0
+        ? `当前仍缺 ${missingCount} 个模型。`
+        : '当前引擎模型已全部就绪。';
+    els.modelManagerHint.textContent = `当前展示 ${selectedEngine} 的全部模型。缺失项可直接下载；左侧按钮可检查当前模型或整个引擎。${downloadText} ${checkedText}`;
   }
 
   if (els.modelStatusCard) {
@@ -2431,7 +2414,6 @@ function renderModelManagerState(data) {
           <div class="model-status-item">
             <div class="model-status-head">
               <span class="model-status-name">${escapeHtml(rowModel)}</span>
-              <span class="pill pill-muted">${escapeHtml(row.engine || '-')}</span>
             </div>
             ${downloadAction ? `<div class="model-status-value ${row.downloaded === false && !row.downloading ? 'is-missing' : ''}">${downloadAction}</div>` : ''}
             ${rowProgressHtml}
@@ -4371,12 +4353,6 @@ async function init() {
     els.modelManagerEnginePill = $('model-manager-engine-pill');
     els.modelManagerSelectionPill = $('model-manager-selection-pill');
     els.modelManagerDownloadPill = $('model-manager-download-pill');
-    els.modelManagerOverviewEngine = $('model-manager-overview-engine');
-    els.modelManagerOverviewEngineMeta = $('model-manager-overview-engine-meta');
-    els.modelManagerOverviewModel = $('model-manager-overview-model');
-    els.modelManagerOverviewModelMeta = $('model-manager-overview-model-meta');
-    els.modelManagerOverviewDownload = $('model-manager-overview-download');
-    els.modelManagerOverviewDownloadMeta = $('model-manager-overview-download-meta');
     els.fileExportDirPill = $('file-export-dir-pill');
     els.fileImportList = $('file_import_list');
     els.btnImportStart = $('btn-import-start');
