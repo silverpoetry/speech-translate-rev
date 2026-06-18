@@ -7,10 +7,15 @@ from typing import Optional
 from speech_translate.controller_protocols import MainWindowBridge, SettingsStore, TrayLike, FolderDialogWindow
 from speech_translate.log_helpers import logger
 from speech_translate.window_geometry import (
-    apply_native_window_placement,
     extract_window_placement,
     format_window_position,
     format_window_size,
+)
+from speech_translate.window_lifecycle import (
+    get_target_placement,
+    is_preloaded_window,
+    reveal_preloaded_window,
+    should_skip_preloaded_geometry_save,
 )
 
 
@@ -62,7 +67,7 @@ class MainWindowController:
             window.events.closed += lambda *_: self.save_main_window_geometry(force=True)
 
     def on_main_window_shown(self, window: FolderDialogWindow) -> None:
-        if not self.main_window_show_allowed and not bool(getattr(window, "_speechtranslate_preloaded_offscreen", False)):
+        if not self.main_window_show_allowed and not is_preloaded_window(window):
             try:
                 window.hide()
             except Exception:
@@ -74,21 +79,23 @@ class MainWindowController:
         window = self.bridge.get_window()
         if not window:
             return
-        target_placement = getattr(window, "_speechtranslate_target_placement", None)
-        if target_placement is not None:
+        if is_preloaded_window(window):
             try:
-                apply_native_window_placement(getattr(window, "native", None), target_placement)
+                reveal_preloaded_window(window, bring_to_front=True)
             except Exception:
-                logger.exception("[Startup] failed to restore main window target placement before show")
-        setattr(window, "_speechtranslate_preloaded_offscreen", False)
-        try:
-            window.show()
-        except Exception:
-            return
-        try:
-            window.bring_to_front()
-        except Exception:
-            pass
+                logger.exception("[Startup] failed to reveal preloaded main window")
+                return
+        else:
+            if get_target_placement(window) is not None:
+                logger.debug("[Startup] main window reveal target already resolved")
+            try:
+                window.show()
+            except Exception:
+                return
+            try:
+                window.bring_to_front()
+            except Exception:
+                pass
         self.log_startup_marker("main_window_shown_after_init")
 
     def hide_main_window_to_tray(self) -> dict[str, object]:
@@ -141,7 +148,7 @@ class MainWindowController:
         window = self.bridge.get_window()
         if window is None:
             return
-        if bool(getattr(window, "_speechtranslate_preloaded_offscreen", False)) and not self.main_window_show_allowed:
+        if should_skip_preloaded_geometry_save(window, show_allowed=self.main_window_show_allowed):
             return
         try:
             geometry = extract_window_placement(window)

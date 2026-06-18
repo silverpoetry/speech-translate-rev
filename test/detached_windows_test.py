@@ -3,8 +3,12 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import call, patch
+
+from speech_translate.window_geometry import WindowPlacement
+from speech_translate.window_lifecycle import WindowLifecycleState
 
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
@@ -60,7 +64,16 @@ class DetachedWindowHelpersTests(unittest.TestCase):
             webview_loader=lambda: fake_webview,
         )
 
-        window = manager.create_window("tc", x=10, y=20, width=700, height=300)
+        @contextmanager
+        def fake_preload_window_creation(_placement):
+            yield type(
+                "Plan",
+                (),
+                {"offscreen_placement": WindowPlacement(width=700, height=300, x=2610, y=140)},
+            )()
+
+        with patch("speech_translate.detached_windows.preload_window_creation", fake_preload_window_creation):
+            window = manager.create_window("tc", x=10, y=20, width=700, height=300)
 
         self.assertIsNotNone(window)
         self.assertIs(manager.windows["tc"], window)
@@ -71,8 +84,8 @@ class DetachedWindowHelpersTests(unittest.TestCase):
         self.assertNotIn("outerWidth", args[1])
         self.assertEqual(kwargs["width"], 700)
         self.assertEqual(kwargs["height"], 300)
-        self.assertEqual((kwargs["x"], kwargs["y"]), (10, 20))
-        self.assertEqual(kwargs["hidden"], True)
+        self.assertEqual((kwargs["x"], kwargs["y"]), (2610, 140))
+        self.assertEqual(kwargs["hidden"], False)
 
     def test_manager_create_window_queues_native_contract_when_no_title_bar_enabled(self) -> None:
         class EventHook:
@@ -108,7 +121,16 @@ class DetachedWindowHelpersTests(unittest.TestCase):
             webview_loader=lambda: fake_webview,
         )
 
+        @contextmanager
+        def fake_preload_window_creation(_placement):
+            yield type(
+                "Plan",
+                (),
+                {"offscreen_placement": WindowPlacement(width=700, height=300, x=2610, y=140)},
+            )()
+
         with (
+            patch("speech_translate.detached_windows.preload_window_creation", fake_preload_window_creation),
             patch(
                 "speech_translate.detached_windows.build_detached_native_contract",
                 return_value={"kind": "detached_window"},
@@ -125,22 +147,25 @@ class DetachedWindowHelpersTests(unittest.TestCase):
         build_contract.assert_called_once()
         self.assertEqual(set_contract.call_args_list, [call({"kind": "detached_window"}), call(None)])
 
-    def test_loaded_window_is_shown_after_geometry_and_config_sync(self) -> None:
+    def test_mark_window_content_ready_reveals_preloaded_window(self) -> None:
         class FakeWindow:
             def __init__(self) -> None:
                 self.events = SimpleNamespace()
                 self.native = None
-                self.show_calls = 0
-
-            def show(self) -> None:
-                self.show_calls += 1
+                self._speechtranslate_window_lifecycle = WindowLifecycleState(
+                    target_placement=WindowPlacement(width=700, height=300, x=10, y=20),
+                    offscreen_placement=WindowPlacement(width=700, height=300, x=2610, y=140),
+                )
 
         manager = DetachedWindowManager(settings=None)
         window = FakeWindow()
         manager.windows["tc"] = window
-        manager._show_loaded_window("tc")
+        manager.runtime.mark_window_loaded("tc", True)
 
-        self.assertEqual(window.show_calls, 1)
+        with patch("speech_translate.detached_windows.reveal_preloaded_window", return_value=True) as reveal_window:
+            manager.mark_window_content_ready("tc")
+
+        reveal_window.assert_called_once_with(window, bring_to_front=False)
 
     def test_normalize_detached_mode_defaults_invalid_mode(self) -> None:
         self.assertEqual(normalize_detached_mode("invalid"), "tl")

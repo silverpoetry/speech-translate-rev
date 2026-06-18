@@ -11,10 +11,16 @@ from speech_translate.log_helpers import logger
 from speech_translate.webview_runtime import load_webview_runtime
 from speech_translate.window_geometry import (
     DEFAULT_METRICS_PROVIDER,
+    WindowPlacement,
     clamp_window_position,
     logical_to_native_size,
     physical_to_logical_point,
     resolve_native_scale_factor,
+)
+from speech_translate.window_lifecycle import (
+    is_preloaded_window,
+    preload_window_creation,
+    reveal_preloaded_window,
 )
 
 
@@ -206,7 +212,10 @@ class AppTray:
         if self.panel_window is None:
             return
         try:
-            self.panel_window.show()
+            if is_preloaded_window(self.panel_window):
+                reveal_preloaded_window(self.panel_window, bring_to_front=False)
+            else:
+                self.panel_window.show()
         except Exception:
             logger.exception("Failed to show tray panel after load")
         try:
@@ -309,23 +318,25 @@ class AppTray:
         x, y = self._panel_placement(self.PANEL_WIDTH, self.PANEL_HEIGHT)
         logger.debug(f"[Tray] create_panel x={x} y={y} scale={self._screen_scale_factor():.3f}")
         _bind_tray_panel_owner(self)
-        self.panel_window = webview.create_window(
-            "Speech Translate",
-            html_path,
-            js_api=TrayPanelApi(),
-            width=self.PANEL_WIDTH,
-            height=self.PANEL_HEIGHT,
-            x=x,
-            y=y,
-            resizable=False,
-            min_size=(120, 120),
-            hidden=True,
-            frameless=True,
-            easy_drag=False,
-            shadow=True,
-            background_color="#f8fafc",
-            on_top=True,
-        )
+        requested = WindowPlacement(width=self.PANEL_WIDTH, height=self.PANEL_HEIGHT, x=x, y=y)
+        with preload_window_creation(requested) as preload_plan:
+            self.panel_window = webview.create_window(
+                "Speech Translate",
+                html_path,
+                js_api=TrayPanelApi(),
+                width=self.PANEL_WIDTH,
+                height=self.PANEL_HEIGHT,
+                x=preload_plan.offscreen_placement.x,
+                y=preload_plan.offscreen_placement.y,
+                resizable=False,
+                min_size=(120, 120),
+                hidden=False,
+                frameless=True,
+                easy_drag=False,
+                shadow=True,
+                background_color="#f8fafc",
+                on_top=True,
+            )
         self._bind_panel_events(self.panel_window)
         return self.panel_window
 

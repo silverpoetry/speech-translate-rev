@@ -33,7 +33,13 @@ from speech_translate.detached_window_settings import (
 from speech_translate.detached_window_runtime import DetachedWindowDeliveryRuntime
 from speech_translate.log_helpers import logger
 from speech_translate.webview_runtime import load_webview_runtime, set_pending_window_contract
-from speech_translate.window_geometry import WindowPlacement, apply_native_window_placement
+from speech_translate.window_geometry import WindowPlacement
+from speech_translate.window_lifecycle import (
+    is_preloaded_window,
+    preload_window_creation,
+    reveal_preloaded_window,
+    should_skip_preloaded_geometry_save,
+)
 
 
 def build_detached_config(settings_cache: Mapping[str, object], mode: object) -> JsonDict:
@@ -173,8 +179,29 @@ class DetachedWindowManager:
     def _on_window_closed(self, mode: str) -> None:
         self._drop_window_ref(mode)
 
+    def _on_recording_window_loaded(self) -> None:
+        if self.recording_window is None:
+            return
+        try:
+            if is_preloaded_window(self.recording_window):
+                reveal_preloaded_window(self.recording_window, bring_to_front=True)
+        except Exception:
+            logger.exception("Failed to reveal recording popup window")
+
+    def _attach_recording_window_events(self, window: WebviewWindowLike) -> None:
+        try:
+            if hasattr(window, "events") and hasattr(window.events, "loaded"):
+                window.events.loaded += lambda *_: self._on_recording_window_loaded()
+            if hasattr(window, "events") and hasattr(window.events, "closed"):
+                window.events.closed += lambda *_: setattr(self, "recording_window", None)
+        except Exception:
+            pass
+
     def _persist_window_geometry(self, mode: str) -> None:
-        persist_detached_window_placement(self.settings, mode, self.windows.get(mode))
+        window = self.windows.get(mode)
+        if should_skip_preloaded_geometry_save(window, show_allowed=False):
+            return
+        persist_detached_window_placement(self.settings, mode, window)
 
     def _attach_window_events(self, mode: str, window: WebviewWindowLike) -> None:
         try:
@@ -187,16 +214,17 @@ class DetachedWindowManager:
         except Exception:
             pass
 
-    def _show_loaded_window(self, mode: str) -> None:
+    def _reveal_window(self, mode: str) -> None:
         window = self.windows.get(mode)
         if window is None:
             return
+        if not is_preloaded_window(window):
+            return
         try:
-            logger.debug(f"[DetachedOpen] showing loaded window mode={mode}")
-            window.show()
-            logger.debug(f"[DetachedOpen] showed loaded window mode={mode}")
+            reveal_preloaded_window(window, bring_to_front=False)
+            logger.debug(f"[DetachedOpen] revealed detached window mode={mode}")
         except Exception:
-            logger.exception(f"[DetachedOpen] failed to show loaded window mode={mode}")
+            logger.exception(f"[DetachedOpen] failed to reveal detached window mode={mode}")
 
     def create_window(
         self,
@@ -225,6 +253,7 @@ class DetachedWindowManager:
             always_on_top = bool(create_config.get("always_on_top", 0))
             create_captionless = bool(create_config.get("no_title_bar", 0))
             self.runtime.mark_window_loaded(mode, False)
+            self.runtime.mark_window_content_ready(mode, False)
             width, height, x, y = resolve_detached_window_placement(
                 self.settings,
                 mode,
@@ -248,26 +277,26 @@ class DetachedWindowManager:
             window_url = f"{html_path}?mode={mode}"
             set_pending_window_contract(build_detached_native_contract(create_config))
             try:
-                window = webview.create_window(
-                    f"Speech Translate - {'Transcribed' if mode == 'tc' else 'Translated'}",
-                    window_url,
-                    js_api=DetachedWindowApi(self),
-                    width=width,
-                    height=height,
-                    x=x,
-                    y=y,
-                    background_color="#060b14",
-                    transparent=True,
-                    on_top=always_on_top,
-                    hidden=True,
-                    frameless=False,
-                    easy_drag=True,
-                )
+                with preload_window_creation(self._requested_placements[mode]) as preload_plan:
+                    window = webview.create_window(
+                        f"Speech Translate - {'Transcribed' if mode == 'tc' else 'Translated'}",
+                        window_url,
+                        js_api=DetachedWindowApi(self),
+                        width=width,
+                        height=height,
+                        x=preload_plan.offscreen_placement.x,
+                        y=preload_plan.offscreen_placement.y,
+                        background_color="#060b14",
+                        transparent=True,
+                        on_top=always_on_top,
+                        hidden=False,
+                        frameless=False,
+                        easy_drag=True,
+                    )
             finally:
                 set_pending_window_contract(None)
 
             self.windows[mode] = window
-            self.runtime.mark_window_content_ready(mode, False)
             self._attach_window_events(mode, window)
             logger.info(f"Created detached window: {mode}")
             logger.debug(f"[DetachedOpen] before _flush_pending mode={mode}")
@@ -283,19 +312,8 @@ class DetachedWindowManager:
     def _on_window_loaded(self, mode: str) -> None:
         self.runtime.mark_window_loaded(mode, True)
         self.runtime.mark_window_content_ready(mode, False)
-        requested = self._requested_placements.get(mode)
-        if requested is not None:
-            try:
-                apply_native_window_placement(getattr(self.windows.get(mode), "native", None), requested)
-                logger.info(
-                    f"[DetachedGeometry][normalize-loaded] mode={mode} "
-                    f"target={requested.width}x{requested.height} pos={requested.x},{requested.y}"
-                )
-            except Exception:
-                logger.exception(f"[DetachedGeometry][normalize-loaded] failed mode={mode}")
-        log_detached_window_loaded_geometry(mode, self.windows.get(mode))
+        logger.info(f"[DetachedGeometry][normalize-loaded] mode={mode} ready_for_reveal=true")
         self._flush_pending(mode, include_content=False)
-        self._show_loaded_window(mode)
 
     def mark_window_content_ready(self, mode: str) -> None:
         mode = normalize_detached_mode(mode)
@@ -311,12 +329,17 @@ class DetachedWindowManager:
             self.update_window_config(mode, self.pending_configs[mode])
         if mode in self.pending_updates:
             self.update_window_content(mode, self.pending_updates[mode])
+        self._reveal_window(mode)
+        log_detached_window_loaded_geometry(mode, self.windows.get(mode))
 
     def show_window(self, mode: str = "tc"):
         mode = normalize_detached_mode(mode)
         if mode in self.windows:
             try:
-                self.windows[mode].show()
+                if is_preloaded_window(self.windows[mode]):
+                    self._reveal_window(mode)
+                else:
+                    self.windows[mode].show()
                 self._apply_topmost(mode, focus_nudge=True)
                 logger.info(f"Showed detached window: {mode}")
             except Exception as exc:
@@ -388,11 +411,14 @@ class DetachedWindowManager:
     def create_recording_window(self, x: int = 180, y: int = 120, width: int = 520, height: int = 340):
         if self.recording_window is not None:
             try:
-                self.recording_window.show()
-                try:
-                    self.recording_window.bring_to_front()
-                except Exception:
-                    pass
+                if is_preloaded_window(self.recording_window):
+                    reveal_preloaded_window(self.recording_window, bring_to_front=True)
+                else:
+                    self.recording_window.show()
+                    try:
+                        self.recording_window.bring_to_front()
+                    except Exception:
+                        pass
             except Exception:
                 pass
             return self.recording_window
@@ -402,17 +428,21 @@ class DetachedWindowManager:
             html_path = str(Path(__file__).with_name("web") / "recording_window.html")
             assert self.bridge is not None
             recording_window_api = RecordingWindowApi(self.bridge.get_recording_state)
-            self.recording_window = webview.create_window(
-                "Speech Translate - Recording Session",
-                html_path,
-                js_api=recording_window_api,
-                width=width,
-                height=height,
-                x=x,
-                y=y,
-                background_color="#060b14",
-                on_top=True,
-            )
+            requested = WindowPlacement(width=width, height=height, x=x, y=y)
+            with preload_window_creation(requested) as preload_plan:
+                self.recording_window = webview.create_window(
+                    "Speech Translate - Recording Session",
+                    html_path,
+                    js_api=recording_window_api,
+                    width=width,
+                    height=height,
+                    x=preload_plan.offscreen_placement.x,
+                    y=preload_plan.offscreen_placement.y,
+                    background_color="#060b14",
+                    on_top=True,
+                    hidden=False,
+                )
+            self._attach_recording_window_events(self.recording_window)
             logger.info("Created recording popup window")
         except Exception as exc:
             logger.error(f"Failed to create recording popup window: {exc}")

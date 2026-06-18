@@ -7,6 +7,11 @@ from threading import local
 from typing import Literal
 
 from speech_translate.detached_window_native import apply_initial_detached_native_contract
+from speech_translate.window_lifecycle import (
+    attach_preloaded_window,
+    consume_pending_preloaded_window,
+    get_window_lifecycle_state,
+)
 
 
 _pending_window_contract = local()
@@ -39,6 +44,9 @@ def _patch_webview_runtime(webview_module) -> None:
         contract = _consume_pending_window_contract()
         if contract is not None:
             setattr(self, "_speechtranslate_native_contract", contract)
+        preload_plan = consume_pending_preloaded_window()
+        if preload_plan is not None:
+            attach_preloaded_window(self, preload_plan)
 
     window_module.Window.__init__ = patched_window_init
 
@@ -94,25 +102,17 @@ def _patch_webview_runtime(webview_module) -> None:
                 instance = list(winforms_module.BrowserView.instances.values())[0]
                 instance.Invoke(winforms_module.Func[winforms_module.Type](create_callback))
 
-        def _create_detached_contract_window(window, contract):
+        def _create_managed_window(window, contract):
             def create():
                 browser = winforms_module.BrowserView.BrowserForm(window, winforms_module.cache_dir)
                 winforms_module.BrowserView.instances[window.uid] = browser
-                window.events.before_show.set()
-
-                if window.hidden:
+                lifecycle_state = get_window_lifecycle_state(window)
+                if lifecycle_state is not None and not lifecycle_state.revealed:
                     browser.Opacity = 0
-                    browser.Show()
+                window.events.before_show.set()
+                browser.Show()
+                if contract is not None:
                     apply_initial_detached_native_contract(browser, contract)
-                    browser.Hide()
-                    browser.Opacity = 1
-                elif window.transparent and winforms_module.is_chromium:
-                    browser.Show()
-                    apply_initial_detached_native_contract(browser, contract)
-                    browser.Hide()
-                else:
-                    apply_initial_detached_native_contract(browser, contract)
-                    browser.Show()
 
                 winforms_module._main_window_created.set()
 
@@ -123,11 +123,12 @@ def _patch_webview_runtime(webview_module) -> None:
 
         def patched_create_window(window):
             contract = getattr(window, "_speechtranslate_native_contract", None)
-            if contract is None:
+            lifecycle_state = get_window_lifecycle_state(window)
+            if contract is None and lifecycle_state is None:
                 return original_create_window(window)
-            kind = str(contract.get("kind") or "")
-            if kind == "detached_window":
-                return _create_detached_contract_window(window, contract)
+            kind = str((contract or {}).get("kind") or "")
+            if lifecycle_state is not None or kind == "detached_window":
+                return _create_managed_window(window, contract)
             return original_create_window(window)
 
         winforms_module.create_window = patched_create_window

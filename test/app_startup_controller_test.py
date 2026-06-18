@@ -3,7 +3,10 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from contextlib import contextmanager
 from unittest.mock import patch
+
+from speech_translate.window_geometry import WindowPlacement
 
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
@@ -120,9 +123,17 @@ class AppStartupControllerTests(unittest.TestCase):
     def test_start_restores_saved_logical_position(self) -> None:
         self.settings.cache["mw_pos"] = "180,120"
 
+        @contextmanager
+        def fake_preload_window_creation(_placement):
+            yield type(
+                "Plan",
+                (),
+                {"offscreen_placement": WindowPlacement(width=1140, height=680, x=2600, y=140)},
+            )()
+
         with (
             patch("speech_translate.app_startup_controller.AppTray"),
-            patch("speech_translate.app_startup_controller.offscreen_window_pos", return_value=(2600, 140)),
+            patch("speech_translate.app_startup_controller.preload_window_creation", fake_preload_window_creation),
         ):
             self.controller.start(with_log_init=False, log_initializer=None)
 
@@ -131,9 +142,6 @@ class AppStartupControllerTests(unittest.TestCase):
         self.assertEqual((kwargs["x"], kwargs["y"]), (2600, 140))
         self.assertEqual(kwargs["background_color"], "#f5f5f5")
         self.assertFalse(kwargs["hidden"])
-        self.assertEqual(getattr(self.bridge.bound_window, "_speechtranslate_target_placement").x, 180)
-        self.assertEqual(getattr(self.bridge.bound_window, "_speechtranslate_target_placement").y, 120)
-        self.assertTrue(getattr(self.bridge.bound_window, "_speechtranslate_preloaded_offscreen"))
 
     def test_start_disables_tray_when_flag_present(self) -> None:
         with patch(

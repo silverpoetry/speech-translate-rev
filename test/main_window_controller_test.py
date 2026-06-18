@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from speech_translate.window_geometry import WindowPlacement
+from speech_translate.window_lifecycle import WindowLifecycleState
 
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
@@ -89,23 +90,26 @@ class MainWindowControllerTests(unittest.TestCase):
         bridge = FakeBridge()
         controller = MainWindowController(bridge, settings)
         bridge.window = FakeWindow()
-        bridge.window._speechtranslate_target_placement = WindowPlacement(width=1140, height=680, x=180, y=120)
-        bridge.window._speechtranslate_preloaded_offscreen = True
+        bridge.window._speechtranslate_window_lifecycle = WindowLifecycleState(
+            target_placement=WindowPlacement(width=1140, height=680, x=180, y=120),
+            offscreen_placement=WindowPlacement(width=1140, height=680, x=2600, y=120),
+        )
 
-        with patch("speech_translate.main_window_controller.apply_native_window_placement", return_value=True) as apply_placement:
+        with patch("speech_translate.main_window_controller.reveal_preloaded_window", return_value=True) as reveal_window:
             controller.show_main_window()
 
-        apply_placement.assert_called_once()
-        self.assertTrue(bridge.window.brought)
-        self.assertTrue(bridge.window.shown)
-        self.assertFalse(bridge.window._speechtranslate_preloaded_offscreen)
+        reveal_window.assert_called_once_with(bridge.window, bring_to_front=True)
+        self.assertFalse(bridge.window.shown)
 
-    def test_preloaded_offscreen_window_does_not_hide_on_initial_shown_event(self) -> None:
+    def test_preloaded_offscreen_window_keeps_native_window_visible_state_managed_by_runtime(self) -> None:
         settings = FakeSettings()
         bridge = FakeBridge()
         controller = MainWindowController(bridge, settings)
         window = FakeWindow()
-        window._speechtranslate_preloaded_offscreen = True
+        window._speechtranslate_window_lifecycle = WindowLifecycleState(
+            target_placement=WindowPlacement(width=1140, height=680, x=180, y=120),
+            offscreen_placement=WindowPlacement(width=1140, height=680, x=2600, y=120),
+        )
 
         controller.on_main_window_shown(window)
 
@@ -116,7 +120,10 @@ class MainWindowControllerTests(unittest.TestCase):
         bridge = FakeBridge()
         controller = MainWindowController(bridge, settings)
         window = FakeWindow()
-        window._speechtranslate_preloaded_offscreen = True
+        window._speechtranslate_window_lifecycle = WindowLifecycleState(
+            target_placement=WindowPlacement(width=1140, height=680, x=180, y=120),
+            offscreen_placement=WindowPlacement(width=1140, height=680, x=2600, y=120),
+        )
         bridge.window = window
 
         controller.save_main_window_geometry()
