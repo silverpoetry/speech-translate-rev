@@ -177,26 +177,14 @@
                     <label class="toggle-row"><input id="translate_f_import" type="checkbox" /> 翻译</label>
                   </div>
                 </div>
+                <div class="status-row import-status file-import-runtime-row" aria-label="文件处理状态">
+                  <span class="pill pill-muted" id="file-import-queue-count">队列：0</span>
+                  <span class="pill pill-muted" id="file-import-processing-state">状态：空闲</span>
+                  <span class="pill pill-muted" id="file-import-language-state">语言：未知</span>
+                  <span class="pill pill-muted" id="import-engine-pill">引擎：未知</span>
+                </div>
                 <div class="file-workbench-shell">
                   <div class="file-workbench-main">
-                    <div class="status-overview-grid file-import-overview-grid" aria-label="文件导入概览">
-                      <div class="status-overview-card">
-                        <span class="status-overview-label">队列</span>
-                        <span class="status-overview-value" id="file-import-queue-count">0</span>
-                        <span class="status-overview-meta" id="file-import-queue-meta">等待导入</span>
-                      </div>
-                      <div class="status-overview-card">
-                        <span class="status-overview-label">处理状态</span>
-                        <span class="status-overview-value" id="file-import-processing-state">空闲</span>
-                        <span class="status-overview-meta" id="file-import-processing-meta">等待任务</span>
-                      </div>
-                      <div class="status-overview-card">
-                        <span class="status-overview-label">语言</span>
-                        <span class="status-overview-value" id="file-import-language-state">未知</span>
-                        <span class="status-overview-meta">源 → 目标</span>
-                      </div>
-                    </div>
-
                     <div class="file-workspace-shell">
                       <div class="file-queue-box">
                         <div class="file-queue-section-head">
@@ -220,57 +208,41 @@
                   </div>
 
                   <aside class="file-ops-card">
-                    <div class="file-ops-head">
-                      <span class="file-ops-kicker">快速操作</span>
-                      <p class="file-ops-title">右侧集中导入、导出与过滤。</p>
-                    </div>
-                    <div class="file-ops-actions-group">
-                      <div class="inline-actions file-ops-actions file-ops-actions-primary">
-                        <button type="button" class="btn-with-icon" data-action="add-files-to-queue">导入</button>
-                        <button type="button" class="btn-with-icon" data-action="save-import-settings">保存配置</button>
-                        <button type="button" class="btn-with-icon" data-open-dir="export">打开导出</button>
-                        <button type="button" class="btn-with-icon" data-action="pick-export-dir">设置导出</button>
-                      </div>
-                      <div class="inline-actions file-ops-actions file-ops-actions-secondary">
-                        <button type="button" class="btn-with-icon" data-settings-jump="导出与切分">导出</button>
-                        <button type="button" class="btn-with-icon" data-settings-jump="幻觉过滤 (Hallucination Filter)">过滤</button>
+                    <div class="file-ops-panel-head">
+                      <div>
+                        <div class="file-ops-panel-title">输出与过滤</div>
+                        <div class="file-ops-panel-meta">保留必要操作和当前配置，不再重复堆概览卡。</div>
                       </div>
                     </div>
-                    <div class="file-ops-summary">
-                      <div class="status-overview-card status-overview-card-compact">
-                        <span class="status-overview-label">导出目录</span>
-                        <span class="status-overview-value" id="file-import-export-dir">auto</span>
-                        <span class="status-overview-meta" id="file-import-export-meta">输出设置</span>
-                      </div>
-                      <div class="status-overview-card status-overview-card-compact">
-                        <span class="status-overview-label">导出命名</span>
-                        <span class="status-overview-value" id="file-import-export-format">未设置</span>
-                        <span class="status-overview-meta" id="file-import-export-format-meta">TXT / SRT / VTT ...</span>
-                      </div>
+                    <div class="inline-actions file-ops-actions file-ops-actions-primary">
+                      <button type="button" class="btn-with-icon" data-action="add-files-to-queue">导入</button>
+                      <button type="button" class="btn-with-icon" data-action="pick-export-dir">设置导出</button>
+                      <button type="button" class="btn-with-icon" data-open-dir="export">打开导出</button>
+                      <button type="button" class="btn-with-icon" data-action="save-import-settings">保存配置</button>
                     </div>
-                    <div class="file-ops-summary file-ops-summary-secondary">
-                      <div class="status-overview-card status-overview-card-compact">
-                        <span class="status-overview-label">文件切片</span>
-                        <span class="status-overview-value" id="file-import-slice-range">全量</span>
-                        <span class="status-overview-meta" id="file-import-slice-meta">Split / Newline</span>
+                    <div class="file-ops-detail-list" aria-label="文件输出与过滤摘要">
+                      <div class="file-ops-detail-row">
+                        <span class="file-ops-detail-key">导出目录</span>
+                        <span class="file-ops-detail-value" id="file-import-export-dir">auto</span>
+                        <span class="file-ops-detail-meta" id="file-import-export-meta">输出设置</span>
                       </div>
-                      <div class="status-overview-card status-overview-card-compact">
-                        <span class="status-overview-label">导入过滤</span>
-                        <span class="status-overview-value" id="file-import-filter-state">已启用</span>
-                        <span class="status-overview-meta" id="file-import-filter-meta">词典 auto</span>
+                      <div class="file-ops-detail-row">
+                        <span class="file-ops-detail-key">导出命名</span>
+                        <span class="file-ops-detail-value" id="file-import-export-format">未设置</span>
+                        <span class="file-ops-detail-meta" id="file-import-export-format-meta">TXT / SRT / VTT ...</span>
                       </div>
-                    </div>
-                    <div class="file-ops-steps" aria-label="文件处理步骤">
-                      <div class="file-ops-step"><strong>1</strong><span>导入并检查队列。</span></div>
-                      <div class="file-ops-step"><strong>2</strong><span>确认输出与过滤配置。</span></div>
-                      <div class="file-ops-step"><strong>3</strong><span>按右侧摘要启动处理。</span></div>
+                      <div class="file-ops-detail-row">
+                        <span class="file-ops-detail-key">文件切片</span>
+                        <span class="file-ops-detail-value" id="file-import-slice-range">全量</span>
+                        <span class="file-ops-detail-meta" id="file-import-slice-meta">Split / Newline</span>
+                      </div>
+                      <div class="file-ops-detail-row">
+                        <span class="file-ops-detail-key">导入过滤</span>
+                        <span class="file-ops-detail-value" id="file-import-filter-state">已启用</span>
+                        <span class="file-ops-detail-meta" id="file-import-filter-meta">词典 auto</span>
+                      </div>
                     </div>
                   </aside>
-                </div>
-
-                <div class="status-row import-status core-status-bottom">
-                  <span class="pill pill-muted" id="import-lang-pill">语言</span>
-                  <span class="pill pill-muted" id="import-engine-pill">引擎</span>
                 </div>
               </section>
 

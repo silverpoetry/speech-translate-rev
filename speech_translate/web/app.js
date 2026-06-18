@@ -1199,10 +1199,11 @@ function renderImportSettings(data) {
   els.transcribeImport.checked = Boolean(importUi.transcribe);
   els.translateImport.checked = Boolean(importUi.translate);
   els.importModelPill.textContent = `模型：${importUi.selected_model_key || importUi.selected_model || '未下载'}`;
-  els.importEnginePill.textContent = `引擎：${importUi.selected_engine || '未知'}`;
-  els.importLangPill.textContent = `语言：${importUi.selected_source || '自动'} → ${importUi.selected_target || '自动'}`;
+  if (els.importEnginePill) {
+    els.importEnginePill.textContent = `引擎：${importUi.selected_engine || '未知'}`;
+  }
   if (els.fileImportLanguageState) {
-    els.fileImportLanguageState.textContent = `${importUi.selected_source || '自动'} → ${importUi.selected_target || '自动'}`;
+    els.fileImportLanguageState.textContent = `语言：${importUi.selected_source || '自动'} → ${importUi.selected_target || '自动'}`;
   }
   if (els.fileImportExportDir) {
     const exportDir = settings.dir_export ?? 'auto';
@@ -1413,21 +1414,19 @@ function renderFileImportProcessingOverview() {
   const failed = Number(processing.files_failed || 0) || 0;
 
   if (els.fileImportQueueCount) {
-    els.fileImportQueueCount.textContent = String(total);
-  }
-  if (els.fileImportQueueMeta) {
-    els.fileImportQueueMeta.textContent = total > 0 ? `已完成 ${completed} / ${total}` : '等待导入';
+    els.fileImportQueueCount.textContent = total > 0
+      ? `队列：${total}，完成 ${completed}`
+      : '队列：0';
   }
   if (els.fileImportProcessingState) {
-    els.fileImportProcessingState.textContent = active ? '处理中' : (total > 0 ? '已停止' : '空闲');
-  }
-  if (els.fileImportProcessingMeta) {
     if (active) {
-      els.fileImportProcessingMeta.textContent = `进度 ${completed} / ${total}`;
+      els.fileImportProcessingState.textContent = failed > 0
+        ? `状态：处理中，失败 ${failed}`
+        : `状态：处理中，剩余 ${Math.max(total - completed, 0)}`;
     } else if (failed > 0) {
-      els.fileImportProcessingMeta.textContent = `失败 ${failed} 个`;
+      els.fileImportProcessingState.textContent = `状态：失败 ${failed}`;
     } else {
-      els.fileImportProcessingMeta.textContent = total > 0 ? '等待下一次处理' : '等待任务';
+      els.fileImportProcessingState.textContent = total > 0 ? '状态：待启动' : '状态：空闲';
     }
   }
 }
@@ -4252,7 +4251,6 @@ async function init() {
     els.translateImport = $('translate_f_import');
     els.importModelPill = $('import-model-pill');
     els.importEnginePill = $('import-engine-pill');
-    els.importLangPill = $('import-lang-pill');
     els.modelManagerEngineBar = $('model-manager-engine-bar');
     els.modelManagerDirPill = $('model-manager-dir-pill');
     els.modelManagerSelectionPill = $('model-manager-selection-pill');
@@ -4281,9 +4279,7 @@ async function init() {
     els.modelSelectionRuntime = $('model-selection-runtime');
     els.modelSelectionRuntimeMeta = $('model-selection-runtime-meta');
     els.fileImportQueueCount = $('file-import-queue-count');
-    els.fileImportQueueMeta = $('file-import-queue-meta');
     els.fileImportProcessingState = $('file-import-processing-state');
-    els.fileImportProcessingMeta = $('file-import-processing-meta');
     els.fileImportLanguageState = $('file-import-language-state');
     els.fileImportExportDir = $('file-import-export-dir');
     els.fileImportExportMeta = $('file-import-export-meta');
