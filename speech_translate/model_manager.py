@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import os
 from threading import Thread
-from time import sleep
 from typing import Dict, Optional
 
-from speech_translate.controller_settings import build_runtime_model_load_settings
 from speech_translate.controller_protocols import JsonDict, ModelManagerBridge, SettingsStore, WhisperLoadApiGetter
 from speech_translate.log_helpers import logger
-from speech_translate.ui_protocol import TASK_SOURCE_MODEL_DOWNLOAD, TASK_SOURCE_MODEL_LOAD
-from speech_translate.utils.whisper.download_runtime import TaskReporter
+from speech_translate.model_manager_runtime import RuntimeModelStateMachine, estimate_whisper_model_bytes
+from speech_translate.ui_protocol import UI_SECTION_TASK
+from speech_translate.model_manager_workflows import (
+    ModelDownloadRequest,
+    ModelDownloadService,
+    RuntimeModelLoadRequest,
+    RuntimeModelLoadService,
+)
 from speech_translate.utils.whisper.paths import get_default_download_root
 from speech_translate.utils.whisper.helper import model_select_dict, model_values
 
@@ -36,39 +40,59 @@ class ModelManagerController:
         self.whisper_download_getter = whisper_download_getter
         self.model_status_cache: Dict[str, JsonDict] = {}
         self.model_download_running = False
-        self.model_load_running = False
-        self.runtime_model_key = self.normalize_model_key(str(settings.cache.get("model_f_import", "")))
-        self.runtime_model_loaded = False
-        self.runtime_model_message = "模型未预加载"
-        self.runtime_model_started_at = 0.0
+        self._runtime_model = RuntimeModelStateMachine(
+            normalize_model_key=self.normalize_model_key,
+            key=self.normalize_model_key(str(settings.cache.get("model_mw", ""))),
+        )
         self.model_manager_engine = "whisper"
         self.model_manager_model = "small"
+        self.download_service = ModelDownloadService(
+            bridge,
+            whisper_download_getter=self.whisper_download_getter,
+            verify_model_status=self.verify_model_status,
+            cache_model_status=self.cache_model_status,
+            resolve_model_dir=self.resolve_model_dir,
+        )
+        self.runtime_load_service = RuntimeModelLoadService(
+            bridge,
+            whisper_loader_getter=self.whisper_loader_getter,
+            normalize_engine_name=self.normalize_engine_name,
+            get_settings_snapshot=self.bridge.get_settings_snapshot,
+        )
 
-    def _set_runtime_model_state(
-        self,
-        *,
-        model_key: Optional[str] = None,
-        loaded: bool,
-        loading: bool,
-        message: str,
-    ) -> None:
-        if model_key is not None:
-            self.runtime_model_key = self.normalize_model_key(str(model_key))
-        self.runtime_model_loaded = bool(loaded)
-        self.model_load_running = bool(loading)
-        self.runtime_model_message = str(message)
-        if loading:
-            if self.runtime_model_started_at <= 0:
-                from time import time as _time
+    @property
+    def runtime_model_key(self) -> str:
+        return self._runtime_model.key
 
-                self.runtime_model_started_at = _time()
-        else:
-            self.runtime_model_started_at = 0.0
+    @runtime_model_key.setter
+    def runtime_model_key(self, value: str) -> None:
+        self._runtime_model.key = self.normalize_model_key(str(value))
 
-    def _resolve_runtime_model_message(self, normalized_key: str, *, loaded: bool, message: Optional[str]) -> str:
-        if message:
-            return message
-        return f"Model ready: {normalized_key}" if loaded else f"Loading model cache for {normalized_key}"
+    @property
+    def runtime_model_loaded(self) -> bool:
+        return self._runtime_model.loaded
+
+    @runtime_model_loaded.setter
+    def runtime_model_loaded(self, value: bool) -> None:
+        self._runtime_model.loaded = bool(value)
+
+    @property
+    def model_load_running(self) -> bool:
+        return self._runtime_model.loading
+
+    @model_load_running.setter
+    def model_load_running(self, value: bool) -> None:
+        self._runtime_model.loading = bool(value)
+        if not self._runtime_model.loading:
+            self._runtime_model.started_at = 0.0
+
+    @property
+    def runtime_model_message(self) -> str:
+        return self._runtime_model.message
+
+    @runtime_model_message.setter
+    def runtime_model_message(self, value: str) -> None:
+        self._runtime_model.message = str(value)
 
     def resolve_model_dir(self) -> str:
         configured = self.settings.cache.get("dir_model", "auto")
@@ -77,6 +101,9 @@ class ModelManagerController:
     def get_model_manager_keys(self) -> list[str]:
         base_models = ["tiny", "base", "small", "medium", "large-v1", "large-v2", "large-v3"]
         return [model if "large" in model else f"{model}.en" for model in base_models] + base_models
+
+    def estimate_total_whisper_bytes(self, model_key: str) -> int:
+        return estimate_whisper_model_bytes(model_key, normalize_model_key=self.normalize_model_key)
 
     def normalize_model_key(self, value: str) -> str:
         if value in model_select_dict:
@@ -136,6 +163,19 @@ class ModelManagerController:
     def clear_model_status_cache(self) -> None:
         self.model_status_cache.clear()
 
+    def is_runtime_model_loading(self) -> bool:
+        return self.model_load_running
+
+    def set_runtime_model_loading(self, loading: bool) -> None:
+        self.model_load_running = loading
+
+    def is_runtime_model_ready(self, model_key: str | None = None) -> bool:
+        if not self.runtime_model_loaded:
+            return False
+        if model_key is None:
+            return True
+        return self.runtime_model_key == self.normalize_model_key(str(model_key))
+
     def _normalize_engine_scope(self, engine: Optional[str]) -> str:
         engine_name = str(engine or self.model_manager_engine or "whisper").strip().lower()
         return engine_name if engine_name in {"whisper", "faster-whisper"} else "whisper"
@@ -162,26 +202,19 @@ class ModelManagerController:
                 )
         return rows
 
-    def _build_download_reporter(self) -> TaskReporter:
-        return TaskReporter(
-            reset_task_state=lambda _title: None,
-            update_task_message=lambda message: self.bridge.update_task_message(message, source=TASK_SOURCE_MODEL_DOWNLOAD),
-            update_task_progress=lambda value: self.bridge.update_task_progress(value, source=TASK_SOURCE_MODEL_DOWNLOAD),
-            finish_task=lambda _message: None,
-            update_task_error=lambda _message: None,
-        )
-
     def build_model_manager_state(self, engine_hint: Optional[str] = None, include_both: bool = False) -> JsonDict:
         self.model_manager_engine = self._normalize_engine_scope(engine_hint)
         models = self.get_model_manager_keys()
         self.model_manager_model = self._normalize_model_scope(self.model_manager_model)
         rows = self._build_model_rows(["whisper", "faster-whisper"] if include_both else [self.model_manager_engine], models)
+        selected_model_estimate_bytes = self.estimate_total_whisper_bytes(self.model_manager_model)
 
         return {
             "engine_options": ["whisper", "faster-whisper"],
             "model_options": models,
             "selected_engine": self.model_manager_engine,
             "selected_model": self.model_manager_model,
+            "selected_model_estimate_bytes": selected_model_estimate_bytes,
             "model_dir": self.resolve_model_dir(),
             "download_running": self.model_download_running,
             "view_scope": "both" if include_both else "selected",
@@ -189,19 +222,10 @@ class ModelManagerController:
         }
 
     def build_runtime_model_state(self) -> JsonDict:
-        loaded = bool(self.runtime_model_loaded)
-        elapsed = 0.0
-        if self.model_load_running and self.runtime_model_started_at > 0:
-            from time import time as _time
+        return self._runtime_model.build_state()
 
-            elapsed = max(0.0, _time() - self.runtime_model_started_at)
-        return {
-            "key": self.runtime_model_key,
-            "loading": bool(self.model_load_running) and not loaded,
-            "loaded": loaded,
-            "message": self.runtime_model_message,
-            "elapsed_seconds": elapsed,
-        }
+    def _emit_runtime_model_update(self) -> None:
+        self.bridge.emit_ui_update([UI_SECTION_TASK])
 
     def get_model_manager_state(self, engine: Optional[str] = None) -> JsonDict:
         if engine is not None:
@@ -212,37 +236,16 @@ class ModelManagerController:
         return self.build_runtime_model_state()
 
     def mark_runtime_model_pending(self, model_key: str, *, loaded: bool = False, message: Optional[str] = None) -> None:
-        normalized_key = self.normalize_model_key(str(model_key))
-        self._set_runtime_model_state(
-            model_key=normalized_key,
-            loaded=bool(loaded),
-            loading=not bool(loaded),
-            message=self._resolve_runtime_model_message(
-                normalized_key,
-                loaded=bool(loaded),
-                message=message,
-            ),
-        )
+        self._runtime_model.mark_pending(model_key, loaded=loaded, message=message)
+        self._emit_runtime_model_update()
 
     def mark_runtime_model_ready(self, model_key: Optional[str] = None, *, message: Optional[str] = None) -> None:
-        normalized_key = self.normalize_model_key(str(model_key or self.runtime_model_key))
-        self._set_runtime_model_state(
-            model_key=normalized_key,
-            loaded=True,
-            loading=False,
-            message=self._resolve_runtime_model_message(
-                normalized_key,
-                loaded=True,
-                message=message,
-            ),
-        )
+        self._runtime_model.mark_ready(model_key, message=message)
+        self._emit_runtime_model_update()
 
     def mark_runtime_model_failed(self, message: str) -> None:
-        self._set_runtime_model_state(
-            loaded=False,
-            loading=False,
-            message=str(message),
-        )
+        self._runtime_model.mark_failed(message)
+        self._emit_runtime_model_update()
 
     def check_model(self, model_key: str, engine: str = "whisper") -> JsonDict:
         self.model_manager_engine = self._normalize_engine_scope(engine)
@@ -280,69 +283,21 @@ class ModelManagerController:
 
         self.model_manager_engine = engine
         self.model_manager_model = self._normalize_model_scope(model_key)
+        selected_model = self.model_manager_model
 
         def worker():
             self.model_download_running = True
             try:
-                whisper_download_api = self.whisper_download_getter()
-                model_dir = self.resolve_model_dir()
-                os.makedirs(model_dir, exist_ok=True)
-                self.bridge.reset_task_state("Model Download")
-                self.bridge.update_task_message(f"Preparing download for {self.model_manager_model} ({engine})", source=TASK_SOURCE_MODEL_DOWNLOAD)
-                self.bridge.update_task_progress(5, source=TASK_SOURCE_MODEL_DOWNLOAD)
-
-                self.cache_model_status(engine, self.model_manager_model, False, downloading=True, progress=5, speed="-")
-
-                success = whisper_download_api.download_model(
-                    self.model_manager_model,
-                    use_faster_whisper=(engine == "faster-whisper"),
-                    download_root=model_dir,
-                    reporter=self._build_download_reporter(),
-                    progress_floor=5.0,
-                    progress_ceiling=90.0,
-                    progress_callback=lambda snapshot: self.cache_model_status(
-                        engine,
-                        self.model_manager_model,
-                        False,
-                        downloading=True,
-                        progress=snapshot.progress,
-                        speed=snapshot.speed_text,
-                    ),
-                )
-                if not success:
-                    raise RuntimeError("Download failed")
-
-                self.bridge.update_task_progress(90, source=TASK_SOURCE_MODEL_DOWNLOAD)
-                downloaded = False
-                error = ""
-                for _ in range(8):
-                    if downloaded := self.verify_model_status(engine, self.model_manager_model, model_dir)[0]:
-                        break
-                    sleep(0.5)
-
-                self.cache_model_status(
-                    engine,
-                    self.model_manager_model,
-                    downloaded,
-                    error,
-                    downloading=False,
-                    progress=100.0 if downloaded else 0.0,
-                    speed="-",
-                )
-                if not downloaded:
-                    raise RuntimeError(error or "Verification failed")
-
-                self.bridge.update_task_progress(100, source=TASK_SOURCE_MODEL_DOWNLOAD)
-                self.bridge.finish_task(f"Model downloaded: {self.model_manager_model} ({engine})")
+                self.download_service.run(ModelDownloadRequest(model_key=selected_model, engine=engine))
             except Exception as exc:
                 logger.exception(exc)
-                self.cache_model_status(engine, self.model_manager_model, False, str(exc), downloading=False)
+                self.cache_model_status(engine, selected_model, False, str(exc), downloading=False)
                 self.bridge.update_task_error(str(exc))
             finally:
                 self.model_download_running = False
 
         Thread(target=worker, daemon=True).start()
-        return {"ok": True, "message": "Model download started", "model": self.model_manager_model, "engine": engine}
+        return {"ok": True, "message": "Model download started", "model": selected_model, "engine": engine}
 
     def load_runtime_model(self, model_key: str) -> JsonDict:
         model_key = self._normalize_model_scope(model_key)
@@ -355,62 +310,7 @@ class ModelManagerController:
 
         def worker():
             try:
-                whisper_load_api = self.whisper_loader_getter()
-                load_settings = build_runtime_model_load_settings(
-                    self.bridge.get_settings_snapshot(),
-                    model_key=model_key,
-                    normalize_engine_name=self.normalize_engine_name,
-                )
-
-                self.bridge.reset_task_state("Model Load")
-                self.bridge.update_task_message(f"Loading model cache for {model_key}", source=TASK_SOURCE_MODEL_LOAD)
-                self.bridge.update_task_progress(5, source=TASK_SOURCE_MODEL_LOAD)
-                self.bridge.update_task_message(
-                    f"Preparing model arguments for {model_key}",
-                    source=TASK_SOURCE_MODEL_LOAD,
-                )
-
-                model_args = whisper_load_api.get_model_args(load_settings.snapshot)
-                self.bridge.update_task_progress(15, source=TASK_SOURCE_MODEL_LOAD)
-                self.bridge.update_task_message(
-                    f"Checking model cache for {model_key}",
-                    source=TASK_SOURCE_MODEL_LOAD,
-                )
-
-                bundle_cached = whisper_load_api.is_model_bundle_cached(
-                    load_settings.transcribe_enabled,
-                    load_settings.translate_enabled,
-                    load_settings.tl_engine_whisper,
-                    load_settings.model_key,
-                    load_settings.engine,
-                    load_settings.snapshot,
-                    **model_args,
-                )
-                if bundle_cached:
-                    self.bridge.update_task_progress(80, source=TASK_SOURCE_MODEL_LOAD)
-                    self.bridge.update_task_message(
-                        f"Using cached runtime bundle for {model_key}",
-                        source=TASK_SOURCE_MODEL_LOAD,
-                    )
-                else:
-                    self.bridge.update_task_progress(35, source=TASK_SOURCE_MODEL_LOAD)
-                    self.bridge.update_task_message(
-                        f"Loading model into runtime memory for {model_key}",
-                        source=TASK_SOURCE_MODEL_LOAD,
-                    )
-
-                whisper_load_api.get_model(
-                    load_settings.transcribe_enabled,
-                    load_settings.translate_enabled,
-                    load_settings.tl_engine_whisper,
-                    load_settings.model_key,
-                    load_settings.engine,
-                    load_settings.snapshot,
-                    **model_args,
-                )
-
-                self.bridge.update_task_progress(100, source=TASK_SOURCE_MODEL_LOAD)
-                self.bridge.finish_task(f"Model ready: {model_key}")
+                self.runtime_load_service.run(RuntimeModelLoadRequest(model_key=model_key))
                 self.mark_runtime_model_ready(model_key)
             except Exception as exc:
                 logger.exception(exc)
@@ -423,73 +323,7 @@ class ModelManagerController:
         return {"ok": True, "message": "Model loading started", "model": model_key}
 
     def handle_task_message(self, message: str, source: str = "general") -> None:
-        source_text = str(source or "general").strip().lower()
-        text = str(message or "").strip()
-        if not text:
-            return
-
-        if source_text == "model-download":
-            return
-
-        lowered = text.lower()
-        if source_text == "model-load":
-            if lowered.startswith("preparing model arguments for"):
-                self.mark_runtime_model_pending(self.runtime_model_key, message=text)
-                return
-            if lowered.startswith("checking model cache for"):
-                self.mark_runtime_model_pending(self.runtime_model_key, message=text)
-                return
-            if lowered.startswith("using cached runtime bundle for"):
-                self.mark_runtime_model_pending(self.runtime_model_key, message=text)
-                return
-            if lowered.startswith("loading model into runtime memory for"):
-                self.mark_runtime_model_pending(self.runtime_model_key, message=text)
-                return
-            if lowered.startswith("loading model") or lowered.startswith("loading model cache for"):
-                if ":" in text:
-                    candidate = text.split(":", 1)[1].strip()
-                elif lowered.startswith("loading model cache for "):
-                    candidate = text[len("Loading model cache for ") :].strip()
-                else:
-                    candidate = self.runtime_model_key
-                self.mark_runtime_model_pending(candidate or self.runtime_model_key)
-                return
-            if lowered.startswith("model ready:") or lowered.startswith("model loaded:"):
-                candidate = text.split(":", 1)[1].strip() if ":" in text else self.runtime_model_key
-                self.mark_runtime_model_ready(candidate or self.runtime_model_key)
-                return
-            if lowered.startswith("model load failed"):
-                self.mark_runtime_model_failed(text)
-                return
-
-        if lowered.startswith("loading model and preparing pipeline"):
-            if not self.runtime_model_loaded:
-                self.mark_runtime_model_pending(self.runtime_model_key)
-            else:
-                self.mark_runtime_model_ready(self.runtime_model_key)
-            return
-        if lowered.startswith("loading model:") or lowered.startswith("loading model cache for"):
-            candidate = text.split(":", 1)[1].strip() if ":" in text else ""
-            next_key = self.normalize_model_key(candidate) if candidate else self.runtime_model_key
-            if self.runtime_model_loaded and next_key and self.runtime_model_key == next_key:
-                self.mark_runtime_model_ready(self.runtime_model_key)
-            else:
-                self.mark_runtime_model_pending(next_key)
-            return
-        if lowered.startswith("model loaded:") or lowered.startswith("model ready:"):
-            ready_key = self.normalize_model_key(text.split(":", 1)[1].strip() if ":" in text else self.runtime_model_key)
-            self.mark_runtime_model_ready(ready_key)
-            return
-        if lowered.startswith("model load failed"):
-            self.mark_runtime_model_failed(text)
+        self._runtime_model.handle_task_message(message, source=source)
 
     def handle_recording_status(self, payload: JsonDict) -> None:
-        status_text = str(payload.get("status", "")).lower()
-        if "initializing" in status_text:
-            if self.runtime_model_key:
-                self.mark_runtime_model_pending(self.runtime_model_key)
-        elif any(fragment in status_text for fragment in ["recording", "transcrib", "translat"]):
-            if self.runtime_model_key:
-                self.mark_runtime_model_ready(self.runtime_model_key)
-        elif "stopped" in status_text:
-            self.model_load_running = False
+        self._runtime_model.handle_recording_status(payload)

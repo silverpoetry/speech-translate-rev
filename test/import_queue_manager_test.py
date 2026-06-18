@@ -8,10 +8,11 @@ from unittest.mock import patch
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
-from speech_translate.import_queue_manager import ImportQueueController, ImportQueueProcessRuntime, ImportQueueRuntimeBindings
+from speech_translate.import_queue_manager import ImportQueueController
+from speech_translate.import_queue_runtime import ImportQueueProcessRuntime, ImportQueueRuntimeBindings
 from speech_translate.bridge_runtime_state import BridgeFileRuntime, BridgeRecordingRuntime, BridgeVisualRuntime
 from speech_translate.ui_protocol import TASK_SOURCE_IMPORT, UI_SECTION_IMPORT
-from speech_translate.utils.audio.file import FileProcessDependencies, FileProcessRequest
+from speech_translate.utils.audio.file_api import FileProcessDependencies, FileProcessRequest
 
 
 class FakeSettings:
@@ -32,7 +33,6 @@ class FakeBridge:
     TL_ENGINE_TARGET_DICT_REF = {"Google Translate": ["Chinese"]}
 
     def __init__(self) -> None:
-        self.model_manager_controller = FakeModelManager()
         self.updates = []
         self.window = None
         self.bound_headless = 0
@@ -51,12 +51,6 @@ class FakeBridge:
 
     def emit_ui_update(self, sections):
         self.updates.append(("emit", tuple(sections)))
-
-    def get_recording_state(self):
-        return {"active": False}
-
-    def wait_recording_idle(self, timeout_s: float = 12.0) -> bool:
-        return True
 
     def get_window(self):
         return self.window
@@ -98,6 +92,15 @@ class FakeModelManager:
         self.runtime_model_loaded = True
         self.model_load_running = False
 
+    def is_runtime_model_loading(self) -> bool:
+        return self.model_load_running
+
+    def set_runtime_model_loading(self, loading: bool) -> None:
+        self.model_load_running = bool(loading)
+
+    def is_runtime_model_ready(self, model_key: str | None = None) -> bool:
+        return bool(self.runtime_model_loaded) and (model_key is None or self.runtime_model_key == model_key)
+
     def normalize_engine_name(self, value: str) -> str:
         return value
 
@@ -109,6 +112,21 @@ class FakeModelManager:
 
     def is_model_available_for_backend(self, model_key: str, backend: str, model_dir: str) -> bool:
         return model_key == "small"
+
+
+class FakeRecordingController:
+    def __init__(self) -> None:
+        self.idle = True
+        self.state = {"active": False}
+        self.calls = []
+
+    def wait_recording_idle(self, timeout_s: float = 12.0) -> bool:
+        self.calls.append(("wait_recording_idle", timeout_s))
+        return self.idle
+
+    def get_recording_state(self):
+        self.calls.append(("get_recording_state",))
+        return dict(self.state)
 
 
 class FakeProcessRuntime:
@@ -159,6 +177,8 @@ class ImportQueueControllerTests(unittest.TestCase):
         self.bridge = FakeBridge()
         self.settings = FakeSettings()
         self.bridge.settings_snapshot = self.settings.cache
+        self.model_manager = FakeModelManager()
+        self.recording_controller = FakeRecordingController()
         self.process_runtime = FakeProcessRuntime()
         self.runtime_bindings = ImportQueueRuntimeBindings(
             recording_state=BridgeRecordingRuntime(),
@@ -169,7 +189,8 @@ class ImportQueueControllerTests(unittest.TestCase):
             self.bridge,
             self.settings,
             lambda: None,
-            self.bridge.model_manager_controller,
+            self.recording_controller,
+            self.model_manager,
             runtime_bindings=self.runtime_bindings,
             process_runtime=self.process_runtime,
         )
@@ -206,8 +227,9 @@ class ImportQueueControllerTests(unittest.TestCase):
 
     def test_build_import_ui_uses_available_models(self) -> None:
         payload = self.controller.build_import_ui(verify_available=True)
-        self.assertEqual(payload["selected_model"], "")
-        self.assertIn("small", payload["selected_model_key"] or "small")
+        self.assertEqual(payload["selected_model"], "small")
+        self.assertEqual(payload["selected_model_key"], "small")
+        self.assertEqual(payload["selected_model_label"], "⛵ Small [2GB VRAM] (Moderate)")
 
     def test_extract_files_to_process_skips_completed_entries(self) -> None:
         self.controller.file_import_queue = [
@@ -232,15 +254,15 @@ class ImportQueueControllerTests(unittest.TestCase):
         self.assertTrue(any(update[0] == "message" and update[1] == TASK_SOURCE_IMPORT for update in self.bridge.updates))
 
     def test_start_import_queue_uses_engine_name_and_prepares_runtime_model(self) -> None:
-        previous_runtime_loaded = self.bridge.model_manager_controller.runtime_model_loaded
-        previous_runtime_key = self.bridge.model_manager_controller.runtime_model_key
-        previous_model_load_running = self.bridge.model_manager_controller.model_load_running
+        previous_runtime_loaded = self.model_manager.runtime_model_loaded
+        previous_runtime_key = self.model_manager.runtime_model_key
+        previous_model_load_running = self.model_manager.model_load_running
         previous_start_worker = self.controller._start_import_worker
         captured = {}
         try:
-            self.bridge.model_manager_controller.runtime_model_loaded = True
-            self.bridge.model_manager_controller.runtime_model_key = "small"
-            self.bridge.model_manager_controller.model_load_running = False
+            self.model_manager.runtime_model_loaded = True
+            self.model_manager.runtime_model_key = "small"
+            self.model_manager.model_load_running = False
             self.controller.file_import_queue = [{"path": "a.wav", "name": "a.wav", "status": "Waiting", "is_completed": False}]
             self.controller._start_import_worker = lambda *, context: captured.update(
                 {"engine": context.engine, "model": context.model_name_tc, "prepare": context.should_prepare_runtime_model}
@@ -249,16 +271,16 @@ class ImportQueueControllerTests(unittest.TestCase):
             self.settings.cache["model_f_import"] = "small"
             result = self.controller.start_import_queue()
         finally:
-            self.bridge.model_manager_controller.runtime_model_loaded = previous_runtime_loaded
-            self.bridge.model_manager_controller.runtime_model_key = previous_runtime_key
-            self.bridge.model_manager_controller.model_load_running = previous_model_load_running
+            self.model_manager.runtime_model_loaded = previous_runtime_loaded
+            self.model_manager.runtime_model_key = previous_runtime_key
+            self.model_manager.model_load_running = previous_model_load_running
             self.controller._start_import_worker = previous_start_worker
 
         self.assertTrue(result["ok"])
         self.assertEqual(captured["engine"], "Selenium Chrome Translate")
         self.assertEqual(captured["model"], "small")
         self.assertTrue(captured["prepare"])
-        self.assertEqual(self.bridge.model_manager_controller.ready_calls[-1][0], "small")
+        self.assertEqual(self.model_manager.ready_calls[-1][0], "small")
 
     def test_start_import_queue_closes_selenium_when_configured(self) -> None:
         previous_shutdown = self.controller.shutdown_selenium_fn
@@ -284,7 +306,7 @@ class ImportQueueControllerTests(unittest.TestCase):
 
     def test_start_import_worker_passes_typed_file_process_request(self) -> None:
         from speech_translate import import_queue_manager as import_module
-        from speech_translate.utils.audio import file as audio_file_module
+        from speech_translate.utils.audio import file_api as audio_file_module
 
         previous_thread = import_module.Thread
         previous_process_file = audio_file_module.process_file
@@ -335,7 +357,7 @@ class ImportQueueControllerTests(unittest.TestCase):
         self.assertTrue(state["active"])
 
     def test_finish_import_run_clears_runtime_loading_flag_via_model_manager(self) -> None:
-        self.bridge.model_manager_controller.model_load_running = True
+        self.model_manager.model_load_running = True
         self.controller.processing_queue = [{"path": "a.wav", "name": "a.wav", "status": "Done", "is_completed": True}]
         self.controller.file_import_queue = [{"path": "a.wav", "name": "a.wav", "status": "Waiting", "is_completed": False}]
 
@@ -343,7 +365,7 @@ class ImportQueueControllerTests(unittest.TestCase):
             context=self.controller._build_import_start_context(),
         )
 
-        self.assertFalse(self.bridge.model_manager_controller.model_load_running)
+        self.assertFalse(self.model_manager.model_load_running)
         self.assertEqual(self.process_runtime.disabled, 1)
 
 

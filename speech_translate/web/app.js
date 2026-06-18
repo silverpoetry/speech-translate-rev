@@ -663,13 +663,21 @@ function bindUiEvents() {
 }
 
 function populateSelect(selectEl, options, selectedValue, keepMissingSelection = true) {
-  const normalizedOptions = Array.isArray(options) ? options : [];
-  const currentValue = selectedValue ?? '';
+  const normalizedOptions = (Array.isArray(options) ? options : []).map((option) => {
+    if (option && typeof option === 'object') {
+      const value = String(option.value ?? '');
+      const label = String(option.label ?? option.value ?? '');
+      return { value, label };
+    }
+    const value = String(option ?? '');
+    return { value, label: value };
+  });
+  const currentValue = String(selectedValue ?? '');
   selectEl.innerHTML = normalizedOptions
-    .map((option) => `<option value="${escapeHtml(option)}">${escapeHtml(option)}</option>`)
+    .map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
     .join('');
 
-  if (keepMissingSelection && currentValue && !normalizedOptions.includes(currentValue)) {
+  if (keepMissingSelection && currentValue && !normalizedOptions.some((option) => option.value === currentValue)) {
     const option = document.createElement('option');
     option.value = currentValue;
     option.textContent = currentValue;
@@ -677,6 +685,28 @@ function populateSelect(selectEl, options, selectedValue, keepMissingSelection =
   }
 
   selectEl.value = currentValue;
+}
+
+function patchLocalSettings(updates) {
+  if (!updates || typeof updates !== 'object') {
+    return;
+  }
+  state.data = state.data || {};
+  state.data.settings = {
+    ...(state.data.settings || {}),
+    ...updates,
+  };
+}
+
+function patchLocalImportUi(updates) {
+  if (!updates || typeof updates !== 'object') {
+    return;
+  }
+  state.data = state.data || {};
+  state.data.import_ui = {
+    ...(state.data.import_ui || {}),
+    ...updates,
+  };
 }
 
 function renderSettings(data) {
@@ -730,9 +760,6 @@ function renderSettings(data) {
     if (shouldStickToBottom) {
       els.logContent.scrollTop = els.logContent.scrollHeight;
     }
-  }
-  if (els.fileExportDirPill) {
-    els.fileExportDirPill.textContent = `输出目录：${settings.dir_export ?? 'auto'}`;
   }
   if (els.dirExportFile) {
     els.dirExportFile.value = String(settings.dir_export ?? 'auto');
@@ -897,7 +924,7 @@ function renderSettings(data) {
     els.autoOpenDirAlignmentFile.checked = Boolean(settings.auto_open_dir_alignment ?? true);
   }
   if (els.recAskConfirmationFirst) {
-    els.recAskConfirmationFirst.checked = Boolean(settings.rec_ask_confirmation_first ?? true);
+    els.recAskConfirmationFirst.checked = Boolean(settings.rec_ask_confirmation_first ?? false);
   }
   if (els.closeToTrayOnClose) {
     els.closeToTrayOnClose.checked = Boolean(settings.close_to_tray_on_close ?? true);
@@ -1198,7 +1225,7 @@ function renderImportSettings(data) {
 
   els.transcribeImport.checked = Boolean(importUi.transcribe);
   els.translateImport.checked = Boolean(importUi.translate);
-  els.importModelPill.textContent = `模型：${importUi.selected_model_key || importUi.selected_model || '未下载'}`;
+  els.importModelPill.textContent = `模型：${importUi.selected_model_label || importUi.selected_model_key || importUi.selected_model || '未下载'}`;
   if (els.importEnginePill) {
     els.importEnginePill.textContent = `引擎：${importUi.selected_engine || '未知'}`;
   }
@@ -1283,6 +1310,7 @@ function updateFileImportListUI(files) {
   if (!els.fileImportList) return;
   const list = Array.isArray(files) ? files : [];
   if (!list || list.length === 0) {
+    els.fileImportList.classList.add('is-empty');
     els.fileImportList.innerHTML = `
       <li class="file-queue-empty">
         <div class="file-queue-empty-title">队列为空</div>
@@ -1291,6 +1319,8 @@ function updateFileImportListUI(files) {
     `;
     return;
   }
+
+  els.fileImportList.classList.remove('is-empty');
 
   // 辅助函数：根据状态文字生成对应的 HTML（包含进度条动画）
   const renderStatusCell = (statusText) => {
@@ -2634,7 +2664,7 @@ async function saveSettings(shouldRefresh = true) {
     ['auto_open_dir_translate', checkedOf(els.autoOpenDirTranslate, true)],
     ['auto_open_dir_refinement', checkedOf(els.autoOpenDirRefinement, true)],
     ['auto_open_dir_alignment', checkedOf(els.autoOpenDirAlignment, true)],
-    ['rec_ask_confirmation_first', checkedOf(els.recAskConfirmationFirst, true)],
+    ['rec_ask_confirmation_first', checkedOf(els.recAskConfirmationFirst, false)],
     ['close_to_tray_on_close', checkedOf(els.closeToTrayOnClose, true)],
     ['supress_hidden_to_tray', checkedOf(els.supressHiddenToTray, false)],
     ['supress_record_warning', checkedOf(els.supressRecordWarning, false)],
@@ -2827,19 +2857,19 @@ async function saveImportSettings(shouldRefresh = true) {
   const backend = getSelectedImportModelEngine();
   await apiCall('set_setting', 'use_faster_whisper', backend === 'faster-whisper');
 
-  syncToolbarMirrorValue(els.exportFormat, els.exportFormatToolbar, '%Y-%m-%d %f {file}/{task-lang}');
-  syncToolbarMirrorChecked(els.autoOpenDirExport, els.autoOpenDirExportToolbar, true);
-  syncToolbarMirrorChecked(els.exportTxt, els.exportTxtToolbar, true);
-  syncToolbarMirrorChecked(els.exportSrt, els.exportSrtToolbar, true);
-  syncToolbarMirrorChecked(els.exportVtt, els.exportVttToolbar, true);
-  syncToolbarMirrorChecked(els.exportJson, els.exportJsonToolbar, true);
-  syncToolbarMirrorChecked(els.exportAss, els.exportAssToolbar, true);
-  syncToolbarMirrorChecked(els.exportCsv, els.exportCsvToolbar, false);
-  syncToolbarMirrorChecked(els.exportTsv, els.exportTsvToolbar, false);
-  syncToolbarMirrorChecked(els.exportMp4, els.exportMp4Toolbar, false);
-  syncToolbarMirrorChecked(els.useTempAlt, els.useTempAltToolbar, false);
-  syncToolbarMirrorChecked(els.keepTemp, els.keepTempToolbar, false);
-  syncToolbarMirrorChecked(els.fileUseOfficialWhisper, els.fileUseOfficialWhisperToolbar, false);
+  syncToolbarMirrorValue(els.exportFormatToolbar, els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}');
+  syncToolbarMirrorChecked(els.autoOpenDirExportToolbar, els.autoOpenDirExport, true);
+  syncToolbarMirrorChecked(els.exportTxtToolbar, els.exportTxt, true);
+  syncToolbarMirrorChecked(els.exportSrtToolbar, els.exportSrt, true);
+  syncToolbarMirrorChecked(els.exportVttToolbar, els.exportVtt, true);
+  syncToolbarMirrorChecked(els.exportJsonToolbar, els.exportJson, true);
+  syncToolbarMirrorChecked(els.exportAssToolbar, els.exportAss, true);
+  syncToolbarMirrorChecked(els.exportCsvToolbar, els.exportCsv, false);
+  syncToolbarMirrorChecked(els.exportTsvToolbar, els.exportTsv, false);
+  syncToolbarMirrorChecked(els.exportMp4Toolbar, els.exportMp4, false);
+  syncToolbarMirrorChecked(els.useTempAltToolbar, els.useTempAlt, false);
+  syncToolbarMirrorChecked(els.keepTempToolbar, els.keepTemp, false);
+  syncToolbarMirrorChecked(els.fileUseOfficialWhisperToolbar, els.fileUseOfficialWhisper, false);
 
   if (els.dirExport && els.dirExportFile) {
     const normalizedExportDir = String(els.dirExportFile.value || els.dirExport.value || 'auto');
@@ -2848,15 +2878,6 @@ async function saveImportSettings(shouldRefresh = true) {
   }
   if (els.autoOpenDirExport && els.autoOpenDirExportFile) {
     els.autoOpenDirExport.checked = Boolean(els.autoOpenDirExportFile.checked);
-  }
-  if (els.autoOpenDirTranslate && els.autoOpenDirTranslateFile) {
-    els.autoOpenDirTranslate.checked = Boolean(els.autoOpenDirTranslateFile.checked);
-  }
-  if (els.autoOpenDirRefinement && els.autoOpenDirRefinementFile) {
-    els.autoOpenDirRefinement.checked = Boolean(els.autoOpenDirRefinementFile.checked);
-  }
-  if (els.autoOpenDirAlignment && els.autoOpenDirAlignmentFile) {
-    els.autoOpenDirAlignment.checked = Boolean(els.autoOpenDirAlignmentFile.checked);
   }
 
   const exportTo = [];
@@ -2874,10 +2895,11 @@ async function saveImportSettings(shouldRefresh = true) {
     : ((state.data && state.data.settings && state.data.settings.dir_export) || 'auto');
   await apiCall('set_setting', 'dir_export', exportDir);
   await apiCall('set_setting', 'export_to', exportTo);
-  await apiCall('set_setting', 'auto_open_dir_export', Boolean(els.autoOpenDirExport ? els.autoOpenDirExport.checked : true));
-  await apiCall('set_setting', 'auto_open_dir_translate', Boolean(els.autoOpenDirTranslate ? els.autoOpenDirTranslate.checked : true));
-  await apiCall('set_setting', 'auto_open_dir_refinement', Boolean(els.autoOpenDirRefinement ? els.autoOpenDirRefinement.checked : true));
-  await apiCall('set_setting', 'auto_open_dir_alignment', Boolean(els.autoOpenDirAlignment ? els.autoOpenDirAlignment.checked : true));
+  const autoOpenDirOnTaskDone = Boolean(els.autoOpenDirExport ? els.autoOpenDirExport.checked : true);
+  await apiCall('set_setting', 'auto_open_dir_export', autoOpenDirOnTaskDone);
+  await apiCall('set_setting', 'auto_open_dir_translate', autoOpenDirOnTaskDone);
+  await apiCall('set_setting', 'auto_open_dir_refinement', autoOpenDirOnTaskDone);
+  await apiCall('set_setting', 'auto_open_dir_alignment', autoOpenDirOnTaskDone);
   await apiCall(
     'set_setting',
     'path_filter_file_import',
@@ -2903,8 +2925,34 @@ async function saveImportSettings(shouldRefresh = true) {
     await apiCall('set_import_setting', key, value);
   }
 
+  patchLocalSettings({
+    use_faster_whisper: backend === 'faster-whisper',
+    dir_export: exportDir,
+    export_to: exportTo,
+    auto_open_dir_export: autoOpenDirOnTaskDone,
+    auto_open_dir_translate: autoOpenDirOnTaskDone,
+    auto_open_dir_refinement: autoOpenDirOnTaskDone,
+    auto_open_dir_alignment: autoOpenDirOnTaskDone,
+    path_filter_file_import: els.pathFilterFileImport ? els.pathFilterFileImport.value : 'auto',
+  });
+  patchLocalImportUi({
+    selected_backend: backend,
+    selected_model: els.modelImport ? els.modelImport.value : '',
+    selected_model_key: els.modelImport ? els.modelImport.value : '',
+    selected_model_label: els.modelImport && els.modelImport.selectedOptions && els.modelImport.selectedOptions[0]
+      ? String(els.modelImport.selectedOptions[0].textContent || els.modelImport.value)
+      : (els.modelImport ? els.modelImport.value : ''),
+    selected_engine: els.engineImport ? els.engineImport.value : '',
+    selected_source: els.sourceImport ? els.sourceImport.value : '',
+    selected_target: els.targetImport ? els.targetImport.value : '',
+    transcribe: Boolean(els.transcribeImport && els.transcribeImport.checked),
+    translate: Boolean(els.translateImport && els.translateImport.checked),
+  });
+
   if (shouldRefresh) {
     await refreshState();
+  } else {
+    renderImportSettings({ import_ui: state.data?.import_ui || {} });
   }
 }
 
@@ -3239,7 +3287,6 @@ async function controlDetachedWindow(action, modeOverride = null) {
 async function startRecording() {
   try {
     const mainUi = state.data?.main_ui || {};
-    const settings = state.data?.settings || {};
     const device = els.inputMode?.value || mainUi.selected_input || 'mic';
     const langSource = els.sourceLangMain?.value || mainUi.selected_source || 'English';
     const langTarget = els.targetLangMain?.value || mainUi.selected_target || 'Indonesian';
@@ -3250,18 +3297,6 @@ async function startRecording() {
     if (!isTc && !isTl) {
       console.warn('请先启用“转写”或“翻译”');
       return;
-    }
-
-    if (Boolean(settings.rec_ask_confirmation_first)) {
-      const modeLabel = isTc && isTl ? '转写 + 翻译' : (isTc ? '转写' : '翻译');
-      const confirmed = await showConfirmDialog({
-        title: '开始录制',
-        message: `输入：${device}\n模式：${modeLabel}\n源语言：${langSource}\n目标语言：${langTarget}\n引擎：${engine}`,
-        confirmLabel: '开始录制',
-      });
-      if (!confirmed) {
-        return;
-      }
     }
 
     // Persist current main settings before starting recording, but do not block on a full refresh.
@@ -3402,8 +3437,10 @@ function switchWorkflowTab(targetId) {
 }
 
 async function hideToTray() {
-  const settings = state.data?.settings || {};
-  if (!Boolean(settings.supress_hidden_to_tray)) {
+  const suppressPrompt = Boolean(
+    els.supressHiddenToTray ? els.supressHiddenToTray.checked : (state.data?.settings?.supress_hidden_to_tray ?? false)
+  );
+  if (!suppressPrompt) {
     const confirmed = await showConfirmDialog({
       title: '隐藏到托盘',
       message: '主窗口会隐藏到系统托盘，可通过托盘入口重新打开。',
@@ -4256,7 +4293,6 @@ async function init() {
     els.modelManagerSelectionPill = $('model-manager-selection-pill');
     els.modelManagerCachePill = $('model-manager-cache-pill');
     els.modelManagerDownloadPill = $('model-manager-download-pill');
-    els.fileExportDirPill = $('file-export-dir-pill');
     els.fileImportList = $('file_import_list');
     els.btnImportStart = $('btn-import-start');
     els.modelManagerHint = $('model-manager-hint');

@@ -280,7 +280,7 @@ def build_state_view_settings(settings_snapshot: Mapping[str, object]) -> StateV
                 "auto_open_dir_alignment": snapshot.get("auto_open_dir_alignment", True),
                 "debug_realtime_record": snapshot.get("debug_realtime_record", False),
                 "debug_translate": snapshot.get("debug_translate", False),
-                "rec_ask_confirmation_first": snapshot.get("rec_ask_confirmation_first", True),
+                "rec_ask_confirmation_first": snapshot.get("rec_ask_confirmation_first", False),
                 "close_to_tray_on_close": snapshot.get("close_to_tray_on_close", True),
                 "supress_hidden_to_tray": snapshot.get("supress_hidden_to_tray", False),
                 "supress_record_warning": snapshot.get("supress_record_warning", False),

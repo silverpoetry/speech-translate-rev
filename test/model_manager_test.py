@@ -13,7 +13,7 @@ from speech_translate.utils.whisper.download_runtime import DownloadProgressSnap
 
 class FakeSettings:
     def __init__(self) -> None:
-        self.cache = {"model_f_import": "small", "dir_model": "auto"}
+        self.cache = {"model_mw": "small", "model_f_import": "small", "dir_model": "auto"}
         self.saved = {}
 
     def save_key(self, key: str, value):
@@ -25,6 +25,7 @@ class FakeBridge:
     def __init__(self) -> None:
         self.messages = []
         self.progress = []
+        self.emits = []
 
     def reset_task_state(self, title: str):
         self.messages.append(("reset", title))
@@ -40,6 +41,9 @@ class FakeBridge:
 
     def finish_task(self, message: str):
         self.messages.append(("finish", message))
+
+    def emit_ui_update(self, sections):
+        self.emits.append(tuple(sections))
 
     def get_settings_snapshot(self):
         return {
@@ -142,6 +146,19 @@ class ModelManagerControllerTests(unittest.TestCase):
         self.assertFalse(self.controller.model_load_running)
         self.assertFalse(self.controller.runtime_model_loaded)
         self.assertEqual(self.controller.runtime_model_message, "Model load failed: boom")
+
+    def test_estimate_total_whisper_bytes_uses_local_lookup(self) -> None:
+        self.assertEqual(self.controller.estimate_total_whisper_bytes("tiny"), 75 * 1024 * 1024)
+        self.assertEqual(self.controller.estimate_total_whisper_bytes("tiny.en"), 75 * 1024 * 1024)
+        self.assertEqual(self.controller.estimate_total_whisper_bytes("unknown"), 0)
+
+    def test_build_model_manager_state_includes_selected_model_estimate(self) -> None:
+        self.controller.model_manager_model = "tiny"
+
+        state = self.controller.build_model_manager_state("whisper")
+
+        self.assertEqual(state["selected_model"], "tiny")
+        self.assertEqual(state["selected_model_estimate_bytes"], 75 * 1024 * 1024)
 
     def test_check_model_normalizes_display_name_before_verification(self) -> None:
         previous_verify = self.controller.verify_model_status

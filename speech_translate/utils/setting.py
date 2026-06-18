@@ -72,7 +72,7 @@ default_setting: SettingDict = {
     "libre_link": "",
     # ------------------ #
     # Record settings
-    "rec_ask_confirmation_first": True,
+    "rec_ask_confirmation_first": False,
     # temp
     "use_temp": False,
     "keep_temp": False,
