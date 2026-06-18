@@ -3449,17 +3449,17 @@ async function controlDetachedWindow(action, modeOverride = null) {
   const modeLabel = mode === 'tc' ? '转写' : '翻译';
   try {
     state.detachedModeSelected = mode;
-    const actionNameMap = {
-      show: 'show_detached_window',
-      hide: 'hide_detached_window',
-      close: 'close_detached_window',
-    };
-    const apiName = actionNameMap[action];
-    if (!apiName) {
+    let result;
+    if (action === 'show') {
+      result = await apiCall('show_detached_window', mode);
+    } else if (action === 'hide') {
+      result = await apiCall('hide_detached_window', mode);
+    } else if (action === 'close') {
+      result = await apiCall('close_detached_window', mode);
+    } else {
       throw new Error(`Unsupported detached action: ${action}`);
     }
 
-    const result = await apiCall(apiName, mode);
     if (action === 'show') {
       state.detachedOpen[mode] = true;
       state.detachedVisible[mode] = true;
