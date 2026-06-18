@@ -445,6 +445,13 @@ def _resolve_model_download_root(setting_cache: SettingDict) -> str:
 
 
 def _is_faster_whisper_model_cached(model_name: str, download_root: str) -> bool:
+    from pathlib import Path
+
+    model_root = Path(download_root)
+    direct_dir = model_root / f"faster-whisper-{model_name}"
+    if direct_dir.exists():
+        return True
+
     try:
         from speech_translate.utils.whisper.download import verify_model_faster_whisper
 
@@ -497,10 +504,14 @@ def get_model_args(setting_cache: SettingDict):
     if not model_args.pop("success"):
         raise Exception(model_args["msg"])
 
-    model_args["download_root"] = _resolve_model_download_root(setting_cache)
+    download_root = _resolve_model_download_root(setting_cache)
+    model_args["download_root"] = download_root
     model_args["device"] = _resolve_model_device(
         setting_cache,
         cuda_available=runtime.torch_api.cuda.is_available(),
     )
+
+    if setting_cache["use_faster_whisper"] and _is_faster_whisper_model_cached(setting_cache["model_mw"], download_root):
+        model_args["local_files_only"] = True
 
     return model_args

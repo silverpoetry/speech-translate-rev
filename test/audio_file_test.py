@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
-from speech_translate.utils.audio.file import (
+from speech_translate.utils.audio.file_api import (
     FileEnvironmentAdapter,
     FileBatchStatusContext,
     FileModDependencies,
@@ -142,6 +142,17 @@ class FakeProcessingStateAdapter:
 
 
 class AudioFileHelpersTests(unittest.TestCase):
+    def test_file_ui_bridge_adapter_resolves_import_queue_controller_from_bridge(self) -> None:
+        target = FakeFileStatusBridge()
+        bridge = type("Bridge", (), {"import_queue_controller": target})()
+        adapter = FileUiBridgeAdapter(bridge=bridge)
+
+        adapter.init_file_batch("Task", ["a.wav"])
+        adapter.sync_file_status(0, "Done", True)
+
+        self.assertEqual(target.batches, [("Task", ["a.wav"])])
+        self.assertEqual(target.calls, [(0, "Done", True)])
+
     def test_file_result_queue_default_adapter_resolves_registry_state_lazily(self) -> None:
         fake_queue = Queue()
         fake_bridge = type(
@@ -261,16 +272,16 @@ class AudioFileHelpersTests(unittest.TestCase):
         }
 
         with (
-            patch("speech_translate.utils.audio.file.get_model_args", return_value={"device": "cpu"}),
+            patch("speech_translate.utils.audio.file_runtime_builders.get_model_args", return_value={"device": "cpu"}),
             patch(
-                "speech_translate.utils.audio.file.get_model",
+                "speech_translate.utils.audio.file_runtime_builders.get_model",
                 return_value=(None, None, fake_stable_tc, fake_stable_tl, "transcribe-api"),
             ),
-            patch("speech_translate.utils.audio.file.get_tc_args", return_value={"temperature": 0.2}),
-            patch("speech_translate.utils.audio.file.get_whisper_lang_similar", return_value="english"),
-            patch("speech_translate.utils.audio.file.get_whisper_to_language_code", return_value={"english": "en"}),
-            patch("speech_translate.utils.audio.file.get_hallucination_filter", return_value={"ban": ["uh"]}),
-            patch("speech_translate.utils.audio.file.time", return_value=42.0),
+            patch("speech_translate.utils.audio.file_runtime_builders.get_tc_args", return_value={"temperature": 0.2}),
+            patch("speech_translate.utils.audio.file_runtime_builders.get_whisper_lang_similar", return_value="english"),
+            patch("speech_translate.utils.audio.file_runtime_builders.get_whisper_to_language_code", return_value={"english": "en"}),
+            patch("speech_translate.utils.audio.file_runtime_builders.get_hallucination_filter", return_value={"ban": ["uh"]}),
+            patch("speech_translate.utils.audio.file_runtime_builders.time", return_value=42.0),
         ):
             runtime = _build_process_file_runtime(
                 request=FileProcessRequest(
@@ -322,10 +333,10 @@ class AudioFileHelpersTests(unittest.TestCase):
         }
 
         with (
-            patch("speech_translate.utils.audio.file.get_stable_whisper", return_value=fake_stable_whisper),
-            patch("speech_translate.utils.audio.file.get_model_args", return_value={"device": "cpu"}),
-            patch("speech_translate.utils.audio.file.get_tc_args", return_value={"steps": 2}),
-            patch("speech_translate.utils.audio.file.time", return_value=84.0),
+            patch("speech_translate.utils.audio.file_runtime_builders.get_stable_whisper", return_value=fake_stable_whisper),
+            patch("speech_translate.utils.audio.file_runtime_builders.get_model_args", return_value={"device": "cpu"}),
+            patch("speech_translate.utils.audio.file_runtime_builders.get_tc_args", return_value={"steps": 2}),
+            patch("speech_translate.utils.audio.file_runtime_builders.time", return_value=84.0),
         ):
             runtime = _build_mod_result_runtime(
                 request=FileModRequest(
@@ -366,8 +377,8 @@ class AudioFileHelpersTests(unittest.TestCase):
         }
 
         with (
-            patch("speech_translate.utils.audio.file.get_stable_whisper", return_value=fake_stable_whisper),
-            patch("speech_translate.utils.audio.file.time", return_value=126.0),
+            patch("speech_translate.utils.audio.file_runtime_builders.get_stable_whisper", return_value=fake_stable_whisper),
+            patch("speech_translate.utils.audio.file_runtime_builders.time", return_value=126.0),
         ):
             runtime = _build_translate_result_runtime(
                 request=FileTranslateResultRequest(
@@ -513,10 +524,11 @@ class AudioFileHelpersTests(unittest.TestCase):
         self.assertEqual(context.tl_status[0], "Translated")
         self.assertEqual(bridge.calls[-1], (0, "Transcribed, Translated", True))
 
-    def test_file_batch_status_context_suppresses_bridge_sync_errors(self) -> None:
+    def test_file_batch_status_context_surfaces_bridge_sync_errors(self) -> None:
         bridge = FakeFileStatusBridge(should_fail=True)
         context = FileBatchStatusContext(is_mod=True, ui_bridge=FileUiBridgeAdapter(bridge))
-        context.update_status("mod", 3, "Processing")
+        with self.assertRaisesRegex(RuntimeError, "bridge failed"):
+            context.update_status("mod", 3, "Processing")
 
         self.assertEqual(context.mod_status[3], "Processing")
         self.assertEqual(bridge.calls[-1], (3, "Processing", False))
@@ -584,9 +596,9 @@ class AudioFileHelpersTests(unittest.TestCase):
             environment=FileEnvironmentAdapter(has_ffmpeg=True),
         )
         with (
-            patch("speech_translate.utils.audio.file._build_process_file_runtime", return_value=runtime),
-            patch("speech_translate.utils.audio.file.empty_torch_cuda_cache"),
-            patch("speech_translate.utils.audio.file.time", return_value=1.0),
+            patch("speech_translate.utils.audio.file_impl._build_process_file_runtime", return_value=runtime),
+            patch("speech_translate.utils.audio.file_impl.empty_torch_cuda_cache"),
+            patch("speech_translate.utils.audio.file_impl.time", return_value=1.0),
         ):
             process_file(
                 FileProcessRequest(
@@ -642,9 +654,9 @@ class AudioFileHelpersTests(unittest.TestCase):
             runtime_settings=build_file_runtime_settings({"auto_open_dir_alignment": True, "export_format": "{file}", "export_to": ["json"]}),
         )
         with (
-            patch("speech_translate.utils.audio.file._build_mod_result_runtime", return_value=runtime),
-            patch("speech_translate.utils.audio.file.empty_torch_cuda_cache"),
-            patch("speech_translate.utils.audio.file.time", return_value=2.0),
+            patch("speech_translate.utils.audio.file_impl._build_mod_result_runtime", return_value=runtime),
+            patch("speech_translate.utils.audio.file_impl.empty_torch_cuda_cache"),
+            patch("speech_translate.utils.audio.file_impl.time", return_value=2.0),
         ):
             mod_result(
                 FileModRequest(
@@ -684,9 +696,9 @@ class AudioFileHelpersTests(unittest.TestCase):
             runtime_settings=build_file_runtime_settings({"auto_open_dir_translate": True, "export_format": "{file}", "export_to": ["json"]}),
         )
         with (
-            patch("speech_translate.utils.audio.file._build_translate_result_runtime", return_value=runtime),
-            patch("speech_translate.utils.audio.file.empty_torch_cuda_cache"),
-            patch("speech_translate.utils.audio.file.time", return_value=3.0),
+            patch("speech_translate.utils.audio.file_impl._build_translate_result_runtime", return_value=runtime),
+            patch("speech_translate.utils.audio.file_impl.empty_torch_cuda_cache"),
+            patch("speech_translate.utils.audio.file_impl.time", return_value=3.0),
         ):
             translate_result(
                 FileTranslateResultRequest(

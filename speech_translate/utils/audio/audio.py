@@ -185,7 +185,7 @@ def to_silero(sound_bytes: bytes, num_of_channels: int, samp_width: int = 2):
         audio_as_np_float32 = audio_as_np_int16.astype(float32)
         chunk_length = len(audio_as_np_float32) / num_of_channels
         audio_reshaped = reshape(audio_as_np_float32, (int(chunk_length), num_of_channels))
-        np_buf = audio_reshaped[:, 0] / iinfo(int16).max  # take left channel only
+        np_buf = audio_reshaped.mean(axis=1, dtype=float32) / iinfo(int16).max
 
     torch_float32 = torch_from_numpy(np_buf.squeeze())
     return torch_float32

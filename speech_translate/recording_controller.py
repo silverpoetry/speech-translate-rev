@@ -1,21 +1,31 @@
 from __future__ import annotations
 
+from ast import literal_eval
 from dataclasses import dataclass
+from shlex import quote
 from threading import RLock, Thread
 from time import sleep, time
 from typing import Optional
 
+from speech_translate._constants import MAX_THRESHOLD, MIN_THRESHOLD
 from speech_translate.controller_settings import RecordingControllerSettings, build_recording_controller_settings
-from speech_translate.controller_protocols import JsonDict, RecordingBridge, ShutdownSeleniumFn, WhisperLoadApiGetter
+from speech_translate.controller_protocols import (
+    JsonDict,
+    ModelManagerControllerApi,
+    RecordingBridge,
+    ShutdownSeleniumFn,
+    WhisperLoadApiGetter,
+)
 from speech_translate.log_helpers import logger
 from speech_translate.ui_protocol import UI_SECTION_TASK
+from speech_translate.utils.helper import str_separator_to_html
 from speech_translate.utils.audio.recording_runtime_state import (
     RecordingRuntimeStateAdapter,
     RecordingTextStoreAdapter,
     build_recording_runtime_state_adapter,
     build_recording_text_store_adapter,
 )
-from speech_translate.utils.audio.record_types import RecordingSessionDependencies, RecordingSessionRequest
+from speech_translate.utils.audio.record_types import RecordingSessionDependencies, RecordingSessionRequest, RealtimeSharedState
 
 
 DEFAULT_RECORDING_STATE: JsonDict = {
@@ -29,6 +39,8 @@ DEFAULT_RECORDING_STATE: JsonDict = {
     "timer": "00:00:00",
     "buffer": "0/0 sec",
     "sentences": "0",
+    "last_db": None,
+    "threshold_db": None,
 }
 
 
@@ -89,17 +101,20 @@ class RecordingSessionController:
         bridge: RecordingBridge,
         whisper_loader_getter: WhisperLoadApiGetter,
         shutdown_selenium_fn: ShutdownSeleniumFn,
+        model_manager: ModelManagerControllerApi,
         runtime_state: RecordingRuntimeStateAdapter | None = None,
         text_store: RecordingTextStoreAdapter | None = None,
     ):
         self.bridge = bridge
         self.whisper_loader_getter = whisper_loader_getter
         self.shutdown_selenium_fn = shutdown_selenium_fn
+        self.model_manager = model_manager
         self.runtime_state = runtime_state or build_recording_runtime_state_adapter()
         self.text_store = text_store or build_recording_text_store_adapter()
         self._lock = RLock()
         self.record_worker_thread: Optional[Thread] = None
         self.recording_state: JsonDict = dict(DEFAULT_RECORDING_STATE)
+        self._shared_runtime_state = RealtimeSharedState()
 
     def wait_recording_idle(self, timeout_s: float = 12.0) -> bool:
         start_t = time()
@@ -134,8 +149,8 @@ class RecordingSessionController:
                 default_engine=engine,
                 default_is_tc=is_tc,
                 default_is_tl=is_tl,
-                normalize_engine_name=self.bridge.normalize_engine_name,
-                normalize_model_key=self.bridge.normalize_model_key,
+                normalize_engine_name=self.model_manager.normalize_engine_name,
+                normalize_model_key=self.model_manager.normalize_model_key,
             )
         )
 
@@ -166,13 +181,51 @@ class RecordingSessionController:
             "timer": "00:00:00",
             "buffer": "0/0 sec",
             "sentences": "0",
+            "last_db": None,
+            "threshold_db": self._resolve_threshold_db(context),
         }
+
+    def _resolve_threshold_db(self, context: RecordingStartContext) -> float:
+        default_key = "threshold_db_speaker" if context.device.lower() == "speaker" else "threshold_db_mic"
+        try:
+            return float(context.settings_snapshot.get(default_key, -20.0))
+        except Exception:
+            return -20.0
+
+    def _snapshot_recording_meter_state(self) -> JsonDict:
+        last_db = self._shared_runtime_state.last_db
+        if last_db is not None:
+            try:
+                last_db = max(float(MIN_THRESHOLD), min(float(MAX_THRESHOLD), float(last_db)))
+            except Exception:
+                last_db = None
+        threshold_db = self.recording_state.get("threshold_db")
+        try:
+            threshold_db = None if threshold_db is None else float(threshold_db)
+        except Exception:
+            threshold_db = None
+        return {
+            "last_db": last_db,
+            "threshold_db": threshold_db,
+        }
+
+    def _live_separator_html(self) -> str:
+        raw_separator = str(self.bridge.get_settings_snapshot().get("separate_with", "\\n"))
+        try:
+            return str_separator_to_html(literal_eval(quote(raw_separator)))
+        except Exception:
+            return str_separator_to_html(raw_separator)
+
+    @staticmethod
+    def _has_live_result(value: object | None) -> bool:
+        return bool(str(getattr(value, "text", value or "")).strip())
 
     def _reset_recording_runtime(self) -> None:
         self.text_store.set_transcribed_sentences([])
         self.text_store.set_translated_sentences([])
         self.bridge.clear_live()
         self.runtime_state.enable_recording()
+        self._shared_runtime_state = RealtimeSharedState()
         self.bridge.reset_task_state("Recording")
 
     def _shutdown_recording_session(self, *, context: RecordingStartContext) -> None:
@@ -195,24 +248,22 @@ class RecordingSessionController:
         )
 
     def _build_recording_session_dependencies(self, context: RecordingStartContext) -> RecordingSessionDependencies:
-        from speech_translate.utils.audio.record import build_recording_session_control
+        from speech_translate.utils.audio.record_session_api import build_recording_session_control
         from speech_translate.utils.audio.record_runtime import build_recording_text_state
         from speech_translate.utils.audio.record_streaming import build_callback_context_store
-        from speech_translate.utils.audio.record_types import RealtimeSharedState
 
-        shared_runtime_state = RealtimeSharedState()
         return RecordingSessionDependencies(
             settings_snapshot=dict(context.settings_snapshot),
             session_control=build_recording_session_control(runtime_state=self.runtime_state),
             runtime_text_state=build_recording_text_state(
-                shared_runtime_state=shared_runtime_state,
+                shared_runtime_state=self._shared_runtime_state,
                 text_store=self.text_store,
             ),
             callback_context_store=build_callback_context_store(),
         )
 
     def _start_recording_worker(self, context: RecordingStartContext) -> None:
-        from speech_translate.utils.audio.record import record_session
+        from speech_translate.utils.audio.record_session_api import record_session
         request = self._build_recording_session_request(context)
         session_dependencies = self._build_recording_session_dependencies(context)
 
@@ -234,13 +285,30 @@ class RecordingSessionController:
             self.recording_state.update(payload)
             if "active" not in payload:
                 self.recording_state["active"] = self.runtime_state.is_recording_active()
-        self.bridge.model_manager_controller.handle_recording_status(payload)
+        self.model_manager.handle_recording_status(payload)
         self.bridge.emit_ui_update([UI_SECTION_TASK])
         return {"ok": True}
 
     def get_recording_state(self) -> JsonDict:
         with self._lock:
-            return dict(self.recording_state)
+            return {
+                **self.recording_state,
+                **self._snapshot_recording_meter_state(),
+            }
+
+    def rerender_live_text(self) -> JsonDict:
+        separator = self._live_separator_html()
+        previous_tc = self._shared_runtime_state.prev_tc_res
+        previous_tl = self._shared_runtime_state.prev_tl_res
+        has_tc = bool(self.text_store.transcribed_sentences()) or self._has_live_result(previous_tc)
+        has_tl = bool(self.text_store.translated_sentences()) or self._has_live_result(previous_tl)
+
+        if has_tc:
+            self.text_store.update_transcribed_output(previous_tc if self._has_live_result(previous_tc) else None, separator)
+        if has_tl:
+            self.text_store.update_translated_output(previous_tl if self._has_live_result(previous_tl) else None, separator)
+
+        return {"ok": True, "transcribed": has_tc, "translated": has_tl}
 
     def start_recording(
         self,
@@ -266,11 +334,11 @@ class RecordingSessionController:
         if not context.is_tc and not context.is_tl:
             return {"ok": False, "message": "Please enable Transcribe or Translate"}
 
-        self.bridge.model_manager_controller.mark_runtime_model_pending(context.model_name_tc)
+        self.model_manager.mark_runtime_model_pending(context.model_name_tc)
         cached_bundle = self._probe_cached_bundle(context)
 
         if cached_bundle:
-            self.bridge.model_manager_controller.mark_runtime_model_ready(context.model_name_tc)
+            self.model_manager.mark_runtime_model_ready(context.model_name_tc)
 
         self._reset_recording_runtime()
         self.set_recording_state(self._build_recording_state(context, cached_bundle=cached_bundle))
@@ -292,8 +360,8 @@ class RecordingSessionController:
                 default_engine=str(self.recording_state.get("engine", "")),
                 default_is_tc=True,
                 default_is_tl=True,
-                normalize_engine_name=self.bridge.normalize_engine_name,
-                normalize_model_key=self.bridge.normalize_model_key,
+                normalize_engine_name=self.model_manager.normalize_engine_name,
+                normalize_model_key=self.model_manager.normalize_model_key,
             )
             if settings.should_auto_close_selenium:
                 self.shutdown_selenium_fn()

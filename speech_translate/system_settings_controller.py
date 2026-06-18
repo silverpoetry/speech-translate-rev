@@ -13,7 +13,7 @@ from speech_translate.controller_settings import (
     normalize_record_setting_value,
     normalize_system_setting_value,
 )
-from speech_translate.controller_protocols import SettingsStore, SystemSettingsBridge
+from speech_translate.controller_protocols import ModelManagerControllerApi, SettingsStore, SystemSettingsBridge
 from speech_translate.log_helpers import logger
 from speech_translate.webview_runtime import create_file_dialog
 from speech_translate.utils.helper import open_folder, open_url
@@ -22,9 +22,16 @@ from speech_translate.utils.helper import open_folder, open_url
 class SystemSettingsController:
     """Owns settings persistence, directory helpers, log access, and external-open actions."""
 
-    def __init__(self, bridge: SystemSettingsBridge, settings: SettingsStore, path_config: Dict[str, str]):
+    def __init__(
+        self,
+        bridge: SystemSettingsBridge,
+        settings: SettingsStore,
+        path_config: Dict[str, str],
+        model_manager: ModelManagerControllerApi,
+    ):
         self.bridge = bridge
         self.settings = settings
+        self.model_manager = model_manager
         self.dir_debug = path_config["dir_debug"]
         self.dir_export = path_config["dir_export"]
         self.dir_log = path_config["dir_log"]
@@ -41,13 +48,15 @@ class SystemSettingsController:
             "export": self.resolve_export_dir(),
             "log": self.resolve_log_dir(),
             "debug": self.dir_debug,
-            "model": self.bridge.resolve_model_dir(),
+            "model": self.model_manager.resolve_model_dir(),
+            "selenium_chrome": self.resolve_selenium_chrome_user_data_dir(),
         }
 
     def _directory_selection_targets(self) -> Dict[str, tuple[str, str]]:
         return {
             "export": ("dir_export", self.resolve_export_dir()),
-            "model": ("dir_model", self.bridge.resolve_model_dir()),
+            "log": ("dir_log", self.resolve_log_dir()),
+            "model": ("dir_model", self.model_manager.resolve_model_dir()),
             "selenium_chrome": ("selenium_chrome_user_data_dir", self.resolve_selenium_chrome_user_data_dir()),
         }
 
@@ -81,7 +90,7 @@ class SystemSettingsController:
 
         self.settings.save_key(setting_key, selected_path)
         if setting_key == "dir_model":
-            self.bridge.model_manager_controller.clear_model_status_cache()
+            self.model_manager.clear_model_status_cache()
         return {"ok": True, "message": "Directory selected", "path": selected_path, "setting": setting_key}
 
     def open_link(self, url: str) -> Dict[str, str]:
@@ -145,7 +154,11 @@ class SystemSettingsController:
         if key == "log_level":
             from speech_translate._logging import change_log_level
 
-            change_log_level(str(value))
+            change_log_level(str(value), self.resolve_log_dir())
+        elif key == "dir_log":
+            from speech_translate._logging import change_log_level
+
+            change_log_level(str(self._settings_value("log_level", "DEBUG")), self.resolve_log_dir())
         return build_setting_response(key, self._settings_snapshot())
 
     def set_import_setting(self, key: str, value: object) -> Dict[str, object]:
@@ -163,7 +176,7 @@ class SystemSettingsController:
         return current_log
 
     def get_log_content(self) -> str:
-        log_path = Path(self.dir_log) / self.get_log_file_name()
+        log_path = Path(self.resolve_log_dir()) / self.get_log_file_name()
         try:
             content = log_path.read_text(encoding="utf-8")
         except FileNotFoundError:
@@ -180,7 +193,7 @@ class SystemSettingsController:
     def clear_log(self) -> Dict[str, str]:
         from speech_translate._logging import clear_current_log_file
 
-        clear_current_log_file()
+        clear_current_log_file(self.resolve_log_dir(), str(self._settings_value("log_level", "DEBUG")))
         logger.info("Log cleared from web UI")
         return self.refresh_log()
 

@@ -13,16 +13,28 @@ FILE_ID = None
 CONSOLE_ID = None
 recent_stderr = []
 current_log: str = f"{strftime('%Y-%m-%d %H-%M-%S')}.log"
+ACTIVE_LOG_DIR: str = dir_log
 _FALLBACK_STREAMS: list[object] = []
 _ORIGINAL_STDERR = sys.stderr
 
-# make sure log folder exist
-if not os.path.exists(dir_log):
-    try:
-        os.makedirs(dir_log)
-    except Exception as e:
-        logger.exception(e)
-        logger.error("Error: Cannot create log folder")
+
+def _ensure_log_dir(path: str) -> str:
+    resolved = os.path.abspath(path or dir_log)
+    if not os.path.exists(resolved):
+        try:
+            os.makedirs(resolved)
+        except Exception as exc:
+            logger.exception(exc)
+            logger.error("Error: Cannot create log folder")
+    return resolved
+
+
+def _resolve_log_file_path(log_dir: str | None = None) -> str:
+    target_dir = _ensure_log_dir(log_dir or ACTIVE_LOG_DIR)
+    return os.path.join(target_dir, current_log)
+
+
+ACTIVE_LOG_DIR = _ensure_log_dir(ACTIVE_LOG_DIR)
 
 
 def shorten_progress_bar(match):
@@ -117,8 +129,9 @@ def _ensure_writable_stream(stream):
     return fallback
 
 
-def _configure_loguru_sinks(level: str) -> None:
-    global CONSOLE_ID, FILE_ID
+def _configure_loguru_sinks(level: str, log_dir: str | None = None) -> None:
+    global CONSOLE_ID, FILE_ID, ACTIVE_LOG_DIR
+    ACTIVE_LOG_DIR = _ensure_log_dir(log_dir or ACTIVE_LOG_DIR)
 
     safe_stderr = _ensure_writable_stream(_ORIGINAL_STDERR)
     logger.remove()
@@ -130,7 +143,7 @@ def _configure_loguru_sinks(level: str) -> None:
         format=LOG_FORMAT,
     )
     FILE_ID = logger.add(
-        dir_log + "/" + current_log,
+        _resolve_log_file_path(ACTIVE_LOG_DIR),
         level=level,
         encoding="utf-8",
         backtrace=False,
@@ -139,12 +152,13 @@ def _configure_loguru_sinks(level: str) -> None:
     )
 
 
-def _configure_file_sink(level: str) -> None:
-    global FILE_ID
+def _configure_file_sink(level: str, log_dir: str | None = None) -> None:
+    global FILE_ID, ACTIVE_LOG_DIR
+    ACTIVE_LOG_DIR = _ensure_log_dir(log_dir or ACTIVE_LOG_DIR)
     if FILE_ID is not None:
         logger.remove(FILE_ID)
     FILE_ID = logger.add(
-        dir_log + "/" + current_log,
+        _resolve_log_file_path(ACTIVE_LOG_DIR),
         level=level,
         encoding="utf-8",
         backtrace=False,
@@ -153,27 +167,28 @@ def _configure_file_sink(level: str) -> None:
     )
 
 
-def init_logging(level):
+def init_logging(level, log_dir: str | None = None):
     if _is_loguru_logger():
-        _configure_loguru_sinks(level)
+        _configure_loguru_sinks(level, log_dir)
     else:
-        _configure_file_sink(level)
+        _configure_file_sink(level, log_dir)
 
     sys.stderr = StreamStderrToLogger()
     # tqdm use stderr so we also need to redirect it
 
 
-def change_log_level(level: str):
+def change_log_level(level: str, log_dir: str | None = None):
     if _is_loguru_logger():
-        _configure_loguru_sinks(level)
+        _configure_loguru_sinks(level, log_dir)
     else:
-        _configure_file_sink(level)
+        _configure_file_sink(level, log_dir)
 
 
-def clear_current_log_file():
+def clear_current_log_file(log_dir: str | None = None, level: str = "DEBUG"):
     global FILE_ID
+    target_path = _resolve_log_file_path(log_dir)
     if FILE_ID is not None:
         logger.remove(FILE_ID)
-    with open(dir_log + "/" + current_log, "w", encoding="utf-8") as f:
+    with open(target_path, "w", encoding="utf-8") as f:
         f.write("")
-    _configure_file_sink("DEBUG")
+    _configure_file_sink(level, os.path.dirname(target_path))

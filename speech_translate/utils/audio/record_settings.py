@@ -86,7 +86,7 @@ def build_recording_stream_settings(
     settings_snapshot: Mapping[str, object],
 ) -> RecordingStreamSettings:
     snapshot = _copy_settings_snapshot(settings_snapshot)
-    threshold_auto_mode_raw = snapshot.get(f"threshold_auto_mode_{rec_type}", 3)
+    threshold_auto_mode_raw = snapshot.get(f"threshold_auto_level_{rec_type}", 3)
     try:
         threshold_auto_mode = int(threshold_auto_mode_raw)
     except Exception:

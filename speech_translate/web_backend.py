@@ -108,13 +108,10 @@ class WebTaskBridge:
         window = self._window
         if window is None or not sections:
             return
-        try:
-            payload = json.dumps({"sections": sections}, ensure_ascii=False)
-            window.evaluate_js(
-                f"window.dispatchEvent(new CustomEvent('{UI_EVENT_NAME}', {{ detail: {payload} }}));"
-            )
-        except Exception:
-            pass
+        payload = json.dumps({"sections": sections}, ensure_ascii=False)
+        window.evaluate_js(
+            f"window.dispatchEvent(new CustomEvent('{UI_EVENT_NAME}', {{ detail: {payload} }}));"
+        )
 
     def emit_ui_update(self, sections: Sequence[str]) -> None:
         self._emit_ui_update(list(sections))

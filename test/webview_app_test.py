@@ -25,13 +25,21 @@ class FakeController:
         self.first_state_logged = False
         self.calls = []
         self.bound_window = None
+        self.startup_t0 = None
 
     def bind_window(self, window) -> None:
         self.bound_window = window
         self.calls.append(("bind_window", window))
 
+    def set_startup_t0(self, started_at: float) -> None:
+        self.startup_t0 = started_at
+        self.calls.append(("set_startup_t0", started_at))
+
     def log_startup_marker(self, marker: str) -> None:
         self.calls.append(("log_startup_marker", marker))
+
+    def quit_app(self) -> None:
+        self.calls.append(("quit_app",))
 
     def handle_task_message(self, message: str, source: str = "general") -> None:
         self.calls.append(("handle_task_message", message, source))
@@ -58,7 +66,16 @@ class FakeDependenciesBuilder:
         self.state_view_builder = FakeStateViewBuilder()
         self.system_settings_controller = FakeController()
         self.detached_window_manager = object()
-        self.detached_window_controller = FakeController()
+        self.detached_window_controller = type(
+            "DetachedController",
+            (),
+            {
+                "__init__": lambda self: setattr(self, "calls", []),
+                "update_detached_content": lambda self, mode, html: self.calls.append(
+                    ("update_detached_content", mode, html)
+                ),
+            },
+        )()
         self.received_settings = None
 
     def __call__(self, bridge: WebBridge, settings) -> WebBridgeDependencies:
@@ -79,7 +96,14 @@ class FakeDependenciesBuilder:
 class WebviewAppTests(unittest.TestCase):
     def test_build_web_bridge_dependencies_injects_explicit_runtime_bindings(self) -> None:
         settings = FakeSettings()
-        bridge = object()
+        bridge = type(
+            "FakeBridge",
+            (),
+            {
+                "snapshot_live_state": lambda self: {"main_transcribed_text": ""},
+                "emit_ui_update": lambda self, sections: None,
+            },
+        )()
         fake_runtime_root = type(
             "FakeRuntimeRoot",
             (),
@@ -95,6 +119,7 @@ class WebviewAppTests(unittest.TestCase):
             bridge_arg,
             settings_arg,
             shutdown_arg,
+            recording_controller_arg,
             model_manager_arg,
             runtime_bindings,
             process_runtime=None,
@@ -102,6 +127,7 @@ class WebviewAppTests(unittest.TestCase):
             captured["bridge"] = bridge_arg
             captured["settings"] = settings_arg
             captured["shutdown"] = shutdown_arg
+            captured["recording_controller"] = recording_controller_arg
             captured["model_manager"] = model_manager_arg
             captured["runtime_bindings"] = runtime_bindings
             captured["process_runtime"] = process_runtime
@@ -112,9 +138,9 @@ class WebviewAppTests(unittest.TestCase):
             patch("speech_translate.webview_app.MainWindowController", return_value=FakeController()),
             patch("speech_translate.webview_app.ModelManagerController", return_value=FakeController()),
             patch("speech_translate.webview_app.ImportQueueController", side_effect=fake_import_queue_controller),
-            patch("speech_translate.webview_app.RecordingSessionController", return_value=FakeController()),
+            patch("speech_translate.webview_app.RecordingSessionController", return_value=FakeController()) as recording_ctor,
             patch("speech_translate.webview_app.StateViewBuilder", return_value=FakeStateViewBuilder()),
-            patch("speech_translate.webview_app.SystemSettingsController", return_value=FakeController()),
+            patch("speech_translate.webview_app.SystemSettingsController", return_value=FakeController()) as system_ctor,
             patch("speech_translate.webview_app.DetachedWindowManager", return_value=object()),
             patch("speech_translate.webview_app.DetachedWindowController", return_value=FakeController()),
         ):
@@ -127,23 +153,28 @@ class WebviewAppTests(unittest.TestCase):
         self.assertIs(captured["runtime_bindings"].file_state, fake_runtime_root.file_runtime)
         self.assertIs(captured["runtime_bindings"].visual_state, fake_runtime_root.visual)
         self.assertIsNone(captured["process_runtime"])
+        self.assertIs(captured["recording_controller"], recording_ctor.return_value)
+        self.assertEqual(recording_ctor.call_args.args[3], dependencies.model_manager_controller)
+        self.assertEqual(system_ctor.call_args.args[3], dependencies.model_manager_controller)
 
     def test_web_bridge_uses_injected_dependencies_and_bootstrapper(self) -> None:
         bootstrap_calls = []
         deps_builder = FakeDependenciesBuilder()
         settings = FakeSettings()
 
-        bridge = WebBridge(
-            dependencies_builder=deps_builder,
-            bootstrapper=lambda: bootstrap_calls.append("boot"),
-            settings=settings,
-        )
+        with patch("speech_translate.webview_app.set_current_bridge") as set_current_bridge:
+            bridge = WebBridge(
+                dependencies_builder=deps_builder,
+                bootstrapper=lambda: bootstrap_calls.append("boot"),
+                settings=settings,
+            )
 
         self.assertEqual(bootstrap_calls, ["boot"])
         self.assertIs(bridge.main_window_controller, deps_builder.main_window_controller)
         self.assertEqual(deps_builder.state_view_builder.scan_started, 1)
         self.assertIs(deps_builder.received_settings, settings)
         self.assertEqual(bridge.get_settings_snapshot(), {"alpha": 1})
+        set_current_bridge.assert_called_once_with(bridge)
 
     def test_get_state_logs_first_marker_once(self) -> None:
         deps_builder = FakeDependenciesBuilder()
@@ -166,6 +197,41 @@ class WebviewAppTests(unittest.TestCase):
             ("handle_task_message", "loading", "model-load"),
             deps_builder.model_manager_controller.calls,
         )
+
+    def test_update_live_html_pushes_detached_window_content_directly(self) -> None:
+        deps_builder = FakeDependenciesBuilder()
+        bridge = WebBridge(dependencies_builder=deps_builder, bootstrapper=None, settings=FakeSettings())
+
+        bridge.update_live_html("detached_transcribed_html", "<span>Hello</span>")
+
+        self.assertIn(
+            ("update_detached_content", "tc", "<span>Hello</span>"),
+            deps_builder.detached_window_controller.calls,
+        )
+
+    def test_clear_live_pushes_empty_detached_content_directly(self) -> None:
+        deps_builder = FakeDependenciesBuilder()
+        bridge = WebBridge(dependencies_builder=deps_builder, bootstrapper=None, settings=FakeSettings())
+
+        bridge.update_live_html("detached_translated_html", "<span>World</span>")
+        bridge.clear_live("detached_translated")
+
+        self.assertEqual(
+            deps_builder.detached_window_controller.calls[-1],
+            ("update_detached_content", "tl", ""),
+        )
+
+    def test_lifecycle_methods_delegate_to_main_window_controller(self) -> None:
+        deps_builder = FakeDependenciesBuilder()
+        bridge = WebBridge(dependencies_builder=deps_builder, bootstrapper=None, settings=FakeSettings())
+
+        bridge.set_startup_t0(12.5)
+        bridge.log_startup_marker("boot")
+        bridge.quit_app()
+
+        self.assertEqual(deps_builder.main_window_controller.startup_t0, 12.5)
+        self.assertIn(("log_startup_marker", "boot"), deps_builder.main_window_controller.calls)
+        self.assertIn(("quit_app",), deps_builder.main_window_controller.calls)
 
 
 if __name__ == "__main__":

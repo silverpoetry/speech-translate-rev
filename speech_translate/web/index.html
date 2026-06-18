@@ -188,10 +188,7 @@
                     <div class="file-workspace-shell">
                       <div class="file-queue-box">
                         <div class="file-queue-section-head">
-                          <div>
-                            <div class="file-queue-title">待处理队列</div>
-                            <div class="file-queue-subtitle">整理输入文件后统一启动处理。</div>
-                          </div>
+                          <div class="file-queue-title">待处理队列</div>
                         </div>
                         <div class="file-queue-header">
                           <span>文件名</span>
@@ -208,12 +205,6 @@
                   </div>
 
                   <aside class="file-ops-card">
-                    <div class="file-ops-panel-head">
-                      <div>
-                        <div class="file-ops-panel-title">输出与过滤</div>
-                        <div class="file-ops-panel-meta">保留必要操作和当前配置，不再重复堆概览卡。</div>
-                      </div>
-                    </div>
                     <div class="inline-actions file-ops-actions file-ops-actions-primary">
                       <button type="button" class="btn-with-icon" data-action="add-files-to-queue">导入</button>
                       <button type="button" class="btn-with-icon" data-action="pick-export-dir">设置导出</button>
@@ -254,20 +245,11 @@
                       <span class="settings-panel-meta">源/目标语言与翻译引擎</span>
                     </span>
                   </summary>
-                  <div class="floating-action-row">
-                    <button class="btn-icon" data-action="save-import-settings" data-tooltip="保存文件语言配置"
-                      title="保存文件语言配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
-                  </div>
                   <div class="advanced-panel-body">
-                    <div class="realtime-config-summary">
-                      <span class="pill pill-muted">识别链路</span>
-                      <span class="pill pill-muted">翻译链路</span>
-                    </div>
                     <div class="realtime-config-grid">
                       <section class="realtime-config-group">
                         <div class="realtime-config-group-head">
                           <span class="realtime-config-group-title">识别链路</span>
-                          <span class="realtime-config-group-meta">文件源语言与识别输入策略</span>
                         </div>
                         <div class="form-grid compact-form-grid">
                           <label class="field-span-2">
@@ -279,7 +261,6 @@
                       <section class="realtime-config-group">
                         <div class="realtime-config-group-head">
                           <span class="realtime-config-group-title">翻译链路</span>
-                          <span class="realtime-config-group-meta">目标语言与翻译服务</span>
                         </div>
                         <div class="form-grid compact-form-grid">
                           <label>
@@ -306,23 +287,15 @@
                   <div class="floating-action-row">
                     <button class="btn-icon btn-icon-blue" data-action="pick-export-dir" data-tooltip="设置导出目录"
                       title="设置导出目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
-                    <button class="btn-icon" data-action="save-import-settings" data-tooltip="保存文件输出设置"
-                      title="保存文件输出设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
                   </div>
                   <div class="advanced-panel-body">
                     <div class="file-export-block">
-                      <div class="realtime-config-summary">
-                        <span class="pill pill-muted">输出格式</span>
-                        <span class="pill pill-muted">目录策略</span>
-                        <span class="pill pill-muted">完成动作</span>
-                      </div>
                       <div class="realtime-config-grid">
                         <section class="realtime-config-group">
                           <div class="realtime-config-group-head">
                             <span class="realtime-config-group-title">输出格式</span>
-                            <span class="realtime-config-group-meta">选择导出的字幕与附加格式</span>
                           </div>
-                          <div class="file-export-formats format-chip-grid">
+                          <div class="file-export-formats file-export-format-cloud">
                             <label class="toggle-row format-chip"><input id="export_txt" type="checkbox" /> TXT</label>
                             <label class="toggle-row format-chip"><input id="export_srt" type="checkbox" /> SRT</label>
                             <label class="toggle-row format-chip"><input id="export_vtt" type="checkbox" /> VTT</label>
@@ -336,7 +309,6 @@
                         <section class="realtime-config-group">
                           <div class="realtime-config-group-head">
                             <span class="realtime-config-group-title">目录策略</span>
-                            <span class="realtime-config-group-meta">统一管理导出路径与打开方式</span>
                           </div>
                           <div class="file-export-grid form-grid compact-form-grid">
                             <label class="field-span-2">
@@ -358,18 +330,11 @@
                         <section class="realtime-config-group">
                           <div class="realtime-config-group-head">
                             <span class="realtime-config-group-title">完成动作</span>
-                            <span class="realtime-config-group-meta">控制任务结束后自动打开的目录</span>
                           </div>
                           <div class="file-export-grid file-export-actions-grid form-grid compact-form-grid">
                             <label class="toggle-row file-export-action-toggle"><input id="auto_open_dir_export_file" type="checkbox" /> 任务完成后自动打开目录</label>
-                            <label class="toggle-row file-export-action-toggle"><input id="auto_open_dir_translate_file" type="checkbox" /> 翻译完成后自动打开目录</label>
-                            <label class="toggle-row file-export-action-toggle"><input id="auto_open_dir_refinement_file" type="checkbox" /> 精修完成后自动打开目录</label>
-                            <label class="toggle-row file-export-action-toggle"><input id="auto_open_dir_alignment_file" type="checkbox" /> 对齐完成后自动打开目录</label>
                           </div>
                         </section>
-                      </div>
-                      <div class="file-export-head file-export-foot">
-                        <span class="pill pill-muted" id="file-export-dir-pill">输出目录：auto</span>
                       </div>
                     </div>
                   </div>

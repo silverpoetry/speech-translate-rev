@@ -1,100 +1,47 @@
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass
-from threading import RLock, Thread
-from time import gmtime, strftime, time
+from threading import Thread
+from time import time
 from typing import List, Optional
 
-from speech_translate.bridge_runtime_state import BridgeFileRuntime, BridgeRecordingRuntime, BridgeVisualRuntime
 from speech_translate.controller_protocols import (
     ImportQueueBridge,
     JsonDict,
     ModelManagerControllerApi,
+    RecordingControllerApi,
     SettingsStore,
     ShutdownSeleniumFn,
+)
+from speech_translate.import_queue_state import ImportQueueStateStore, QueueItem
+from speech_translate.import_queue_runtime import (
+    ImportQueueProcessRuntime,
+    ImportQueueRuntimeBindings,
+    ImportStartContext,
+    build_import_start_context,
+)
+from speech_translate.import_queue_view import (
+    build_file_processing_state_payload,
+    build_import_batch_ready_message,
+    build_import_status_message,
+    build_import_ui_payload,
+    build_task_progress,
+    build_task_rows,
+)
+from speech_translate.import_queue_workflows import (
+    build_file_process_dependencies,
+    build_file_process_request,
+    build_import_summary,
+    prepare_runtime_model_for_import,
 )
 from speech_translate.log_helpers import logger
 from speech_translate.ui_protocol import TASK_SOURCE_IMPORT, UI_SECTION_IMPORT
 from speech_translate.webview_runtime import create_file_dialog
-from speech_translate.utils.whisper.helper import model_keys, model_select_dict
 
 
 MEDIA_FILE_TYPES = [
     "Media Files (*.wav;*.mp3;*.ogg;*.flac;*.aac;*.wma;*.m4a;*.mp4;*.mkv;*.avi;*.mov;*.webm)",
     "All Files (*.*)",
 ]
-
-
-@dataclass
-class QueueItem:
-    path: str
-    name: str
-    status: str = ""
-    is_completed: bool = False
-
-    def to_dict(self) -> JsonDict:
-        return {
-            "path": self.path,
-            "name": self.name,
-            "status": self.status,
-            "is_completed": self.is_completed,
-        }
-
-
-@dataclass(frozen=True)
-class ImportStartContext:
-    settings_snapshot: JsonDict
-    engine: str
-    model_name_tc: str
-    is_tc: bool
-    is_tl: bool
-    files_to_process: list[str]
-
-    @property
-    def should_prepare_runtime_model(self) -> bool:
-        return self.is_tc or (self.is_tl and self.engine in model_keys)
-
-    @property
-    def should_auto_close_selenium(self) -> bool:
-        return self.is_tl and self.engine == "Selenium Chrome Translate"
-
-
-@dataclass
-class ImportQueueProcessRuntime:
-    recording_state: BridgeRecordingRuntime
-    file_state: BridgeFileRuntime
-
-    def is_recording_active(self) -> bool:
-        return bool(getattr(self.recording_state, "recording", False))
-
-    def is_file_processing_active(self) -> bool:
-        return bool(getattr(self.file_state, "file_processing", False))
-
-    def enable_file_processing(self) -> None:
-        self.file_state.file_processing = True
-
-    def disable_file_processing(self) -> None:
-        self.file_state.file_processing = False
-
-    def transcribed_count(self) -> int:
-        return int(getattr(self.file_state, "file_tced_counter", 0))
-
-    def translated_count(self) -> int:
-        return int(getattr(self.file_state, "file_tled_counter", 0))
-
-
-@dataclass(frozen=True)
-class ImportQueueRuntimeBindings:
-    recording_state: BridgeRecordingRuntime
-    file_state: BridgeFileRuntime
-    visual_state: BridgeVisualRuntime
-
-    def build_process_runtime(self) -> ImportQueueProcessRuntime:
-        return ImportQueueProcessRuntime(
-            recording_state=self.recording_state,
-            file_state=self.file_state,
-        )
 
 
 class ImportQueueController:
@@ -105,6 +52,7 @@ class ImportQueueController:
         bridge: ImportQueueBridge,
         settings: SettingsStore,
         shutdown_selenium_fn: ShutdownSeleniumFn,
+        recording_controller: RecordingControllerApi,
         model_manager: ModelManagerControllerApi,
         runtime_bindings: ImportQueueRuntimeBindings,
         process_runtime: ImportQueueProcessRuntime | None = None,
@@ -112,124 +60,84 @@ class ImportQueueController:
         self.bridge = bridge
         self.settings = settings
         self.shutdown_selenium_fn = shutdown_selenium_fn
+        self.recording_controller = recording_controller
         self.model_manager = model_manager
         self.runtime_bindings = runtime_bindings
         self.process_runtime = process_runtime or runtime_bindings.build_process_runtime()
-        self._lock = RLock()
-        self.file_import_queue: List[object] = []
-        self.processing_queue: List[JsonDict] = []
+        self.queue_state = ImportQueueStateStore()
         self.batch_start_time: Optional[float] = None
 
+    @property
+    def file_import_queue(self) -> List[object]:
+        return self.queue_state.file_import_queue
+
+    @file_import_queue.setter
+    def file_import_queue(self, value: List[object]) -> None:
+        self.queue_state.file_import_queue = list(value)
+
+    @property
+    def processing_queue(self) -> List[JsonDict]:
+        return self.queue_state.processing_queue
+
+    @processing_queue.setter
+    def processing_queue(self, value: List[JsonDict]) -> None:
+        self.queue_state.processing_queue = list(value)
+
     def build_import_ui(self, verify_available: bool = True) -> JsonDict:
-        settings_snapshot = dict(self.settings.cache)
-        engine = self.model_manager.normalize_engine_name(str(settings_snapshot.get("tl_engine_f_import", "Selenium Chrome Translate")))
-        selected_model_display = str(settings_snapshot.get("model_f_import", "")).strip()
-        model_name = self.model_manager.normalize_model_key(selected_model_display)
-        backend = "faster-whisper" if bool(settings_snapshot.get("use_faster_whisper", True)) else "whisper"
-
-        available_model_display_names = []
-        if verify_available:
-            model_dir = self.model_manager.resolve_model_dir()
-            for display_name in list(model_select_dict.keys()):
-                if self.model_manager.is_model_available_for_backend(self.model_manager.normalize_model_key(display_name), backend, model_dir):
-                    available_model_display_names.append(display_name)
-            if available_model_display_names:
-                if selected_model_display not in available_model_display_names:
-                    selected_model_display = available_model_display_names[0]
-                model_name = self.model_manager.normalize_model_key(selected_model_display)
-            else:
-                selected_model_display = ""
-                model_name = ""
-        else:
-            available_model_display_names = [selected_model_display] if selected_model_display else []
-
-        return {
-            "backend_options": ["whisper", "faster-whisper"],
-            "selected_backend": backend,
-            "model_options": available_model_display_names,
-            "selected_model": selected_model_display,
-            "selected_model_key": model_name,
-            "engine_options": ["Selenium Chrome Translate", "Google Translate", "MyMemoryTranslator", "LibreTranslate"] + list(model_select_dict.keys()),
-            "selected_engine": engine,
-            "source_options": self.bridge.TL_ENGINE_SOURCE_DICT_REF.get(engine, self.bridge.TL_ENGINE_SOURCE_DICT_REF["Google Translate"]),
-            "target_options": self.bridge.TL_ENGINE_TARGET_DICT_REF.get(engine, self.bridge.TL_ENGINE_TARGET_DICT_REF["Google Translate"]),
-            "selected_source": settings_snapshot.get("source_lang_f_import"),
-            "selected_target": settings_snapshot.get("target_lang_f_import"),
-            "transcribe": settings_snapshot.get("transcribe_f_import"),
-            "translate": settings_snapshot.get("translate_f_import"),
-            "queued_files": self.get_full_display_queue(),
-        }
+        payload = build_import_ui_payload(
+            dict(self.settings.cache),
+            model_manager=self.model_manager,
+            source_dict_ref=self.bridge.TL_ENGINE_SOURCE_DICT_REF,
+            target_dict_ref=self.bridge.TL_ENGINE_TARGET_DICT_REF,
+            verify_available=verify_available,
+        )
+        payload["queued_files"] = self.get_full_display_queue()
+        return payload
 
     def get_import_ui_details(self) -> JsonDict:
         return self.build_import_ui(verify_available=True)
 
     def get_full_display_queue(self) -> List[JsonDict]:
-        with self._lock:
-            display_list = [self._normalize_queue_item(entry).to_dict() for entry in self.file_import_queue]
-
-            if self.processing_queue:
-                processing_map = {item.get("path"): item for item in self.processing_queue if item.get("path")}
-                for item in display_list:
-                    path = item.get("path")
-                    if path in processing_map:
-                        processing_item = processing_map[path]
-                        item["status"] = str(processing_item.get("status", item.get("status", "")))
-                        item["is_completed"] = bool(processing_item.get("is_completed", item.get("is_completed", False)))
-            return display_list
+        return self.queue_state.get_display_queue()
 
     def get_file_processing_state(self) -> JsonDict:
         display_queue = self.get_full_display_queue()
-        return {
-            "ok": True,
-            "files": display_queue,
-            "files_total": len(display_queue),
-            "files_completed": sum(1 for item in display_queue if item.get("is_completed", False)),
-            "active": bool(self.processing_queue) and self.process_runtime.is_file_processing_active(),
-        }
+        return build_file_processing_state_payload(
+            display_queue,
+            active=bool(self.processing_queue) and self.process_runtime.is_file_processing_active(),
+        )
 
     def init_file_batch(self, task_name: str, files: list) -> None:
         self.batch_start_time = time()
         self.bridge.set_task_title(task_name)
-        with self._lock:
-            self.processing_queue = [self._make_queue_item(file_path, status="Waiting").to_dict() for file_path in files]
+        self.queue_state.set_processing_batch(files)
 
         display_queue = self.get_full_display_queue()
         total = len(display_queue)
         self._update_task_projection(
             display_queue,
-            f"已准备好 {len(files)} 个待处理文件 | 队列共 {total} 个",
+            build_import_batch_ready_message(prepared_count=len(files), total_count=total),
             source=TASK_SOURCE_IMPORT,
         )
         self._emit_import_update(async_emit=True)
 
     def sync_file_status(self, index: int, combined_status: str, is_completed: bool) -> None:
-        with self._lock:
-            if self.processing_queue and 0 <= index < len(self.processing_queue):
-                if not self.processing_queue[index].get("is_completed", False) or is_completed:
-                    self.processing_queue[index]["status"] = combined_status
-                    self.processing_queue[index]["is_completed"] = is_completed
+        self.queue_state.sync_processing_status(index, combined_status, is_completed)
 
         display_queue = self.get_full_display_queue()
-        total = len(display_queue)
-        completed_count = sum(1 for item in display_queue if item.get("is_completed", False))
-
-        elapsed = ""
-        if self.batch_start_time is not None:
-            elapsed = strftime("%H:%M:%S", gmtime(time() - self.batch_start_time))
-
-        message = f"已完成 {completed_count}/{total} 个文件"
-        if elapsed:
-            message += f" | 耗时: {elapsed}"
-
-        self._update_task_projection(display_queue, message, source=TASK_SOURCE_IMPORT)
+        self._update_task_projection(
+            display_queue,
+            build_import_status_message(display_queue, batch_start_time=self.batch_start_time, time_fn=time),
+            source=TASK_SOURCE_IMPORT,
+        )
         self._emit_import_update(async_emit=True)
 
     def add_files_to_import_queue(self, files: Optional[list[str]] = None) -> JsonDict:
-        if not self.bridge.wait_recording_idle(timeout_s=12.0):
+        if not self.recording_controller.wait_recording_idle(timeout_s=12.0):
             return {"ok": False, "message": "Recording is still cleaning up."}
         if self._is_model_load_running():
             return {"ok": False, "message": "Model loading is in progress."}
-        if bool(self.bridge.get_recording_state().get("active", False)) or self.process_runtime.is_recording_active():
+        if bool(self.recording_controller.get_recording_state().get("active", False)) or self.process_runtime.is_recording_active():
             return {"ok": False, "message": "Recording is active."}
 
         if not files:
@@ -245,42 +153,26 @@ class ImportQueueController:
         if not files:
             return {"ok": False, "message": "No files selected"}
 
-        added = 0
-        with self._lock:
-            for file_path in files:
-                if not any(self._normalize_queue_item(queue_item).path == file_path for queue_item in self.file_import_queue):
-                    self.file_import_queue.append(self._make_queue_item(file_path, status="Waiting").to_dict())
-                    added += 1
+        added = self.queue_state.add_files(files)
         return {"ok": True, "count": len(self.file_import_queue), "added": added, "files": list(self.file_import_queue)}
 
     def remove_file_from_import_queue(self, index: Optional[int] = None) -> JsonDict:
-        with self._lock:
-            if index is None:
-                return {"ok": False, "message": "缺少索引"}
-            try:
-                idx = int(index)
-            except Exception:
-                return {"ok": False, "message": "索引无效"}
+        if index is None:
+            return {"ok": False, "message": "缺少索引"}
+        try:
+            idx = int(index)
+        except Exception:
+            return {"ok": False, "message": "索引无效"}
 
-            if self.processing_queue and 0 <= idx < len(self.processing_queue):
-                removed = self.processing_queue.pop(idx)
-                path_to_remove = removed.get("path")
-                for queue_index, queue_item in enumerate(list(self.file_import_queue)):
-                    if self._normalize_queue_item(queue_item).path == path_to_remove:
-                        self.file_import_queue.pop(queue_index)
-                        break
-            else:
-                if idx < 0 or idx >= len(self.file_import_queue):
-                    return {"ok": False, "message": "索引超出范围"}
-                removed = self.file_import_queue.pop(idx)
+        removed = self.queue_state.remove_by_index(idx)
+        if removed is None:
+            return {"ok": False, "message": "索引超出范围"}
 
         self._emit_import_update(async_emit=False)
         return {"ok": True, "files": list(self.file_import_queue), "removed": removed}
 
     def clear_import_queue(self) -> JsonDict:
-        with self._lock:
-            self.file_import_queue = []
-            self.processing_queue = []
+        self.queue_state.clear()
         self._emit_import_update(async_emit=False)
         return {"ok": True, "files": []}
 
@@ -303,47 +195,21 @@ class ImportQueueController:
         return self.start_import_queue()
 
     def _extract_files_to_process(self) -> list[str]:
-        files_to_process = []
-        with self._lock:
-            for entry in self.file_import_queue:
-                normalized = self._normalize_queue_item(entry)
-                if not normalized.is_completed and normalized.path:
-                    files_to_process.append(normalized.path)
-        return files_to_process
+        return self.queue_state.extract_files_to_process()
 
     def _build_import_start_context(self) -> ImportStartContext:
-        settings_snapshot = self.bridge.get_settings_snapshot()
-        return ImportStartContext(
-            settings_snapshot=settings_snapshot,
-            engine=self.model_manager.normalize_engine_name(str(settings_snapshot.get("tl_engine_f_import", "Google Translate"))),
-            model_name_tc=self.model_manager.normalize_model_key(str(settings_snapshot.get("model_f_import", ""))),
-            is_tc=bool(settings_snapshot.get("transcribe_f_import", True)),
-            is_tl=bool(settings_snapshot.get("translate_f_import", True)),
+        return build_import_start_context(
+            self.bridge.get_settings_snapshot(),
+            normalize_engine_name=self.model_manager.normalize_engine_name,
+            normalize_model_key=self.model_manager.normalize_model_key,
             files_to_process=self._extract_files_to_process(),
         )
 
     def _prepare_runtime_model_for_import(self, context: ImportStartContext) -> None:
-        if not context.should_prepare_runtime_model:
-            return
-        if self._is_runtime_model_ready(context.model_name_tc):
-            self.model_manager.mark_runtime_model_ready(context.model_name_tc)
-        else:
-            self.model_manager.mark_runtime_model_pending(context.model_name_tc)
+        prepare_runtime_model_for_import(context, model_manager=self.model_manager)
 
     def _finalize_processing_queue(self) -> None:
-        with self._lock:
-            processing_map = {item.get("path"): item for item in self.processing_queue}
-            for index, entry in enumerate(self.file_import_queue):
-                path = self._normalize_queue_item(entry).path
-                if path in processing_map:
-                    processing_item = processing_map[path]
-                    self.file_import_queue[index] = QueueItem(
-                        path=path,
-                        name=processing_item.get("name", os.path.basename(path)),
-                        status=processing_item.get("status", ""),
-                        is_completed=bool(processing_item.get("is_completed", False)),
-                    ).to_dict()
-            self.processing_queue = []
+        self.queue_state.finalize_processing_queue()
 
     def _finish_import_run(self, *, context: ImportStartContext) -> None:
         self._finalize_processing_queue()
@@ -354,50 +220,24 @@ class ImportQueueController:
             self.shutdown_selenium_fn()
 
     def _build_import_summary(self, *, is_tc: bool, is_tl: bool) -> str:
-        parts = []
-        if is_tc:
-            parts.append(f"{self.process_runtime.transcribed_count()} transcribed")
-        if is_tl:
-            parts.append(f"{self.process_runtime.translated_count()} translated")
-        return ", ".join(parts) or "no output generated"
+        return build_import_summary(self.process_runtime, is_tc=is_tc, is_tl=is_tl)
 
     def _build_file_process_dependencies(self, *, context: ImportStartContext):
-        from speech_translate.utils.audio import file as audio_file_module
-
-        return audio_file_module.FileProcessDependencies(
-            ui_bridge=audio_file_module.build_file_ui_bridge_adapter(bridge=self),
-            result_queue=audio_file_module.build_file_result_queue_adapter(
-                state=self.runtime_bindings.recording_state,
-                state_provider=None,
-            ),
-            processing_state=audio_file_module.build_file_processing_state_adapter(
-                state=self.runtime_bindings.file_state,
-                state_provider=None,
-            ),
-            settings=audio_file_module.FileSettingsAdapter(cache=dict(context.settings_snapshot)),
-            environment=audio_file_module.build_file_environment_adapter(
-                visual_state=self.runtime_bindings.visual_state,
-                visual_state_provider=None,
-            ),
+        return build_file_process_dependencies(
+            context=context,
+            runtime_bindings=self.runtime_bindings,
+            bridge=self,
         )
 
     def _start_import_worker(self, *, context: ImportStartContext) -> None:
-        from speech_translate.utils.audio import file as audio_file_module
+        from speech_translate.utils.audio import file_api as audio_file_module
         dependencies = self._build_file_process_dependencies(context=context)
 
         def worker() -> None:
             try:
                 self.process_runtime.enable_file_processing()
                 audio_file_module.process_file(
-                    audio_file_module.FileProcessRequest(
-                        data_files=context.files_to_process,
-                        model_name_tc=context.model_name_tc,
-                        lang_source=str(context.settings_snapshot.get("source_lang_f_import", "English")),
-                        lang_target=str(context.settings_snapshot.get("target_lang_f_import", "Indonesian")),
-                        is_tc=context.is_tc,
-                        is_tl=context.is_tl,
-                        engine=context.engine,
-                    ),
+                    build_file_process_request(context),
                     dependencies=dependencies,
                 )
                 self.bridge.finish_task(
@@ -416,7 +256,7 @@ class ImportQueueController:
     def start_import_queue(self) -> JsonDict:
         if not self.file_import_queue:
             return {"ok": False, "message": "No files in queue"}
-        if not self.bridge.wait_recording_idle(timeout_s=12.0):
+        if not self.recording_controller.wait_recording_idle(timeout_s=12.0):
             return {"ok": False, "message": "Recording is still cleaning up."}
         if self._is_model_load_running():
             return {"ok": False, "message": "Model loading is still in progress."}
@@ -431,13 +271,10 @@ class ImportQueueController:
         return {"ok": True, "count": len(context.files_to_process), "message": "File import started"}
 
     def stop_import_queue(self) -> JsonDict:
-        with self._lock:
-            if not (bool(self.processing_queue) and len(self.processing_queue) > 0):
-                return {"ok": False, "message": "No import is running"}
+        if not self.processing_queue:
+            return {"ok": False, "message": "No import is running"}
         self.process_runtime.disable_file_processing()
-        with self._lock:
-            for item in self.processing_queue:
-                item["status"] = "Cancelled"
+        self.queue_state.cancel_processing(status="Cancelled")
         try:
             self.bridge.update_task_message("Cancelling file import...", source=TASK_SOURCE_IMPORT)
         except Exception:
@@ -446,27 +283,10 @@ class ImportQueueController:
         return {"ok": True, "message": "Cancel requested"}
 
     def _make_queue_item(self, file_path: str, *, status: str = "", is_completed: bool = False) -> QueueItem:
-        normalized_path = str(file_path)
-        return QueueItem(
-            path=normalized_path,
-            name=os.path.basename(normalized_path),
-            status=status,
-            is_completed=is_completed,
-        )
+        return self.queue_state.make_queue_item(file_path, status=status, is_completed=is_completed)
 
     def _normalize_queue_item(self, entry: object) -> QueueItem:
-        if isinstance(entry, QueueItem):
-            return entry
-        if isinstance(entry, dict):
-            path = str(entry.get("path", ""))
-            return QueueItem(
-                path=path,
-                name=str(entry.get("name", os.path.basename(path))),
-                status=str(entry.get("status", "")),
-                is_completed=bool(entry.get("is_completed", False)),
-            )
-        text = str(entry)
-        return QueueItem(path=text, name=os.path.basename(text))
+        return self.queue_state.normalize_queue_item(entry)
 
     def _emit_import_update(self, *, async_emit: bool) -> None:
         def emit() -> None:
@@ -481,18 +301,12 @@ class ImportQueueController:
             emit()
 
     def _update_task_projection(self, display_queue: List[JsonDict], message: str, *, source: str = "general") -> None:
-        total = len(display_queue)
-        completed_count = sum(1 for item in display_queue if item.get("is_completed", False))
-        progress = float((completed_count / total * 100) if total > 0 else 0)
-        self.bridge.update_task_progress(progress, source=source)
+        self.bridge.update_task_progress(build_task_progress(display_queue), source=source)
         self.bridge.update_task_message(message, source=source)
-        self.bridge.update_task_rows([[item.get("name", ""), item.get("status", "")] for item in display_queue])
+        self.bridge.update_task_rows(build_task_rows(display_queue))
 
     def _is_model_load_running(self) -> bool:
-        return bool(self.model_manager.model_load_running)
+        return bool(self.model_manager.is_runtime_model_loading())
 
     def _set_model_load_running(self, loading: bool) -> None:
-        self.model_manager.model_load_running = bool(loading)
-
-    def _is_runtime_model_ready(self, model_key: str) -> bool:
-        return bool(self.model_manager.runtime_model_loaded) and self.model_manager.runtime_model_key == model_key
+        self.model_manager.set_runtime_model_loading(bool(loading))

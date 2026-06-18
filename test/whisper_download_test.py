@@ -17,7 +17,7 @@ from speech_translate.utils.whisper.download import (
     TaskReporter,
     _build_bridge_task_reporter,
     _build_download_execution_hooks,
-    whisper_download_headless,
+    download_whisper_checkpoint,
 )
 
 
@@ -139,7 +139,7 @@ class WhisperDownloadTests(unittest.TestCase):
         hooks.clear_cancel_requested()
         self.assertFalse(cancellation_state.cancel_dl)
 
-    def test_whisper_download_headless_uses_injected_cancel_hooks(self) -> None:
+    def test_download_whisper_checkpoint_uses_injected_cancel_hooks(self) -> None:
         from speech_translate.utils.whisper import download as download_module
 
         previous_urlopen = download_module.urllib.request.urlopen
@@ -150,7 +150,7 @@ class WhisperDownloadTests(unittest.TestCase):
             download_module.urllib.request.urlopen = lambda _url: FakeUrlResponse()
 
             with tempfile.TemporaryDirectory() as temp_dir:
-                result = whisper_download_headless(
+                result = download_whisper_checkpoint(
                     "small",
                     "https://example.com/0123456789abcdef/model.pt",
                     temp_dir,
@@ -175,7 +175,7 @@ class WhisperDownloadTests(unittest.TestCase):
         self.assertTrue(cancel_state["cleared"])
         self.assertIn(("finish", "Download Cancelled"), reporter_events)
 
-    def test_whisper_download_headless_runs_cancel_callback(self) -> None:
+    def test_download_whisper_checkpoint_runs_cancel_callback(self) -> None:
         from speech_translate.utils.whisper import download as download_module
 
         previous_urlopen = download_module.urllib.request.urlopen
@@ -188,7 +188,7 @@ class WhisperDownloadTests(unittest.TestCase):
             download_module.start_optional_callback = lambda callback: callback() if callback is not None else None
             with bridge_state_registry.override(fake_bridge):
                 with tempfile.TemporaryDirectory() as temp_dir:
-                    result = whisper_download_headless(
+                    result = download_whisper_checkpoint(
                         "small",
                         "https://example.com/0123456789abcdef/model.pt",
                         temp_dir,
@@ -208,7 +208,7 @@ class WhisperDownloadTests(unittest.TestCase):
         self.assertEqual(cancelled, ["cancelled"])
         self.assertIn(("finish", "Download Cancelled"), reporter_events)
 
-    def test_whisper_download_headless_handles_missing_content_length(self) -> None:
+    def test_download_whisper_checkpoint_handles_missing_content_length(self) -> None:
         from speech_translate.utils.whisper import download as download_module
 
         payload = b"abcd"
@@ -219,7 +219,7 @@ class WhisperDownloadTests(unittest.TestCase):
             download_module.urllib.request.urlopen = lambda _url: ChunkedUrlResponse([payload], headers={})
 
             with tempfile.TemporaryDirectory() as temp_dir:
-                result = whisper_download_headless(
+                result = download_whisper_checkpoint(
                     "small",
                     f"https://example.com/{expected_sha}/model.pt",
                     temp_dir,
@@ -238,7 +238,7 @@ class WhisperDownloadTests(unittest.TestCase):
         from speech_translate.utils.whisper import download as download_module
 
         previous_whisper_url = download_module._resolve_whisper_model_url
-        previous_downloader = download_module.whisper_download_headless
+        previous_downloader = download_module.download_whisper_checkpoint
         previous_faster_repo = download_module._resolve_faster_whisper_repo_id
         captured = {}
         try:
@@ -247,7 +247,7 @@ class WhisperDownloadTests(unittest.TestCase):
                 AssertionError("faster-whisper path should not be used")
             )
 
-            def fake_whisper_download_headless(model_name, url, download_root, cancel_func, after_func, failed_func, **kwargs):
+            def fake_whisper_download_checkpoint(model_name, url, download_root, cancel_func, after_func, failed_func, **kwargs):
                 captured.update(
                     {
                         "model_name": model_name,
@@ -258,7 +258,7 @@ class WhisperDownloadTests(unittest.TestCase):
                 )
                 return "ok"
 
-            download_module.whisper_download_headless = fake_whisper_download_headless
+            download_module.download_whisper_checkpoint = fake_whisper_download_checkpoint
             result = download_module.download_model(
                 "small",
                 use_faster_whisper=False,
@@ -269,7 +269,7 @@ class WhisperDownloadTests(unittest.TestCase):
             )
         finally:
             download_module._resolve_whisper_model_url = previous_whisper_url
-            download_module.whisper_download_headless = previous_downloader
+            download_module.download_whisper_checkpoint = previous_downloader
             download_module._resolve_faster_whisper_repo_id = previous_faster_repo
 
         self.assertEqual(result, "ok")

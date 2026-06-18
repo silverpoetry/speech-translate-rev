@@ -8,7 +8,7 @@ from unittest.mock import patch
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
-from speech_translate.state_view_builder import StateViewBuilder
+from speech_translate.state_view_builder import StateViewBuilder, StateViewDependencies
 from speech_translate.state_view_settings import build_record_device_view_settings, build_state_view_settings
 from speech_translate.ui_protocol import UI_SECTION_STATE
 
@@ -19,6 +19,7 @@ class FakeSettings:
             "log_level": "INFO",
             "dir_export": "auto",
             "dir_model": "auto",
+            "dir_log": "auto",
             "export_to": "txt",
             "source_lang_mw": "English",
             "target_lang_mw": "Chinese",
@@ -32,6 +33,7 @@ class FakeSettings:
             "target_lang_f_import": "Chinese",
             "transcribe_f_import": True,
             "translate_f_import": True,
+            "model_mw": "tiny",
             "tl_engine_f_import": "Google Translate",
             "model_f_import": "small",
             "selenium_compact_level": 2,
@@ -53,6 +55,74 @@ class FakeSettings:
             "filter_file_import_ignore_punctuations": "\"',.?!",
             "filter_file_import_exact_match": False,
             "filter_file_import_similarity": 0.75,
+            "http_proxy_enable": True,
+            "http_proxy": "http://127.0.0.1:7890",
+            "https_proxy_enable": True,
+            "https_proxy": "http://127.0.0.1:7890",
+            "libre_link": "https://libretranslate.example.com",
+            "libre_api_key": "secret-key",
+            "auto_open_dir_export": True,
+            "export_format": "%Y-%m-%d %f {file}/{task-lang}",
+            "path_filter_rec": "D:/filters/record.json",
+            "path_filter_file_import": "D:/filters/file.json",
+            "remove_repetition_file_import": True,
+            "remove_repetition_amount": 2,
+            "segment_max_words": "12",
+            "segment_max_chars": "80",
+            "segment_split_or_newline": "Split",
+            "segment_even_split": True,
+            "segment_level": True,
+            "word_level": False,
+            "use_en_model": True,
+            "decoding_preset": "beam search",
+            "temperature": "0.0, 0.2",
+            "best_of": 3,
+            "beam_size": 3,
+            "patience": 1.0,
+            "compression_ratio_threshold": 2.4,
+            "logprob_threshold": -1.0,
+            "no_speech_threshold": 0.72,
+            "suppress_tokens": "-1",
+            "suppress_blank": False,
+            "fp16": True,
+            "initial_prompt": "custom prompt",
+            "prefix": "prefix text",
+            "max_initial_timestamp": 1.0,
+            "whisper_args": "--vad True",
+            "file_slice_start": "5",
+            "file_slice_end": "120",
+            "auto_open_dir_translate": True,
+            "auto_open_dir_refinement": False,
+            "auto_open_dir_alignment": True,
+            "debug_realtime_record": True,
+            "debug_translate": True,
+            "rec_ask_confirmation_first": False,
+            "supress_hidden_to_tray": True,
+            "supress_record_warning": False,
+            "colorize_per_segment": True,
+            "colorize_per_word": False,
+            "gradient_low_conf": "#112233",
+            "gradient_high_conf": "#aabbcc",
+            "tb_mw_tc_auto_scroll": True,
+            "tb_mw_tc_limit_max": True,
+            "tb_mw_tc_limit_max_per_line": False,
+            "tb_mw_tc_max": 400,
+            "tb_mw_tc_max_per_line": 33,
+            "tb_mw_tc_font": "Arial",
+            "tb_mw_tc_font_bold": True,
+            "tb_mw_tc_font_size": 14,
+            "tb_mw_tc_font_color": "#ddeeff",
+            "tb_mw_tc_use_conf_color": True,
+            "tb_mw_tl_auto_scroll": False,
+            "tb_mw_tl_limit_max": True,
+            "tb_mw_tl_limit_max_per_line": True,
+            "tb_mw_tl_max": 500,
+            "tb_mw_tl_max_per_line": 44,
+            "tb_mw_tl_font": "Consolas",
+            "tb_mw_tl_font_bold": False,
+            "tb_mw_tl_font_size": 15,
+            "tb_mw_tl_font_color": "#ccbbaa",
+            "tb_mw_tl_use_conf_color": False,
             "hostAPI": "WASAPI",
             "mic": "Mic 2",
             "speaker": "Speaker 1",
@@ -63,7 +133,6 @@ class FakeSettings:
             "use_temp": False,
             "keep_temp": False,
             "file_use_official_whisper": False,
-            "show_audio_visualizer_in_setting": True,
             "sample_rate_mic": 16000,
             "chunk_size_mic": 1024,
             "channels_mic": 1,
@@ -99,33 +168,50 @@ class FakeSettings:
         }
 
 
-class FakeBridge:
-    def __init__(self) -> None:
-        self.emits = []
-
+class FakeImportQueueController:
     def build_import_ui(self, verify_available: bool = True):
         return {"verify_available": verify_available}
 
+
+class FakeModelManagerController:
     def build_runtime_model_state(self):
         return {"loaded": False, "key": "small"}
 
-    def snapshot_live_state(self):
-        return {"main_transcribed_text": "hello"}
+    def resolve_model_dir(self):
+        return "D:/models"
 
+    def get_model_manager_keys(self):
+        return ["tiny", "small", "medium"]
+
+    def normalize_model_key(self, value: str):
+        return {"⛵ Small [2GB VRAM] (Moderate)": "small"}.get(value, value)
+
+
+class FakeSystemSettingsController:
     def get_log_file_name(self):
         return "latest.log"
 
     def get_log_content(self):
         return "content"
 
-    def get_detached_config(self, mode: str):
-        return {"mode": mode}
-
-    def resolve_model_dir(self):
-        return "D:/models"
+    def resolve_log_dir(self):
+        return "D:/logs"
 
     def resolve_export_dir(self):
         return "D:/exports"
+
+
+class FakeDetachedWindowController:
+    def get_detached_config(self, mode: str):
+        return {"mode": mode}
+
+
+class FakeStateViewCallbacks:
+    def __init__(self) -> None:
+        self.emits = []
+
+    def snapshot_live_state(self):
+        return {"main_transcribed_text": "hello"}
 
     def emit_ui_update(self, sections):
         self.emits.append(tuple(sections))
@@ -133,9 +219,19 @@ class FakeBridge:
 
 class StateViewBuilderTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.bridge = FakeBridge()
+        self.callbacks = FakeStateViewCallbacks()
         self.settings = FakeSettings()
-        self.builder = StateViewBuilder(self.bridge, self.settings)
+        self.builder = StateViewBuilder(
+            StateViewDependencies(
+                import_queue_controller=FakeImportQueueController(),
+                model_manager_controller=FakeModelManagerController(),
+                system_settings_controller=FakeSystemSettingsController(),
+                detached_window_controller=FakeDetachedWindowController(),
+                snapshot_live_state=self.callbacks.snapshot_live_state,
+                emit_ui_update=self.callbacks.emit_ui_update,
+            ),
+            self.settings,
+        )
 
     def test_build_audio_source_options_falls_back_to_default_entries(self) -> None:
         self.builder.audio_source_cache = {
@@ -172,17 +268,45 @@ class StateViewBuilderTests(unittest.TestCase):
         self.assertEqual(state["app_name"], "Speech Translate")
         self.assertEqual(state["runtime_model"]["key"], "small")
         self.assertEqual(state["import_ui"]["verify_available"], False)
+        self.assertEqual(state["main_ui"]["selected_model"], "tiny")
+        self.assertEqual(state["main_ui"]["selected_backend"], "faster-whisper")
+        self.assertEqual(state["main_ui"]["backend_options"], ["whisper", "faster-whisper"])
+        self.assertEqual(state["main_ui"]["model_options"], ["tiny", "small", "medium"])
         self.assertEqual(state["detached_config"]["tc"]["mode"], "tc")
         self.assertEqual(state["about"]["model_dir"], "D:/models")
+        self.assertEqual(state["about"]["log_dir"], "D:/logs")
 
     def test_build_state_view_settings_extracts_view_payloads(self) -> None:
         view_settings = build_state_view_settings(self.settings.cache)
+        compact = view_settings.compact_settings.to_payload()
 
         self.assertEqual(view_settings.log_level, "INFO")
         self.assertEqual(view_settings.main_ui.selected_input, "mic")
+        self.assertEqual(view_settings.main_ui.selected_model, self.settings.cache["model_mw"])
+        self.assertEqual(view_settings.main_ui.selected_backend, "faster-whisper")
         self.assertEqual(view_settings.main_ui.selected_engine, "Google Translate")
         self.assertEqual(view_settings.record_ui.model_device_preference, "auto")
-        self.assertEqual(view_settings.compact_settings.to_payload()["model_f_import"], "small")
+        self.assertEqual(compact["model_mw"], self.settings.cache["model_mw"])
+        self.assertEqual(compact["model_f_import"], "small")
+        self.assertTrue(compact["use_faster_whisper"])
+        self.assertEqual(compact["http_proxy"], "http://127.0.0.1:7890")
+        self.assertEqual(compact["libre_link"], "https://libretranslate.example.com")
+        self.assertEqual(compact["segment_max_words"], "12")
+        self.assertEqual(compact["decoding_preset"], "beam search")
+        self.assertEqual(compact["whisper_args"], "--vad True")
+        self.assertEqual(compact["dir_log"], "auto")
+        self.assertEqual(compact["path_filter_rec"], "D:/filters/record.json")
+        self.assertEqual(compact["path_filter_file_import"], "D:/filters/file.json")
+        self.assertEqual(compact["initial_prompt"], "custom prompt")
+        self.assertEqual(compact["prefix"], "prefix text")
+        self.assertFalse(compact["suppress_blank"])
+        self.assertEqual(compact["file_slice_start"], "5")
+        self.assertFalse(compact["auto_open_dir_refinement"])
+        self.assertEqual(compact["gradient_low_conf"], "#112233")
+        self.assertEqual(compact["tb_mw_tc_font"], "Arial")
+        self.assertEqual(compact["tb_mw_tc_font_color"], "#ddeeff")
+        self.assertEqual(compact["tb_mw_tl_font"], "Consolas")
+        self.assertEqual(compact["tb_mw_tl_font_color"], "#ccbbaa")
 
     def test_build_record_device_view_settings_extracts_device_thresholds(self) -> None:
         device_settings = build_record_device_view_settings(self.settings.cache, "speaker")
@@ -200,7 +324,7 @@ class StateViewBuilderTests(unittest.TestCase):
         self.assertFalse(self.builder.audio_source_cache_loading)
         self.assertEqual(self.builder.audio_source_cache["mic_options_all"], ["[ERROR] Failed to load input devices"])
         self.assertEqual(self.builder.audio_source_cache["speaker_options_all"], ["[ERROR] Failed to load output devices"])
-        self.assertIn((UI_SECTION_STATE,), self.bridge.emits)
+        self.assertIn((UI_SECTION_STATE,), self.callbacks.emits)
 
 
 if __name__ == "__main__":

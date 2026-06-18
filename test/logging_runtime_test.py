@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import os
 import sys
+import tempfile
 import unittest
 
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -59,6 +60,17 @@ class LoggingRuntimeTests(unittest.TestCase):
         self.assertEqual(console_kwargs["level"], "DEBUG")
         file_sink, _file_kwargs = fake_logger.add_calls[1]
         self.assertTrue(str(file_sink).endswith(".log"))
+
+    def test_init_logging_uses_custom_log_dir_for_file_sink(self) -> None:
+        fake_logger = FakeLoguruLogger()
+        self.logging_module.logger = fake_logger
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self.logging_module.init_logging("DEBUG", temp_dir)
+
+            file_sink, _file_kwargs = fake_logger.add_calls[1]
+            self.assertTrue(str(file_sink).startswith(temp_dir))
+            self.assertEqual(self.logging_module.ACTIVE_LOG_DIR, os.path.abspath(temp_dir))
 
     def test_stream_stderr_to_logger_collects_progress_without_crashing(self) -> None:
         captured = []

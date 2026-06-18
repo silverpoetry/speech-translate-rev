@@ -235,7 +235,7 @@ def _verify_faster_whisper_snapshot_cache(model_key: str, cache_dir: str | Path)
     return False
 
 
-def whisper_download_headless(
+def download_whisper_checkpoint(
     model_name: str,
     url: str,
     download_root: str,
@@ -397,7 +397,7 @@ def snapshot_download(
     )
 
 
-def faster_whisper_download_headless(
+def download_faster_whisper_snapshot(
     model_name: str,
     repo_id: str,
     cache_dir: str,
@@ -535,7 +535,7 @@ def download_model(model_key, bridge=None, **kwargs):
     )
 
     if not use_faster_whisper:
-        return whisper_download_headless(
+        return download_whisper_checkpoint(
             model_key,
             _resolve_whisper_model_url(model_key),
             download_root,
@@ -549,7 +549,7 @@ def download_model(model_key, bridge=None, **kwargs):
         )
 
     hf_runtime = _build_huggingface_download_runtime()
-    return faster_whisper_download_headless(
+    return download_faster_whisper_snapshot(
         model_key,
         _resolve_faster_whisper_repo_id(model_key),
         download_root,

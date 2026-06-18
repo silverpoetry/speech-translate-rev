@@ -549,6 +549,19 @@ def apply_native_window_placement(native_window: object | None, placement: Windo
     return bool(run_on_native_ui_thread(native_window, _apply))
 
 
+def set_native_window_opacity(native_window: object | None, opacity: float) -> bool:
+    if native_window is None:
+        return False
+
+    next_opacity = max(0.0, min(1.0, float(opacity)))
+
+    def _apply() -> bool:
+        native_window.Opacity = next_opacity
+        return True
+
+    return bool(run_on_native_ui_thread(native_window, _apply))
+
+
 __all__ = [
     "DEFAULT_METRICS_PROVIDER",
     "MIN_VISIBLE_HEIGHT",
@@ -584,4 +597,5 @@ __all__ = [
     "resolve_native_scale_factor",
     "resolve_window_placement",
     "run_on_native_ui_thread",
+    "set_native_window_opacity",
 ]

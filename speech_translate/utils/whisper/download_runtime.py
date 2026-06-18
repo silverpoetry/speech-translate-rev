@@ -111,6 +111,7 @@ def monitor_threaded_download(
     cancel_handler: Callable[[Thread], None] | None = None,
     progress_floor: float = 0.0,
     progress_ceiling: float = 100.0,
+    initial_progress_callback: Callable[[DownloadProgressSnapshot], None] | None = None,
 ) -> DownloadMonitorResult:
     result_box: dict[str, Exception | None] = {"error": None}
 
@@ -126,6 +127,21 @@ def monitor_threaded_download(
     started_at = time()
     previous_bytes = 0
     previous_time = started_at
+
+    if initial_progress_callback is not None:
+        initial_progress_callback(
+            build_download_progress_snapshot(
+                current_bytes=0,
+                total_bytes=total_bytes,
+                started_at=started_at,
+                previous_bytes=0,
+                previous_time=started_at,
+                current_time=started_at,
+                progress_floor=progress_floor,
+                progress_ceiling=progress_ceiling,
+                allow_time_fallback=True,
+            )
+        )
 
     while worker.is_alive():
         if cancel_requested is not None and cancel_requested():

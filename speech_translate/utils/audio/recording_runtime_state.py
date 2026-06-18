@@ -8,10 +8,7 @@ from speech_translate.runtime_registry import bridge_state_registry, get_current
 
 
 def _get_recording_bridge_state() -> object | None:
-    try:
-        return bridge_state_registry.get()
-    except Exception:
-        return None
+    return bridge_state_registry.get()
 
 
 def _get_recording_runtime_state() -> object:
@@ -97,18 +94,33 @@ class RecordingTextStoreAdapter:
         return self.state if self.state is not None else self.state_provider()
 
     def _bridge(self) -> object | None:
-        return self.bridge_getter()
+        bridge = self.bridge_getter()
+        if bridge is not None:
+            return bridge
+        bridge_state = self._bridge_state()
+        visual = getattr(bridge_state, "visual", None) if bridge_state is not None else None
+        return getattr(visual, "web_bridge", None) if visual is not None else None
+
+    def _bridge_state(self) -> object | None:
+        return _get_recording_bridge_state()
 
     def _renderer(self) -> LiveTextRenderer | None:
         if self.renderer is not None:
             return self.renderer
         bridge = self._bridge()
-        return getattr(bridge, "live_text_renderer", None) if bridge is not None else None
+        renderer = getattr(bridge, "live_text_renderer", None) if bridge is not None else None
+        if renderer is not None:
+            return renderer
+        return getattr(self._bridge_state(), "live_text_renderer", None)
 
     def _fg_color(self) -> str:
         bridge = self._bridge()
         visual = getattr(bridge, "visual", None) if bridge is not None else None
-        return str(getattr(visual, "fg_color", "") or "")
+        fg_color = str(getattr(visual, "fg_color", "") or "")
+        if fg_color:
+            return fg_color
+        bridge_state_visual = getattr(self._bridge_state(), "visual", None)
+        return str(getattr(bridge_state_visual, "fg_color", "") or "")
 
     def transcribed_sentences(self) -> list[object]:
         return list(getattr(self._state(), "tc_sentences", []))
@@ -131,8 +143,10 @@ class RecordingTextStoreAdapter:
     def update_transcribed_output(self, current: object | None, separator: str) -> None:
         bridge = self._bridge()
         renderer = self._renderer()
-        if bridge is None or renderer is None:
-            return
+        if bridge is None:
+            raise RuntimeError("recording web bridge is not available")
+        if renderer is None:
+            raise RuntimeError("live text renderer is not available")
         renderer.update_stream(
             bridge,
             mode="tc",
@@ -145,8 +159,10 @@ class RecordingTextStoreAdapter:
     def update_translated_output(self, current: object | None, separator: str) -> None:
         bridge = self._bridge()
         renderer = self._renderer()
-        if bridge is None or renderer is None:
-            return
+        if bridge is None:
+            raise RuntimeError("recording web bridge is not available")
+        if renderer is None:
+            raise RuntimeError("live text renderer is not available")
         renderer.update_stream(
             bridge,
             mode="tl",

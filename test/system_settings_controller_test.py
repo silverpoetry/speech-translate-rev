@@ -36,6 +36,9 @@ class FakeModelManager:
     def clear_model_status_cache(self):
         self.cleared = True
 
+    def resolve_model_dir(self):
+        return "D:\\models"
+
 
 class FakeWindow:
     def __init__(self, selected=None) -> None:
@@ -50,19 +53,16 @@ class FakeWindow:
 class FakeBridge:
     def __init__(self, window=None) -> None:
         self.window = window
-        self.model_manager_controller = FakeModelManager()
 
     def get_window(self):
         return self.window
-
-    def resolve_model_dir(self):
-        return "D:\\models"
 
 
 class SystemSettingsControllerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.settings = FakeSettings()
         self.bridge = FakeBridge()
+        self.model_manager = FakeModelManager()
         self.controller = SystemSettingsController(
             self.bridge,
             self.settings,
@@ -72,6 +72,7 @@ class SystemSettingsControllerTests(unittest.TestCase):
                 "dir_log": "D:\\logs",
                 "dir_user": "D:\\user",
             },
+            self.model_manager,
         )
 
     def test_resolve_export_dir_uses_auto_default(self) -> None:
@@ -114,8 +115,25 @@ class SystemSettingsControllerTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["path"], "D:\\chosen")
         self.assertEqual(self.settings.saved["dir_model"], "D:\\chosen")
-        self.assertTrue(self.bridge.model_manager_controller.cleared)
+        self.assertTrue(self.model_manager.cleared)
         create_dialog.assert_called_once_with(self.bridge.window, dialog_kind="folder", directory="D:\\models")
+
+    def test_select_directory_updates_log_setting(self) -> None:
+        self.bridge.window = FakeWindow(["D:\\custom-logs"])
+        with patch("speech_translate.system_settings_controller.create_file_dialog", return_value=["D:\\custom-logs"]) as create_dialog:
+            result = self.controller.select_directory("log")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["path"], "D:\\custom-logs")
+        self.assertEqual(self.settings.saved["dir_log"], "D:\\custom-logs")
+        create_dialog.assert_called_once_with(self.bridge.window, dialog_kind="folder", directory="D:\\logs")
+
+    def test_open_directory_supports_selenium_chrome_profile(self) -> None:
+        with patch("speech_translate.system_settings_controller.open_folder") as open_folder:
+            result = self.controller.open_directory("selenium_chrome")
+
+        self.assertEqual(result["target"], "D:\\user\\selenium_chrome_profile")
+        open_folder.assert_called_once_with("D:\\user\\selenium_chrome_profile")
 
     def test_get_log_content_reads_file_and_truncates_large_payloads(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -131,11 +149,31 @@ class SystemSettingsControllerTests(unittest.TestCase):
                     "dir_log": str(log_dir),
                     "dir_user": "D:\\user",
                 },
+                self.model_manager,
             )
             with patch("speech_translate._logging.current_log", "current.log"):
                 content = controller.get_log_content()
 
         self.assertEqual(len(content), 200000)
+
+    def test_set_setting_reconfigures_logging_when_log_dir_changes(self) -> None:
+        with patch("speech_translate._logging.change_log_level") as change_log_level:
+            result = self.controller.set_setting("dir_log", "D:\\custom-logs")
+
+        self.assertEqual(result["value"], "D:\\custom-logs")
+        change_log_level.assert_called_once_with("INFO", "D:\\custom-logs")
+
+    def test_clear_log_uses_resolved_log_dir(self) -> None:
+        self.settings.cache["dir_log"] = "D:\\custom-logs"
+        with (
+            patch("speech_translate._logging.clear_current_log_file") as clear_current_log_file,
+            patch.object(self.controller, "refresh_log", return_value={"content": "", "file": "current.log"}) as refresh_log,
+        ):
+            result = self.controller.clear_log()
+
+        clear_current_log_file.assert_called_once_with("D:\\custom-logs", "INFO")
+        refresh_log.assert_called_once()
+        self.assertEqual(result["file"], "current.log")
 
 
 if __name__ == "__main__":

@@ -210,11 +210,25 @@ class RecordingSessionBootstrap:
 
 
 @dataclass(frozen=True)
+class RecordingSessionExecutionHooks:
+    create_pyaudio_fn: Callable[[], object] | None = None
+    prepare_bootstrap_fn: Callable[..., RecordingSessionBootstrap] | None = None
+    initialize_lifecycle_fn: Callable[..., RecordingSessionLifecycle] | None = None
+    start_support_threads_fn: Callable[..., None] | None = None
+    open_stream_fn: Callable[..., None] | None = None
+    run_loop_fn: Callable[..., None] | None = None
+    finalize_session_fn: Callable[..., None] | None = None
+    build_record_callback_fn: Callable[..., Callable[..., object]] | None = None
+    empty_cuda_cache_fn: Callable[[], None] | None = None
+
+
+@dataclass(frozen=True)
 class RecordingSessionDependencies:
-    settings_snapshot: Mapping[str, object]
-    session_control: object
-    runtime_text_state: object
-    callback_context_store: object
+    settings_snapshot: Mapping[str, object] | None = None
+    session_control: object | None = None
+    runtime_text_state: object | None = None
+    callback_context_store: object | None = None
+    execution_hooks: RecordingSessionExecutionHooks | None = None
 
 
 @dataclass

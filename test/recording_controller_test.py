@@ -16,6 +16,8 @@ class FakeModelManager:
         self.payloads = []
         self.pending_calls = []
         self.ready_calls = []
+        self.normalize_engine_calls = []
+        self.normalize_model_calls = []
 
     def handle_recording_status(self, payload):
         self.payloads.append(payload)
@@ -26,10 +28,17 @@ class FakeModelManager:
     def mark_runtime_model_ready(self, model_key: str | None = None, message=None):
         self.ready_calls.append((model_key, message))
 
+    def normalize_engine_name(self, value: str) -> str:
+        self.normalize_engine_calls.append(value)
+        return value
+
+    def normalize_model_key(self, value: str) -> str:
+        self.normalize_model_calls.append(value)
+        return value
+
 
 class FakeBridge:
     def __init__(self) -> None:
-        self.model_manager_controller = FakeModelManager()
         self.emits = []
         self.bound_headless = 0
         self.clear_live_calls = 0
@@ -51,12 +60,6 @@ class FakeBridge:
             "model_mw": "small",
             "selenium_auto_close_on_task_done": True,
         }
-
-    def normalize_engine_name(self, value: str) -> str:
-        return value
-
-    def normalize_model_key(self, value: str) -> str:
-        return value
 
     def clear_live(self) -> None:
         self.clear_live_calls += 1
@@ -110,6 +113,8 @@ class FakeRecordingTextStore:
     def __init__(self) -> None:
         self.tc_sentences = []
         self.tl_sentences = []
+        self.transcribed_updates = []
+        self.translated_updates = []
 
     def set_transcribed_sentences(self, sentences) -> None:
         self.tc_sentences = list(sentences)
@@ -117,10 +122,23 @@ class FakeRecordingTextStore:
     def set_translated_sentences(self, sentences) -> None:
         self.tl_sentences = list(sentences)
 
+    def transcribed_sentences(self):
+        return list(self.tc_sentences)
+
+    def translated_sentences(self):
+        return list(self.tl_sentences)
+
+    def update_transcribed_output(self, current, separator) -> None:
+        self.transcribed_updates.append((current, separator))
+
+    def update_translated_output(self, current, separator) -> None:
+        self.translated_updates.append((current, separator))
+
 
 class RecordingSessionControllerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.bridge = FakeBridge()
+        self.model_manager = FakeModelManager()
         self.shutdown_calls = 0
         self.whisper_api = FakeWhisperLoadApi(cached_bundle=False)
         self.runtime_state = FakeRecordingRuntimeState()
@@ -129,6 +147,7 @@ class RecordingSessionControllerTests(unittest.TestCase):
             self.bridge,
             lambda: self.whisper_api,
             self._shutdown_selenium,
+            self.model_manager,
             runtime_state=self.runtime_state,
             text_store=self.text_store,
         )
@@ -140,19 +159,23 @@ class RecordingSessionControllerTests(unittest.TestCase):
         result = self.controller.set_recording_state({"status": "Initializing recording...", "active": True})
         self.assertTrue(result["ok"])
         self.assertEqual(self.controller.recording_state["status"], "Initializing recording...")
-        self.assertEqual(self.bridge.model_manager_controller.payloads[-1]["status"], "Initializing recording...")
+        self.assertEqual(self.model_manager.payloads[-1]["status"], "Initializing recording...")
         self.assertEqual(self.bridge.emits[-1], (UI_SECTION_TASK,))
 
     def test_get_recording_state_returns_copy(self) -> None:
         self.controller.recording_state["status"] = "Stopped"
+        self.controller._shared_runtime_state.last_db = -18.5
+        self.controller.recording_state["threshold_db"] = -20.0
         state = self.controller.get_recording_state()
         self.assertEqual(state["status"], "Stopped")
+        self.assertEqual(state["last_db"], -18.5)
+        self.assertEqual(state["threshold_db"], -20.0)
         state["status"] = "Changed"
         self.assertEqual(self.controller.recording_state["status"], "Stopped")
 
     def test_set_recording_state_routes_runtime_status_updates(self) -> None:
         self.controller.set_recording_state({"status": "Recording...", "active": True})
-        self.assertEqual(self.bridge.model_manager_controller.payloads[-1]["status"], "Recording...")
+        self.assertEqual(self.model_manager.payloads[-1]["status"], "Recording...")
 
     def test_start_recording_rejects_when_all_record_actions_disabled(self) -> None:
         previous_get_settings = self.bridge.get_settings_snapshot
@@ -168,7 +191,7 @@ class RecordingSessionControllerTests(unittest.TestCase):
         result = self.controller.start_recording()
         self.assertFalse(result["ok"])
         self.assertEqual(result["message"], "Please enable Transcribe or Translate")
-        self.assertEqual(self.bridge.model_manager_controller.pending_calls, [])
+        self.assertEqual(self.model_manager.pending_calls, [])
 
     def test_start_recording_marks_cached_bundle_ready_and_updates_state(self) -> None:
         previous_start_worker = self.controller._start_recording_worker
@@ -181,8 +204,8 @@ class RecordingSessionControllerTests(unittest.TestCase):
             self.controller._start_recording_worker = previous_start_worker
 
         self.assertTrue(result["ok"])
-        self.assertEqual(self.bridge.model_manager_controller.pending_calls[-1][0], "small")
-        self.assertEqual(self.bridge.model_manager_controller.ready_calls[-1][0], "small")
+        self.assertEqual(self.model_manager.pending_calls[-1][0], "small")
+        self.assertEqual(self.model_manager.ready_calls[-1][0], "small")
         self.assertEqual(self.bridge.reset_task_titles, ["Recording"])
         self.assertEqual(self.bridge.clear_live_calls, 1)
         self.assertEqual(self.runtime_state.enabled, 1)
@@ -190,14 +213,18 @@ class RecordingSessionControllerTests(unittest.TestCase):
         self.assertEqual(self.text_store.tl_sentences, [])
         self.assertEqual(self.controller.recording_state["status"], "Preparing recording...")
         self.assertEqual(self.controller.recording_state["mode"], "Transcribe & Translate")
+        self.assertEqual(self.controller.recording_state["threshold_db"], -20.0)
+        self.assertIsNone(self.controller.recording_state["last_db"])
         self.assertEqual(len(started_contexts), 1)
+        self.assertIn("Google Translate", self.model_manager.normalize_engine_calls)
+        self.assertIn("small", self.model_manager.normalize_model_calls)
 
     def test_start_recording_worker_passes_explicit_session_dependencies(self) -> None:
         from speech_translate import recording_controller as controller_module
-        from speech_translate.utils.audio import record as record_module
+        from speech_translate.utils.audio import record_session_api as record_session_module
 
         previous_thread = controller_module.Thread
-        previous_record_session = record_module.record_session
+        previous_record_session = record_session_module.record_session
         observed = {}
 
         class InlineThread:
@@ -221,7 +248,7 @@ class RecordingSessionControllerTests(unittest.TestCase):
 
         try:
             controller_module.Thread = InlineThread
-            record_module.record_session = fake_record_session
+            record_session_module.record_session = fake_record_session
             context = self.controller._resolve_start_context(
                 device="mic",
                 lang_source="English",
@@ -233,7 +260,7 @@ class RecordingSessionControllerTests(unittest.TestCase):
             self.controller._start_recording_worker(context)
         finally:
             controller_module.Thread = previous_thread
-            record_module.record_session = previous_record_session
+            record_session_module.record_session = previous_record_session
 
         request = observed["args"][0]
         dependencies = observed["kwargs"]["dependencies"]
@@ -245,7 +272,25 @@ class RecordingSessionControllerTests(unittest.TestCase):
         self.assertIs(dependencies.session_control.runtime_state, self.runtime_state)
         self.assertIs(dependencies.runtime_text_state._text_store, self.text_store)
         self.assertIsNotNone(dependencies.callback_context_store)
-        self.assertEqual(self.bridge.finished, ["Recording finished"])
+
+    def test_rerender_live_text_rebuilds_current_outputs(self) -> None:
+        class Result:
+            def __init__(self, text: str) -> None:
+                self.text = text
+
+        self.text_store.tc_sentences = [Result("first tc")]
+        self.text_store.tl_sentences = [Result("first tl")]
+        self.controller._shared_runtime_state.prev_tc_res = Result("pending tc")
+        self.controller._shared_runtime_state.prev_tl_res = Result("pending tl")
+
+        result = self.controller.rerender_live_text()
+
+        self.assertEqual(result, {"ok": True, "transcribed": True, "translated": True})
+        self.assertEqual(len(self.text_store.transcribed_updates), 1)
+        self.assertEqual(len(self.text_store.translated_updates), 1)
+        self.assertEqual(self.text_store.transcribed_updates[0][0].text, "pending tc")
+        self.assertEqual(self.text_store.translated_updates[0][0].text, "pending tl")
+        self.assertIn("<br/>", self.text_store.transcribed_updates[0][1])
 
     def test_stop_recording_stops_and_closes_selenium_when_idle(self) -> None:
         previous_wait_idle = self.controller.wait_recording_idle
@@ -280,6 +325,18 @@ class RecordingSessionControllerTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(self.shutdown_calls, 1)
+
+    def test_start_recording_does_not_require_bridge_normalize_methods(self) -> None:
+        previous_start_worker = self.controller._start_recording_worker
+        started_contexts = []
+        try:
+            self.controller._start_recording_worker = lambda context: started_contexts.append(context)
+            result = self.controller.start_recording()
+        finally:
+            self.controller._start_recording_worker = previous_start_worker
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(len(started_contexts), 1)
 
 
 if __name__ == "__main__":

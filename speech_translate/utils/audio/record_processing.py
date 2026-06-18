@@ -63,7 +63,7 @@ def bytes_to_numpy(audio_bytes: bytes, channels: int, use_demucs: bool, device: 
     else:
         chunk_length = len(audio_as_np_float32) // channels
         audio_reshaped = np.reshape(audio_as_np_float32, (chunk_length, channels))
-        audio_np = audio_reshaped[:, 0] / max_int16
+        audio_np = np.mean(audio_reshaped, axis=1, dtype=np.float32) / max_int16
 
     if use_demucs:
         return torch_from_numpy(audio_np).to(device)

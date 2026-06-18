@@ -8,62 +8,77 @@ from datetime import timedelta
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
-from speech_translate.utils.audio.record import (
+from speech_translate.utils.audio.record_processing import build_smart_split_outcome as _build_smart_split_outcome
+from speech_translate.utils.audio.record_runtime import (
     BufferStateReducer,
-    RealtimeCallbackContext,
     RecordingRuntime,
+    RecordingStatusEmitter,
+    TranslationDispatcher,
+    TranslationTask,
+    _build_full_transcribed_text,
+    _build_recording_state_payload,
+    _merge_translation_units,
+    _normalize_translation_result_units,
+    _resolve_live_input_source_language,
+    _result_text,
+    build_recording_text_state,
+)
+from speech_translate.utils.audio.record_session_api import (
+    build_recording_session_control,
+    record_session,
+)
+from speech_translate.utils.audio.record_session_pipeline import (
+    apply_smart_split as _apply_smart_split,
+    advance_recording_buffer as _advance_recording_buffer,
+    break_buffer_and_update_state as _break_buffer_and_update_state,
+    build_record_audio_target as _build_record_audio_target,
+    build_recording_sentence_count_text as _build_recording_sentence_count_text,
+    build_recording_session_config as _build_recording_session_config,
+    build_recording_session_services as _build_recording_session_services,
+    build_recording_stream_runtime as _build_recording_stream_runtime,
+    calculate_buffer_duration as _calculate_buffer_duration,
+    cleanup_processed_audio_target as _cleanup_processed_audio_target,
+    cleanup_translation_audio as _cleanup_translation_audio,
+    commit_realtime_transcription as _commit_realtime_transcription,
+    consume_record_loop_input as _consume_record_loop_input,
+    drain_pending_audio as _drain_pending_audio,
+    bytes_to_numpy as _bytes_to_numpy,
+    execute_recording_iteration as _execute_recording_iteration,
+    execute_realtime_transcription as _execute_realtime_transcription,
+    filter_realtime_transcription_result as _filter_realtime_transcription_result,
+    finalize_recording_session as _finalize_recording_session,
+    initialize_recording_session_lifecycle as _initialize_recording_session_lifecycle,
+    load_recording_model_runtime as _load_recording_model_runtime,
+    open_recording_stream as _open_recording_stream,
+    prepare_recording_session_bootstrap as _prepare_recording_session_bootstrap,
+    record_cb,
+    run_recording_session_loop as _run_recording_session_loop,
+    run_recording_status_loop as _run_recording_status_loop,
+    start_recording_session_support_threads as _start_recording_session_support_threads,
+)
+from speech_translate.utils.audio.record_stream_bridge import (
+    build_record_callback,
+    detect_realtime_speech as _detect_realtime_speech,
+    handle_record_callback_error as _handle_record_callback_error,
+    initialize_callback_context as _initialize_callback_context,
+    prime_realtime_vad as _prime_realtime_vad,
+    reset_callback_context as _reset_callback_context,
+    update_realtime_queue_state as _update_realtime_queue_state,
+)
+from speech_translate.utils.audio.record_types import (
+    RealtimeCallbackContext,
+    RealtimeSharedState,
+    RealtimeSessionState,
     RecordingSessionDependencies,
+    RecordingSessionExecutionHooks,
     RecordingSessionFinalizeContext,
     RecordingSessionLifecycle,
     RecordingSessionRequest,
     RecordingSessionServices,
     RecordingStreamRuntime,
-    RecordingStatusEmitter,
-    RealtimeSharedState,
-    RealtimeSessionState,
     SmartSplitOutcome,
-    TranslationDispatcher,
-    TranslationTask,
-    _apply_smart_split,
-    _break_buffer_and_update_state,
-    _consume_record_loop_input,
-    _drain_pending_audio,
-    _build_recording_sentence_count_text,
-    _build_record_audio_target,
-    _prepare_recording_session_bootstrap,
-    build_recording_session_control,
-    _build_recording_session_config,
-    _load_recording_model_runtime,
-    _advance_recording_buffer,
-    _cleanup_processed_audio_target,
-    _cleanup_translation_audio,
-    _commit_realtime_transcription,
-    _build_recording_session_services,
-    _build_recording_stream_runtime,
-    _initialize_recording_session_lifecycle,
-    _execute_recording_iteration,
-    _calculate_buffer_duration,
-    _execute_realtime_transcription,
-    _filter_realtime_transcription_result,
-    _handle_record_callback_error,
-    _initialize_callback_context,
-    _run_recording_session_loop,
-    _merge_translation_units,
-    _normalize_translation_result_units,
-    _open_recording_stream,
-    _reset_callback_context,
-    _resolve_live_input_source_language,
-    _start_recording_session_support_threads,
-    _prime_realtime_vad,
-    _detect_realtime_speech,
-    _update_realtime_queue_state,
-    _build_smart_split_outcome,
-    _build_recording_state_payload,
-    _build_full_transcribed_text,
-    _result_text,
-    build_recording_text_state,
-    record_session,
 )
+from speech_translate.live_text_service import LiveTextRenderer
 from speech_translate.bridge_runtime_state import BridgeLiveTextRuntime, BridgeRecordingRuntime
 from speech_translate.runtime_registry import bridge_state_registry
 from speech_translate.utils.audio.record_settings import (
@@ -72,6 +87,7 @@ from speech_translate.utils.audio.record_settings import (
 )
 from speech_translate.utils.translate.translation_runtime_settings import build_realtime_translation_settings
 from speech_translate.utils.audio.recording_runtime_state import (
+    RecordingTextStoreAdapter,
     build_recording_runtime_state_adapter,
     build_recording_text_store_adapter,
 )
@@ -308,6 +324,114 @@ class AudioRecordHelpersTests(unittest.TestCase):
             self.assertEqual(text_store.transcribed_sentences(), ["a"])
             self.assertEqual(text_store.translated_sentences(), ["b"])
 
+    def test_recording_text_store_falls_back_to_runtime_renderer_when_web_bridge_lacks_renderer(self) -> None:
+        from speech_translate.live_text_service import LiveTextRenderer
+        from speech_translate.utils.audio.recording_runtime_state import RecordingTextStoreAdapter
+
+        class FakeSettings:
+            cache = {
+                "separate_with": "\"\\n\"",
+                "gradient_low_conf": "#111111",
+                "gradient_high_conf": "#eeeeee",
+                "colorize_per_segment": False,
+                "colorize_per_word": False,
+                "tb_mw_tc_limit_max": False,
+                "tb_mw_tc_max": 300,
+                "tb_mw_tc_limit_max_per_line": False,
+                "tb_mw_tc_max_per_line": 30,
+                "tb_mw_tc_use_conf_color": True,
+                "tb_mw_tc_font_color": "#ffffff",
+                "tb_mw_tc_font": "Arial",
+                "tb_mw_tc_font_size": 12,
+                "tb_mw_tc_font_bold": False,
+                "tb_ex_tc_limit_max": False,
+                "tb_ex_tc_max": 300,
+                "tb_ex_tc_limit_max_per_line": False,
+                "tb_ex_tc_max_per_line": 30,
+                "tb_ex_tc_use_conf_color": True,
+                "tb_ex_tc_font_color": "#ffffff",
+                "tb_ex_tc_font": "Arial",
+                "tb_ex_tc_font_size": 12,
+                "tb_ex_tc_font_bold": False,
+            }
+
+        class FakeBridge:
+            def __init__(self) -> None:
+                self.html_updates = []
+
+            def update_live_html(self, target, html) -> None:
+                self.html_updates.append((target, html))
+
+        bridge = FakeBridge()
+        runtime_root = type(
+            "FakeRuntimeRoot",
+            (),
+            {
+                "live_text": BridgeLiveTextRuntime(),
+                "live_text_renderer": LiveTextRenderer(FakeSettings()),
+                "visual": type("Visual", (), {"fg_color": "#12ab34"})(),
+            },
+        )()
+
+        with bridge_state_registry.override(runtime_root):
+            text_store = RecordingTextStoreAdapter(
+                bridge_getter=lambda: bridge,
+            )
+
+            text_store.update_transcribed_output("hello", "<br />")
+
+        self.assertEqual(len(bridge.html_updates), 2)
+        self.assertEqual(bridge.html_updates[0][0], "main_transcribed_html")
+        self.assertIn("hello", bridge.html_updates[0][1])
+        self.assertIn("#12ab34", bridge.html_updates[0][1])
+
+    def test_recording_text_store_raises_when_no_web_bridge_is_available(self) -> None:
+        runtime_root = type(
+            "FakeRuntimeRoot",
+            (),
+            {
+                "live_text": BridgeLiveTextRuntime(),
+                "live_text_renderer": LiveTextRenderer(
+                    FakeSettingsStore(
+                        {
+                            "separate_with": "\\n",
+                            "colorize_per_segment": False,
+                            "colorize_per_word": False,
+                            "gradient_low_conf": "#000000",
+                            "gradient_high_conf": "#ffffff",
+                            "tb_mw_tc_limit_max": False,
+                            "tb_mw_tc_max": 300,
+                            "tb_mw_tc_limit_max_per_line": False,
+                            "tb_mw_tc_max_per_line": 30,
+                            "tb_mw_tc_use_conf_color": True,
+                            "tb_mw_tc_font_color": "#ffffff",
+                            "tb_mw_tc_font": "Arial",
+                            "tb_mw_tc_font_size": 12,
+                            "tb_mw_tc_font_bold": False,
+                            "tb_ex_tc_limit_max": False,
+                            "tb_ex_tc_max": 300,
+                            "tb_ex_tc_limit_max_per_line": False,
+                            "tb_ex_tc_max_per_line": 30,
+                            "tb_ex_tc_use_conf_color": True,
+                            "tb_ex_tc_font_color": "#ffffff",
+                            "tb_ex_tc_font": "Arial",
+                            "tb_ex_tc_font_size": 12,
+                            "tb_ex_tc_font_bold": False,
+                        }
+                    )
+                ),
+                "visual": type("Visual", (), {"fg_color": "#12ab34", "web_bridge": None})(),
+            },
+        )()
+
+        with bridge_state_registry.override(runtime_root):
+            text_store = RecordingTextStoreAdapter(
+                bridge_getter=lambda: None,
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "recording web bridge is not available"):
+                text_store.update_transcribed_output("hello", "<br />")
+
     def test_result_text_supports_result_object_and_string(self) -> None:
         self.assertEqual(_result_text(FakeResult(" hello ")), "hello")
         self.assertEqual(_result_text(" world "), "world")
@@ -421,10 +545,9 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertIs(observed_default_context, previous_default_context)
 
     def test_reset_callback_context_clears_global_state(self) -> None:
-        from speech_translate.utils.audio import record as record_module
         from speech_translate.utils.audio import record_streaming as streaming_module
 
-        record_module._initialize_callback_context(
+        _initialize_callback_context(
             sample_rate=16000,
             chunk_size=320,
             threshold_enable=True,
@@ -464,12 +587,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertIsNone(store.get())
 
     def test_build_record_callback_uses_provided_context_and_state_adapter(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
-        previous_get_pyaudio_module = record_module.get_pyaudio_module
-        previous_resample_sr = record_module.resample_sr
-        previous_detect = record_module._detect_realtime_speech
-        previous_update = record_module._update_realtime_queue_state
         observed = {}
         ctx = RealtimeCallbackContext(
             sample_rate=16000,
@@ -485,26 +602,23 @@ class AudioRecordHelpersTests(unittest.TestCase):
             use_temp=False,
         )
         state_adapter = FakeStreamingStateAdapter()
-        try:
-            record_module.get_pyaudio_module = lambda: type("FakePyAudioModule", (), {"paContinue": "continue"})()
-            record_module.resample_sr = lambda in_data, sample_rate, target_rate: b"resampled"
-            record_module._detect_realtime_speech = lambda current_ctx, in_data, resampled: (
+
+        def fake_update(current_ctx, **kwargs):
+            observed["ctx"] = current_ctx
+            observed["kwargs"] = kwargs
+
+        callback = build_record_callback(
+            ctx,
+            state_adapter=state_adapter,
+            pyaudio_module=type("FakePyAudioModule", (), {"paContinue": "continue"})(),
+            resample_sr_fn=lambda in_data, sample_rate, target_rate: b"resampled",
+            detect_realtime_speech_fn=lambda current_ctx, in_data, resampled: (
                 current_ctx is ctx,
                 b"queued",
-            )
-
-            def fake_update(current_ctx, **kwargs):
-                observed["ctx"] = current_ctx
-                observed["kwargs"] = kwargs
-
-            record_module._update_realtime_queue_state = fake_update
-            callback = record_module.build_record_callback(ctx, state_adapter=state_adapter)
-            result = callback(b"raw", 0, None, None)
-        finally:
-            record_module.get_pyaudio_module = previous_get_pyaudio_module
-            record_module.resample_sr = previous_resample_sr
-            record_module._detect_realtime_speech = previous_detect
-            record_module._update_realtime_queue_state = previous_update
+            ),
+            update_realtime_queue_state_fn=fake_update,
+        )
+        result = callback(b"raw", 0, None, None)
 
         self.assertEqual(result, (b"raw", "continue"))
         self.assertIs(observed["ctx"], ctx)
@@ -616,7 +730,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
         settings = build_recording_stream_settings(
             rec_type="speaker",
             settings_snapshot={
-                "threshold_auto_mode_speaker": "2",
+                "threshold_auto_level_speaker": "2",
                 "supress_record_warning": True,
                 "speaker": "[ID: 0,1] | Loopback",
                 "chunk_size_speaker": 1024,
@@ -630,6 +744,19 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(settings.threshold_auto_mode, 2)
         self.assertTrue(settings.suppress_record_warning)
         self.assertEqual(settings.device_settings.cache["speaker"], "[ID: 0,1] | Loopback")
+
+    def test_build_recording_stream_settings_prefers_threshold_auto_level(self) -> None:
+        settings = build_recording_stream_settings(
+            rec_type="mic",
+            settings_snapshot={
+                "threshold_auto_level_mic": "1",
+                "threshold_auto_mode_mic": "3",
+                "mic": "[ID: 0,0] | Mic",
+            },
+        )
+
+        self.assertEqual(settings.threshold_auto_mode, 1)
+        self.assertEqual(settings.device_settings.cache["mic"], "[ID: 0,0] | Mic")
 
     def test_build_realtime_translation_settings_extracts_translation_runtime_policy(self) -> None:
         settings = build_realtime_translation_settings(
@@ -659,17 +786,17 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(settings.filter_rec_similarity, 0.9)
 
     def test_load_recording_model_runtime_builds_whisper_runtime(self) -> None:
-        from speech_translate.utils.audio import record as record_module
+        from speech_translate.utils.audio import record_session_pipeline as pipeline_module
 
-        previous_get_model_args = record_module.get_model_args
-        previous_get_model = record_module.get_model
-        previous_get_tc_args = record_module.get_tc_args
-        previous_get_filter = record_module.get_hallucination_filter
+        previous_get_model_args = pipeline_module.get_model_args
+        previous_get_model = pipeline_module.get_model
+        previous_get_tc_args = pipeline_module.get_tc_args
+        previous_get_filter = pipeline_module.get_hallucination_filter
         try:
-            record_module.get_model_args = lambda cache: {"device": "cpu"}
-            record_module.get_model = lambda *args, **kwargs: (None, None, lambda *a, **k: FakeResult("tc"), lambda *a, **k: FakeResult("tl"), {"foo": "bar"})
-            record_module.get_tc_args = lambda to_args, cache: {"demucs": True, "vad": True}
-            record_module.get_hallucination_filter = lambda *args, **kwargs: {"english": ["x"]}
+            pipeline_module.get_model_args = lambda cache: {"device": "cpu"}
+            pipeline_module.get_model = lambda *args, **kwargs: (None, None, lambda *a, **k: FakeResult("tc"), lambda *a, **k: FakeResult("tl"), {"foo": "bar"})
+            pipeline_module.get_tc_args = lambda to_args, cache: {"demucs": True, "vad": True}
+            pipeline_module.get_hallucination_filter = lambda *args, **kwargs: {"english": ["x"]}
             settings_snapshot = {
                 "enable_initial_prompt": False,
                 "use_faster_whisper": True,
@@ -710,10 +837,10 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 settings_snapshot=settings_snapshot,
             )
         finally:
-            record_module.get_model_args = previous_get_model_args
-            record_module.get_model = previous_get_model
-            record_module.get_tc_args = previous_get_tc_args
-            record_module.get_hallucination_filter = previous_get_filter
+            pipeline_module.get_model_args = previous_get_model_args
+            pipeline_module.get_model = previous_get_model
+            pipeline_module.get_tc_args = previous_get_tc_args
+            pipeline_module.get_hallucination_filter = previous_get_filter
 
         self.assertTrue(runtime.use_temp)
         self.assertTrue(runtime.demucs_enabled)
@@ -722,57 +849,46 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(runtime.whisper_args["language"], "en")
 
     def test_prepare_recording_session_bootstrap_snapshots_runtime_sequence(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
-        previous_build_config = record_module._build_recording_session_config
-        previous_load_runtime = record_module._load_recording_model_runtime
-        previous_build_stream = record_module._build_recording_stream_runtime
         calls = []
-        try:
-            config = type("Config", (), {"use_temp": False, "taskname": "Transcribe"})()
-            model_runtime = type("ModelRuntime", (), {"use_temp": True, "cuda_device": "cpu", "demucs_enabled": False})()
-            stream_runtime = RecordingStreamRuntime(
-                input_device_index=0,
-                sr_ori=16000,
+        config = type("Config", (), {"use_temp": False, "taskname": "Transcribe"})()
+        model_runtime = type("ModelRuntime", (), {"use_temp": True, "cuda_device": "cpu", "demucs_enabled": False})()
+        stream_runtime = RecordingStreamRuntime(
+            input_device_index=0,
+            sr_ori=16000,
+            num_of_channels=1,
+            chunk_size=320,
+            samp_width=2,
+            sr_divider=16000,
+            callback_ctx=RealtimeCallbackContext(
+                sample_rate=16000,
+                frame_duration_ms=20,
+                threshold_enable=True,
+                threshold_db=-20.0,
+                threshold_auto=True,
+                use_silero=True,
+                silero_min_conf=0.75,
+                vad_checked=False,
                 num_of_channels=1,
-                chunk_size=320,
                 samp_width=2,
-                sr_divider=16000,
-                callback_ctx=RealtimeCallbackContext(
-                    sample_rate=16000,
-                    frame_duration_ms=20,
-                    threshold_enable=True,
-                    threshold_db=-20.0,
-                    threshold_auto=True,
-                    use_silero=True,
-                    silero_min_conf=0.75,
-                    vad_checked=False,
-                    num_of_channels=1,
-                    samp_width=2,
-                    use_temp=True,
-                ),
-            )
+                use_temp=True,
+            ),
+        )
 
-            record_module._build_recording_session_config = lambda **kwargs: calls.append(("config", kwargs["settings_snapshot"]["use_temp"])) or config
-            record_module._load_recording_model_runtime = lambda **kwargs: calls.append(("model", kwargs["config"].use_temp)) or model_runtime
-            record_module._build_recording_stream_runtime = (
+        bootstrap = _prepare_recording_session_bootstrap(
+            rec_type="mic",
+            settings_snapshot={"use_temp": False},
+            lang_source="English",
+            engine="Whisper",
+            model_name_tc="base",
+            is_tc=True,
+            is_tl=False,
+            p=object(),
+            build_config_fn=lambda **kwargs: calls.append(("config", kwargs["settings_snapshot"]["use_temp"])) or config,
+            load_model_runtime_fn=lambda **kwargs: calls.append(("model", kwargs["config"].use_temp)) or model_runtime,
+            build_stream_runtime_fn=(
                 lambda **kwargs: calls.append(("stream", kwargs["config"].use_temp, kwargs["settings_snapshot"]["use_temp"])) or stream_runtime
-            )
-
-            bootstrap = _prepare_recording_session_bootstrap(
-                rec_type="mic",
-                settings_snapshot={"use_temp": False},
-                lang_source="English",
-                engine="Whisper",
-                model_name_tc="base",
-                is_tc=True,
-                is_tl=False,
-                p=object(),
-            )
-        finally:
-            record_module._build_recording_session_config = previous_build_config
-            record_module._load_recording_model_runtime = previous_load_runtime
-            record_module._build_recording_stream_runtime = previous_build_stream
+            ),
+        )
 
         self.assertIs(bootstrap.config, config)
         self.assertIs(bootstrap.model_runtime, model_runtime)
@@ -780,13 +896,18 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(calls, [("config", False), ("model", False), ("stream", True, False)])
 
     def test_build_recording_stream_runtime_uses_device_and_vad_bootstrap(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
-        previous_get_device_details = record_module.get_device_details
-        previous_load_vad = record_module._load_recording_vad_runtime
-        previous_init_ctx = record_module._initialize_callback_context
-        try:
-            record_module.get_device_details = lambda rec_type, sj, p: (
+        config = _build_recording_session_config(
+            rec_type="mic",
+            lang_source="English",
+            engine="Whisper",
+            is_tc=True,
+            is_tl=True,
+        )
+        runtime = _build_recording_stream_runtime(
+            rec_type="mic",
+            config=config,
+            p=type("P", (), {"get_sample_size": lambda self, fmt: 2})(),
+            get_device_details_fn=lambda rec_type, sj, p: (
                 True,
                 {
                     "device_detail": {"index": 7},
@@ -794,9 +915,9 @@ class AudioRecordHelpersTests(unittest.TestCase):
                     "num_of_channels": 2,
                     "chunk_size": 960,
                 },
-            )
-            record_module._load_recording_vad_runtime = lambda rec_type, settings_snapshot=None: ("webrtc", "silero")
-            record_module._initialize_callback_context = lambda **kwargs: RealtimeCallbackContext(
+            ),
+            load_recording_vad_runtime_fn=lambda rec_type, settings_snapshot=None: ("webrtc", "silero"),
+            initialize_callback_context_fn=lambda **kwargs: RealtimeCallbackContext(
                 sample_rate=kwargs["sample_rate"],
                 frame_duration_ms=10,
                 threshold_enable=kwargs["threshold_enable"],
@@ -811,20 +932,9 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 webrtc_vad=kwargs["webrtc_vad"],
                 silero_vad=kwargs["silero_vad"],
                 silence_started_at=0.0,
-            )
-
-            config = _build_recording_session_config(
-                rec_type="mic",
-                lang_source="English",
-                engine="Whisper",
-                is_tc=True,
-                is_tl=True,
-            )
-            runtime = _build_recording_stream_runtime(rec_type="mic", config=config, p=type("P", (), {"get_sample_size": lambda self, fmt: 2})())
-        finally:
-            record_module.get_device_details = previous_get_device_details
-            record_module._load_recording_vad_runtime = previous_load_vad
-            record_module._initialize_callback_context = previous_init_ctx
+            ),
+            audio_format="pcm16",
+        )
 
         self.assertIsInstance(runtime, RecordingStreamRuntime)
         self.assertEqual(runtime.input_device_index, 7)
@@ -890,20 +1000,18 @@ class AudioRecordHelpersTests(unittest.TestCase):
             audio_format=16,
             logger_instance=type("Logger", (), {"warning": lambda self, message: None})(),
             settings_snapshot={
-                "threshold_auto_mode_mic": 2,
+                "threshold_auto_level_mic": 2,
                 "supress_record_warning": True,
             },
         )
 
         self.assertEqual(captured["rec_type"], "mic")
-        self.assertEqual(captured["settings_snapshot"]["threshold_auto_mode_mic"], 2)
+        self.assertEqual(captured["settings_snapshot"]["threshold_auto_level_mic"], 2)
         self.assertTrue(captured["settings_snapshot"]["supress_record_warning"])
         self.assertEqual(runtime.input_device_index, 1)
         self.assertEqual(runtime.sr_ori, 44100)
 
     def test_open_recording_stream_passes_bootstrap_values_to_pyaudio(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
         class FakeStreamOwner:
             def __init__(self) -> None:
                 self.calls = []
@@ -935,13 +1043,13 @@ class AudioRecordHelpersTests(unittest.TestCase):
             ),
         )
 
-        previous_record_cb = record_module.record_cb
         state_adapter = FakeStreamingStateAdapter()
-        try:
-            record_module.record_cb = lambda *args, **kwargs: "cb"
-            _open_recording_stream(p=owner, stream_runtime=runtime, state_adapter=state_adapter)
-        finally:
-            record_module.record_cb = previous_record_cb
+        _open_recording_stream(
+            p=owner,
+            stream_runtime=runtime,
+            record_cb_override=lambda *args, **kwargs: "cb",
+            state_adapter=state_adapter,
+        )
 
         self.assertEqual(owner.calls[0]["channels"], 1)
         self.assertEqual(owner.calls[0]["rate"], 44100)
@@ -989,59 +1097,53 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(state_adapter.stream, ("stream", 44100))
 
     def test_build_recording_session_services_wires_runtime_translator_and_reducer(self) -> None:
-        from speech_translate.utils.audio import record as record_module
+        class DispatcherSpy:
+            def __init__(self, **kwargs) -> None:
+                self.kwargs = kwargs
 
-        previous_dispatcher = record_module.TranslationDispatcher
-        try:
-            class DispatcherSpy:
-                def __init__(self, **kwargs) -> None:
-                    self.kwargs = kwargs
+        config = _build_recording_session_config(
+            rec_type="mic",
+            lang_source="English",
+            engine="Whisper",
+            is_tc=True,
+            is_tl=True,
+            settings_snapshot={
+                "transcribe_rate": 1000,
+                "max_buffer_mic": 10,
+                "max_sentences_mic": 5,
+                "mic_no_limit": False,
+                "min_input_length_mic": 0.4,
+                "keep_temp": True,
+                "threshold_enable_mic": True,
+                "threshold_db_mic": -20,
+                "threshold_auto_mic": True,
+                "threshold_auto_silero_mic": True,
+                "threshold_silero_mic_min": 0.75,
+                "auto_break_buffer_mic": True,
+                "use_temp": False,
+                "separate_with": repr("\n"),
+            },
+        )
 
-            record_module.TranslationDispatcher = DispatcherSpy
-            config = _build_recording_session_config(
-                rec_type="mic",
-                lang_source="English",
-                engine="Whisper",
-                is_tc=True,
-                is_tl=True,
-                settings_snapshot={
-                    "transcribe_rate": 1000,
-                    "max_buffer_mic": 10,
-                    "max_sentences_mic": 5,
-                    "mic_no_limit": False,
-                    "min_input_length_mic": 0.4,
-                    "keep_temp": True,
-                    "threshold_enable_mic": True,
-                    "threshold_db_mic": -20,
-                    "threshold_auto_mic": True,
-                    "threshold_auto_silero_mic": True,
-                    "threshold_silero_mic_min": 0.75,
-                    "auto_break_buffer_mic": True,
-                    "use_temp": False,
-                    "separate_with": repr("\n"),
-                },
-            )
+        class RuntimeStub:
+            hallucination_filters = {"english": ["x"]}
+            stable_tl = object()
+            whisper_args = {"foo": "bar"}
+            use_temp = False
 
-            class RuntimeStub:
-                hallucination_filters = {"english": ["x"]}
-                stable_tl = object()
-                whisper_args = {"foo": "bar"}
-                use_temp = False
-
-            services = _build_recording_session_services(
-                config=config,
-                model_runtime=RuntimeStub(),
-                device="mic",
-                lang_source="English",
-                lang_target="Chinese",
-                engine="Whisper",
-                is_tc=True,
-                is_tl=True,
-                t_start=12.0,
-                control=FakeRecordingSessionControl(),
-            )
-        finally:
-            record_module.TranslationDispatcher = previous_dispatcher
+        services = _build_recording_session_services(
+            config=config,
+            model_runtime=RuntimeStub(),
+            device="mic",
+            lang_source="English",
+            lang_target="Chinese",
+            engine="Whisper",
+            is_tc=True,
+            is_tl=True,
+            t_start=12.0,
+            control=FakeRecordingSessionControl(),
+            translator_factory=DispatcherSpy,
+        )
 
         self.assertIsInstance(services, RecordingSessionServices)
         self.assertEqual(services.runtime.device, "mic")
@@ -1052,88 +1154,82 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(services.translator.kwargs["hallucination_filters"], {"english": ["x"]})
 
     def test_initialize_recording_session_lifecycle_resets_session_state_and_lock(self) -> None:
-        from speech_translate.utils.audio import record as record_module
+        runtime = RecordingRuntime(
+            taskname="Transcribe & Translate",
+            device="mic",
+            lang_source="English",
+            lang_target="Chinese",
+            engine="Whisper",
+            is_tl=True,
+            use_temp=False,
+            separator="<br />",
+            keep_temp=False,
+            t_start=1.0,
+            max_buffer_s=10.0,
+            max_sentences=5,
+            sentence_limitless=False,
+            lang_target_display="Chinese",
+        )
+        services = RecordingSessionServices(
+            runtime=runtime,
+            status_emitter=object(),
+            translator=object(),
+            buffer_reducer=object(),
+        )
+        control = FakeRecordingSessionControl(status="busy")
+        runtime_text_state = FakeRuntimeTextState(
+            tc_sentences=["old"],
+            tl_sentences=["old-tl"],
+            detected_language="en",
+            prev_tc_res="prev",
+            prev_tl_res="prev-tl",
+        )
 
-        previous_build_services = record_module._build_recording_session_services
-        try:
-            runtime = RecordingRuntime(
-                taskname="Transcribe & Translate",
-                device="mic",
-                lang_source="English",
-                lang_target="Chinese",
-                engine="Whisper",
-                is_tl=True,
-                use_temp=False,
-                separator="<br />",
-                keep_temp=False,
-                t_start=1.0,
-                max_buffer_s=10.0,
-                max_sentences=5,
-                sentence_limitless=False,
-                lang_target_display="Chinese",
-            )
-            services = RecordingSessionServices(
-                runtime=runtime,
-                status_emitter=object(),
-                translator=object(),
-                buffer_reducer=object(),
-            )
-            record_module._build_recording_session_services = lambda **kwargs: services
-            control = FakeRecordingSessionControl(status="busy")
-            runtime_text_state = FakeRuntimeTextState(
-                tc_sentences=["old"],
-                tl_sentences=["old-tl"],
-                detected_language="en",
-                prev_tc_res="prev",
-                prev_tl_res="prev-tl",
-            )
+        class ModelRuntimeStub:
+            pass
 
-            class ModelRuntimeStub:
-                pass
-
-            lifecycle = _initialize_recording_session_lifecycle(
-                config=type("Config", (), {"tl_engine_whisper": True})(),
-                model_runtime=ModelRuntimeStub(),
-                stream_runtime=RecordingStreamRuntime(
-                    input_device_index=0,
-                    sr_ori=16000,
+        lifecycle = _initialize_recording_session_lifecycle(
+            config=type("Config", (), {"tl_engine_whisper": True})(),
+            model_runtime=ModelRuntimeStub(),
+            stream_runtime=RecordingStreamRuntime(
+                input_device_index=0,
+                sr_ori=16000,
+                num_of_channels=1,
+                chunk_size=320,
+                samp_width=2,
+                sr_divider=16000,
+                callback_ctx=RealtimeCallbackContext(
+                    sample_rate=16000,
+                    frame_duration_ms=20,
+                    threshold_enable=True,
+                    threshold_db=-20.0,
+                    threshold_auto=True,
+                    use_silero=True,
+                    silero_min_conf=0.75,
+                    vad_checked=False,
                     num_of_channels=1,
-                    chunk_size=320,
                     samp_width=2,
-                    sr_divider=16000,
-                    callback_ctx=RealtimeCallbackContext(
-                        sample_rate=16000,
-                        frame_duration_ms=20,
-                        threshold_enable=True,
-                        threshold_db=-20.0,
-                        threshold_auto=True,
-                        use_silero=True,
-                        silero_min_conf=0.75,
-                        vad_checked=False,
-                        num_of_channels=1,
-                        samp_width=2,
-                        use_temp=False,
-                    ),
+                    use_temp=False,
                 ),
-                device="mic",
-                lang_source="English",
-                lang_target="Chinese",
-                engine="Whisper",
-                is_tc=True,
-                is_tl=True,
-                t_start=2.0,
-                control=control,
-                runtime_text_state=runtime_text_state,
-            )
-            observed_status = control.current_status()
-            observed_auto_lang = runtime_text_state.detected_language()
-            observed_tc_sentences = list(runtime_text_state.transcribed_sentences())
-            observed_tl_sentences = list(runtime_text_state.translated_sentences())
-            observed_prev_tc = runtime_text_state.previous_transcribed_result()
-            observed_prev_tl = runtime_text_state.previous_translated_result()
-            observed_tc_lock = lifecycle.session_state.transcription_lock
-        finally:
-            record_module._build_recording_session_services = previous_build_services
+            ),
+            device="mic",
+            lang_source="English",
+            lang_target="Chinese",
+            engine="Whisper",
+            is_tc=True,
+            is_tl=True,
+            t_start=2.0,
+            control=control,
+            runtime_text_state=runtime_text_state,
+            build_services_fn=lambda **kwargs: services,
+        )
+        observed_status = control.current_status()
+        observed_auto_lang = runtime_text_state.detected_language()
+        observed_tc_sentences = list(runtime_text_state.transcribed_sentences())
+        observed_tl_sentences = list(runtime_text_state.translated_sentences())
+        observed_prev_tc = runtime_text_state.previous_transcribed_result()
+        observed_prev_tl = runtime_text_state.previous_translated_result()
+        observed_tc_lock = lifecycle.session_state.transcription_lock
 
         self.assertIsInstance(lifecycle, RecordingSessionLifecycle)
         self.assertEqual(lifecycle.session_state.last_sample, b"")
@@ -1209,65 +1305,56 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(updated, [{"status": "Stopping"}])
 
     def test_start_recording_session_support_threads_starts_workers_and_updates_status(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
         calls = []
-        previous_start_translation = record_module._start_translation_dispatcher_thread
-        previous_start_status = record_module._start_recording_status_thread
-        try:
-            record_module._start_translation_dispatcher_thread = lambda translator, control=None: calls.append(("translation", translator, control))
-            record_module._start_recording_status_thread = lambda *args, **kwargs: calls.append(("status", kwargs))
+        runtime = RecordingRuntime(
+            taskname="Transcribe",
+            device="mic",
+            lang_source="English",
+            lang_target="Chinese",
+            engine="Whisper",
+            is_tl=True,
+            use_temp=False,
+            separator="<br />",
+            keep_temp=False,
+            t_start=0.0,
+            max_buffer_s=10.0,
+            max_sentences=5,
+            sentence_limitless=False,
+            lang_target_display="Chinese",
+        )
+        bridge = FakeWebBridge()
+        control = FakeRecordingSessionControl(status="Recording")
+        emitter = RecordingStatusEmitter(
+            runtime,
+            bridge_adapter=type(
+                "InjectedBridgeAdapter",
+                (),
+                {
+                    "update_task_message": lambda _self, message: bridge.update_task_message(message),
+                    "set_recording_state": lambda _self, payload: bridge.set_recording_state(payload),
+                },
+            )(),
+        )
+        services = RecordingSessionServices(
+            runtime=runtime,
+            status_emitter=emitter,
+            translator=object(),
+            buffer_reducer=object(),
+            control=control,
+        )
+        state = RealtimeSessionState()
 
-            runtime = RecordingRuntime(
-                taskname="Transcribe",
-                device="mic",
-                lang_source="English",
-                lang_target="Chinese",
-                engine="Whisper",
-                is_tl=True,
-                use_temp=False,
-                separator="<br />",
-                keep_temp=False,
-                t_start=0.0,
-                max_buffer_s=10.0,
-                max_sentences=5,
-                sentence_limitless=False,
-                lang_target_display="Chinese",
-            )
-            bridge = FakeWebBridge()
-            control = FakeRecordingSessionControl(status="Recording")
-            emitter = RecordingStatusEmitter(
-                runtime,
-                bridge_adapter=type(
-                    "InjectedBridgeAdapter",
-                    (),
-                    {
-                        "update_task_message": lambda _self, message: bridge.update_task_message(message),
-                        "set_recording_state": lambda _self, payload: bridge.set_recording_state(payload),
-                    },
-                )(),
-            )
-            services = RecordingSessionServices(
-                runtime=runtime,
-                status_emitter=emitter,
-                translator=object(),
-                buffer_reducer=object(),
-                control=control,
-            )
-            state = RealtimeSessionState()
-
-            _start_recording_session_support_threads(
-                services=services,
-                session_state=state,
-                t_start=5.0,
-                max_buffer_s=10,
-                max_sentences=4,
-                sentence_limitless=False,
-                control=control,
-            )
-        finally:
-            record_module._start_translation_dispatcher_thread = previous_start_translation
-            record_module._start_recording_status_thread = previous_start_status
+        _start_recording_session_support_threads(
+            services=services,
+            session_state=state,
+            t_start=5.0,
+            max_buffer_s=10,
+            max_sentences=4,
+            sentence_limitless=False,
+            control=control,
+            start_translation_dispatcher_thread_fn=lambda translator, control=None: calls.append(("translation", translator, control)),
+            start_recording_status_thread_fn=lambda *args, **kwargs: calls.append(("status", kwargs)),
+        )
 
         self.assertEqual(bridge.messages, ["Recording"])
         self.assertEqual(calls[0][0], "translation")
@@ -1276,147 +1363,136 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(calls[1][1]["max_sentences"], 4)
 
     def test_record_session_builds_stream_runtime_after_model_runtime_updates_use_temp(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
-        previous_build_config = record_module._build_recording_session_config
-        previous_get_pyaudio_module = record_module.get_pyaudio_module
-        previous_load_runtime = record_module._load_recording_model_runtime
-        previous_build_stream = record_module._build_recording_stream_runtime
-        previous_build_services = record_module._build_recording_session_services
-        previous_start_support_threads = record_module._start_recording_session_support_threads
-        previous_open_stream = record_module._open_recording_stream
-        previous_run_loop = record_module._run_recording_session_loop
-        previous_finalize = record_module._finalize_recording_session
         observed = {}
-        try:
-            class ConfigStub:
-                rec_type = "mic"
-                transcribe_rate = timedelta(seconds=1)
-                max_buffer_s = 10
-                max_sentences = 5
-                sentence_limitless = False
-                tl_engine_whisper = False
-                taskname = "Transcribe"
-                auto = False
-                threshold_enable = True
-                threshold_db = -20.0
-                threshold_auto = True
-                use_silero = True
-                silero_min_conf = 0.75
-                auto_break_buffer = True
-                use_temp = False
-                separator = "<br />"
+        class ConfigStub:
+            rec_type = "mic"
+            transcribe_rate = timedelta(seconds=1)
+            max_buffer_s = 10
+            max_sentences = 5
+            sentence_limitless = False
+            tl_engine_whisper = False
+            taskname = "Transcribe"
+            auto = False
+            threshold_enable = True
+            threshold_db = -20.0
+            threshold_auto = True
+            use_silero = True
+            silero_min_conf = 0.75
+            auto_break_buffer = True
+            use_temp = True
+            separator = "<br />"
 
-            config = ConfigStub()
-            record_module._build_recording_session_config = lambda **kwargs: config
-            record_module.get_pyaudio_module = lambda: type("FakePyAudioModule", (), {"PyAudio": lambda self: object()})()
+        class ModelRuntimeStub:
+            use_temp = True
+            cuda_device = "cpu"
+            demucs_enabled = False
+            hallucination_filters = {}
+            stable_tl = None
+            whisper_args = {}
 
-            class ModelRuntimeStub:
-                use_temp = True
-                cuda_device = "cpu"
-                demucs_enabled = False
-                hallucination_filters = {}
-                stable_tl = None
-                whisper_args = {}
+        config = ConfigStub()
+        stream_runtime = RecordingStreamRuntime(
+            input_device_index=0,
+            sr_ori=16000,
+            num_of_channels=1,
+            chunk_size=320,
+            samp_width=2,
+            sr_divider=16000,
+            callback_ctx=RealtimeCallbackContext(
+                sample_rate=16000,
+                frame_duration_ms=20,
+                threshold_enable=True,
+                threshold_db=-20.0,
+                threshold_auto=True,
+                use_silero=True,
+                silero_min_conf=0.75,
+                vad_checked=False,
+                num_of_channels=1,
+                samp_width=2,
+                use_temp=True,
+            ),
+        )
+        services = RecordingSessionServices(
+            runtime=RecordingRuntime(
+                taskname="Transcribe",
+                device="mic",
+                lang_source="English",
+                lang_target="-",
+                engine="Whisper",
+                is_tl=False,
+                use_temp=True,
+                separator="<br />",
+                keep_temp=False,
+                t_start=0.0,
+                max_buffer_s=10.0,
+                max_sentences=5,
+                sentence_limitless=False,
+                lang_target_display="-",
+            ),
+            status_emitter=type("Emitter", (), {"emit": lambda self, **kwargs: None})(),
+            translator=object(),
+            buffer_reducer=object(),
+        )
 
-            record_module._load_recording_model_runtime = lambda **kwargs: ModelRuntimeStub()
+        def fake_prepare_bootstrap(**kwargs):
+            observed["use_temp_seen"] = config.use_temp
+            observed["settings_snapshot_use_temp"] = kwargs["settings_snapshot"]["use_temp"]
+            observed["shared_runtime_state"] = kwargs["shared_runtime_state"]
+            observed["callback_context_store_instance"] = kwargs["callback_context_store_instance"]
+            return type(
+                "Bootstrap",
+                (),
+                {
+                    "config": config,
+                    "model_runtime": ModelRuntimeStub(),
+                    "stream_runtime": stream_runtime,
+                },
+            )()
 
-            def fake_build_stream_runtime(
-                *,
-                rec_type,
-                config,
-                p,
-                settings_snapshot=None,
-                shared_runtime_state=None,
-                callback_context_store_instance=None,
-            ):
-                observed["use_temp_seen"] = config.use_temp
-                observed["settings_snapshot_use_temp"] = settings_snapshot["use_temp"]
-                observed["shared_runtime_state"] = shared_runtime_state
-                observed["callback_context_store_instance"] = callback_context_store_instance
-                return RecordingStreamRuntime(
-                    input_device_index=0,
-                    sr_ori=16000,
-                    num_of_channels=1,
-                    chunk_size=320,
-                    samp_width=2,
-                    sr_divider=16000,
-                    callback_ctx=RealtimeCallbackContext(
-                        sample_rate=16000,
-                        frame_duration_ms=20,
-                        threshold_enable=True,
-                        threshold_db=-20.0,
-                        threshold_auto=True,
-                        use_silero=True,
-                        silero_min_conf=0.75,
-                        vad_checked=False,
-                        num_of_channels=1,
-                        samp_width=2,
-                        use_temp=True,
-                    ),
-                )
-
-            record_module._build_recording_stream_runtime = fake_build_stream_runtime
-            def fake_build_services(**kwargs):
-                observed["session_control"] = kwargs["control"]
-                observed["runtime_text_state"] = kwargs["runtime_text_state"]
-                return RecordingSessionServices(
-                    runtime=RecordingRuntime(
-                        taskname="Transcribe",
-                        device="mic",
-                        lang_source="English",
-                        lang_target="-",
-                        engine="Whisper",
-                        is_tl=False,
-                        use_temp=True,
-                        separator="<br />",
-                        keep_temp=False,
-                        t_start=0.0,
-                        max_buffer_s=10.0,
-                        max_sentences=5,
-                        sentence_limitless=False,
-                        lang_target_display="-",
-                    ),
-                    status_emitter=type("Emitter", (), {"emit": lambda self, **kwargs: None})(),
-                    translator=object(),
-                    buffer_reducer=object(),
-                )
-
-            record_module._build_recording_session_services = fake_build_services
-            record_module._start_recording_session_support_threads = lambda **kwargs: None
-            def fake_open_stream(**kwargs):
-                observed["open_stream_kwargs"] = kwargs
-
-            record_module._open_recording_stream = fake_open_stream
-            record_module._run_recording_session_loop = lambda **kwargs: None
-            record_module._finalize_recording_session = lambda *args, **kwargs: None
-
-            record_session(
-                RecordingSessionRequest(
-                    lang_source="English",
-                    lang_target="Chinese",
-                    engine="Whisper",
-                    model_name_tc="base",
-                    device="mic",
-                    is_tc=True,
-                    is_tl=False,
-                )
+        def fake_initialize_lifecycle(**kwargs):
+            observed["session_control"] = kwargs["control"]
+            observed["runtime_text_state"] = kwargs["runtime_text_state"]
+            return RecordingSessionLifecycle(
+                session_state=RealtimeSessionState(),
+                services=services,
+                callback_ctx=stream_runtime.callback_ctx,
+                sr_ori=stream_runtime.sr_ori,
+                num_of_channels=stream_runtime.num_of_channels,
+                samp_width=stream_runtime.samp_width,
+                sr_divider=stream_runtime.sr_divider,
             )
-        finally:
-            record_module._build_recording_session_config = previous_build_config
-            record_module.get_pyaudio_module = previous_get_pyaudio_module
-            record_module._load_recording_model_runtime = previous_load_runtime
-            record_module._build_recording_stream_runtime = previous_build_stream
-            record_module._build_recording_session_services = previous_build_services
-            record_module._start_recording_session_support_threads = previous_start_support_threads
-            record_module._open_recording_stream = previous_open_stream
-            record_module._run_recording_session_loop = previous_run_loop
-            record_module._finalize_recording_session = previous_finalize
+
+        def fake_open_stream(**kwargs):
+            observed["open_stream_kwargs"] = kwargs
+
+        record_session(
+            RecordingSessionRequest(
+                lang_source="English",
+                lang_target="Chinese",
+                engine="Whisper",
+                model_name_tc="base",
+                device="mic",
+                is_tc=True,
+                is_tl=False,
+            ),
+            dependencies=RecordingSessionDependencies(
+                execution_hooks=RecordingSessionExecutionHooks(
+                    create_pyaudio_fn=lambda: object(),
+                    prepare_bootstrap_fn=fake_prepare_bootstrap,
+                    initialize_lifecycle_fn=fake_initialize_lifecycle,
+                    start_support_threads_fn=lambda **kwargs: None,
+                    open_stream_fn=fake_open_stream,
+                    run_loop_fn=lambda **kwargs: None,
+                    finalize_session_fn=lambda *args, **kwargs: None,
+                    empty_cuda_cache_fn=lambda: None,
+                ),
+            ),
+        )
 
         self.assertTrue(observed["use_temp_seen"])
         self.assertFalse(observed["settings_snapshot_use_temp"])
         self.assertIsInstance(observed["shared_runtime_state"], RealtimeSharedState)
-        self.assertIsInstance(observed["session_control"], record_module.RecordingSessionControl)
+        self.assertIsInstance(observed["session_control"], type(build_recording_session_control()))
         self.assertIsNot(
             observed["runtime_text_state"]._shared,
             build_recording_text_state()._shared,
@@ -1424,56 +1500,35 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertIs(observed["runtime_text_state"]._shared, observed["shared_runtime_state"])
         self.assertIsNotNone(observed["callback_context_store_instance"])
         self.assertTrue(callable(observed["open_stream_kwargs"]["record_cb_override"]))
-        self.assertIsNot(observed["open_stream_kwargs"]["record_cb_override"], record_module.record_cb)
+        self.assertIsNot(observed["open_stream_kwargs"]["record_cb_override"], record_cb)
         self.assertIs(
             observed["open_stream_kwargs"]["state_adapter"].runtime_state,
             observed["session_control"].runtime_state,
         )
 
     def test_record_session_finalizes_when_failure_happens_after_pyaudio_bootstrap(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
-        previous_build_config = record_module._build_recording_session_config
-        previous_get_pyaudio_module = record_module.get_pyaudio_module
-        previous_load_runtime = record_module._load_recording_model_runtime
-        previous_build_stream = record_module._build_recording_stream_runtime
-        previous_finalize = record_module._finalize_recording_session
-        previous_empty_torch_cuda_cache = record_module.empty_torch_cuda_cache
         finalized = []
-        try:
-            class ConfigStub:
-                use_temp = False
+        py_audio = object()
 
-            py_audio = object()
-            record_module._build_recording_session_config = lambda **kwargs: ConfigStub()
-            record_module.get_pyaudio_module = lambda: type("FakePyAudioModule", (), {"PyAudio": lambda self: py_audio})()
-            record_module._load_recording_model_runtime = lambda **kwargs: type(
-                "ModelRuntime",
-                (),
-                {"use_temp": False, "cuda_device": "cpu", "demucs_enabled": False},
-            )()
-            record_module._build_recording_stream_runtime = lambda **kwargs: (_ for _ in ()).throw(RuntimeError("boom"))
-            record_module._finalize_recording_session = lambda *args, **kwargs: finalized.append((args, kwargs))
-            record_module.empty_torch_cuda_cache = lambda: None
-
-            record_session(
-                RecordingSessionRequest(
-                    lang_source="English",
-                    lang_target="Chinese",
-                    engine="Whisper",
-                    model_name_tc="base",
-                    device="mic",
-                    is_tc=True,
-                    is_tl=False,
-                )
-            )
-        finally:
-            record_module._build_recording_session_config = previous_build_config
-            record_module.get_pyaudio_module = previous_get_pyaudio_module
-            record_module._load_recording_model_runtime = previous_load_runtime
-            record_module._build_recording_stream_runtime = previous_build_stream
-            record_module._finalize_recording_session = previous_finalize
-            record_module.empty_torch_cuda_cache = previous_empty_torch_cuda_cache
+        record_session(
+            RecordingSessionRequest(
+                lang_source="English",
+                lang_target="Chinese",
+                engine="Whisper",
+                model_name_tc="base",
+                device="mic",
+                is_tc=True,
+                is_tl=False,
+            ),
+            dependencies=RecordingSessionDependencies(
+                execution_hooks=RecordingSessionExecutionHooks(
+                    create_pyaudio_fn=lambda: py_audio,
+                    prepare_bootstrap_fn=lambda **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+                    finalize_session_fn=lambda *args, **kwargs: finalized.append((args, kwargs)),
+                    empty_cuda_cache_fn=lambda: None,
+                ),
+            ),
+        )
 
         self.assertEqual(finalized[0][0][0], py_audio)
         self.assertIsInstance(finalized[0][0][1], RecordingSessionFinalizeContext)
@@ -1483,17 +1538,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
 
     def test_record_session_uses_injected_session_dependencies(self) -> None:
         from queue import Queue
-        from speech_translate.utils.audio import record as record_module
-
-        previous_build_config = record_module._build_recording_session_config
-        previous_get_pyaudio_module = record_module.get_pyaudio_module
-        previous_load_runtime = record_module._load_recording_model_runtime
-        previous_build_stream = record_module._build_recording_stream_runtime
-        previous_build_services = record_module._build_recording_session_services
-        previous_start_support_threads = record_module._start_recording_session_support_threads
-        previous_open_stream = record_module._open_recording_stream
-        previous_run_loop = record_module._run_recording_session_loop
-        previous_finalize = record_module._finalize_recording_session
         observed = {}
         injected_runtime_state = build_recording_runtime_state_adapter(
             state=BridgeRecordingRuntime(recording=True, data_queue=Queue()),
@@ -1520,108 +1564,121 @@ class AudioRecordHelpersTests(unittest.TestCase):
             "use_temp": False,
             "separate_with": repr("\n"),
         }
-        try:
-            class ConfigStub:
-                use_temp = False
-                taskname = "Transcribe"
-                max_buffer_s = 10
-                max_sentences = 5
-                sentence_limitless = False
+        class ConfigStub:
+            use_temp = False
+            taskname = "Transcribe"
+            max_buffer_s = 10
+            max_sentences = 5
+            sentence_limitless = False
 
-            record_module._build_recording_session_config = lambda **kwargs: ConfigStub()
-            record_module.get_pyaudio_module = lambda: type("FakePyAudioModule", (), {"PyAudio": lambda self: object()})()
-            record_module._load_recording_model_runtime = lambda **kwargs: type(
-                "ModelRuntime",
+        stream_runtime = RecordingStreamRuntime(
+            input_device_index=0,
+            sr_ori=16000,
+            num_of_channels=1,
+            chunk_size=320,
+            samp_width=2,
+            sr_divider=16000,
+            callback_ctx=RealtimeCallbackContext(
+                sample_rate=16000,
+                frame_duration_ms=20,
+                threshold_enable=True,
+                threshold_db=-20.0,
+                threshold_auto=True,
+                use_silero=True,
+                silero_min_conf=0.75,
+                vad_checked=False,
+                num_of_channels=1,
+                samp_width=2,
+                use_temp=False,
+            ),
+        )
+        services = RecordingSessionServices(
+            runtime=RecordingRuntime(
+                taskname="Transcribe",
+                device="mic",
+                lang_source="English",
+                lang_target="-",
+                engine="Whisper",
+                is_tl=False,
+                use_temp=False,
+                separator="<br />",
+                keep_temp=False,
+                t_start=0.0,
+                max_buffer_s=10.0,
+                max_sentences=5,
+                sentence_limitless=False,
+                lang_target_display="-",
+            ),
+            status_emitter=type("Emitter", (), {"emit": lambda self, **kwargs: None})(),
+            translator=object(),
+            buffer_reducer=object(),
+        )
+
+        def fake_prepare_bootstrap(**kwargs):
+            observed["settings_snapshot"] = kwargs["settings_snapshot"]
+            observed["shared_runtime_state"] = kwargs["shared_runtime_state"]
+            observed["callback_context_store_instance"] = kwargs["callback_context_store_instance"]
+            return type(
+                "Bootstrap",
                 (),
-                {"use_temp": False, "cuda_device": "cpu", "demucs_enabled": False, "hallucination_filters": {}, "stable_tl": None, "whisper_args": {}},
+                {
+                    "config": ConfigStub(),
+                    "model_runtime": type(
+                        "ModelRuntime",
+                        (),
+                        {
+                            "use_temp": False,
+                            "cuda_device": "cpu",
+                            "demucs_enabled": False,
+                            "hallucination_filters": {},
+                            "stable_tl": None,
+                            "whisper_args": {},
+                        },
+                    )(),
+                    "stream_runtime": stream_runtime,
+                },
             )()
 
-            def fake_build_stream_runtime(*, settings_snapshot=None, shared_runtime_state=None, callback_context_store_instance=None, **kwargs):
-                observed["settings_snapshot"] = settings_snapshot
-                observed["shared_runtime_state"] = shared_runtime_state
-                observed["callback_context_store_instance"] = callback_context_store_instance
-                return RecordingStreamRuntime(
-                    input_device_index=0,
-                    sr_ori=16000,
-                    num_of_channels=1,
-                    chunk_size=320,
-                    samp_width=2,
-                    sr_divider=16000,
-                    callback_ctx=RealtimeCallbackContext(
-                        sample_rate=16000,
-                        frame_duration_ms=20,
-                        threshold_enable=True,
-                        threshold_db=-20.0,
-                        threshold_auto=True,
-                        use_silero=True,
-                        silero_min_conf=0.75,
-                        vad_checked=False,
-                        num_of_channels=1,
-                        samp_width=2,
-                        use_temp=False,
-                    ),
-                )
-
-            record_module._build_recording_stream_runtime = fake_build_stream_runtime
-
-            def fake_build_services(**kwargs):
-                observed["control"] = kwargs["control"]
-                observed["runtime_text_state"] = kwargs["runtime_text_state"]
-                return RecordingSessionServices(
-                    runtime=RecordingRuntime(
-                        taskname="Transcribe",
-                        device="mic",
-                        lang_source="English",
-                        lang_target="-",
-                        engine="Whisper",
-                        is_tl=False,
-                        use_temp=False,
-                        separator="<br />",
-                        keep_temp=False,
-                        t_start=0.0,
-                        max_buffer_s=10.0,
-                        max_sentences=5,
-                        sentence_limitless=False,
-                        lang_target_display="-",
-                    ),
-                    status_emitter=type("Emitter", (), {"emit": lambda self, **kwargs: None})(),
-                    translator=object(),
-                    buffer_reducer=object(),
-                )
-
-            record_module._build_recording_session_services = fake_build_services
-            record_module._start_recording_session_support_threads = lambda **kwargs: None
-            record_module._open_recording_stream = lambda **kwargs: observed.setdefault("open_stream_kwargs", kwargs)
-            record_module._run_recording_session_loop = lambda **kwargs: None
-            record_module._finalize_recording_session = lambda *args, **kwargs: None
-
-            record_session(
-                RecordingSessionRequest(
-                    lang_source="English",
-                    lang_target="Chinese",
-                    engine="Whisper",
-                    model_name_tc="base",
-                    device="mic",
-                    is_tc=True,
-                    is_tl=False,
-                ),
-                dependencies=RecordingSessionDependencies(
-                    settings_snapshot=injected_settings_snapshot,
-                    session_control=injected_control,
-                    runtime_text_state=injected_text_state,
-                    callback_context_store=injected_store,
-                ),
+        def fake_initialize_lifecycle(**kwargs):
+            observed["control"] = kwargs["control"]
+            observed["runtime_text_state"] = kwargs["runtime_text_state"]
+            return RecordingSessionLifecycle(
+                session_state=RealtimeSessionState(),
+                services=services,
+                callback_ctx=stream_runtime.callback_ctx,
+                sr_ori=stream_runtime.sr_ori,
+                num_of_channels=stream_runtime.num_of_channels,
+                samp_width=stream_runtime.samp_width,
+                sr_divider=stream_runtime.sr_divider,
             )
-        finally:
-            record_module._build_recording_session_config = previous_build_config
-            record_module.get_pyaudio_module = previous_get_pyaudio_module
-            record_module._load_recording_model_runtime = previous_load_runtime
-            record_module._build_recording_stream_runtime = previous_build_stream
-            record_module._build_recording_session_services = previous_build_services
-            record_module._start_recording_session_support_threads = previous_start_support_threads
-            record_module._open_recording_stream = previous_open_stream
-            record_module._run_recording_session_loop = previous_run_loop
-            record_module._finalize_recording_session = previous_finalize
+
+        record_session(
+            RecordingSessionRequest(
+                lang_source="English",
+                lang_target="Chinese",
+                engine="Whisper",
+                model_name_tc="base",
+                device="mic",
+                is_tc=True,
+                is_tl=False,
+            ),
+            dependencies=RecordingSessionDependencies(
+                settings_snapshot=injected_settings_snapshot,
+                session_control=injected_control,
+                runtime_text_state=injected_text_state,
+                callback_context_store=injected_store,
+                execution_hooks=RecordingSessionExecutionHooks(
+                    create_pyaudio_fn=lambda: object(),
+                    prepare_bootstrap_fn=fake_prepare_bootstrap,
+                    initialize_lifecycle_fn=fake_initialize_lifecycle,
+                    start_support_threads_fn=lambda **kwargs: None,
+                    open_stream_fn=lambda **kwargs: observed.setdefault("open_stream_kwargs", kwargs),
+                    run_loop_fn=lambda **kwargs: None,
+                    finalize_session_fn=lambda *args, **kwargs: None,
+                    empty_cuda_cache_fn=lambda: None,
+                ),
+            ),
+        )
 
         self.assertEqual(observed["settings_snapshot"], injected_settings_snapshot)
         self.assertIsNot(observed["settings_snapshot"], injected_settings_snapshot)
@@ -1656,15 +1713,8 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(count_text, "2/5")
 
     def test_cleanup_translation_audio_removes_temp_file(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
-        previous_remove = record_module.os.remove
         removed = []
-        try:
-            record_module.os.remove = lambda path: removed.append(path)
-            _cleanup_translation_audio("temp.wav")
-        finally:
-            record_module.os.remove = previous_remove
+        _cleanup_translation_audio("temp.wav", remove_file_fn=lambda path: removed.append(path))
 
         self.assertEqual(removed, ["temp.wav"])
 
@@ -1676,12 +1726,10 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(state.last_sample, b"abcd")
 
     def test_drain_pending_audio_supports_injected_session_control(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
         state = RealtimeSessionState(last_sample=b"")
         control = FakeRecordingSessionControl(queue_items=[b"ab", b"cd"])
 
-        record_module._drain_pending_audio(state, control=control)
+        _drain_pending_audio(state, control=control)
 
         self.assertEqual(state.last_sample, b"abcd")
 
@@ -1701,13 +1749,13 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(state.last_sample, b"ab")
 
     def test_cleanup_processed_audio_target_removes_non_whisper_temp_file(self) -> None:
-        from speech_translate.utils.audio import record as record_module
+        from speech_translate.utils.audio import record_session_pipeline as pipeline_module
 
-        previous_remove = record_module.os.remove
+        previous_remove = pipeline_module.os.remove
         removed = []
         state = RealtimeSessionState(temp_audio_paths=["temp.wav"])
         try:
-            record_module.os.remove = lambda path: removed.append(path)
+            pipeline_module.os.remove = lambda path: removed.append(path)
             _cleanup_processed_audio_target(
                 "temp.wav",
                 use_temp=True,
@@ -1717,7 +1765,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 session_state=state,
             )
         finally:
-            record_module.os.remove = previous_remove
+            pipeline_module.os.remove = previous_remove
 
         self.assertEqual(removed, ["temp.wav"])
         self.assertEqual(state.temp_audio_paths, [])
@@ -1755,109 +1803,88 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(translator.calls[-1], ("temp.wav", ""))
 
     def test_run_recording_session_loop_executes_iteration_and_resets_transcribing_status(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
-        previous_consume = record_module._consume_record_loop_input
-        previous_advance = record_module._advance_recording_buffer
-        previous_build_target = record_module._build_record_audio_target
-        previous_execute = record_module._execute_recording_iteration
-        previous_cleanup = record_module._cleanup_processed_audio_target
-        previous_break = record_module._break_buffer_and_update_state
         calls = []
         control = FakeRecordingSessionControl(recording=True, status="busy")
-        try:
-            record_module._consume_record_loop_input = lambda *args, **kwargs: b"abc"
-            record_module._advance_recording_buffer = lambda session_state, data, **kwargs: True
-            record_module._build_record_audio_target = lambda *args, **kwargs: "temp.wav"
-
-            def fake_execute(**kwargs):
-                control.set_current_status("▶️ Recording ⟳ Transcribing Audio")
-                kwargs["session_state"].duration_seconds = 1.0
-                control.set_recording(False)
-                return True
-
-            record_module._execute_recording_iteration = fake_execute
-            record_module._cleanup_processed_audio_target = lambda *args, **kwargs: calls.append(("cleanup", args[0]))
-            record_module._break_buffer_and_update_state = lambda **kwargs: calls.append(("break", kwargs["reason"]))
-
-            lifecycle = RecordingSessionLifecycle(
-                session_state=RealtimeSessionState(),
-                services=RecordingSessionServices(
-                    runtime=RecordingRuntime(
-                        taskname="Transcribe",
-                        device="mic",
-                        lang_source="English",
-                        lang_target="-",
-                        engine="Whisper",
-                        is_tl=False,
-                        use_temp=True,
-                        separator="<br />",
-                        keep_temp=False,
-                        t_start=0.0,
-                        max_buffer_s=10.0,
-                        max_sentences=5,
-                        sentence_limitless=False,
-                        lang_target_display="-",
-                    ),
-                    status_emitter=object(),
-                    translator=FakeTranslator(),
-                    buffer_reducer=FakeBufferReducer(),
-                ),
-                callback_ctx=RealtimeCallbackContext(
-                    sample_rate=16000,
-                    frame_duration_ms=20,
-                    threshold_enable=True,
-                    threshold_db=-20.0,
-                    threshold_auto=True,
-                    use_silero=True,
-                    silero_min_conf=0.75,
-                    vad_checked=False,
-                    num_of_channels=1,
-                    samp_width=2,
+        lifecycle = RecordingSessionLifecycle(
+            session_state=RealtimeSessionState(),
+            services=RecordingSessionServices(
+                runtime=RecordingRuntime(
+                    taskname="Transcribe",
+                    device="mic",
+                    lang_source="English",
+                    lang_target="-",
+                    engine="Whisper",
+                    is_tl=False,
                     use_temp=True,
+                    separator="<br />",
+                    keep_temp=False,
+                    t_start=0.0,
+                    max_buffer_s=10.0,
+                    max_sentences=5,
+                    sentence_limitless=False,
+                    lang_target_display="-",
                 ),
-                sr_ori=16000,
+                status_emitter=object(),
+                translator=FakeTranslator(),
+                buffer_reducer=FakeBufferReducer(),
+            ),
+            callback_ctx=RealtimeCallbackContext(
+                sample_rate=16000,
+                frame_duration_ms=20,
+                threshold_enable=True,
+                threshold_db=-20.0,
+                threshold_auto=True,
+                use_silero=True,
+                silero_min_conf=0.75,
+                vad_checked=False,
                 num_of_channels=1,
                 samp_width=2,
-                sr_divider=16000,
-            )
-            config = _build_recording_session_config(
-                rec_type="mic",
-                lang_source="English",
-                engine="Whisper",
-                is_tc=True,
-                is_tl=False,
-            )
+                use_temp=True,
+            ),
+            sr_ori=16000,
+            num_of_channels=1,
+            samp_width=2,
+            sr_divider=16000,
+        )
+        config = _build_recording_session_config(
+            rec_type="mic",
+            lang_source="English",
+            engine="Whisper",
+            is_tc=True,
+            is_tl=False,
+        )
 
-            class RuntimeStub:
-                demucs_enabled = False
-                cuda_device = "cpu"
+        class RuntimeStub:
+            demucs_enabled = False
+            cuda_device = "cpu"
 
-            _run_recording_session_loop(
-                lifecycle=lifecycle,
-                config=config,
-                model_runtime=RuntimeStub(),
-                is_tc=True,
-                is_tl=False,
-                rec_type="mic",
-                control=control,
-            )
-            observed_status = control.current_status()
-        finally:
-            record_module._consume_record_loop_input = previous_consume
-            record_module._advance_recording_buffer = previous_advance
-            record_module._build_record_audio_target = previous_build_target
-            record_module._execute_recording_iteration = previous_execute
-            record_module._cleanup_processed_audio_target = previous_cleanup
-            record_module._break_buffer_and_update_state = previous_break
+        def fake_execute(**kwargs):
+            control.set_current_status("▶️ Recording ⟳ Transcribing Audio")
+            kwargs["session_state"].duration_seconds = 1.0
+            control.set_recording(False)
+            return True
+
+        _run_recording_session_loop(
+            lifecycle=lifecycle,
+            config=config,
+            model_runtime=RuntimeStub(),
+            is_tc=True,
+            is_tl=False,
+            rec_type="mic",
+            control=control,
+            consume_record_loop_input_fn=lambda *args, **kwargs: b"abc",
+            advance_recording_buffer_fn=lambda session_state, data, **kwargs: True,
+            build_record_audio_target_fn=lambda *args, **kwargs: "temp.wav",
+            execute_recording_iteration_fn=fake_execute,
+            cleanup_processed_audio_target_fn=lambda *args, **kwargs: calls.append(("cleanup", args[0])),
+            break_buffer_and_update_state_fn=lambda **kwargs: calls.append(("break", kwargs["reason"])),
+        )
+        observed_status = control.current_status()
 
         self.assertEqual(calls, [("cleanup", "temp.wav")])
         self.assertEqual(observed_status, "▶️ Recording")
 
     def test_finalize_recording_session_supports_injected_control(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
-        previous_reset = record_module._reset_callback_context
         updates = []
         stream_events = []
         control = FakeRecordingSessionControl(
@@ -1874,18 +1901,19 @@ class AudioRecordHelpersTests(unittest.TestCase):
             )(),
         )
         terminated = []
-        try:
-            record_module._reset_callback_context = lambda: updates.append("reset")
-            finalize_context = RecordingSessionFinalizeContext(
-                session_state=RealtimeSessionState(temp_audio_paths=[]),
-                update_status=lambda: updates.append(control.current_status()),
-                keep_temp=True,
-            )
-            py_audio = type("FakePyAudio", (), {"terminate": lambda _self: terminated.append("terminated")})()
+        finalize_context = RecordingSessionFinalizeContext(
+            session_state=RealtimeSessionState(temp_audio_paths=[]),
+            update_status=lambda: updates.append(control.current_status()),
+            keep_temp=True,
+        )
+        py_audio = type("FakePyAudio", (), {"terminate": lambda _self: terminated.append("terminated")})()
 
-            record_module._finalize_recording_session(py_audio, finalize_context, control=control)
-        finally:
-            record_module._reset_callback_context = previous_reset
+        _finalize_recording_session(
+            py_audio,
+            finalize_context,
+            control=control,
+            reset_callback_context_fn=lambda: updates.append("reset"),
+        )
 
         self.assertEqual(stream_events, ["stop", "close"])
         self.assertEqual(terminated, ["terminated"])
@@ -1896,8 +1924,6 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertTrue(control.data_queue_empty())
 
     def test_run_recording_status_loop_supports_injected_control_and_text_state(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
         emitted = []
         control = FakeRecordingSessionControl(recording=True, status="Injected")
         runtime_text_state = FakeRuntimeTextState(tc_sentences=["a"])
@@ -1910,7 +1936,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
             },
         )()
 
-        record_module._run_recording_status_loop(
+        _run_recording_status_loop(
             session_state,
             emitter,
             t_start=0.0,
@@ -1948,9 +1974,9 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(calls, [("audio", "transcribe")])
 
     def test_filter_realtime_transcription_result_uses_configured_language(self) -> None:
-        from speech_translate.utils.audio import record as record_module
+        from speech_translate.utils.audio import record_session_pipeline as pipeline_module
 
-        previous_remove = record_module.remove_segments_by_str
+        previous_remove = pipeline_module.remove_segments_by_str
         captured = {}
 
         def fake_remove(result, filters, *args):
@@ -1958,7 +1984,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
             return result
 
         try:
-            record_module.remove_segments_by_str = fake_remove
+            pipeline_module.remove_segments_by_str = fake_remove
             filtered = _filter_realtime_transcription_result(
                 FakeResult("hello", language="en"),
                 hallucination_filters={"english": ["x"]},
@@ -1977,15 +2003,15 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 ),
             )
         finally:
-            record_module.remove_segments_by_str = previous_remove
+            pipeline_module.remove_segments_by_str = previous_remove
 
         self.assertIsNotNone(filtered)
         self.assertEqual(captured["filters"], ["x"])
 
     def test_filter_realtime_transcription_result_uses_detected_language_when_auto(self) -> None:
-        from speech_translate.utils.audio import record as record_module
+        from speech_translate.utils.audio import record_session_pipeline as pipeline_module
 
-        previous_remove = record_module.remove_segments_by_str
+        previous_remove = pipeline_module.remove_segments_by_str
         captured = {}
 
         def fake_remove(result, filters, *args):
@@ -1993,7 +2019,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
             return result
 
         try:
-            record_module.remove_segments_by_str = fake_remove
+            pipeline_module.remove_segments_by_str = fake_remove
             filtered = _filter_realtime_transcription_result(
                 FakeResult("hello", language="en"),
                 hallucination_filters={"english": ["y"]},
@@ -2012,7 +2038,7 @@ class AudioRecordHelpersTests(unittest.TestCase):
                 ),
             )
         finally:
-            record_module.remove_segments_by_str = previous_remove
+            pipeline_module.remove_segments_by_str = previous_remove
 
         self.assertIsNotNone(filtered)
         self.assertEqual(captured["filters"], ["y"])
@@ -2062,32 +2088,30 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(translator.calls[-1], ("audio", "old\nhello"))
 
     def test_build_record_audio_target_tracks_temp_file(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
-        previous_save = record_module._save_to_temp
         session_state = RealtimeSessionState(last_sample=b"abc")
-        try:
-            record_module._save_to_temp = lambda *args, **kwargs: "temp.wav"
-            audio_target = _build_record_audio_target(
-                session_state,
-                use_temp=True,
-                num_of_channels=1,
-                samp_width=2,
-                demucs_enabled=False,
-                cuda_device="cpu",
-                sr_ori=16000,
-            )
-        finally:
-            record_module._save_to_temp = previous_save
+        audio_target = _build_record_audio_target(
+            session_state,
+            use_temp=True,
+            num_of_channels=1,
+            samp_width=2,
+            demucs_enabled=False,
+            cuda_device="cpu",
+            sr_ori=16000,
+            save_to_temp_fn=lambda *args, **kwargs: "temp.wav",
+        )
 
         self.assertEqual(audio_target, "temp.wav")
         self.assertEqual(session_state.temp_audio_paths, ["temp.wav"])
 
-    def test_prime_realtime_vad_marks_context_checked(self) -> None:
-        from speech_translate.utils.audio import record as record_module
+    def test_bytes_to_numpy_downmixes_stereo_channels(self) -> None:
+        stereo_samples = (1000).to_bytes(2, "little", signed=True) + (3000).to_bytes(2, "little", signed=True)
 
-        previous_get_speech = record_module.get_speech_webrtc
-        previous_to_silero = record_module.to_silero
+        audio = _bytes_to_numpy(stereo_samples, 2, False, "cpu")
+
+        self.assertEqual(audio.shape, (1,))
+        self.assertAlmostEqual(float(audio[0]), 2000 / 32768.0, places=6)
+
+    def test_prime_realtime_vad_marks_context_checked(self) -> None:
         calls = []
         ctx = RealtimeCallbackContext(
             sample_rate=16000,
@@ -2104,21 +2128,17 @@ class AudioRecordHelpersTests(unittest.TestCase):
             webrtc_vad=object(),
             silero_vad=lambda *args: calls.append("silero"),
         )
-        try:
-            record_module.get_speech_webrtc = lambda *args, **kwargs: calls.append("webrtc")
-            record_module.to_silero = lambda *args, **kwargs: FakeTensor()
-            _prime_realtime_vad(ctx, b"abcd")
-        finally:
-            record_module.get_speech_webrtc = previous_get_speech
-            record_module.to_silero = previous_to_silero
+        _prime_realtime_vad(
+            ctx,
+            b"abcd",
+            get_speech_webrtc_fn=lambda *args, **kwargs: calls.append("webrtc"),
+            to_silero_fn=lambda *args, **kwargs: FakeTensor(),
+        )
 
         self.assertTrue(ctx.vad_checked)
         self.assertEqual(calls, ["webrtc", "silero"])
 
     def test_detect_realtime_speech_uses_manual_threshold(self) -> None:
-        from speech_translate.utils.audio import record as record_module
-
-        previous_get_db = record_module.get_db
         meter_state = RealtimeSharedState()
         ctx = RealtimeCallbackContext(
             sample_rate=16000,
@@ -2134,11 +2154,12 @@ class AudioRecordHelpersTests(unittest.TestCase):
             use_temp=False,
             shared_runtime_state=meter_state,
         )
-        try:
-            record_module.get_db = lambda _: -10.0
-            is_speech, payload = _detect_realtime_speech(ctx, b"orig", b"resampled")
-        finally:
-            record_module.get_db = previous_get_db
+        is_speech, payload = _detect_realtime_speech(
+            ctx,
+            b"orig",
+            b"resampled",
+            get_db_fn=lambda _: -10.0,
+        )
 
         self.assertTrue(is_speech)
         self.assertEqual(payload, b"resampled")
@@ -2291,6 +2312,48 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(bridge.states[-1]["status"], "Recording")
         self.assertEqual(bridge.states[-1]["timer"], "00:00:01")
 
+    def test_recording_bridge_adapter_resolves_recording_controller_from_bridge(self) -> None:
+        from speech_translate.utils.audio.record_runtime import RecordingBridgeAdapter
+
+        target = FakeWebBridge()
+        bridge = type("Bridge", (), {"recording_controller": target})()
+        adapter = RecordingBridgeAdapter(bridge=bridge)
+
+        adapter.update_task_message("Recording")
+        adapter.set_recording_state({"status": "Recording"})
+
+        self.assertEqual(target.messages, ["Recording"])
+        self.assertEqual(target.states, [{"status": "Recording"}])
+
+    def test_recording_bridge_adapter_splits_root_task_bridge_and_recording_controller_state_bridge(self) -> None:
+        from speech_translate.utils.audio.record_runtime import RecordingBridgeAdapter
+
+        target = FakeWebBridge()
+        root_bridge = type(
+            "Bridge",
+            (),
+            {
+                "messages": [],
+                "update_task_message": lambda self, message: self.messages.append(message),
+                "recording_controller": target,
+            },
+        )()
+        adapter = RecordingBridgeAdapter(bridge=root_bridge)
+
+        adapter.update_task_message("Recording")
+        adapter.set_recording_state({"status": "Recording"})
+
+        self.assertEqual(root_bridge.messages, ["Recording"])
+        self.assertEqual(target.states, [{"status": "Recording"}])
+
+    def test_recording_bridge_adapter_raises_when_bridge_is_missing(self) -> None:
+        from speech_translate.utils.audio.record_runtime import RecordingBridgeAdapter
+
+        adapter = RecordingBridgeAdapter(bridge=None, bridge_getter=lambda: None)
+
+        with self.assertRaisesRegex(RuntimeError, "recording bridge is not available"):
+            adapter.update_task_message("Recording")
+
     def test_recording_status_emitter_supports_injected_bridge_adapter(self) -> None:
         runtime = RecordingRuntime(
             taskname="Transcribe",
@@ -2326,9 +2389,39 @@ class AudioRecordHelpersTests(unittest.TestCase):
         self.assertEqual(bridge.messages, ["Recording"])
         self.assertEqual(bridge.states[-1]["timer"], "00:00:02")
 
-    def test_buffer_state_reducer_moves_previous_results_into_sentences(self) -> None:
-        from speech_translate.utils.audio import record as record_module
+    def test_recording_status_emitter_surfaces_bridge_failures(self) -> None:
+        runtime = RecordingRuntime(
+            taskname="Transcribe",
+            device="mic",
+            lang_source="English",
+            lang_target="Chinese",
+            engine="Whisper",
+            is_tl=True,
+            use_temp=False,
+            separator="<br />",
+            keep_temp=False,
+            t_start=0.0,
+            max_buffer_s=10.0,
+            max_sentences=5,
+            sentence_limitless=False,
+            lang_target_display="Chinese",
+        )
+        emitter = RecordingStatusEmitter(
+            runtime,
+            bridge_adapter=type(
+                "BrokenBridgeAdapter",
+                (),
+                {
+                    "update_task_message": lambda _self, message: (_ for _ in ()).throw(RuntimeError("bridge failed")),
+                    "set_recording_state": lambda _self, payload: None,
+                },
+            )(),
+        )
 
+        with self.assertRaisesRegex(RuntimeError, "bridge failed"):
+            emitter.emit(status="Recording", timer="00:00:03")
+
+    def test_buffer_state_reducer_moves_previous_results_into_sentences(self) -> None:
         translator = FakeTranslator()
         reducer = BufferStateReducer(
             is_tc=True,

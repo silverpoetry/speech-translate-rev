@@ -3,11 +3,18 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from platform import processor, release, system, version
 from threading import Thread
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional, Sequence
 
 from speech_translate._constants import APP_NAME
 from speech_translate._version import __version__
-from speech_translate.controller_protocols import JsonDict, SettingsStore, StateViewBridge
+from speech_translate.controller_protocols import (
+    DetachedWindowControllerApi,
+    ImportQueueControllerApi,
+    JsonDict,
+    ModelManagerControllerApi,
+    SettingsStore,
+    SystemSettingsControllerApi,
+)
 from speech_translate.log_helpers import logger
 from speech_translate.state_view_settings import (
     build_record_device_view_settings,
@@ -45,11 +52,21 @@ class AppState:
     log_content: str
 
 
+@dataclass(frozen=True)
+class StateViewDependencies:
+    import_queue_controller: ImportQueueControllerApi
+    model_manager_controller: ModelManagerControllerApi
+    system_settings_controller: SystemSettingsControllerApi
+    detached_window_controller: DetachedWindowControllerApi
+    snapshot_live_state: Callable[[], JsonDict]
+    emit_ui_update: Callable[[Sequence[str]], None]
+
+
 class StateViewBuilder:
     """Builds UI-facing state snapshots and manages audio source discovery cache."""
 
-    def __init__(self, bridge: StateViewBridge, settings: SettingsStore):
-        self.bridge = bridge
+    def __init__(self, dependencies: StateViewDependencies, settings: SettingsStore):
+        self.dependencies = dependencies
         self.settings = settings
         self.audio_source_cache: JsonDict = self._empty_audio_source_cache()
         self.audio_source_cache_ready = False
@@ -83,21 +100,21 @@ class StateViewBuilder:
             os_version=version(),
             cpu=processor(),
             settings=view_settings.compact_settings.to_payload(),
-            import_ui=self.bridge.build_import_ui(verify_available=False),
+            import_ui=self.dependencies.import_queue_controller.build_import_ui(verify_available=False),
             main_ui=self.build_main_ui(),
             record_ui=self.build_record_ui(),
-            runtime_model=self.bridge.build_runtime_model_state(),
-            live_ui=self.bridge.snapshot_live_state(),
+            runtime_model=self.dependencies.model_manager_controller.build_runtime_model_state(),
+            live_ui=self.dependencies.snapshot_live_state(),
             about=self.build_about(),
             log_level=view_settings.log_level,
-            current_log=self.bridge.get_log_file_name(),
-            log_content=self.bridge.get_log_content(),
+            current_log=self.dependencies.system_settings_controller.get_log_file_name(),
+            log_content=self.dependencies.system_settings_controller.get_log_content(),
         )
 
     def _build_detached_config(self) -> JsonDict:
         return {
-            "tc": self.bridge.get_detached_config("tc"),
-            "tl": self.bridge.get_detached_config("tl"),
+            "tc": self.dependencies.detached_window_controller.get_detached_config("tc"),
+            "tl": self.dependencies.detached_window_controller.get_detached_config("tl"),
         }
 
     def build_state(self) -> JsonDict:
@@ -110,8 +127,14 @@ class StateViewBuilder:
 
     def build_main_ui(self) -> JsonDict:
         view_settings = build_state_view_settings(self._settings_snapshot())
+        selected_model = self.dependencies.model_manager_controller.normalize_model_key(
+            str(view_settings.main_ui.selected_model or "")
+        )
         return {
             "input_options": ["mic", "speaker"],
+            "backend_options": ["whisper", "faster-whisper"],
+            "model_options": self.dependencies.model_manager_controller.get_model_manager_keys(),
+            "selected_model": selected_model,
             "source_options": WHISPER_LANG_LIST,
             "target_options": WHISPER_LANG_LIST,
             "engine_options": [
@@ -137,9 +160,10 @@ class StateViewBuilder:
             "version": __version__,
             "os": f"{system()} {release()} {version()}",
             "cpu": processor(),
-            "log_file": self.bridge.get_log_file_name(),
-            "model_dir": self.bridge.resolve_model_dir(),
-            "export_dir": self.bridge.resolve_export_dir(),
+            "log_file": self.dependencies.system_settings_controller.get_log_file_name(),
+            "log_dir": self.dependencies.system_settings_controller.resolve_log_dir(),
+            "model_dir": self.dependencies.model_manager_controller.resolve_model_dir(),
+            "export_dir": self.dependencies.system_settings_controller.resolve_export_dir(),
         }
 
     def _find_default_device(self, device_info: object, all_options: list[object]) -> str:
@@ -195,10 +219,7 @@ class StateViewBuilder:
         finally:
             self.audio_source_cache_loading = False
             self.audio_source_cache_ready = True
-            try:
-                self.bridge.emit_ui_update([UI_SECTION_STATE])
-            except Exception:
-                pass
+            self.dependencies.emit_ui_update([UI_SECTION_STATE])
 
     def build_audio_source_options(self, selected_host_api: Optional[str] = None, host_api: Optional[str] = None) -> JsonDict:
         settings_snapshot = self._settings_snapshot()

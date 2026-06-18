@@ -100,17 +100,35 @@ class RecordingBridgeAdapter:
     bridge: object | None = None
     bridge_getter: Callable[[], object | None] = get_current_bridge
 
-    def update_task_message(self, status: str) -> None:
+    def _resolve_root_bridge(self):
         bridge = self.bridge_getter() if self.bridge is None else self.bridge
         if bridge is None:
-            return
-        bridge.update_task_message(status)
+            raise RuntimeError("recording bridge is not available")
+        return bridge
+
+    def _resolve_task_bridge(self):
+        bridge = self._resolve_root_bridge()
+        if hasattr(bridge, "update_task_message"):
+            return bridge
+        controller = getattr(bridge, "recording_controller", None)
+        if controller is not None and hasattr(controller, "update_task_message"):
+            return controller
+        raise RuntimeError("recording task bridge is not available")
+
+    def _resolve_recording_state_bridge(self):
+        bridge = self._resolve_root_bridge()
+        if hasattr(bridge, "set_recording_state"):
+            return bridge
+        controller = getattr(bridge, "recording_controller", None)
+        if controller is not None and hasattr(controller, "set_recording_state"):
+            return controller
+        raise RuntimeError("recording state bridge is not available")
+
+    def update_task_message(self, status: str) -> None:
+        self._resolve_task_bridge().update_task_message(status)
 
     def set_recording_state(self, payload: dict[str, object]) -> None:
-        bridge = self.bridge_getter() if self.bridge is None else self.bridge
-        if bridge is None:
-            return
-        bridge.set_recording_state(payload)
+        self._resolve_recording_state_bridge().set_recording_state(payload)
 
 
 class RecordingTextState:
@@ -183,23 +201,20 @@ class RecordingStatusEmitter:
         self._bridge = bridge_adapter or RecordingBridgeAdapter()
 
     def emit(self, *, status: str, timer: str | None = None, buffer_text: str | None = None, sentences: str | None = None) -> None:
-        try:
-            self._bridge.update_task_message(status)
-            self._bridge.set_recording_state(
-                _build_recording_state_payload(
-                    status=status,
-                    device=self._runtime.device,
-                    lang_source=self._runtime.lang_source,
-                    lang_target=self._runtime.lang_target_display,
-                    engine=self._runtime.engine,
-                    mode=self._runtime.taskname,
-                    timer=timer,
-                    buffer_text=buffer_text,
-                    sentences=sentences,
-                )
+        self._bridge.update_task_message(status)
+        self._bridge.set_recording_state(
+            _build_recording_state_payload(
+                status=status,
+                device=self._runtime.device,
+                lang_source=self._runtime.lang_source,
+                lang_target=self._runtime.lang_target_display,
+                engine=self._runtime.engine,
+                mode=self._runtime.taskname,
+                timer=timer,
+                buffer_text=buffer_text,
+                sentences=sentences,
             )
-        except Exception:
-            pass
+        )
 
 
 class TranslationDispatcher:
