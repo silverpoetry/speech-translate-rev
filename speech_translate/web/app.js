@@ -1398,10 +1398,10 @@ function renderMainControls(data) {
   if (els.mainModelPill) {
     const modelLabel = mainUi.selected_model || '未设置';
     const backendLabel = mainUi.selected_backend || '未设置';
-    els.mainModelPill.textContent = `${modelLabel} / ${backendLabel}`;
+    els.mainModelPill.textContent = `${modelLabel} · ${backendLabel}`;
   }
   els.mainLangPill.textContent = `${mainUi.selected_source || '自动'} → ${mainUi.selected_target || '自动'}`;
-  els.mainEnginePill.textContent = mainUi.selected_engine || '未启用';
+  els.mainEnginePill.textContent = mainUi.selected_engine || '已关闭';
   if (els.btnLoadMainModel) {
     const hasModel = Array.isArray(mainUi.model_options) && mainUi.model_options.length > 0;
     els.btnLoadMainModel.disabled = !hasModel;
@@ -2003,7 +2003,7 @@ function renderLiveOutputs(data) {
     els.mainTranscribedOutput,
     live.main_transcribed_html,
     live.main_transcribed_text || '',
-    '等待转写',
+    '等待语音输入',
     settings,
     'tc'
   );
@@ -2011,17 +2011,17 @@ function renderLiveOutputs(data) {
     els.mainTranslatedOutput,
     live.main_translated_html,
     live.main_translated_text || '',
-    '等待翻译',
+    '等待翻译输出',
     settings,
     'tl'
   );
   if (els.mainTranscribedLabel) {
     els.mainTranscribedLabel.classList.toggle('is-live', tcHasLive);
-    els.mainTranscribedLabel.textContent = '转写结果';
+    els.mainTranscribedLabel.textContent = '转写';
   }
   if (els.mainTranslatedLabel) {
     els.mainTranslatedLabel.classList.toggle('is-live', tlHasLive);
-    els.mainTranslatedLabel.textContent = '翻译结果';
+    els.mainTranslatedLabel.textContent = '翻译';
   }
   applyOutputScroll(els.mainTranscribedOutput, Boolean(settings.tb_mw_tc_auto_scroll ?? true));
   applyOutputScroll(els.mainTranslatedOutput, Boolean(settings.tb_mw_tl_auto_scroll ?? true));
@@ -2170,7 +2170,7 @@ function renderRecordingVisualizer(recordingState, recordUi = null) {
   }
   if (els.recordVisualizerLabel) {
     els.recordVisualizerLabel.textContent = active
-      ? (Number.isFinite(currentDb) ? '正在采集' : '等待音频')
+      ? (Number.isFinite(currentDb) ? '监听中' : '等待输入')
       : '等待录制';
   }
   if (els.recordVisualizerDb) {
@@ -2369,7 +2369,11 @@ function renderGlobalStatusBar(task, data, recordingState = null) {
   }
 
   if (els.realtimeModelState) {
-    els.realtimeModelState.textContent = modelState;
+    els.realtimeModelState.textContent = loaded
+      ? modelKey
+      : loading
+        ? `${modelKey} 加载中`
+        : '未加载';
   }
   if (els.realtimeModelMeta) {
     const globalModelMeta = els.globalModelMeta ? els.globalModelMeta.textContent : '';
@@ -2406,10 +2410,10 @@ function renderGlobalStatusBar(task, data, recordingState = null) {
   if (els.realtimeRecordingDevice) {
     const deviceKey = String(recordingState?.device || '').toLowerCase();
     const deviceLabel = deviceKey === 'mic'
-      ? 'Mic'
+      ? '麦克风'
       : deviceKey === 'speaker'
-        ? 'Speaker'
-        : '未绑定';
+        ? '扬声器'
+        : '输入未绑定';
     els.realtimeRecordingDevice.textContent = deviceLabel;
   }
 

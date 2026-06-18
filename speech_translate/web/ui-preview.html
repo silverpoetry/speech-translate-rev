@@ -707,17 +707,10 @@
                   <button class="btn-icon btn-icon-blue" data-action="create-detached-tl" data-tooltip="打开翻译独立窗口"
                     title="打开翻译独立窗口"><span class="btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
                 </div>
-                <div class="section-head">
-                  <div>
-                    <h3>实时转写</h3>
-                  </div>
-                </div>
-
                 <div class="hero-toolbar hero-toolbar-compact">
                   <div class="hero-toolbar-main">
                     <button class="primary btn-with-icon btn-recording" data-action="start-recording"
                       id="btn-recording-toggle">开始录制</button>
-                    <span class="hero-toolbar-caption">持续监听并输出结果</span>
                   </div>
                   <div class="hero-toolbar-pills">
                     <label class="toggle-row"><input id="transcribe_mw" type="checkbox" checked /> 转写</label>
@@ -725,94 +718,76 @@
                   </div>
                 </div>
 
-                <div class="realtime-hero-shell">
-                  <div class="realtime-control-card">
-                    <div class="realtime-control-head">
-                      <div class="realtime-control-heading">
-                        <span class="realtime-control-kicker">录制摘要</span>
-                        <span class="realtime-control-meta">输入状态</span>
+                <div class="realtime-command-deck">
+                  <div class="realtime-command-bar">
+                    <div class="record-visualizer-card realtime-live-meter" id="record_visualizer_card" aria-live="polite">
+                      <div class="record-visualizer-head">
+                        <span id="record_visualizer_label">等待录制</span>
                       </div>
-                      <div class="realtime-control-strip">
-                        <div class="record-visualizer-card realtime-live-meter" id="record_visualizer_card" aria-live="polite">
-                          <div class="record-visualizer-head">
-                            <span class="sr-only">输入电平</span>
-                            <span id="record_visualizer_label">等待录制</span>
-                          </div>
-                          <div class="record-visualizer-track" aria-hidden="true">
-                            <div class="record-visualizer-threshold" id="record_visualizer_threshold"></div>
-                            <div class="record-visualizer-fill" id="record_visualizer_fill"></div>
-                          </div>
-                          <div class="record-visualizer-meta">
-                            <span id="record_visualizer_db">-</span>
-                            <span id="record_visualizer_threshold_text">阈值 - dB</span>
-                          </div>
-                        </div>
+                      <div class="record-visualizer-track" aria-hidden="true">
+                        <div class="record-visualizer-threshold" id="record_visualizer_threshold"></div>
+                        <div class="record-visualizer-fill" id="record_visualizer_fill"></div>
+                      </div>
+                      <div class="record-visualizer-meta">
+                        <span id="record_visualizer_db">-</span>
+                        <span id="record_visualizer_threshold_text">阈值 - dB</span>
                       </div>
                     </div>
-                    <div class="realtime-control-badges">
-                      <span class="pill pill-muted realtime-summary-pill">
-                        <span class="realtime-summary-pill-label">输入</span>
-                        <span class="realtime-summary-pill-value" id="main-input-pill">未设置</span>
-                      </span>
-                      <span class="pill pill-muted realtime-summary-pill">
-                        <span class="realtime-summary-pill-label">模型</span>
-                        <span class="realtime-summary-pill-value" id="main-model-pill">未设置</span>
-                      </span>
-                      <span class="pill pill-muted realtime-summary-pill">
-                        <span class="realtime-summary-pill-label">语言</span>
-                        <span class="realtime-summary-pill-value" id="main-lang-pill">未设置</span>
-                      </span>
-                      <span class="pill pill-muted realtime-summary-pill">
-                        <span class="realtime-summary-pill-label">翻译</span>
-                        <span class="realtime-summary-pill-value" id="main-engine-pill">未设置</span>
-                      </span>
+                    <div class="realtime-inline-stats" aria-label="实时录制概览">
+                      <div class="realtime-inline-stat">
+                        <span class="realtime-inline-label">模型</span>
+                        <span class="realtime-inline-value" id="realtime-model-state">未加载</span>
+                        <span class="realtime-inline-meta" id="realtime-model-meta">等待同步</span>
+                      </div>
+                      <div class="realtime-inline-stat">
+                        <span class="realtime-inline-label">状态</span>
+                        <span class="realtime-inline-value" id="realtime-task-state">空闲</span>
+                        <span class="realtime-inline-meta" id="realtime-task-message">等待任务</span>
+                      </div>
+                      <div class="realtime-inline-stat realtime-inline-stat-compact">
+                        <span class="realtime-inline-label">录制</span>
+                        <span class="realtime-inline-value" id="realtime-recording-timer">--:--:--</span>
+                        <span class="realtime-inline-meta" id="realtime-recording-buffer">缓冲 0/0 sec</span>
+                      </div>
+                      <div class="realtime-inline-stat realtime-inline-stat-compact">
+                        <span class="realtime-inline-label">片段</span>
+                        <span class="realtime-inline-value" id="realtime-recording-sentences">0</span>
+                        <span class="realtime-inline-meta" id="realtime-recording-device">输入 -</span>
+                      </div>
                     </div>
                   </div>
-
-                  <div class="realtime-status-grid" aria-label="实时录制概览">
-                    <div class="realtime-status-card">
-                      <span class="realtime-status-label">模型运行态</span>
-                      <span class="realtime-status-value" id="realtime-model-state">未加载</span>
-                      <span class="realtime-status-meta" id="realtime-model-meta">等待同步</span>
-                    </div>
-                    <div class="realtime-status-card">
-                      <span class="realtime-status-label">采集阶段</span>
-                      <span class="realtime-status-value" id="realtime-task-state">空闲</span>
-                      <span class="realtime-status-meta" id="realtime-task-message">等待任务</span>
-                    </div>
-                    <div class="realtime-status-card realtime-status-card-compact">
-                      <span class="realtime-status-label">录制计时</span>
-                      <span class="realtime-status-value" id="realtime-recording-timer">--:--:--</span>
-                      <span class="realtime-status-meta" id="realtime-recording-buffer">缓冲 0/0 sec</span>
-                    </div>
-                    <div class="realtime-status-card realtime-status-card-compact">
-                      <span class="realtime-status-label">累计片段</span>
-                      <span class="realtime-status-value" id="realtime-recording-sentences">0</span>
-                      <span class="realtime-status-meta" id="realtime-recording-device">输入 -</span>
-                    </div>
+                  <div class="realtime-summary-row">
+                    <span class="pill pill-muted realtime-summary-pill">
+                      <span class="realtime-summary-pill-label">输入源</span>
+                      <span class="realtime-summary-pill-value" id="main-input-pill">未设置</span>
+                    </span>
+                    <span class="pill pill-muted realtime-summary-pill">
+                      <span class="realtime-summary-pill-label">模型</span>
+                      <span class="realtime-summary-pill-value" id="main-model-pill">未设置</span>
+                    </span>
+                    <span class="pill pill-muted realtime-summary-pill">
+                      <span class="realtime-summary-pill-label">语言</span>
+                      <span class="realtime-summary-pill-value" id="main-lang-pill">未设置</span>
+                    </span>
+                    <span class="pill pill-muted realtime-summary-pill">
+                      <span class="realtime-summary-pill-label">翻译引擎</span>
+                      <span class="realtime-summary-pill-value" id="main-engine-pill">未设置</span>
+                    </span>
                   </div>
                 </div>
 
                 <div class="advanced-panel-body split-view transcript-shell">
                   <section class="live-output-panel">
                     <div class="live-output-panel-head">
-                      <div>
-                        <div id="main-transcribed-label" class="live-output-preview-label">转写结果</div>
-                        <div class="live-output-panel-meta">原文</div>
-                      </div>
-                      <span class="live-output-panel-badge">TC</span>
+                      <div id="main-transcribed-label" class="live-output-preview-label">转写</div>
                     </div>
-                    <div id="main-transcribed-output" class="live-output is-preview">等待转写</div>
+                    <div id="main-transcribed-output" class="live-output is-preview">等待语音输入</div>
                   </section>
                   <section class="live-output-panel">
                     <div class="live-output-panel-head">
-                      <div>
-                        <div id="main-translated-label" class="live-output-preview-label">翻译结果</div>
-                        <div class="live-output-panel-meta">译文</div>
-                      </div>
-                      <span class="live-output-panel-badge">TL</span>
+                      <div id="main-translated-label" class="live-output-preview-label">翻译</div>
                     </div>
-                    <div id="main-translated-output" class="live-output is-preview">等待翻译</div>
+                    <div id="main-translated-output" class="live-output is-preview">等待翻译输出</div>
                   </section>
                 </div>
 
@@ -823,7 +798,7 @@
                   <summary>
                     <span class="settings-panel-heading">
                       <span class="settings-panel-title">设备配置</span>
-                      <span class="settings-panel-meta">输入源、API 与采集设备</span>
+                      <span class="settings-panel-meta">输入与设备</span>
                     </span>
                   </summary>
                   <div class="floating-action-row">
@@ -833,15 +808,10 @@
                         class="btn-glyph glyph-save" aria-hidden="true"></span></button>
                   </div>
                   <div class="advanced-panel-body">
-                    <div class="realtime-config-summary">
-                      <span class="pill pill-muted">输入源</span>
-                      <span class="pill pill-muted">设备路由</span>
-                    </div>
                     <div class="realtime-config-grid">
                       <section class="realtime-config-group">
                         <div class="realtime-config-group-head">
                           <span class="realtime-config-group-title">采集入口</span>
-                          <span class="realtime-config-group-meta">输入模式与驱动层</span>
                         </div>
                         <div class="form-grid compact-form-grid">
                           <label>
@@ -860,7 +830,6 @@
                       <section class="realtime-config-group">
                         <div class="realtime-config-group-head">
                           <span class="realtime-config-group-title">设备路由</span>
-                          <span class="realtime-config-group-meta">选择实际采集的输入设备</span>
                         </div>
                         <div class="form-grid compact-form-grid">
                           <label>
@@ -881,7 +850,7 @@
                   <summary>
                     <span class="settings-panel-heading">
                       <span class="settings-panel-title">语言配置</span>
-                      <span class="settings-panel-meta">语言与翻译链路</span>
+                      <span class="settings-panel-meta">识别与翻译</span>
                     </span>
                   </summary>
                   <div class="floating-action-row">
@@ -889,15 +858,10 @@
                         class="btn-glyph glyph-save" aria-hidden="true"></span></button>
                   </div>
                   <div class="advanced-panel-body">
-                    <div class="realtime-config-summary">
-                      <span class="pill pill-muted">识别链路</span>
-                      <span class="pill pill-muted">翻译链路</span>
-                    </div>
                     <div class="realtime-config-grid">
                       <section class="realtime-config-group">
                         <div class="realtime-config-group-head">
                           <span class="realtime-config-group-title">识别链路</span>
-                          <span class="realtime-config-group-meta">源语言与转写输出策略</span>
                         </div>
                         <div class="form-grid compact-form-grid">
                           <label>
@@ -909,7 +873,6 @@
                       <section class="realtime-config-group">
                         <div class="realtime-config-group-head">
                           <span class="realtime-config-group-title">翻译链路</span>
-                          <span class="realtime-config-group-meta">目标语言与翻译服务</span>
                         </div>
                         <div class="form-grid compact-form-grid">
                           <label>
