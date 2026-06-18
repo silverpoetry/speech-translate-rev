@@ -3847,27 +3847,6 @@ button.btn-icon[data-tooltip]::before {
   grid-column: auto;
 }
 
-.detached-workbench-head {
-  display: grid;
-  gap: 3px;
-  margin-bottom: 6px;
-}
-
-.detached-workbench-title {
-  margin: 0;
-  color: #0f172a;
-  font-size: var(--ui-text-md);
-  font-weight: 700;
-  line-height: 1.28;
-}
-
-.detached-workbench-meta {
-  margin: 0;
-  color: #64748b;
-  font-size: 0.73rem;
-  line-height: 1.42;
-}
-
 .detached-workbench-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3878,47 +3857,77 @@ button.btn-icon[data-tooltip]::before {
 .detached-workbench-card {
   display: grid;
   gap: 8px;
-  padding: 11px 11px 10px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 0.96));
+  padding: 10px 11px;
+  border: 1px solid rgba(203, 213, 225, 0.86);
+  border-radius: 11px;
+  background: linear-gradient(180deg, #ffffff, #fbfdff);
+  min-width: 0;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.035);
+}
+
+.detached-window-row-head {
+  display: grid;
+  gap: 7px;
   min-width: 0;
 }
 
-.detached-workbench-card-meta {
-  margin-top: 4px;
+.detached-window-row-head > div {
+  min-width: 0;
+}
+
+.detached-window-state-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  margin-top: 3px;
   color: #64748b;
-  font-size: 0.73rem;
-  line-height: 1.42;
+  font-size: 0.7rem;
+  line-height: 1.25;
 }
 
-.detached-workbench-action-cluster {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+.detached-window-state-line span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.detached-workbench-action-group {
+.detached-window-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: center;
   gap: 5px;
-  padding: 6px;
-  border-radius: 11px;
-  background: rgba(248, 250, 252, 0.92);
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  min-width: 0;
 }
 
-.detached-workbench-action-group-secondary {
-  background: rgba(255, 255, 255, 0.7);
-}
-
-.detached-workbench-action-group .btn-with-icon {
+.detached-window-actions .btn-with-icon {
   width: 100%;
+  height: 25px;
+  min-height: 25px;
   justify-content: center;
-  min-height: 29px;
-  padding: 0 8px;
-  font-size: 0.72rem;
-  border-radius: 10px;
+  padding: 0 4px;
+  border-radius: 7px;
+  border-color: rgba(203, 213, 225, 0.92);
+  background: #ffffff;
+  color: #334155;
+  font-size: 0.66rem;
+  font-weight: 650;
+}
+
+.detached-window-actions .btn-with-icon::before {
+  display: none;
+}
+
+.detached-window-actions .btn-with-icon:hover {
+  border-color: rgba(96, 165, 250, 0.68);
+  background: #f8fbff;
+  color: #1d4ed8;
+}
+
+.detached-workbench-card .settings-section-title {
+  font-size: 0.82rem;
+  line-height: 1.25;
 }
 
 .compact-status-row {
@@ -3928,18 +3937,6 @@ button.btn-icon[data-tooltip]::before {
 
 .compact-status-row .pill {
   font-size: 0.64rem;
-}
-
-.compact-status-row-merged {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 4px 7px 0;
-  margin: 0 -2px -2px;
-  border-top: 1px solid rgba(226, 232, 240, 0.9);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(248, 250, 252, 0.92));
-  border-bottom-left-radius: 10px;
-  border-bottom-right-radius: 10px;
 }
 
 .settings-toggle-cluster {
@@ -3960,9 +3957,10 @@ button.btn-icon[data-tooltip]::before {
 }
 
 .detached-config-mini-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 5px 7px;
-  padding: 1px 0 0;
+  grid-template-columns: minmax(112px, 1fr) minmax(116px, 1fr) repeat(2, minmax(76px, 0.72fr));
+  gap: 6px 8px;
+  padding: 2px 0 0;
+  align-items: center;
 }
 
 .detached-config-mini-grid > .toggle-row,
@@ -3971,25 +3969,27 @@ button.btn-icon[data-tooltip]::before {
 }
 
 .detached-config-mini-grid .toggle-row {
-  min-height: 22px;
-  padding: 1px 0;
+  min-height: 26px;
+  padding: 0 2px;
   font-size: var(--ui-text-xs);
+  color: #334155;
 }
 
 .detached-config-mini-grid > label:not(.toggle-row) {
-  gap: 4px;
-  padding: 6px 7px;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  gap: 3px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: none;
 }
 
 .detached-config-mini-grid > label:not(.toggle-row) > span {
-  font-size: 0.7rem;
+  font-size: 0.66rem;
 }
 
 .detached-config-mini-grid input[type="text"] {
-  height: 28px;
+  height: 29px;
+  border-radius: 8px;
 }
 
 .detached-config-mini-grid > label:has(input[type="range"]) {

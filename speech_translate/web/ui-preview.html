@@ -875,38 +875,27 @@
                 <details class="advanced-panel panel-card grid-span-all" open>
                   <summary>
                     <span class="settings-panel-heading">
-                      <span class="settings-panel-title">独立窗口工作台</span>
-                      <span class="settings-panel-meta">管理 TC / TL 悬浮窗与即时控制</span>
+                      <span class="settings-panel-title">独立窗口</span>
+                      <span class="settings-panel-meta">悬浮转写 / 翻译</span>
                     </span>
                   </summary>
-                  <div class="floating-action-row">
-                    <button class="btn-icon" data-action="create-detached-tc" data-tooltip="打开转写独立窗口"
-                      title="打开转写独立窗口"><span class="btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
-                    <button class="btn-icon btn-icon-blue" data-action="create-detached-tl" data-tooltip="打开翻译独立窗口"
-                      title="打开翻译独立窗口"><span class="btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
-                  </div>
                   <div class="advanced-panel-body">
-                    <div class="detached-workbench-head">
-                      <p class="detached-workbench-title">独立窗口运行台</p>
-                      <p class="detached-workbench-meta">这里只保留即时开关和调整。</p>
-                    </div>
                     <div class="detached-workbench-grid">
                       <section class="detached-workbench-card">
-                        <div class="section-inline-head">
+                        <div class="detached-window-row-head">
                           <div>
                             <div class="settings-section-title">转写窗口 (TC)</div>
-                            <div class="detached-workbench-card-meta">实时转写内容的独立悬浮窗。</div>
+                            <div class="detached-window-state-line">
+                              <span id="detached-tc-state">未打开</span>
+                              <span id="detached-tc-geometry">900x240 · 置顶 · 可交互</span>
+                            </div>
                           </div>
-                          <button type="button" class="btn-with-icon btn-with-icon-quiet" data-action="open-detached-settings-tc">编辑设置</button>
-                        </div>
-                        <div class="detached-workbench-action-cluster">
-                          <div class="detached-workbench-action-group detached-workbench-action-group-primary">
-                            <button type="button" class="btn-with-icon" data-action="create-detached-tc">打开 / 关闭</button>
-                            <button type="button" class="btn-with-icon" data-action="close-detached-tc">关闭</button>
-                          </div>
-                          <div class="detached-workbench-action-group detached-workbench-action-group-secondary">
-                            <button type="button" class="btn-with-icon" data-action="show-detached-tc">显示</button>
-                            <button type="button" class="btn-with-icon" data-action="hide-detached-tc">隐藏</button>
+                          <div class="detached-window-actions">
+                            <button type="button" class="btn-with-icon btn-with-icon-quiet" data-action="create-detached-tc">开关</button>
+                            <button type="button" class="btn-with-icon btn-with-icon-quiet" data-action="show-detached-tc">显示</button>
+                            <button type="button" class="btn-with-icon btn-with-icon-quiet" data-action="hide-detached-tc">隐藏</button>
+                            <button type="button" class="btn-with-icon btn-with-icon-quiet" data-action="close-detached-tc">关闭</button>
+                            <button type="button" class="btn-with-icon btn-with-icon-quiet" data-action="open-detached-settings-tc">设置</button>
                           </div>
                         </div>
                         <div class="form-grid detached-config-mini-grid">
@@ -919,32 +908,26 @@
                             <input id="ex_tc_opacity_main" type="range" min="0.1" max="1" step="0.05" />
                           </label>
                           <label class="toggle-row"><input id="ex_tc_always_on_top_main" type="checkbox" /> 置顶</label>
-                          <label class="toggle-row"><input id="ex_tc_no_title_bar_main" type="checkbox" /> 隐藏标题栏</label>
+                          <label class="toggle-row"><input id="ex_tc_no_title_bar_main" type="checkbox" /> 无标题栏</label>
                           <label class="toggle-row"><input id="ex_tc_click_through_main" type="checkbox" /> 点击穿透</label>
-                          <label class="toggle-row"><input id="tb_ex_tc_use_conf_color_main" type="checkbox" /> 使用置信度颜色</label>
-                        </div>
-                        <div class="status-row compact-status-row compact-status-row-merged">
-                          <span class="pill pill-muted" id="detached-tc-state">状态</span>
-                          <span class="pill pill-muted" id="detached-tc-geometry">尺寸</span>
-                          <span class="pill pill-muted">内容 转写</span>
+                          <label class="toggle-row"><input id="tb_ex_tc_use_conf_color_main" type="checkbox" /> 置信度颜色</label>
                         </div>
                       </section>
                       <section class="detached-workbench-card">
-                        <div class="section-inline-head">
+                        <div class="detached-window-row-head">
                           <div>
                             <div class="settings-section-title">翻译窗口 (TL)</div>
-                            <div class="detached-workbench-card-meta">目标语言结果的独立悬浮窗。</div>
+                            <div class="detached-window-state-line">
+                              <span id="detached-tl-state">未打开</span>
+                              <span id="detached-tl-geometry">900x240 · 置顶 · 可交互</span>
+                            </div>
                           </div>
-                          <button type="button" class="btn-with-icon btn-with-icon-quiet" data-action="open-detached-settings-tl">编辑设置</button>
-                        </div>
-                        <div class="detached-workbench-action-cluster">
-                          <div class="detached-workbench-action-group detached-workbench-action-group-primary">
-                            <button type="button" class="btn-with-icon" data-action="create-detached-tl">打开 / 关闭</button>
-                            <button type="button" class="btn-with-icon" data-action="close-detached-tl">关闭</button>
-                          </div>
-                          <div class="detached-workbench-action-group detached-workbench-action-group-secondary">
-                            <button type="button" class="btn-with-icon" data-action="show-detached-tl">显示</button>
-                            <button type="button" class="btn-with-icon" data-action="hide-detached-tl">隐藏</button>
+                          <div class="detached-window-actions">
+                            <button type="button" class="btn-with-icon btn-with-icon-quiet" data-action="create-detached-tl">开关</button>
+                            <button type="button" class="btn-with-icon btn-with-icon-quiet" data-action="show-detached-tl">显示</button>
+                            <button type="button" class="btn-with-icon btn-with-icon-quiet" data-action="hide-detached-tl">隐藏</button>
+                            <button type="button" class="btn-with-icon btn-with-icon-quiet" data-action="close-detached-tl">关闭</button>
+                            <button type="button" class="btn-with-icon btn-with-icon-quiet" data-action="open-detached-settings-tl">设置</button>
                           </div>
                         </div>
                         <div class="form-grid detached-config-mini-grid">
@@ -957,14 +940,9 @@
                             <input id="ex_tl_opacity_main" type="range" min="0.1" max="1" step="0.05" />
                           </label>
                           <label class="toggle-row"><input id="ex_tl_always_on_top_main" type="checkbox" /> 置顶</label>
-                          <label class="toggle-row"><input id="ex_tl_no_title_bar_main" type="checkbox" /> 隐藏标题栏</label>
+                          <label class="toggle-row"><input id="ex_tl_no_title_bar_main" type="checkbox" /> 无标题栏</label>
                           <label class="toggle-row"><input id="ex_tl_click_through_main" type="checkbox" /> 点击穿透</label>
-                          <label class="toggle-row"><input id="tb_ex_tl_use_conf_color_main" type="checkbox" /> 使用置信度颜色</label>
-                        </div>
-                        <div class="status-row compact-status-row compact-status-row-merged">
-                          <span class="pill pill-muted" id="detached-tl-state">状态</span>
-                          <span class="pill pill-muted" id="detached-tl-geometry">尺寸</span>
-                          <span class="pill pill-muted">内容 翻译</span>
+                          <label class="toggle-row"><input id="tb_ex_tl_use_conf_color_main" type="checkbox" /> 置信度颜色</label>
                         </div>
                       </section>
                     </div>
