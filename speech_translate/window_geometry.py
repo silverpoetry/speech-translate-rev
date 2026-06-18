@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+from ctypes import wintypes
 import re
 from dataclasses import dataclass
 from platform import system
@@ -89,6 +90,13 @@ WINDOW_SCREEN_MARGIN_X = 80
 WINDOW_SCREEN_MARGIN_Y = 120
 MIN_VISIBLE_WIDTH = 120
 MIN_VISIBLE_HEIGHT = 80
+_WS_CAPTION = 0x00C00000
+_WS_SYSMENU = 0x00080000
+_WS_THICKFRAME = 0x00040000
+_WS_MINIMIZEBOX = 0x00020000
+_WS_MAXIMIZEBOX = 0x00010000
+_DEFAULT_OVERLAPPED_STYLE = _WS_CAPTION | _WS_SYSMENU | _WS_THICKFRAME | _WS_MINIMIZEBOX | _WS_MAXIMIZEBOX
+_DETACHED_CAPTIONLESS_RESIZABLE_STYLE = _WS_SYSMENU | _WS_THICKFRAME | _WS_MINIMIZEBOX | _WS_MAXIMIZEBOX
 
 _UIResultT = TypeVar("_UIResultT")
 
@@ -181,6 +189,97 @@ def parse_window_size(
 
     width, height = clamp_window_size(int(match.group(1)), int(match.group(2)), min_width=min_width, min_height=min_height)
     return _limit_size_to_screen(width, height, metrics=metrics)
+
+
+def _resolve_system_dpi() -> int:
+    if system() != "Windows":
+        return 96
+    try:
+        dpi = int(ctypes.windll.user32.GetDpiForSystem())
+        if dpi > 0:
+            return dpi
+    except Exception:
+        pass
+    return int(round(DEFAULT_METRICS_PROVIDER.scale_factor() * 96.0))
+
+
+def _adjust_window_rect_for_dpi(
+    style: int,
+    ex_style: int,
+    *,
+    dpi: int,
+    has_menu: bool = False,
+) -> tuple[int, int]:
+    if system() != "Windows":
+        return 0, 0
+
+    adjust_for_dpi = getattr(ctypes.windll.user32, "AdjustWindowRectExForDpi", None)
+    if adjust_for_dpi is None:
+        raise RuntimeError("AdjustWindowRectExForDpi is unavailable")
+
+    adjust_for_dpi.argtypes = [
+        ctypes.POINTER(wintypes.RECT),
+        wintypes.DWORD,
+        wintypes.BOOL,
+        wintypes.DWORD,
+        wintypes.UINT,
+    ]
+    adjust_for_dpi.restype = wintypes.BOOL
+
+    rect = wintypes.RECT(0, 0, 100, 100)
+    success = adjust_for_dpi(
+        ctypes.byref(rect),
+        wintypes.DWORD(style),
+        wintypes.BOOL(bool(has_menu)),
+        wintypes.DWORD(ex_style),
+        wintypes.UINT(dpi),
+    )
+    if not success:
+        raise ctypes.WinError()
+
+    return int(rect.right - rect.left - 100), int(rect.bottom - rect.top - 100)
+
+
+def measure_style_frame_delta(style: int, ex_style: int = 0, *, scale_factor: float | None = None) -> tuple[int, int]:
+    if system() != "Windows":
+        return 0, 0
+
+    dpi = int(round(normalize_scale_factor(scale_factor or (_resolve_system_dpi() / 96.0)) * 96.0))
+    try:
+        delta_width, delta_height = _adjust_window_rect_for_dpi(style, ex_style, dpi=dpi)
+        return native_to_logical_size(delta_width, delta_height, scale_factor=(dpi / 96.0))
+    except Exception as exc:
+        raise RuntimeError(f"Failed to measure window frame delta for style=0x{style:08X} dpi={dpi}") from exc
+
+
+def measure_window_frame_delta(scale_factor: float | None = None) -> tuple[int, int]:
+    return measure_style_frame_delta(_DEFAULT_OVERLAPPED_STYLE, scale_factor=scale_factor)
+
+
+def inflate_window_request_for_style(
+    width: int,
+    height: int,
+    *,
+    source_style: int = _DEFAULT_OVERLAPPED_STYLE,
+    target_style: int = _DETACHED_CAPTIONLESS_RESIZABLE_STYLE,
+    ex_style: int = 0,
+    scale_factor: float | None = None,
+) -> tuple[int, int]:
+    source_width, source_height = measure_style_frame_delta(source_style, ex_style, scale_factor=scale_factor)
+    target_width, target_height = measure_style_frame_delta(target_style, ex_style, scale_factor=scale_factor)
+    return (
+        int(width) + max(0, source_width - target_width),
+        int(height) + max(0, source_height - target_height),
+    )
+
+
+def inflate_frameless_window_request(width: int, height: int, *, scale_factor: float | None = None) -> tuple[int, int]:
+    delta_width, delta_height = measure_window_frame_delta(scale_factor)
+    return int(width) + delta_width, int(height) + delta_height
+
+
+def detached_captionless_resizable_style() -> int:
+    return _DETACHED_CAPTIONLESS_RESIZABLE_STYLE
 
 
 def parse_window_position(raw_value: Any) -> tuple[int | None, int | None]:
@@ -460,13 +559,16 @@ __all__ = [
     "center_window_pos",
     "clamp_window_position",
     "ensure_visible_or_center",
+    "detached_captionless_resizable_style",
     "extract_native_window_geometry",
     "extract_window_placement",
     "format_window_position",
     "format_window_size",
+    "inflate_window_request_for_style",
     "get_virtual_screen_bounds",
     "logical_to_native_size",
     "logical_to_physical_point",
+    "measure_style_frame_delta",
     "native_to_logical_size",
     "normalize_scale_factor",
     "parse_window_position",

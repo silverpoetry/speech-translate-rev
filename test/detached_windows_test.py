@@ -4,6 +4,7 @@ import os
 import sys
 import unittest
 from types import SimpleNamespace
+from unittest.mock import call, patch
 
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
@@ -72,6 +73,57 @@ class DetachedWindowHelpersTests(unittest.TestCase):
         self.assertEqual(kwargs["height"], 300)
         self.assertEqual((kwargs["x"], kwargs["y"]), (10, 20))
         self.assertEqual(kwargs["hidden"], True)
+
+    def test_manager_create_window_queues_native_contract_when_no_title_bar_enabled(self) -> None:
+        class EventHook:
+            def __iadd__(self, callback):
+                return self
+
+        class FakeWindow:
+            def __init__(self) -> None:
+                self.events = SimpleNamespace(closing=EventHook(), closed=EventHook(), loaded=EventHook())
+                self.native = None
+
+            def show(self) -> None:
+                return None
+
+            def bring_to_front(self) -> None:
+                return None
+
+        class FakeWebview:
+            def __init__(self) -> None:
+                self.calls = []
+
+            def create_window(self, *args, **kwargs):
+                self.calls.append((args, kwargs))
+                return FakeWindow()
+
+        fake_webview = FakeWebview()
+        manager = DetachedWindowManager(
+            settings=type(
+                "Settings",
+                (),
+                {"cache": {"ex_tc_geometry": "900x240", "ex_tc_pos": "10,20", "ex_tc_no_title_bar": 1}},
+            )(),
+            webview_loader=lambda: fake_webview,
+        )
+
+        with (
+            patch(
+                "speech_translate.detached_windows.build_detached_native_contract",
+                return_value={"kind": "detached_window"},
+            ) as build_contract,
+            patch("speech_translate.detached_windows.set_pending_window_contract") as set_contract,
+        ):
+            manager.create_window("tc", x=10, y=20, width=700, height=300)
+
+        _, kwargs = fake_webview.calls[0]
+        self.assertEqual(kwargs["width"], 700)
+        self.assertEqual(kwargs["height"], 300)
+        self.assertEqual(kwargs["frameless"], False)
+        self.assertEqual(kwargs["easy_drag"], True)
+        build_contract.assert_called_once()
+        self.assertEqual(set_contract.call_args_list, [call({"kind": "detached_window"}), call(None)])
 
     def test_loaded_window_is_shown_after_geometry_and_config_sync(self) -> None:
         class FakeWindow:

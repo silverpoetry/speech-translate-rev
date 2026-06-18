@@ -17,6 +17,7 @@ _WS_SYSMENU = 0x00080000
 _WS_BORDER = 0x00800000
 _WS_DLGFRAME = 0x00400000
 _WS_EX_LAYERED = 0x00080000
+_WS_EX_TRANSPARENT = 0x00000020
 _SWP_NOSIZE = 0x0001
 _SWP_NOMOVE = 0x0002
 _SWP_NOZORDER = 0x0004
@@ -45,6 +46,127 @@ def get_window_hwnd(window: WebviewWindowLike | None) -> int | None:
         return None
 
 
+def build_detached_native_contract(config: JsonDict | None) -> JsonDict | None:
+    cfg = dict(config or {})
+    if not bool(cfg.get("no_title_bar", 0)):
+        return None
+    return {
+        "kind": "detached_window",
+        "no_title_bar": True,
+        "opacity": cfg.get("opacity", 1.0),
+        "click_through": cfg.get("click_through", 0),
+    }
+
+
+def _read_native_style(hwnd: int) -> tuple[int, int]:
+    style = int(ctypes.windll.user32.GetWindowLongW(hwnd, _GWL_STYLE))
+    ex_style = int(ctypes.windll.user32.GetWindowLongW(hwnd, _GWL_EXSTYLE))
+    return style, ex_style
+
+
+def _resolve_base_window_style(mode: str, native_window: object | None, runtime: DetachedWindowDeliveryRuntime) -> tuple[int, int] | None:
+    cached = runtime.get_cached_window_style(mode)
+    if cached is not None:
+        return cached
+    if native_window is None:
+        return None
+
+    base_style = getattr(native_window, "_speechtranslate_base_style", None)
+    base_ex_style = getattr(native_window, "_speechtranslate_base_ex_style", None)
+    if base_style is not None and base_ex_style is not None:
+        runtime.cache_window_style(mode, int(base_style), int(base_ex_style))
+        return int(base_style), int(base_ex_style)
+    return None
+
+
+def _resolve_detached_window_style(base_style: int, *, no_title_bar: bool) -> int:
+    if not no_title_bar:
+        return int(base_style)
+
+    return int(base_style) & ~(_WS_CAPTION | _WS_BORDER | _WS_DLGFRAME)
+
+
+def _resolve_detached_ex_style(base_ex_style: int, *, opacity: float, click_through: bool) -> int:
+    ex_style = int(base_ex_style)
+    if opacity < 0.999 or click_through:
+        ex_style |= _WS_EX_LAYERED
+    else:
+        ex_style &= ~_WS_EX_LAYERED
+    if click_through:
+        ex_style |= _WS_EX_TRANSPARENT
+    else:
+        ex_style &= ~_WS_EX_TRANSPARENT
+    return ex_style
+
+
+def _apply_style_bits(
+    hwnd: int,
+    *,
+    style: int,
+    ex_style: int,
+    opacity: float,
+    preserve_bounds: tuple[int, int, int, int] | None = None,
+) -> None:
+    ctypes.windll.user32.SetWindowLongW(hwnd, _GWL_STYLE, int(style))
+    ctypes.windll.user32.SetWindowLongW(hwnd, _GWL_EXSTYLE, int(ex_style))
+
+    if int(ex_style) & _WS_EX_LAYERED:
+        alpha = int(round(max(0.1, min(1.0, float(opacity))) * 255))
+        ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, 0, alpha, _LWA_ALPHA)
+
+    x = y = cx = cy = 0
+    flags = _SWP_NOZORDER | _SWP_FRAMECHANGED
+    if preserve_bounds is None:
+        flags |= _SWP_NOMOVE | _SWP_NOSIZE
+    else:
+        x, y, cx, cy = preserve_bounds
+    ctypes.windll.user32.SetWindowPos(hwnd, None, x, y, cx, cy, flags)
+
+
+def apply_initial_detached_native_contract(native_window: object | None, contract: JsonDict | None) -> None:
+    if system() != "Windows" or native_window is None or not contract:
+        return
+
+    try:
+        handle = getattr(native_window, "Handle", None)
+        hwnd = int(handle.ToInt32()) if handle is not None else None
+    except Exception:
+        hwnd = None
+    if hwnd is None:
+        return
+
+    try:
+        base_style, base_ex_style = _read_native_style(hwnd)
+        setattr(native_window, "_speechtranslate_base_style", base_style)
+        setattr(native_window, "_speechtranslate_base_ex_style", base_ex_style)
+
+        target_style = _resolve_detached_window_style(base_style, no_title_bar=bool(contract.get("no_title_bar", 0)))
+        target_ex_style = _resolve_detached_ex_style(
+            base_ex_style,
+            opacity=float(contract.get("opacity", 1.0) or 1.0),
+            click_through=bool(contract.get("click_through", 0)),
+        )
+        bounds = getattr(native_window, "Bounds", None)
+        preserve_bounds = None
+        if bounds is not None:
+            preserve_bounds = (
+                int(getattr(bounds, "X")),
+                int(getattr(bounds, "Y")),
+                int(getattr(bounds, "Width")),
+                int(getattr(bounds, "Height")),
+            )
+
+        _apply_style_bits(
+            hwnd,
+            style=target_style,
+            ex_style=target_ex_style,
+            opacity=float(contract.get("opacity", 1.0) or 1.0),
+            preserve_bounds=preserve_bounds,
+        )
+    except Exception as exc:
+        logger.error(f"Failed to apply initial detached native contract: {exc}")
+
+
 def apply_native_window_settings(
     runtime: DetachedWindowDeliveryRuntime,
     mode: str,
@@ -59,15 +181,15 @@ def apply_native_window_settings(
     if hwnd is None:
         return
 
-    if runtime.get_cached_window_style(mode) is None:
+    original = _resolve_base_window_style(mode, getattr(window, "native", None), runtime)
+    if original is None:
         try:
-            style = int(ctypes.windll.user32.GetWindowLongW(hwnd, _GWL_STYLE))
-            ex_style = int(ctypes.windll.user32.GetWindowLongW(hwnd, _GWL_EXSTYLE))
+            style, ex_style = _read_native_style(hwnd)
             runtime.cache_window_style(mode, style, ex_style)
+            original = (style, ex_style)
         except Exception:
             return
 
-    original = runtime.get_cached_window_style(mode)
     if original is None:
         return
 
@@ -78,35 +200,30 @@ def apply_native_window_settings(
         opacity = max(0.1, min(1.0, float(opacity_raw)))
     except Exception:
         opacity = 1.0
+    click_through = bool(cfg.get("click_through", 0))
 
     try:
-        style, ex_style = original
-        style = int(style)
-        ex_style = int(ex_style)
+        base_style, base_ex_style = original
+        style = _resolve_detached_window_style(base_style, no_title_bar=no_title_bar)
+        ex_style = _resolve_detached_ex_style(base_ex_style, opacity=opacity, click_through=click_through)
 
-        if no_title_bar:
-            style &= ~(_WS_CAPTION | _WS_MINIMIZEBOX | _WS_MAXIMIZEBOX | _WS_SYSMENU | _WS_BORDER | _WS_DLGFRAME)
-        if opacity < 0.999:
-            ex_style |= _WS_EX_LAYERED
-        else:
-            ex_style &= ~_WS_EX_LAYERED
+        native_window = getattr(window, "native", None)
+        preserve_bounds = None
+        bounds = getattr(native_window, "Bounds", None)
+        if bounds is not None:
+            preserve_bounds = (
+                int(getattr(bounds, "X")),
+                int(getattr(bounds, "Y")),
+                int(getattr(bounds, "Width")),
+                int(getattr(bounds, "Height")),
+            )
 
-        ctypes.windll.user32.SetWindowLongW(hwnd, _GWL_STYLE, style)
-        ctypes.windll.user32.SetWindowLongW(hwnd, _GWL_EXSTYLE, ex_style)
-
-        if opacity < 0.999:
-            ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, 0, int(round(opacity * 255)), _LWA_ALPHA)
-        else:
-            ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, 0, 255, _LWA_ALPHA)
-
-        ctypes.windll.user32.SetWindowPos(
+        _apply_style_bits(
             hwnd,
-            None,
-            0,
-            0,
-            0,
-            0,
-            _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOZORDER | _SWP_FRAMECHANGED,
+            style=style,
+            ex_style=ex_style,
+            opacity=opacity,
+            preserve_bounds=preserve_bounds,
         )
     except Exception as exc:
         logger.error(f"Failed to apply detached window settings for {mode}: {exc}")
@@ -140,7 +257,9 @@ def apply_window_topmost(window: WebviewWindowLike | None, *, enabled: bool, foc
 
 
 __all__ = [
+    "apply_initial_detached_native_contract",
     "apply_native_window_settings",
     "apply_window_topmost",
+    "build_detached_native_contract",
     "get_window_hwnd",
 ]

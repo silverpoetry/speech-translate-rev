@@ -14,13 +14,15 @@ from speech_translate.controller_protocols import (
 )
 from speech_translate.detached_window_api import DetachedWindowApi, RecordingWindowApi
 from speech_translate.detached_window_geometry import (
-    DETACHED_MIN_HEIGHT,
-    DETACHED_MIN_WIDTH,
     log_detached_window_loaded_geometry,
     persist_detached_window_placement,
     resolve_detached_window_placement,
 )
-from speech_translate.detached_window_native import apply_native_window_settings, apply_window_topmost
+from speech_translate.detached_window_native import (
+    apply_native_window_settings,
+    apply_window_topmost,
+    build_detached_native_contract,
+)
 from speech_translate.detached_window_settings import (
     build_detached_window_config,
     build_detached_window_settings,
@@ -30,7 +32,7 @@ from speech_translate.detached_window_settings import (
 )
 from speech_translate.detached_window_runtime import DetachedWindowDeliveryRuntime
 from speech_translate.log_helpers import logger
-from speech_translate.webview_runtime import load_webview_runtime
+from speech_translate.webview_runtime import load_webview_runtime, set_pending_window_contract
 from speech_translate.window_geometry import WindowPlacement, apply_native_window_placement
 
 
@@ -93,6 +95,19 @@ class DetachedWindowManager:
             except Exception:
                 config = None
         return bool((config or {}).get("always_on_top", 0))
+
+    def _get_creation_config(self, mode: str) -> JsonDict:
+        config = self.runtime.get_pending_config(mode)
+        if config is not None:
+            return dict(config)
+        if self.settings is not None:
+            return build_detached_window_settings(self.settings.cache, mode).config.to_payload()
+        if self.bridge is not None:
+            try:
+                return dict(self.bridge.get_detached_config(mode))
+            except Exception:
+                pass
+        return {}
 
     def _apply_topmost(self, mode: str, focus_nudge: bool = False) -> None:
         logger.debug(f"[DetachedOpen] _apply_topmost enter mode={mode} focus_nudge={focus_nudge}")
@@ -206,7 +221,9 @@ class DetachedWindowManager:
         try:
             webview = self.webview_loader()
             html_path = str(Path(__file__).with_name("web") / "detached_window.html")
-            always_on_top = self._is_always_on_top_enabled(mode)
+            create_config = self._get_creation_config(mode)
+            always_on_top = bool(create_config.get("always_on_top", 0))
+            create_captionless = bool(create_config.get("no_title_bar", 0))
             self.runtime.mark_window_loaded(mode, False)
             width, height, x, y = resolve_detached_window_placement(
                 self.settings,
@@ -217,7 +234,6 @@ class DetachedWindowManager:
                 height=height,
             )
             self._requested_placements[mode] = WindowPlacement(width=width, height=height, x=x, y=y)
-
             cache_value = None
             pos_cache = None
             if self.settings is not None:
@@ -226,23 +242,29 @@ class DetachedWindowManager:
                 pos_cache = cached_settings.position_cache
             logger.info(
                 f"[DetachedGeometry][open-created] mode={mode} "
-                f"requested={width}x{height} position={x},{y} cache={cache_value} cache_pos={pos_cache}"
+                f"requested={width}x{height} native_request={width}x{height} "
+                f"captionless={create_captionless} position={x},{y} cache={cache_value} cache_pos={pos_cache}"
             )
             window_url = f"{html_path}?mode={mode}"
-
-            window = webview.create_window(
-                f"Speech Translate - {'Transcribed' if mode == 'tc' else 'Translated'}",
-                window_url,
-                js_api=DetachedWindowApi(self),
-                width=width,
-                height=height,
-                x=x,
-                y=y,
-                background_color="#060b14",
-                transparent=True,
-                on_top=always_on_top,
-                hidden=True,
-            )
+            set_pending_window_contract(build_detached_native_contract(create_config))
+            try:
+                window = webview.create_window(
+                    f"Speech Translate - {'Transcribed' if mode == 'tc' else 'Translated'}",
+                    window_url,
+                    js_api=DetachedWindowApi(self),
+                    width=width,
+                    height=height,
+                    x=x,
+                    y=y,
+                    background_color="#060b14",
+                    transparent=True,
+                    on_top=always_on_top,
+                    hidden=True,
+                    frameless=False,
+                    easy_drag=True,
+                )
+            finally:
+                set_pending_window_contract(None)
 
             self.windows[mode] = window
             self.runtime.mark_window_content_ready(mode, False)

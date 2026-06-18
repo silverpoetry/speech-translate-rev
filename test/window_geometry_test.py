@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
@@ -17,6 +18,7 @@ from speech_translate.window_geometry import (
     format_window_size,
     logical_to_native_size,
     logical_to_physical_point,
+    inflate_window_request_for_style,
     native_to_logical_size,
     normalize_scale_factor,
     parse_window_position,
@@ -113,6 +115,13 @@ class WindowGeometryTests(unittest.TestCase):
 
     def test_physical_to_logical_point_applies_scale_factor(self) -> None:
         self.assertEqual(physical_to_logical_point(1530, 900, scale_factor=2.25), (680, 400))
+
+    def test_inflate_window_request_for_style_uses_style_transition_delta(self) -> None:
+        with patch(
+            "speech_translate.window_geometry.measure_style_frame_delta",
+            side_effect=[(14, 37), (0, 0)],
+        ):
+            self.assertEqual(inflate_window_request_for_style(900, 240), (914, 277))
 
     def test_clamp_window_position_keeps_popup_within_logical_bounds(self) -> None:
         metrics = FakeMetricsProvider(
