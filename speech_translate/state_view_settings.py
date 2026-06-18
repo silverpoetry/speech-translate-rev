@@ -5,6 +5,7 @@ from typing import Mapping, cast
 
 from speech_translate.controller_protocols import JsonDict
 from speech_translate.model_selection import normalize_model_key
+from speech_translate.ui_options import resolve_model_backend
 
 
 @dataclass(frozen=True)
@@ -164,7 +165,7 @@ def build_state_view_settings(settings_snapshot: Mapping[str, object]) -> StateV
         main_ui=MainViewSettings(
             selected_input=snapshot.get("input"),
             selected_model=normalize_model_key(snapshot.get("model_mw")),
-            selected_backend="faster-whisper" if bool(snapshot.get("use_faster_whisper", True)) else "whisper",
+            selected_backend=resolve_model_backend(snapshot),
             selected_source=snapshot.get("source_lang_mw"),
             selected_target=snapshot.get("target_lang_mw"),
             selected_engine=snapshot.get("tl_engine_mw"),

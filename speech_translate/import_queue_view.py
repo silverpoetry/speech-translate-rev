@@ -5,15 +5,8 @@ from typing import Mapping
 
 from speech_translate.controller_protocols import JsonDict, ModelManagerControllerApi
 from speech_translate.model_selection import resolve_model_display_name
+from speech_translate.ui_options import IMPORT_ENGINE_OPTIONS, MODEL_BACKEND_OPTIONS, resolve_model_backend
 from speech_translate.utils.whisper.helper import model_select_dict
-
-
-IMPORT_ENGINE_OPTIONS = [
-    "Selenium Chrome Translate",
-    "Google Translate",
-    "MyMemoryTranslator",
-    "LibreTranslate",
-] + list(model_select_dict.keys())
 
 def count_completed_items(display_queue: list[JsonDict]) -> int:
     return sum(1 for item in display_queue if item.get("is_completed", False))
@@ -29,7 +22,7 @@ def build_import_ui_payload(
 ) -> JsonDict:
     engine = model_manager.normalize_engine_name(str(settings_snapshot.get("tl_engine_f_import", "Selenium Chrome Translate")))
     selected_model_key = model_manager.normalize_model_key(str(settings_snapshot.get("model_f_import", "")).strip())
-    backend = "faster-whisper" if bool(settings_snapshot.get("use_faster_whisper", True)) else "whisper"
+    backend = resolve_model_backend(settings_snapshot)
 
     available_model_options: list[JsonDict] = []
     if verify_available:
@@ -54,7 +47,7 @@ def build_import_ui_payload(
             ]
 
     return {
-        "backend_options": ["whisper", "faster-whisper"],
+        "backend_options": MODEL_BACKEND_OPTIONS,
         "selected_backend": backend,
         "model_options": available_model_options,
         "selected_model": selected_model_key,

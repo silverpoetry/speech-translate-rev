@@ -20,6 +20,7 @@ from speech_translate.state_view_settings import (
     build_record_device_view_settings,
     build_state_view_settings,
 )
+from speech_translate.ui_options import INPUT_MODE_OPTIONS, MODEL_BACKEND_OPTIONS, TRANSLATION_ENGINE_OPTIONS
 from speech_translate.ui_protocol import UI_SECTION_STATE
 from speech_translate.utils.audio.device import (
     get_default_host_api,
@@ -128,18 +129,13 @@ class StateViewBuilder:
     def build_main_ui(self) -> JsonDict:
         view_settings = build_state_view_settings(self._settings_snapshot())
         return {
-            "input_options": ["mic", "speaker"],
-            "backend_options": ["whisper", "faster-whisper"],
+            "input_options": INPUT_MODE_OPTIONS,
+            "backend_options": MODEL_BACKEND_OPTIONS,
             "model_options": self.dependencies.model_manager_controller.get_model_manager_keys(),
             "selected_model": str(view_settings.main_ui.selected_model or ""),
             "source_options": WHISPER_LANG_LIST,
             "target_options": WHISPER_LANG_LIST,
-            "engine_options": [
-                "Selenium Chrome Translate",
-                "Google Translate",
-                "MyMemoryTranslator",
-                "LibreTranslate",
-            ],
+            "engine_options": TRANSLATION_ENGINE_OPTIONS,
             **view_settings.main_ui.to_payload(),
         }
 

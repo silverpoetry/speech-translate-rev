@@ -260,6 +260,20 @@ async function persistRecordDeviceSelection(hostApiValue, micValue, speakerValue
   ]);
 }
 
+function collectRecordDeviceSelection() {
+  return {
+    hostAPI: readStringValue(els.hostAPI, ''),
+    mic: readStringValue(els.mic, ''),
+    speaker: readStringValue(els.speaker, ''),
+  };
+}
+
+async function persistCurrentRecordDeviceSelection() {
+  const selection = collectRecordDeviceSelection();
+  await persistRecordDeviceSelection(selection.hostAPI, selection.mic, selection.speaker);
+  return selection;
+}
+
 function bindSelectSettingPersistence(node, apiName, key, options = {}) {
   if (!node) {
     return;
@@ -825,6 +839,96 @@ function patchLocalImportUi(updates) {
   state.data.import_ui = {
     ...(state.data.import_ui || {}),
     ...updates,
+  };
+}
+
+function readExportToSelection() {
+  return collectCheckedValues([
+    ['txt', els.exportTxt],
+    ['srt', els.exportSrt],
+    ['vtt', els.exportVtt],
+    ['ass', els.exportAss],
+    ['json', els.exportJson],
+    ['csv', els.exportCsv],
+    ['tsv', els.exportTsv],
+    ['mp4', els.exportMp4],
+  ]);
+}
+
+function collectSharedFileSettings() {
+  const currentSettings = state.data?.settings || {};
+  const exportDir = els.dirExport
+    ? readStringValue(els.dirExport, String(currentSettings.dir_export ?? 'auto'))
+    : String(currentSettings.dir_export ?? 'auto');
+  const autoOpenDirOnTaskDone = readBooleanValue(els.autoOpenDirExport, true);
+  return {
+    dir_export: exportDir,
+    export_to: readExportToSelection(),
+    auto_open_dir_export: autoOpenDirOnTaskDone,
+    auto_open_dir_translate: autoOpenDirOnTaskDone,
+    auto_open_dir_refinement: autoOpenDirOnTaskDone,
+    auto_open_dir_alignment: autoOpenDirOnTaskDone,
+    export_format: readStringValue(els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}'),
+    path_filter_file_import: readStringValue(els.pathFilterFileImport, 'auto'),
+    remove_repetition_file_import: readBooleanValue(els.removeRepetitionFileImport, false),
+    remove_repetition_amount: readNumberValue(els.removeRepetitionAmount, 1),
+    segment_max_words: readStringValue(els.segmentMaxWords, ''),
+    segment_max_chars: readStringValue(els.segmentMaxChars, ''),
+    segment_split_or_newline: readStringValue(els.segmentSplitOrNewline, 'split'),
+    segment_even_split: readBooleanValue(els.segmentEvenSplit, true),
+    segment_level: readBooleanValue(els.segmentLevel, true),
+    word_level: readBooleanValue(els.wordLevel, true),
+    file_slice_start: readStringValue(els.fileSliceStart, ''),
+    file_slice_end: readStringValue(els.fileSliceEnd, ''),
+  };
+}
+
+async function persistSharedFileSettings() {
+  const updates = collectSharedFileSettings();
+  await persistApiPairs('set_setting', Object.entries(updates));
+  patchLocalSettings(updates);
+  return updates;
+}
+
+function resolveModelRuntimeSummary(data) {
+  const importUi = data?.import_ui || {};
+  const runtime = data?.runtime_model || {};
+  const selectedModelKey = String(importUi.selected_model_key || importUi.selected_model || '').trim();
+  const selectedBackend = String(importUi.selected_backend || '').trim() || '后端未知';
+  const runtimeKey = String(runtime.key || '').trim();
+  const runtimeLoaded = Boolean(runtime.loaded);
+  const runtimeLoading = Boolean(runtime.loading);
+  const runtimeMessage = String(runtime.message || '').trim();
+  const effectiveModelKey = runtimeKey || selectedModelKey || '未知';
+  return {
+    runtimeLoaded,
+    runtimeLoading,
+    runtimeMessage,
+    selectedModelKey,
+    selectedBackend,
+    effectiveModelKey,
+    runtimeStateLabel: runtimeLoaded ? '运行：已加载' : runtimeLoading ? '运行：加载中' : '运行：未加载',
+    runtimeMetaLabel: runtimeMessage || (runtimeLoaded ? `当前运行：${effectiveModelKey}` : '等待加载'),
+    taskPillLabel: `${runtimeLoaded ? effectiveModelKey : (selectedModelKey || '未选择')} / ${selectedBackend}`,
+  };
+}
+
+function resolveFileProcessingSummary() {
+  const processing = state.fileProcessingState || {};
+  const queue = Array.isArray(state.fileImportQueue) ? state.fileImportQueue : [];
+  const total = Number(processing.files_total || queue.length || 0) || 0;
+  const completed = Number(processing.files_completed || 0) || 0;
+  const active = Boolean(processing.active);
+  const failed = Number(processing.files_failed || 0) || 0;
+  return {
+    total,
+    completed,
+    active,
+    failed,
+    queueLabel: total > 0 ? `队列：${total}，完成 ${completed}` : '队列：0',
+    stateLabel: active
+      ? (failed > 0 ? `状态：处理中，失败 ${failed}` : `状态：处理中，剩余 ${Math.max(total - completed, 0)}`)
+      : (failed > 0 ? `状态：失败 ${failed}` : (total > 0 ? '状态：待启动' : '状态：空闲')),
   };
 }
 
@@ -1538,48 +1642,24 @@ async function refreshFileProcessingState() {
 }
 
 function renderModelSelectionOverview(data) {
-  const importUi = data?.import_ui || {};
-  const runtime = data?.runtime_model || {};
-  const selectedModelLabel = importUi.selected_model_key || importUi.selected_model || '未选择';
-  const runtimeLoaded = Boolean(runtime.loaded);
-  const runtimeLoading = Boolean(runtime.loading);
-  const runtimeMessage = String(runtime.message || '').trim();
+  const summary = resolveModelRuntimeSummary(data);
 
   if (els.modelSelectionRuntime) {
-    els.modelSelectionRuntime.textContent = runtimeLoaded
-      ? '运行：已加载'
-      : runtimeLoading
-        ? '运行：加载中'
-        : '运行：未加载';
+    els.modelSelectionRuntime.textContent = summary.runtimeStateLabel;
   }
   if (els.modelSelectionRuntimeMeta) {
-    els.modelSelectionRuntimeMeta.textContent = runtimeMessage || (runtimeLoaded ? `当前运行：${runtime.key || selectedModelLabel}` : '等待加载');
+    els.modelSelectionRuntimeMeta.textContent = summary.runtimeMetaLabel;
   }
 }
 
 function renderFileImportProcessingOverview() {
-  const processing = state.fileProcessingState || {};
-  const queue = Array.isArray(state.fileImportQueue) ? state.fileImportQueue : [];
-  const total = Number(processing.files_total || queue.length || 0) || 0;
-  const completed = Number(processing.files_completed || 0) || 0;
-  const active = Boolean(processing.active);
-  const failed = Number(processing.files_failed || 0) || 0;
+  const summary = resolveFileProcessingSummary();
 
   if (els.fileImportQueueCount) {
-    els.fileImportQueueCount.textContent = total > 0
-      ? `队列：${total}，完成 ${completed}`
-      : '队列：0';
+    els.fileImportQueueCount.textContent = summary.queueLabel;
   }
   if (els.fileImportProcessingState) {
-    if (active) {
-      els.fileImportProcessingState.textContent = failed > 0
-        ? `状态：处理中，失败 ${failed}`
-        : `状态：处理中，剩余 ${Math.max(total - completed, 0)}`;
-    } else if (failed > 0) {
-      els.fileImportProcessingState.textContent = `状态：失败 ${failed}`;
-    } else {
-      els.fileImportProcessingState.textContent = total > 0 ? '状态：待启动' : '状态：空闲';
-    }
+    els.fileImportProcessingState.textContent = summary.stateLabel;
   }
 }
 
@@ -1707,11 +1787,7 @@ function renderSettingsToolbarOverview(data) {
 
 function renderTaskRuntimePills(data) {
   const settings = data?.settings || {};
-  const runtime = data?.runtime_model || {};
-  const importUi = data?.import_ui || {};
-  const modelText = runtime.loaded
-    ? `${runtime.key || importUi.selected_model || '未知'} / ${importUi.selected_backend || '后端未知'}`
-    : `${importUi.selected_model || '未选择'} / ${importUi.selected_backend || '后端未知'}`;
+  const modelSummary = resolveModelRuntimeSummary(data);
   const exportText = settings.dir_export && settings.dir_export !== 'auto' ? settings.dir_export : '导出:auto';
   const logText = [
     `日志:${String(settings.log_level || 'INFO').toUpperCase()}`,
@@ -1719,7 +1795,7 @@ function renderTaskRuntimePills(data) {
   ].join(' · ');
 
   if (els.taskRuntimeModelPill) {
-    els.taskRuntimeModelPill.textContent = `模型：${modelText}`;
+    els.taskRuntimeModelPill.textContent = `模型：${modelSummary.taskPillLabel}`;
   }
   if (els.taskRuntimeExportPill) {
     els.taskRuntimeExportPill.textContent = `导出：${exportText}`;
@@ -2199,9 +2275,10 @@ function renderGlobalStatusBar(task, data, recordingState = null) {
   const hasError = Boolean(task?.error);
   const isFinished = Boolean(task?.finished);
   const runtime = data?.runtime_model || {};
-  const modelKey = runtime.key || data?.import_ui?.selected_model_key || data?.import_ui?.selected_model || '未知';
-  const loading = Boolean(runtime.loading);
-  const loaded = Boolean(runtime.loaded);
+  const modelSummary = resolveModelRuntimeSummary(data);
+  const modelKey = modelSummary.effectiveModelKey;
+  const loading = modelSummary.runtimeLoading;
+  const loaded = modelSummary.runtimeLoaded;
   const runtimeElapsed = Math.max(0, Number(runtime.elapsed_seconds) || 0);
 
   const normalizeMessage = (msg) => {
@@ -2715,23 +2792,10 @@ async function saveSettings(shouldRefresh = true) {
     els.hostAPI.value = els.hostAPIToolbar.value;
   }
 
-  const exportTo = collectCheckedValues([
-    ['txt', els.exportTxt],
-    ['srt', els.exportSrt],
-    ['vtt', els.exportVtt],
-    ['ass', els.exportAss],
-    ['json', els.exportJson],
-    ['csv', els.exportCsv],
-    ['tsv', els.exportTsv],
-    ['mp4', els.exportMp4],
-  ]);
-
   const updates = [
-    ['dir_export', els.dirExport ? readStringValue(els.dirExport, 'auto') : currentSetting('dir_export', 'auto')],
     ['dir_log', readStringValue(els.dirLog, currentSetting('dir_log', 'auto'))],
     ['log_level', readStringValue(els.logLevel, currentSetting('log_level', 'DEBUG'))],
     ['mw_size', readStringValue(els.mainWindowSize, currentSetting('mw_size', '1140x680'))],
-    ['export_to', exportTo],
     ['input', readStringValue(els.inputMode, 'mic')],
     ['use_faster_whisper', readStringValue(els.backendMain, currentSetting('use_faster_whisper', true) ? 'faster-whisper' : 'whisper') === 'faster-whisper'],
     ['model_mw', readStringValue(els.modelMain, currentSetting('model_mw', ''))],
@@ -2754,16 +2818,6 @@ async function saveSettings(shouldRefresh = true) {
     ['https_proxy', readStringValue(els.httpsProxy, '')],
     ['libre_link', readStringValue(els.libreLink, '')],
     ['libre_api_key', readStringValue(els.libreApiKey, '')],
-    ['auto_open_dir_export', readBooleanValue(els.autoOpenDirExport, true)],
-    ['export_format', readStringValue(els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}')],
-    ['remove_repetition_file_import', readBooleanValue(els.removeRepetitionFileImport, false)],
-    ['remove_repetition_amount', readNumberValue(els.removeRepetitionAmount, 1)],
-    ['segment_max_words', readStringValue(els.segmentMaxWords, '')],
-    ['segment_max_chars', readStringValue(els.segmentMaxChars, '')],
-    ['segment_split_or_newline', readStringValue(els.segmentSplitOrNewline, 'split')],
-    ['segment_even_split', readBooleanValue(els.segmentEvenSplit, true)],
-    ['segment_level', readBooleanValue(els.segmentLevel, true)],
-    ['word_level', readBooleanValue(els.wordLevel, true)],
     ['use_en_model', readBooleanValue(els.useEnModel, true)],
     ['decoding_preset', readStringValue(els.decodingPreset, 'beam search')],
     ['temperature', readStringValue(els.temperature, '0.0, 0.2, 0.4, 0.6, 0.8, 1.0')],
@@ -2781,12 +2835,6 @@ async function saveSettings(shouldRefresh = true) {
     ['max_initial_timestamp', readNumberValue(els.maxInitialTimestamp, 1.0)],
     ['whisper_args', readStringValue(els.whisperArgs, '')],
     ['path_filter_rec', readStringValue(els.pathFilterRec, 'auto')],
-    ['path_filter_file_import', readStringValue(els.pathFilterFileImport, 'auto')],
-    ['file_slice_start', readStringValue(els.fileSliceStart, '')],
-    ['file_slice_end', readStringValue(els.fileSliceEnd, '')],
-    ['auto_open_dir_translate', readBooleanValue(els.autoOpenDirTranslate, true)],
-    ['auto_open_dir_refinement', readBooleanValue(els.autoOpenDirRefinement, true)],
-    ['auto_open_dir_alignment', readBooleanValue(els.autoOpenDirAlignment, true)],
     ['rec_ask_confirmation_first', readBooleanValue(els.recAskConfirmationFirst, false)],
     ['close_to_tray_on_close', readBooleanValue(els.closeToTrayOnClose, true)],
     ['supress_hidden_to_tray', readBooleanValue(els.supressHiddenToTray, false)],
@@ -2829,11 +2877,8 @@ async function saveSettings(shouldRefresh = true) {
   }
 
   await persistApiPairs('set_setting', updates);
-  await persistApiPairs('set_record_setting', [
-    ['hostAPI', readStringValue(els.hostAPI, '')],
-    ['mic', readStringValue(els.mic, '')],
-    ['speaker', readStringValue(els.speaker, '')],
-  ]);
+  await persistSharedFileSettings();
+  await persistCurrentRecordDeviceSelection();
 
   try {
     await apiCall('rerender_live_text');
@@ -2851,8 +2896,8 @@ async function saveSettings(shouldRefresh = true) {
 
 async function saveAllSettings() {
   await saveSettings(false);
-  await saveRecordSettings(false);
-  await saveImportSettings(false);
+  await persistApiPairs('set_record_setting', collectRecordSettingUpdates({ includeDeviceSelection: false }));
+  await persistApiPairs('set_import_setting', collectImportSpecificSettingUpdates());
   await saveSeleniumSettings(false);
   await saveInitialPromptsSettings(false);
   await refreshState();
@@ -3006,79 +3051,13 @@ async function saveImportSettings(shouldRefresh = true) {
     els.autoOpenDirExport.checked = Boolean(els.autoOpenDirExportFile.checked);
   }
 
-  const exportTo = collectCheckedValues([
-    ['txt', els.exportTxt],
-    ['srt', els.exportSrt],
-    ['vtt', els.exportVtt],
-    ['ass', els.exportAss],
-    ['json', els.exportJson],
-    ['csv', els.exportCsv],
-    ['tsv', els.exportTsv],
-    ['mp4', els.exportMp4],
-  ]);
+  const sharedFileSettings = await persistSharedFileSettings();
 
-  const exportDir = els.dirExport
-    ? els.dirExport.value
-    : ((state.data && state.data.settings && state.data.settings.dir_export) || 'auto');
-  const autoOpenDirOnTaskDone = readBooleanValue(els.autoOpenDirExport, true);
-  await persistApiPairs('set_setting', [
-    ['dir_export', exportDir],
-    ['export_to', exportTo],
-    ['auto_open_dir_export', autoOpenDirOnTaskDone],
-    ['auto_open_dir_translate', autoOpenDirOnTaskDone],
-    ['auto_open_dir_refinement', autoOpenDirOnTaskDone],
-    ['auto_open_dir_alignment', autoOpenDirOnTaskDone],
-    ['export_format', readStringValue(els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}')],
-    ['path_filter_file_import', readStringValue(els.pathFilterFileImport, 'auto')],
-    ['remove_repetition_file_import', readBooleanValue(els.removeRepetitionFileImport, false)],
-    ['remove_repetition_amount', readNumberValue(els.removeRepetitionAmount, 1)],
-    ['segment_max_words', readStringValue(els.segmentMaxWords, '')],
-    ['segment_max_chars', readStringValue(els.segmentMaxChars, '')],
-    ['segment_split_or_newline', readStringValue(els.segmentSplitOrNewline, 'split')],
-    ['segment_even_split', readBooleanValue(els.segmentEvenSplit, true)],
-    ['segment_level', readBooleanValue(els.segmentLevel, true)],
-    ['word_level', readBooleanValue(els.wordLevel, true)],
-    ['file_slice_start', readStringValue(els.fileSliceStart, '')],
-    ['file_slice_end', readStringValue(els.fileSliceEnd, '')],
-  ]);
-
-  const updates = [
-    ['model_f_import', readStringValue(els.modelImport, '')],
-    ['tl_engine_f_import', readStringValue(els.engineImport, '')],
-    ['source_lang_f_import', readStringValue(els.sourceImport, '')],
-    ['target_lang_f_import', readStringValue(els.targetImport, '')],
-    ['transcribe_f_import', readBooleanValue(els.transcribeImport, true)],
-    ['translate_f_import', readBooleanValue(els.translateImport, true)],
-    ['filter_file_import', readBooleanValue(els.filterFileImport, true)],
-    ['filter_file_import_case_sensitive', readBooleanValue(els.filterFileImportCaseSensitive, false)],
-    ['filter_file_import_strip', readBooleanValue(els.filterFileImportStrip, true)],
-    ['filter_file_import_exact_match', readBooleanValue(els.filterFileImportExactMatch, false)],
-    ['filter_file_import_ignore_punctuations', readStringValue(els.filterFileImportIgnorePunctuations, "\"',.?!")],
-    ['filter_file_import_similarity', readNumberValue(els.filterFileImportSimilarity, 0.75)],
-  ];
-
-  await persistApiPairs('set_import_setting', updates);
+  await persistApiPairs('set_import_setting', collectImportSpecificSettingUpdates());
 
   patchLocalSettings({
     use_faster_whisper: backend === 'faster-whisper',
-    dir_export: exportDir,
-    export_to: exportTo,
-    auto_open_dir_export: autoOpenDirOnTaskDone,
-    auto_open_dir_translate: autoOpenDirOnTaskDone,
-    auto_open_dir_refinement: autoOpenDirOnTaskDone,
-    auto_open_dir_alignment: autoOpenDirOnTaskDone,
-    export_format: readStringValue(els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}'),
-    path_filter_file_import: readStringValue(els.pathFilterFileImport, 'auto'),
-    remove_repetition_file_import: readBooleanValue(els.removeRepetitionFileImport, false),
-    remove_repetition_amount: readNumberValue(els.removeRepetitionAmount, 1),
-    segment_max_words: readStringValue(els.segmentMaxWords, ''),
-    segment_max_chars: readStringValue(els.segmentMaxChars, ''),
-    segment_split_or_newline: readStringValue(els.segmentSplitOrNewline, 'split'),
-    segment_even_split: readBooleanValue(els.segmentEvenSplit, true),
-    segment_level: readBooleanValue(els.segmentLevel, true),
-    word_level: readBooleanValue(els.wordLevel, true),
-    file_slice_start: readStringValue(els.fileSliceStart, ''),
-    file_slice_end: readStringValue(els.fileSliceEnd, ''),
+    ...sharedFileSettings,
   });
   patchLocalImportUi({
     selected_backend: backend,
@@ -3124,11 +3103,17 @@ async function loadMainRuntimeModel() {
   await loadRuntimeModel(modelKey);
 }
 
-async function saveRecordSettings(shouldRefresh = true) {
-  const updates = [
-    ['hostAPI', readStringValue(els.hostAPI, '')],
-    ['mic', readStringValue(els.mic, '')],
-    ['speaker', readStringValue(els.speaker, '')],
+function collectRecordSettingUpdates({ includeDeviceSelection = true } = {}) {
+  const recordDeviceSelection = collectRecordDeviceSelection();
+  const updates = includeDeviceSelection
+    ? [
+        ['hostAPI', recordDeviceSelection.hostAPI],
+        ['mic', recordDeviceSelection.mic],
+        ['speaker', recordDeviceSelection.speaker],
+      ]
+    : [];
+  return [
+    ...updates,
     ['verbose_record', readStringValue(els.verboseRecord, 'false') === 'true'],
     ['model_device_preference', readStringValue(els.modelDevicePreference, 'auto').toLowerCase()],
     ['transcribe_rate', readNumberValue(els.transcribeRate, 300)],
@@ -3169,12 +3154,32 @@ async function saveRecordSettings(shouldRefresh = true) {
     ['threshold_silero_speaker_min', readNumberValue(els.speakerThresholdSileroMin, 0.7)],
     ['threshold_db_speaker', readNumberValue(els.speakerThresholdDb, -30.0)],
   ];
+}
 
+async function saveRecordSettings(shouldRefresh = true) {
+  const updates = collectRecordSettingUpdates();
   await persistApiPairs('set_record_setting', updates);
 
   if (shouldRefresh) {
     await refreshState();
   }
+}
+
+function collectImportSpecificSettingUpdates() {
+  return [
+    ['model_f_import', readStringValue(els.modelImport, '')],
+    ['tl_engine_f_import', readStringValue(els.engineImport, '')],
+    ['source_lang_f_import', readStringValue(els.sourceImport, '')],
+    ['target_lang_f_import', readStringValue(els.targetImport, '')],
+    ['transcribe_f_import', readBooleanValue(els.transcribeImport, true)],
+    ['translate_f_import', readBooleanValue(els.translateImport, true)],
+    ['filter_file_import', readBooleanValue(els.filterFileImport, true)],
+    ['filter_file_import_case_sensitive', readBooleanValue(els.filterFileImportCaseSensitive, false)],
+    ['filter_file_import_strip', readBooleanValue(els.filterFileImportStrip, true)],
+    ['filter_file_import_exact_match', readBooleanValue(els.filterFileImportExactMatch, false)],
+    ['filter_file_import_ignore_punctuations', readStringValue(els.filterFileImportIgnorePunctuations, "\"',.?!")],
+    ['filter_file_import_similarity', readNumberValue(els.filterFileImportSimilarity, 0.75)],
+  ];
 }
 
 function normalizeDetachedMode(mode) {
@@ -3225,14 +3230,10 @@ const AUTO_SAVE_BUCKETS = {
     'filter_rec', 'filter_rec_case_sensitive', 'filter_rec_strip', 'filter_rec_exact_match', 'filter_rec_ignore_punctuations', 'filter_rec_similarity',
     'http_proxy_enable', 'http_proxy', 'https_proxy_enable', 'https_proxy',
     'libre_link', 'libre_api_key',
-    'auto_open_dir_export', 'export_format', 'remove_repetition_file_import', 'remove_repetition_amount',
-    'segment_max_words', 'segment_max_chars', 'segment_split_or_newline', 'segment_even_split',
-    'segment_level', 'word_level',
     'use_en_model', 'decoding_preset', 'temperature', 'best_of', 'beam_size', 'patience',
     'compression_ratio_threshold', 'logprob_threshold', 'no_speech_threshold', 'suppress_tokens', 'suppress_blank',
     'fp16', 'initial_prompt', 'prefix', 'max_initial_timestamp', 'whisper_args',
     'path_filter_rec',
-    'file_slice_start', 'file_slice_end', 'auto_open_dir_translate', 'auto_open_dir_refinement', 'auto_open_dir_alignment',
     'rec_ask_confirmation_first', 'close_to_tray_on_close', 'supress_hidden_to_tray',
     'supress_record_warning', 'debug_realtime_record', 'debug_translate',
     'colorize_per_segment', 'colorize_per_word', 'gradient_low_conf', 'gradient_high_conf',
@@ -3245,10 +3246,30 @@ const AUTO_SAVE_BUCKETS = {
   import: new Set([
     'model_f_import', 'tl_engine_f_import', 'source_lang_f_import', 'target_lang_f_import',
     'transcribe_f_import', 'translate_f_import',
-    'export_txt', 'export_srt', 'export_vtt', 'export_ass', 'export_json', 'export_csv', 'export_tsv', 'export_mp4',
-    'dir_export_file', 'auto_open_dir_export_file', 'auto_open_dir_translate_file', 'auto_open_dir_refinement_file', 'auto_open_dir_alignment_file',
     'filter_file_import', 'filter_file_import_case_sensitive', 'filter_file_import_strip', 'filter_file_import_exact_match', 'filter_file_import_ignore_punctuations', 'filter_file_import_similarity',
-    'path_filter_file_import'
+  ]),
+  fileShared: new Set([
+    'dir_export', 'dir_export_file',
+    'auto_open_dir_export', 'auto_open_dir_export_file',
+    'auto_open_dir_translate_file', 'auto_open_dir_refinement_file', 'auto_open_dir_alignment_file',
+    'export_format', 'export_format_toolbar',
+    'export_txt', 'export_txt_toolbar',
+    'export_srt', 'export_srt_toolbar',
+    'export_vtt', 'export_vtt_toolbar',
+    'export_ass', 'export_ass_toolbar',
+    'export_json', 'export_json_toolbar',
+    'export_csv', 'export_csv_toolbar',
+    'export_tsv', 'export_tsv_toolbar',
+    'export_mp4', 'export_mp4_toolbar',
+    'remove_repetition_file_import', 'remove_repetition_amount',
+    'segment_max_words', 'segment_max_words_toolbar',
+    'segment_max_chars', 'segment_max_chars_toolbar',
+    'segment_split_or_newline', 'segment_split_or_newline_toolbar',
+    'segment_even_split', 'segment_even_split_toolbar',
+    'segment_level', 'segment_level_toolbar',
+    'word_level', 'word_level_toolbar',
+    'file_slice_start', 'file_slice_end',
+    'path_filter_file_import',
   ]),
   detachedMain: new Set([
     'ex_tc_geometry_main', 'ex_tc_opacity_main', 'ex_tc_always_on_top_main', 'ex_tc_no_title_bar_main', 'ex_tc_click_through_main', 'tb_ex_tc_use_conf_color_main',
@@ -3331,6 +3352,12 @@ function bindAutoSaveEvents() {
       scheduleAutoSave(bucket, () => saveSettings(false));
     } else if (bucket === 'import') {
       scheduleAutoSave(bucket, () => saveImportSettings(false));
+    } else if (bucket === 'fileShared') {
+      scheduleAutoSave(bucket, async () => {
+        await persistSharedFileSettings();
+        renderImportSettings({ import_ui: state.data?.import_ui || {} });
+        renderTaskRuntimePills(state.data || {});
+      });
     } else if (bucket === 'detachedMain') {
       const mode = getDetachedMirrorMode(target.id || '');
       if (mode) {

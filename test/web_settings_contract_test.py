@@ -19,7 +19,7 @@ class WebSettingsContractTests(unittest.TestCase):
 
     def test_save_import_settings_persists_tsv_export(self) -> None:
         self.assertIn(
-            "const exportTo = collectCheckedValues([",
+            "function readExportToSelection() {",
             self.app_js,
         )
         self.assertIn(
@@ -27,19 +27,25 @@ class WebSettingsContractTests(unittest.TestCase):
             self.app_js,
         )
         self.assertIn(
-            "['export_format', readStringValue(els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}')],",
+            "function collectSharedFileSettings() {",
             self.app_js,
         )
         self.assertIn(
-            "['file_slice_start', readStringValue(els.fileSliceStart, '')],",
+            "async function persistSharedFileSettings() {",
             self.app_js,
         )
 
     def test_import_auto_save_bucket_includes_tsv_toggle(self) -> None:
         self.assertIn(
-            "'export_txt', 'export_srt', 'export_vtt', 'export_ass', 'export_json', 'export_csv', 'export_tsv', 'export_mp4'",
+            "fileShared: new Set([",
             self.app_js,
         )
+        self.assertIn(
+            "'export_txt', 'export_txt_toolbar',",
+            self.app_js,
+        )
+        self.assertIn("'export_tsv', 'export_tsv_toolbar',", self.app_js)
+        self.assertIn("'dir_export', 'dir_export_file',", self.app_js)
 
     def test_settings_save_pushes_detached_window_updates_for_both_modes(self) -> None:
         self.assertIn("await pushDetachedConfigUpdates();", self.app_js)
