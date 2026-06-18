@@ -4785,7 +4785,7 @@ textarea:focus {
 }
 
 .model-selection-shell {
-  grid-template-columns: minmax(0, 1.58fr) minmax(230px, 0.7fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
 }
 
@@ -4846,6 +4846,15 @@ textarea:focus {
   gap: 8px;
   padding-top: 4px;
   border-top: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.model-selection-inline-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.model-selection-inline-toggle {
+  width: max-content;
 }
 
 .model-selection-kicker,
@@ -6265,12 +6274,12 @@ button.btn-icon:hover {
 }
 
 .model-selection-workbench {
-  grid-template-columns: minmax(0, 1.6fr) minmax(356px, 1.08fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 
 .model-selection-shell {
-  grid-template-columns: minmax(0, 1.54fr) minmax(292px, 1.02fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
 
@@ -6335,6 +6344,20 @@ button.btn-icon:hover {
 #tab-model .model-selection-status-grid .status-overview-card-compact .status-overview-meta {
   font-size: 0.64rem;
   line-height: 1.28;
+}
+
+#tab-model .model-selection-inline-grid .status-overview-card {
+  min-height: 58px;
+  padding: 8px 9px;
+}
+
+#tab-model .model-selection-inline-grid .status-overview-value {
+  font-size: 0.86rem;
+}
+
+#tab-model .model-selection-inline-grid .status-overview-meta {
+  font-size: 0.66rem;
+  line-height: 1.3;
 }
 
 #tab-model .model-selection-status-grid .status-overview-meta {

@@ -1126,15 +1126,19 @@ function syncLogAutoRefresh() {
 function renderMainControls(data) {
   const mainUi = data.main_ui || {};
   const recordUi = data.record_ui || {};
-  populateSelect(els.inputMode, mainUi.input_options || [], mainUi.selected_input || '');
-  populateSelect(els.hostAPI, recordUi.host_api_options || [], recordUi.selected_host_api || recordUi.host_api || '');
-  populateSelect(els.mic, recordUi.mic_options || [], recordUi.selected_mic || recordUi.mic || '');
-  populateSelect(els.speaker, recordUi.speaker_options || [], recordUi.selected_speaker || recordUi.speaker || '');
-  populateSelect(els.backendMain, mainUi.backend_options || ['whisper', 'faster-whisper'], mainUi.selected_backend || 'faster-whisper', false);
-  populateSelect(els.modelMain, mainUi.model_options || [], mainUi.selected_model || '', false);
-  populateSelect(els.sourceLangMain, mainUi.source_options || [], mainUi.selected_source || '');
-  populateSelect(els.targetLangMain, mainUi.target_options || [], mainUi.selected_target || '');
-  populateSelect(els.translateEngineMain, mainUi.engine_options || [], mainUi.selected_engine || '');
+  if (els.inputMode) populateSelect(els.inputMode, mainUi.input_options || [], mainUi.selected_input || '');
+  if (els.hostAPI) populateSelect(els.hostAPI, recordUi.host_api_options || [], recordUi.selected_host_api || recordUi.host_api || '');
+  if (els.mic) populateSelect(els.mic, recordUi.mic_options || [], recordUi.selected_mic || recordUi.mic || '');
+  if (els.speaker) populateSelect(els.speaker, recordUi.speaker_options || [], recordUi.selected_speaker || recordUi.speaker || '');
+  if (els.backendMain) {
+    populateSelect(els.backendMain, mainUi.backend_options || ['whisper', 'faster-whisper'], mainUi.selected_backend || 'faster-whisper', false);
+  }
+  if (els.modelMain) {
+    populateSelect(els.modelMain, mainUi.model_options || [], mainUi.selected_model || '', false);
+  }
+  if (els.sourceLangMain) populateSelect(els.sourceLangMain, mainUi.source_options || [], mainUi.selected_source || '');
+  if (els.targetLangMain) populateSelect(els.targetLangMain, mainUi.target_options || [], mainUi.selected_target || '');
+  if (els.translateEngineMain) populateSelect(els.translateEngineMain, mainUi.engine_options || [], mainUi.selected_engine || '');
 
   if (els.transcribeMain) els.transcribeMain.checked = Boolean(mainUi.transcribe ?? true);
   if (els.translateMain) els.translateMain.checked = Boolean(mainUi.translate ?? true);
@@ -1384,7 +1388,7 @@ function renderModelSelectionOverview(data) {
   const runtime = data?.runtime_model || {};
   const settings = data?.settings || {};
   const modelManager = state.modelManagerState || {};
-  const selectedModel = importUi.selected_model_key || importUi.selected_model || '未选择';
+  const selectedModelLabel = importUi.selected_model_key || importUi.selected_model || '未选择';
   const backend = importUi.selected_backend || '未知';
   const runtimeLoaded = Boolean(runtime.loaded);
   const runtimeLoading = Boolean(runtime.loading);
@@ -1397,15 +1401,6 @@ function renderModelSelectionOverview(data) {
   const coverageTotal = scopedRows.length || (Array.isArray(modelManager.model_options) ? modelManager.model_options.length : 0);
   const checked = modelManager.checked || null;
 
-  if (els.modelSelectionCurrent) {
-    els.modelSelectionCurrent.textContent = selectedModel;
-  }
-  if (els.modelSelectionCurrentMeta) {
-    const optionCount = Array.isArray(importUi.model_options) ? importUi.model_options.length : 0;
-    const selectedEstimateBytes = Number(modelManager.selected_model_estimate_bytes || 0);
-    const estimateText = selectedEstimateBytes > 0 ? formatBytes(selectedEstimateBytes) : `${optionCount} 个候选`;
-    els.modelSelectionCurrentMeta.textContent = `预计体积 ${estimateText}`;
-  }
   if (els.modelSelectionRuntime) {
     els.modelSelectionRuntime.textContent = runtimeLoaded
       ? '已加载'
@@ -1418,16 +1413,8 @@ function renderModelSelectionOverview(data) {
       const checkedStatus = checked.downloaded ? '已校验可用' : (checked.error ? `检查失败：${checked.error}` : '本地缺失');
       els.modelSelectionRuntimeMeta.textContent = runtimeMessage || `${checked.model} · ${checkedStatus}`;
     } else {
-      els.modelSelectionRuntimeMeta.textContent = runtimeMessage || (runtimeLoaded ? `当前运行：${runtime.key || selectedModel}` : '等待加载');
+      els.modelSelectionRuntimeMeta.textContent = runtimeMessage || (runtimeLoaded ? `当前运行：${runtime.key || selectedModelLabel}` : '等待加载');
     }
-  }
-  if (els.modelSelectionBackend) {
-    els.modelSelectionBackend.textContent = backend;
-  }
-  if (els.modelSelectionBackendMeta) {
-    const selectedEngine = importUi.selected_engine || '未设置翻译引擎';
-    const modelDir = modelManager.model_dir || settings.dir_model || 'auto';
-    els.modelSelectionBackendMeta.textContent = `翻译：${selectedEngine} · 目录：${summarizeSettingText(modelDir, 'auto', 18)}`;
   }
   if (els.modelSelectionHistory) {
     els.modelSelectionHistory.textContent = settings.condition_on_previous_text ? '已启用' : '已关闭';

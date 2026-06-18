@@ -417,7 +417,7 @@
                 <div class="hero-toolbar hero-toolbar-compact">
                   <div class="hero-toolbar-main">
                     <button class="btn-with-icon btn-major" data-action="load-model" id="btn-load-model">加载模型</button>
-                    <span class="hero-toolbar-caption">切换模型、后端和窗口尺寸。</span>
+                    <span class="hero-toolbar-caption">切换模型与后端后，统一加载到运行时。</span>
                   </div>
                   <div class="hero-toolbar-pills">
                     <span class="pill pill-muted" id="import-model-pill">模型：tiny</span>
@@ -453,85 +453,37 @@
                           <span class="pill pill-muted" id="model-manager-dir-pill">模型目录</span>
                           <span class="pill pill-muted" id="model-selection-history">历史提示</span>
                         </div>
+                        <label class="toggle-row model-selection-inline-toggle"><input id="condition_on_previous_text" type="checkbox" />
+                          使用上一次输出作为提示</label>
+                        <div class="status-overview-grid model-selection-inline-grid" aria-label="运行配置摘要">
+                          <div class="status-overview-card status-overview-card-compact">
+                            <span class="status-overview-label">运行状态</span>
+                            <span class="status-overview-value" id="model-selection-runtime">未加载</span>
+                            <span class="status-overview-meta" id="model-selection-runtime-meta">等待加载</span>
+                          </div>
+                          <div class="status-overview-card status-overview-card-compact">
+                            <span class="status-overview-label">设备策略</span>
+                            <span class="status-overview-value" id="model-selection-device">AUTO</span>
+                            <span class="status-overview-meta" id="model-selection-device-meta">自动选择可用设备</span>
+                          </div>
+                          <div class="status-overview-card status-overview-card-compact">
+                            <span class="status-overview-label">缓存覆盖</span>
+                            <span class="status-overview-value" id="model-selection-cache">7 / 14</span>
+                            <span class="status-overview-meta" id="model-selection-cache-meta">已下载 7 个，本引擎仍缺 7 个</span>
+                          </div>
+                          <div class="status-overview-card status-overview-card-compact">
+                            <span class="status-overview-label">提示策略</span>
+                            <span class="status-overview-value" id="model-selection-history-card">未设置</span>
+                            <span class="status-overview-meta" id="model-selection-history-meta">condition_on_previous_text</span>
+                          </div>
+                        </div>
                         <div class="inline-actions compact-gap">
                           <button type="button" class="btn-with-icon" data-action="pick-model-dir">设置模型目录</button>
                           <button type="button" class="btn-with-icon" data-open-dir="model">打开模型目录</button>
                         </div>
                       </div>
                     </div>
-
-                    <div class="model-selection-side-card">
-                      <div class="model-selection-card-head">
-                        <div>
-                          <div class="model-selection-kicker">辅助策略</div>
-                          <p class="model-selection-card-meta">只保留加载决策相关补充项。</p>
-                        </div>
-                      </div>
-                      <div class="form-grid form-grid-spaced model-selection-side-grid">
-                        <label>
-                          <span>主窗口尺寸</span>
-                          <input id="mw_size" type="text" placeholder="1140x680" />
-                          <small class="field-note">格式：宽x高。重启应用后按该尺寸启动。</small>
-                        </label>
-                        <label class="toggle-row"><input id="condition_on_previous_text" type="checkbox" />
-                          使用上一次输出作为提示</label>
-                      </div>
-                    </div>
                   </div>
-                  <aside class="model-selection-status-rail">
-                    <div class="model-selection-status-head">
-                      <div>
-                        <span class="model-selection-kicker">启动摘要</span>
-                        <p>右侧集中运行状态与跳转。</p>
-                      </div>
-                      <button type="button" class="btn-with-icon btn-with-icon-quiet" data-action="load-model">加载模型</button>
-                    </div>
-                    <div class="status-overview-grid model-selection-status-grid" aria-label="模型选择概览">
-                      <div class="status-overview-card status-overview-card-primary">
-                        <span class="status-overview-label">当前模型</span>
-                        <span class="status-overview-value" id="model-selection-current">未选择</span>
-                        <span class="status-overview-meta" id="model-selection-current-meta">等待同步</span>
-                      </div>
-                      <div class="status-overview-card status-overview-card-primary">
-                        <span class="status-overview-label">运行状态</span>
-                        <span class="status-overview-value" id="model-selection-runtime">未加载</span>
-                        <span class="status-overview-meta" id="model-selection-runtime-meta">等待加载</span>
-                      </div>
-                      <div class="status-overview-card status-overview-card-wide">
-                        <span class="status-overview-label">后端</span>
-                        <span class="status-overview-value" id="model-selection-backend">未知</span>
-                        <span class="status-overview-meta" id="model-selection-backend-meta">模型选择页</span>
-                      </div>
-                      <div class="status-overview-card status-overview-card-compact">
-                        <span class="status-overview-label">历史提示</span>
-                        <span class="status-overview-value" id="model-selection-history-card">未设置</span>
-                        <span class="status-overview-meta" id="model-selection-history-meta">condition_on_previous_text</span>
-                      </div>
-                      <div class="status-overview-card status-overview-card-compact">
-                        <span class="status-overview-label">设备策略</span>
-                        <span class="status-overview-value" id="model-selection-device">AUTO</span>
-                        <span class="status-overview-meta" id="model-selection-device-meta">自动选择可用设备</span>
-                      </div>
-                      <div class="status-overview-card status-overview-card-compact">
-                        <span class="status-overview-label">缓存覆盖</span>
-                        <span class="status-overview-value" id="model-selection-cache">7 / 14</span>
-                        <span class="status-overview-meta" id="model-selection-cache-meta">已下载 7 个，本引擎仍缺 7 个</span>
-                      </div>
-                    </div>
-                    <div class="model-selection-quick-actions model-selection-quick-actions-primary">
-                      <button type="button" class="btn-with-icon" data-action="check-model-current">检查当前</button>
-                      <button type="button" class="btn-with-icon" data-action="check-all-models">检查全部</button>
-                      <button type="button" class="btn-with-icon" data-open-dir="model">打开目录</button>
-                      <button type="button" class="btn-with-icon" data-action="pick-model-dir">设置目录</button>
-                    </div>
-                    <div class="model-selection-quick-actions model-selection-quick-actions-secondary">
-                      <button type="button" class="btn-with-icon" data-settings-jump="录制设置（麦克风 / 扬声器）">录制</button>
-                      <button type="button" class="btn-with-icon" data-settings-jump="Whisper 解码参数">解码</button>
-                      <button type="button" class="btn-with-icon" data-settings-jump="Selenium 翻译窗口">Selenium</button>
-                      <button type="button" class="btn-with-icon" data-settings-jump="翻译网络与 LibreTranslate">网络</button>
-                      <button type="button" class="btn-with-icon" data-settings-jump="系统与日志">系统</button>
-                    </div>
-                  </aside>
                 </div>
               </section>
 
@@ -1028,12 +980,10 @@
                   <summary>
                     <span class="settings-panel-heading">
                       <span class="settings-panel-title">语言配置</span>
-                      <span class="settings-panel-meta">语言、模型与翻译链路</span>
+                      <span class="settings-panel-meta">语言与翻译链路</span>
                     </span>
                   </summary>
                   <div class="floating-action-row">
-                    <button class="btn-icon btn-icon-blue" data-action="load-main-model" data-tooltip="加载当前实时模型"
-                      title="加载当前实时模型"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
                     <button class="btn-icon" data-action="save-settings" data-tooltip="保存实时配置" title="保存实时配置"><span
                         class="btn-glyph glyph-save" aria-hidden="true"></span></button>
                   </div>
@@ -1046,23 +996,12 @@
                       <section class="realtime-config-group">
                         <div class="realtime-config-group-head">
                           <span class="realtime-config-group-title">识别链路</span>
-                          <span class="realtime-config-group-meta">语言、模型与推理后端</span>
+                          <span class="realtime-config-group-meta">源语言与转写输出策略</span>
                         </div>
                         <div class="form-grid compact-form-grid">
                           <label>
                             <span>源语言</span>
                             <select id="source_lang_mw"></select>
-                          </label>
-                          <label>
-                            <span>实时模型</span>
-                            <select id="model_mw"></select>
-                          </label>
-                          <label class="field-span-2">
-                            <span>Whisper 后端</span>
-                            <select id="backend_mw">
-                              <option value="whisper">whisper</option>
-                              <option value="faster-whisper">faster-whisper</option>
-                            </select>
                           </label>
                         </div>
                       </section>
