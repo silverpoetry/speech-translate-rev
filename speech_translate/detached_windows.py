@@ -177,14 +177,11 @@ class DetachedWindowManager:
         if window is None:
             return
         try:
+            logger.debug(f"[DetachedOpen] showing loaded window mode={mode}")
             window.show()
+            logger.debug(f"[DetachedOpen] showed loaded window mode={mode}")
         except Exception:
             logger.exception(f"[DetachedOpen] failed to show loaded window mode={mode}")
-            return
-        try:
-            self._apply_topmost(mode, focus_nudge=True)
-        except Exception:
-            logger.exception(f"[DetachedOpen] failed to raise loaded window mode={mode}")
 
     def create_window(
         self,
