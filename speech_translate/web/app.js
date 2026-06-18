@@ -14,6 +14,7 @@ const state = {
   seleniumSaveInFlight: false,
   detachedModeSelected: 'tc',
   detachedOpen: { tc: false, tl: false },
+  detachedVisible: { tc: false, tl: false },
   initInFlight: null,
   autoSaveBound: false,
   autoSaveTimers: {},
@@ -1826,9 +1827,10 @@ function renderDetachedWindowOverview(data) {
     ['tl', tl, els.detachedTlState, els.detachedTlGeometry],
   ];
   for (const [mode, config, stateNode, geometryNode] of modeEntries) {
+    const open = Boolean(state.detachedOpen[mode]);
+    const visible = Boolean(state.detachedVisible[mode]);
     if (stateNode) {
-      const open = Boolean(state.detachedOpen[mode]);
-      stateNode.textContent = open ? '已打开' : '未打开';
+      stateNode.textContent = open ? (visible ? '已显示' : '已隐藏') : '未打开';
     }
     if (geometryNode) {
       const geometry = mode === 'tc'
@@ -1841,6 +1843,24 @@ function renderDetachedWindowOverview(data) {
         ? Boolean(resolveSettingValue('ex_tc_click_through', config.click_through))
         : Boolean(resolveSettingValue('ex_tl_click_through', config.click_through));
       geometryNode.textContent = `${geometry} · ${onTop ? '置顶' : '常规'} · ${clickThrough ? '穿透' : '可交互'}`;
+    }
+
+    const labelPrefix = mode === 'tc' ? '转写' : '翻译';
+    const toggleButton = document.querySelector(`button[data-detached-toggle="${mode}"]`);
+    if (toggleButton) {
+      toggleButton.textContent = open ? '关闭窗口' : '打开窗口';
+      toggleButton.dataset.action = open ? `close-detached-${mode}` : `create-detached-${mode}`;
+      toggleButton.classList.toggle('detached-action-danger', open);
+      toggleButton.classList.toggle('detached-action-primary', !open);
+      toggleButton.setAttribute('aria-label', open ? `关闭${labelPrefix}窗口` : `打开${labelPrefix}窗口`);
+    }
+
+    const visibilityButton = document.querySelector(`button[data-detached-visibility="${mode}"]`);
+    if (visibilityButton) {
+      visibilityButton.classList.toggle('is-hidden', !open);
+      visibilityButton.textContent = visible ? '隐藏' : '显示';
+      visibilityButton.dataset.action = visible ? `hide-detached-${mode}` : `show-detached-${mode}`;
+      visibilityButton.setAttribute('aria-label', visible ? `隐藏${labelPrefix}窗口` : `显示${labelPrefix}窗口`);
     }
   }
 }
@@ -3407,12 +3427,14 @@ async function createDetachedWindow(modeOverride = null) {
     const result = await apiCall('toggle_detached_window', mode);
     if (result && result.status === 'closed') {
       state.detachedOpen[mode] = false;
+      state.detachedVisible[mode] = false;
       renderDetachedWindowOverview(state.data || {});
       console.log(`已关闭${modeLabel}独立窗口`);
       return;
     }
 
     state.detachedOpen[mode] = true;
+    state.detachedVisible[mode] = true;
     await apiCall('update_detached_config', mode);
     renderDetachedWindowOverview(state.data || {});
     console.log(`Created ${modeLabel} detached window:`, result);
@@ -3440,8 +3462,12 @@ async function controlDetachedWindow(action, modeOverride = null) {
     const result = await apiCall(apiName, mode);
     if (action === 'show') {
       state.detachedOpen[mode] = true;
+      state.detachedVisible[mode] = true;
+    } else if (action === 'hide') {
+      state.detachedVisible[mode] = false;
     } else if (action === 'close') {
       state.detachedOpen[mode] = false;
+      state.detachedVisible[mode] = false;
     }
     renderDetachedWindowOverview(state.data || {});
     console.log(`${modeLabel}独立窗口操作完成:`, result);

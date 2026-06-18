@@ -532,12 +532,10 @@
                               <span id="detached-tc-geometry">900x240 · 置顶 · 可交互</span>
                             </div>
                           </div>
-                          <div class="detached-window-actions">
-                            <button type="button" class="detached-action-button" data-action="create-detached-tc" data-tooltip="打开或关闭转写窗口" title="打开或关闭转写窗口" aria-label="打开或关闭转写窗口"><span class="sr-only">开关</span></button>
-                            <button type="button" class="detached-action-button" data-action="show-detached-tc" data-tooltip="显示转写窗口" title="显示转写窗口" aria-label="显示转写窗口"><span class="sr-only">显示</span></button>
-                            <button type="button" class="detached-action-button" data-action="hide-detached-tc" data-tooltip="隐藏转写窗口" title="隐藏转写窗口" aria-label="隐藏转写窗口"><span class="sr-only">隐藏</span></button>
-                            <button type="button" class="detached-action-button detached-action-danger" data-action="close-detached-tc" data-tooltip="关闭转写窗口" title="关闭转写窗口" aria-label="关闭转写窗口"><span class="sr-only">关闭</span></button>
-                            <button type="button" class="detached-action-button" data-action="open-detached-settings-tc" data-tooltip="转写窗口设置" title="转写窗口设置" aria-label="转写窗口设置"><span class="sr-only">设置</span></button>
+                          <div class="detached-window-actions" data-detached-actions="tc">
+                            <button type="button" class="detached-action-button detached-action-primary" data-detached-toggle="tc" data-action="create-detached-tc">打开窗口</button>
+                            <button type="button" class="detached-action-button detached-action-secondary is-hidden" data-detached-visibility="tc" data-action="hide-detached-tc">隐藏</button>
+                            <button type="button" class="detached-action-button detached-action-secondary" data-action="open-detached-settings-tc">设置</button>
                           </div>
                         </div>
                         <div class="form-grid detached-config-mini-grid">
@@ -564,12 +562,10 @@
                               <span id="detached-tl-geometry">900x240 · 置顶 · 可交互</span>
                             </div>
                           </div>
-                          <div class="detached-window-actions">
-                            <button type="button" class="detached-action-button" data-action="create-detached-tl" data-tooltip="打开或关闭翻译窗口" title="打开或关闭翻译窗口" aria-label="打开或关闭翻译窗口"><span class="sr-only">开关</span></button>
-                            <button type="button" class="detached-action-button" data-action="show-detached-tl" data-tooltip="显示翻译窗口" title="显示翻译窗口" aria-label="显示翻译窗口"><span class="sr-only">显示</span></button>
-                            <button type="button" class="detached-action-button" data-action="hide-detached-tl" data-tooltip="隐藏翻译窗口" title="隐藏翻译窗口" aria-label="隐藏翻译窗口"><span class="sr-only">隐藏</span></button>
-                            <button type="button" class="detached-action-button detached-action-danger" data-action="close-detached-tl" data-tooltip="关闭翻译窗口" title="关闭翻译窗口" aria-label="关闭翻译窗口"><span class="sr-only">关闭</span></button>
-                            <button type="button" class="detached-action-button" data-action="open-detached-settings-tl" data-tooltip="翻译窗口设置" title="翻译窗口设置" aria-label="翻译窗口设置"><span class="sr-only">设置</span></button>
+                          <div class="detached-window-actions" data-detached-actions="tl">
+                            <button type="button" class="detached-action-button detached-action-primary" data-detached-toggle="tl" data-action="create-detached-tl">打开窗口</button>
+                            <button type="button" class="detached-action-button detached-action-secondary is-hidden" data-detached-visibility="tl" data-action="hide-detached-tl">隐藏</button>
+                            <button type="button" class="detached-action-button detached-action-secondary" data-action="open-detached-settings-tl">设置</button>
                           </div>
                         </div>
                         <div class="form-grid detached-config-mini-grid">
