@@ -98,6 +98,17 @@ class MainWindowControllerTests(unittest.TestCase):
         self.assertTrue(bridge.window.brought)
         self.assertTrue(bridge.window.shown)
 
+    def test_loaded_event_shows_main_window_when_startup_is_pending(self) -> None:
+        settings = FakeSettings()
+        bridge = FakeBridge()
+        controller = MainWindowController(bridge, settings)
+        bridge.window = FakeWindow()
+
+        with patch.object(controller, "show_main_window") as show_main_window:
+            controller.on_main_window_loaded()
+
+        show_main_window.assert_called_once()
+
     def test_hide_main_window_to_tray_requires_tray(self) -> None:
         settings = FakeSettings()
         bridge = FakeBridge()

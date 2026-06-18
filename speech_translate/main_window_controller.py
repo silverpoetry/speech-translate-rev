@@ -55,7 +55,7 @@ class MainWindowController:
         if hasattr(window.events, "shown"):
             window.events.shown += lambda *_: self.on_main_window_shown(window)
         if hasattr(window.events, "loaded"):
-            window.events.loaded += lambda *_: self.log_startup_marker("main_window_loaded")
+            window.events.loaded += lambda *_: self.on_main_window_loaded()
         if hasattr(window.events, "closing"):
             window.events.closing += lambda *_: self.on_main_window_closing(window)
         if hasattr(window.events, "closed"):
@@ -68,6 +68,11 @@ class MainWindowController:
             except Exception:
                 pass
         self.log_startup_marker("main_window_shown")
+
+    def on_main_window_loaded(self) -> None:
+        self.log_startup_marker("main_window_loaded")
+        if not self.main_window_show_allowed:
+            self.show_main_window()
 
     def show_main_window(self) -> None:
         self.main_window_show_allowed = True
