@@ -14,6 +14,8 @@ from speech_translate.controller_protocols import (
 )
 from speech_translate.detached_window_api import DetachedWindowApi, RecordingWindowApi
 from speech_translate.detached_window_geometry import (
+    DETACHED_MIN_HEIGHT,
+    DETACHED_MIN_WIDTH,
     log_detached_window_loaded_geometry,
     persist_detached_window_placement,
     resolve_detached_window_placement,
@@ -29,6 +31,7 @@ from speech_translate.detached_window_settings import (
 from speech_translate.detached_window_runtime import DetachedWindowDeliveryRuntime
 from speech_translate.log_helpers import logger
 from speech_translate.webview_runtime import load_webview_runtime
+from speech_translate.window_geometry import WindowPlacement, apply_native_window_placement
 
 
 def build_detached_config(settings_cache: Mapping[str, object], mode: object) -> JsonDict:
@@ -59,6 +62,7 @@ class DetachedWindowManager:
         self._content_sender_busy = self.runtime.content_sender_busy
         self.recording_window: WebviewWindowLike | None = None
         self.pending_recording_payload: JsonDict | None = None
+        self._requested_placements: dict[str, WindowPlacement] = {}
 
     def has_window(self, mode: str) -> bool:
         return normalize_detached_mode(mode) in self.windows
@@ -104,6 +108,7 @@ class DetachedWindowManager:
         if mode in self.windows:
             self.windows.pop(mode, None)
             self.runtime.drop_window_ref(mode)
+            self._requested_placements.pop(mode, None)
             logger.debug(f"Dropped detached window reference: {mode}")
 
     def _start_content_sender(self, mode: str) -> None:
@@ -200,6 +205,7 @@ class DetachedWindowManager:
                 width=width,
                 height=height,
             )
+            self._requested_placements[mode] = WindowPlacement(width=width, height=height, x=x, y=y)
 
             cache_value = None
             pos_cache = None
@@ -243,6 +249,16 @@ class DetachedWindowManager:
     def _on_window_loaded(self, mode: str) -> None:
         self.runtime.mark_window_loaded(mode, True)
         self.runtime.mark_window_content_ready(mode, False)
+        requested = self._requested_placements.get(mode)
+        if requested is not None:
+            try:
+                apply_native_window_placement(getattr(self.windows.get(mode), "native", None), requested)
+                logger.info(
+                    f"[DetachedGeometry][normalize-loaded] mode={mode} "
+                    f"target={requested.width}x{requested.height} pos={requested.x},{requested.y}"
+                )
+            except Exception:
+                logger.exception(f"[DetachedGeometry][normalize-loaded] failed mode={mode}")
         log_detached_window_loaded_geometry(mode, self.windows.get(mode))
         self._flush_pending(mode, include_content=False)
 

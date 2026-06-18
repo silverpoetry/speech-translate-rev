@@ -135,6 +135,10 @@ def _clamp_window_size(width: int, height: int) -> tuple[int, int]:
     return max(MIN_WINDOW_WIDTH, int(width)), max(MIN_WINDOW_HEIGHT, int(height))
 
 
+def clamp_window_size(width: int, height: int, *, min_width: int, min_height: int) -> tuple[int, int]:
+    return max(int(min_width), int(width)), max(int(min_height), int(height))
+
+
 def _limit_size_to_screen(width: int, height: int, *, metrics: MetricsProvider) -> tuple[int, int]:
     if metrics.platform_name() != "Windows":
         return width, height
@@ -166,6 +170,8 @@ def parse_window_size(
     default_width: int,
     default_height: int,
     *,
+    min_width: int = MIN_WINDOW_WIDTH,
+    min_height: int = MIN_WINDOW_HEIGHT,
     metrics: MetricsProvider = DEFAULT_METRICS_PROVIDER,
 ) -> tuple[int, int]:
     text = str(raw_value or "").strip().lower()
@@ -173,7 +179,7 @@ def parse_window_size(
     if not match:
         return default_width, default_height
 
-    width, height = _clamp_window_size(int(match.group(1)), int(match.group(2)))
+    width, height = clamp_window_size(int(match.group(1)), int(match.group(2)), min_width=min_width, min_height=min_height)
     return _limit_size_to_screen(width, height, metrics=metrics)
 
 
@@ -240,9 +246,18 @@ def resolve_window_placement(
     raw_position: Any = None,
     x: int | None = None,
     y: int | None = None,
+    min_width: int = MIN_WINDOW_WIDTH,
+    min_height: int = MIN_WINDOW_HEIGHT,
     metrics: MetricsProvider = DEFAULT_METRICS_PROVIDER,
 ) -> WindowPlacement:
-    width, height = parse_window_size(raw_size, default_width, default_height, metrics=metrics)
+    width, height = parse_window_size(
+        raw_size,
+        default_width,
+        default_height,
+        min_width=min_width,
+        min_height=min_height,
+        metrics=metrics,
+    )
     parsed_x, parsed_y = parse_window_position(raw_position)
     if x is None:
         x = parsed_x
@@ -441,6 +456,7 @@ __all__ = [
     "WINDOW_SCREEN_MARGIN_X",
     "WINDOW_SCREEN_MARGIN_Y",
     "apply_native_window_placement",
+    "clamp_window_size",
     "center_window_pos",
     "clamp_window_position",
     "ensure_visible_or_center",

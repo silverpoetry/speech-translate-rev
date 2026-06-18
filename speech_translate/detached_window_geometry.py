@@ -12,6 +12,9 @@ from speech_translate.window_geometry import (
     resolve_window_placement,
 )
 
+DETACHED_MIN_WIDTH = 200
+DETACHED_MIN_HEIGHT = 80
+
 
 def resolve_detached_window_placement(
     settings: SettingsStore | None,
@@ -34,6 +37,8 @@ def resolve_detached_window_placement(
         900,
         240,
         raw_position=position_cache,
+        min_width=DETACHED_MIN_WIDTH,
+        min_height=DETACHED_MIN_HEIGHT,
     )
     resolved_width = int(width) if width is not None else cached_placement.width
     resolved_height = int(height) if height is not None else cached_placement.height
@@ -45,6 +50,8 @@ def resolve_detached_window_placement(
         raw_position=position_cache,
         x=x,
         y=y,
+        min_width=DETACHED_MIN_WIDTH,
+        min_height=DETACHED_MIN_HEIGHT,
     )
     return placement.width, placement.height, placement.x, placement.y
 
