@@ -418,6 +418,7 @@ const PROMPT_LANG_NAMES = {
 
 const DETACHED_WINDOW_PANEL_DEFAULTS = {
   ex_tc_geometry: '900x240',
+  ex_tc_pos: '',
   ex_tc_always_on_top: true,
   ex_tc_no_title_bar: true,
   ex_tc_click_through: false,
@@ -433,6 +434,7 @@ const DETACHED_WINDOW_PANEL_DEFAULTS = {
   tb_ex_tc_max_per_line: 30,
   tb_ex_tc_use_conf_color: true,
   ex_tl_geometry: '900x240',
+  ex_tl_pos: '',
   ex_tl_always_on_top: true,
   ex_tl_no_title_bar: true,
   ex_tl_click_through: false,
@@ -453,19 +455,39 @@ const DETACHED_WINDOW_PANEL_KEYS = Object.keys(DETACHED_WINDOW_PANEL_DEFAULTS);
 const DETACHED_WINDOW_MIRROR_PAIRS = {
   tc: [
     ['ex_tc_geometry_main', 'ex_tc_geometry'],
+    ['ex_tc_pos_main', 'ex_tc_pos'],
     ['ex_tc_opacity_main', 'ex_tc_opacity'],
+    ['tb_ex_tc_font_main', 'tb_ex_tc_font'],
+    ['tb_ex_tc_font_size_main', 'tb_ex_tc_font_size'],
+    ['tb_ex_tc_font_color_main', 'tb_ex_tc_font_color'],
+    ['tb_ex_tc_bg_color_main', 'tb_ex_tc_bg_color'],
+    ['tb_ex_tc_max_main', 'tb_ex_tc_max'],
+    ['tb_ex_tc_max_per_line_main', 'tb_ex_tc_max_per_line'],
     ['ex_tc_always_on_top_main', 'ex_tc_always_on_top'],
     ['ex_tc_no_title_bar_main', 'ex_tc_no_title_bar'],
     ['ex_tc_click_through_main', 'ex_tc_click_through'],
     ['tb_ex_tc_use_conf_color_main', 'tb_ex_tc_use_conf_color'],
+    ['tb_ex_tc_font_bold_main', 'tb_ex_tc_font_bold'],
+    ['tb_ex_tc_limit_max_main', 'tb_ex_tc_limit_max'],
+    ['tb_ex_tc_limit_max_per_line_main', 'tb_ex_tc_limit_max_per_line'],
   ],
   tl: [
     ['ex_tl_geometry_main', 'ex_tl_geometry'],
+    ['ex_tl_pos_main', 'ex_tl_pos'],
     ['ex_tl_opacity_main', 'ex_tl_opacity'],
+    ['tb_ex_tl_font_main', 'tb_ex_tl_font'],
+    ['tb_ex_tl_font_size_main', 'tb_ex_tl_font_size'],
+    ['tb_ex_tl_font_color_main', 'tb_ex_tl_font_color'],
+    ['tb_ex_tl_bg_color_main', 'tb_ex_tl_bg_color'],
+    ['tb_ex_tl_max_main', 'tb_ex_tl_max'],
+    ['tb_ex_tl_max_per_line_main', 'tb_ex_tl_max_per_line'],
     ['ex_tl_always_on_top_main', 'ex_tl_always_on_top'],
     ['ex_tl_no_title_bar_main', 'ex_tl_no_title_bar'],
     ['ex_tl_click_through_main', 'ex_tl_click_through'],
     ['tb_ex_tl_use_conf_color_main', 'tb_ex_tl_use_conf_color'],
+    ['tb_ex_tl_font_bold_main', 'tb_ex_tl_font_bold'],
+    ['tb_ex_tl_limit_max_main', 'tb_ex_tl_limit_max'],
+    ['tb_ex_tl_limit_max_per_line_main', 'tb_ex_tl_limit_max_per_line'],
   ],
 };
 
@@ -933,6 +955,26 @@ function resolveFileProcessingSummary() {
   };
 }
 
+function updateDetachedLimitPolicy(mode) {
+  const normalized = normalizeDetachedMode(mode);
+  const prefix = normalized === 'tl' ? 'tl' : 'tc';
+  const limitMax = Boolean(readInputValue($(`tb_ex_${prefix}_limit_max_main`), false));
+  const limitLine = Boolean(readInputValue($(`tb_ex_${prefix}_limit_max_per_line_main`), false));
+  const policy = limitMax && limitLine
+    ? '最大字符 + 每行'
+    : limitMax
+      ? '最大字符'
+      : limitLine
+        ? '每行'
+        : '关闭';
+  writeInputValue($(`tb_ex_${prefix}_limit_policy_main`), policy, '关闭');
+}
+
+function updateDetachedLimitPolicies() {
+  updateDetachedLimitPolicy('tc');
+  updateDetachedLimitPolicy('tl');
+}
+
 function renderSettings(data) {
   const settings = data.settings || {};
   for (const [key, fallback] of Object.entries(DETACHED_WINDOW_PANEL_DEFAULTS)) {
@@ -952,6 +994,7 @@ function renderSettings(data) {
       writeInputValue(mirrorNode, readInputValue(sourceNode, ''), '');
     }
   }
+  updateDetachedLimitPolicies();
   if (els.dirExport) {
     els.dirExport.value = settings.dir_export ?? 'auto';
   }
@@ -1848,19 +1891,30 @@ function renderDetachedWindowOverview(data) {
     const labelPrefix = mode === 'tc' ? '转写' : '翻译';
     const toggleButton = document.querySelector(`button[data-detached-toggle="${mode}"]`);
     if (toggleButton) {
-      toggleButton.textContent = open ? '关闭窗口' : '打开窗口';
       toggleButton.dataset.action = open ? `close-detached-${mode}` : `create-detached-${mode}`;
       toggleButton.classList.toggle('detached-action-danger', open);
       toggleButton.classList.toggle('detached-action-primary', !open);
+      toggleButton.classList.toggle('icon-action-primary', !open);
       toggleButton.setAttribute('aria-label', open ? `关闭${labelPrefix}窗口` : `打开${labelPrefix}窗口`);
+      toggleButton.setAttribute('title', open ? `关闭${labelPrefix}窗口` : `打开${labelPrefix}窗口`);
+      const icon = toggleButton.querySelector('.btn-glyph, .icon');
+      if (icon) {
+        icon.classList.toggle('glyph-close', open);
+        icon.classList.toggle(`glyph-detach-${mode}`, !open);
+      }
     }
 
     const visibilityButton = document.querySelector(`button[data-detached-visibility="${mode}"]`);
     if (visibilityButton) {
       visibilityButton.classList.toggle('is-hidden', !open);
-      visibilityButton.textContent = visible ? '隐藏' : '显示';
       visibilityButton.dataset.action = visible ? `hide-detached-${mode}` : `show-detached-${mode}`;
       visibilityButton.setAttribute('aria-label', visible ? `隐藏${labelPrefix}窗口` : `显示${labelPrefix}窗口`);
+      visibilityButton.setAttribute('title', visible ? `隐藏${labelPrefix}窗口` : `显示${labelPrefix}窗口`);
+      const icon = visibilityButton.querySelector('.btn-glyph, .icon');
+      if (icon) {
+        icon.classList.toggle('glyph-eye-off', visible);
+        icon.classList.toggle('glyph-eye', !visible);
+      }
     }
   }
 }
@@ -2422,7 +2476,7 @@ function renderGlobalStatusBar(task, data, recordingState = null) {
   }
   if (els.realtimeRecordingBuffer) {
     const bufferText = recordingState?.buffer || `${recordingState?.buffer_seconds || 0}/${recordingState?.max_buffer_seconds || 0}s`;
-    els.realtimeRecordingBuffer.textContent = `缓冲 ${bufferText}`;
+    els.realtimeRecordingBuffer.textContent = bufferText;
   }
   if (els.realtimeRecordingSentences) {
     els.realtimeRecordingSentences.textContent = recordingState?.sentences || '0';
@@ -3296,8 +3350,7 @@ const AUTO_SAVE_BUCKETS = {
     'path_filter_file_import',
   ]),
   detachedMain: new Set([
-    'ex_tc_geometry_main', 'ex_tc_opacity_main', 'ex_tc_always_on_top_main', 'ex_tc_no_title_bar_main', 'ex_tc_click_through_main', 'tb_ex_tc_use_conf_color_main',
-    'ex_tl_geometry_main', 'ex_tl_opacity_main', 'ex_tl_always_on_top_main', 'ex_tl_no_title_bar_main', 'ex_tl_click_through_main', 'tb_ex_tl_use_conf_color_main'
+    ...Object.values(DETACHED_WINDOW_MIRROR_PAIRS).flat().map(([mirrorId]) => mirrorId),
   ]),
   record: new Set([
     'verbose_record', 'model_device_preference', 'transcribe_rate', 'separate_with',
@@ -3386,6 +3439,7 @@ function bindAutoSaveEvents() {
       const mode = getDetachedMirrorMode(target.id || '');
       if (mode) {
         syncDetachedMirrorControls(mode);
+        updateDetachedLimitPolicy(mode);
       }
       scheduleAutoSave('settings', () => saveSettings(false));
     } else if (bucket === 'record') {
@@ -3406,6 +3460,7 @@ function bindAutoSaveEvents() {
       const mode = getDetachedMirrorMode(target.id || '');
       if (mode) {
         syncDetachedMirrorControls(mode);
+        updateDetachedLimitPolicy(mode);
       }
       scheduleAutoSave('settings', () => saveSettings(false));
       return;

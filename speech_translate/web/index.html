@@ -343,250 +343,198 @@
             </article>
 
             <article class="workflow-card tab-panel is-active" id="tab-realtime" role="tabpanel">
-              <section class="panel-card core-card">
-                <div class="section-head realtime-page-head">
+              <section class="frame frame-main" aria-label="实时转写主工作区">
+                <header class="work-header">
                   <div>
-                    <h3>实时转写</h3>
-                    <p>录制、转写与翻译输出</p>
+                    <h1>实时转写</h1>
                   </div>
-                  <div class="realtime-head-actions">
-                    <button class="btn-icon" data-action="create-detached-tc" data-tooltip="打开转写独立窗口"
-                      title="打开转写独立窗口"><span class="btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
-                    <button class="btn-icon btn-icon-blue" data-action="create-detached-tl" data-tooltip="打开翻译独立窗口"
-                      title="打开翻译独立窗口"><span class="btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
+                  <div class="header-actions realtime-head-actions" aria-label="独立窗口快捷入口">
+                    <button class="icon-action" data-action="create-detached-tc" data-tooltip="打开转写独立窗口"
+                      title="打开转写独立窗口" aria-label="打开转写独立窗口"><span class="icon btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
+                    <button class="icon-action" data-action="create-detached-tl" data-tooltip="打开翻译独立窗口"
+                      title="打开翻译独立窗口" aria-label="打开翻译独立窗口"><span class="icon btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
                   </div>
-                </div>
+                </header>
 
-                <div class="realtime-session-bar">
-                  <div class="realtime-session-actions">
-                    <button class="primary btn-with-icon btn-recording" data-action="start-recording"
-                      id="btn-recording-toggle">开始录制</button>
-                    <label class="toggle-row"><input id="transcribe_mw" type="checkbox" checked /> 转写</label>
-                    <label class="toggle-row"><input id="translate_mw" type="checkbox" checked /> 翻译</label>
+                <section class="surface-panel hero-panel realtime-vnext-core">
+                  <div class="realtime-toolbar" aria-label="实时控制">
+                    <button class="record-action" data-action="start-recording" id="btn-recording-toggle">
+                      <span class="record-dot" aria-hidden="true"></span>
+                      <span>开始录制</span>
+                    </button>
+                    <div class="mode-toggles" aria-label="输出开关">
+                      <label class="switch-control"><input id="transcribe_mw" type="checkbox" checked /><span></span><b>转写</b></label>
+                      <label class="switch-control"><input id="translate_mw" type="checkbox" checked /><span></span><b>翻译</b></label>
+                    </div>
+                    <div class="audio-meter record-visualizer-card realtime-live-meter" id="record_visualizer_card" aria-live="polite">
+                      <div class="meter-label record-visualizer-head">
+                        <span id="record_visualizer_label">等待录制</span>
+                        <strong id="record_visualizer_db">- dB</strong>
+                      </div>
+                      <div class="meter-track record-visualizer-track" aria-hidden="true">
+                        <div class="record-visualizer-threshold" id="record_visualizer_threshold"></div>
+                        <div class="meter-fill record-visualizer-fill" id="record_visualizer_fill"></div>
+                      </div>
+                      <div class="record-visualizer-meta sr-only">
+                        <span id="record_visualizer_threshold_text">阈值 - dB</span>
+                      </div>
+                    </div>
                   </div>
-                  <div class="record-visualizer-card realtime-live-meter" id="record_visualizer_card" aria-live="polite">
-                    <div class="record-visualizer-head">
-                      <span id="record_visualizer_label">等待录制</span>
-                    </div>
-                    <div class="record-visualizer-track" aria-hidden="true">
-                      <div class="record-visualizer-threshold" id="record_visualizer_threshold"></div>
-                      <div class="record-visualizer-fill" id="record_visualizer_fill"></div>
-                    </div>
-                    <div class="record-visualizer-meta">
-                      <span id="record_visualizer_db">-</span>
-                      <span id="record_visualizer_threshold_text">阈值 - dB</span>
-                    </div>
-                  </div>
-                </div>
 
-                <div class="realtime-runtime-strip" aria-label="实时录制概览">
-                  <div class="realtime-runtime-item realtime-runtime-item-wide">
-                    <span class="realtime-runtime-label">状态</span>
-                    <span class="realtime-runtime-value" id="realtime-task-state">空闲</span>
-                    <span class="realtime-runtime-meta" id="realtime-task-message">等待任务</span>
+                  <div class="status-strip realtime-runtime-strip" aria-label="实时录制概览">
+                    <span class="status-chip status-chip-strong realtime-runtime-item realtime-runtime-item-wide"><i aria-hidden="true"></i><span id="realtime-task-state">空闲</span><span class="sr-only" id="realtime-task-message">等待任务</span></span>
+                    <span class="status-chip realtime-runtime-item"><small>模型</small><span id="main-model-pill">未设置</span><span class="status-dot">·</span><span id="realtime-model-state">未加载</span><span class="sr-only" id="realtime-model-meta">等待同步</span><span class="sr-only" id="main-input-pill">未设置</span></span>
+                    <span class="status-chip realtime-runtime-item"><small>语言</small><span id="main-lang-pill">未设置</span><span class="sr-only" id="main-engine-pill">已关闭</span></span>
+                    <span class="status-chip realtime-runtime-item"><small>录制</small><span id="realtime-recording-timer">--:--:--</span></span>
+                    <span class="status-chip realtime-runtime-item"><small>缓冲</small><span id="realtime-recording-buffer">0/0 sec</span></span>
+                    <span class="status-chip realtime-runtime-item"><small>句数</small><span id="realtime-recording-sentences">0</span></span>
+                    <span class="status-chip realtime-runtime-item"><small>输入</small><span id="realtime-recording-device">输入未绑定</span></span>
                   </div>
-                  <div class="realtime-runtime-item">
-                    <span class="realtime-runtime-label">模型</span>
-                    <span class="realtime-runtime-value" id="main-model-pill">未设置</span>
-                    <span class="realtime-runtime-meta"><span id="realtime-model-state">未加载</span><span class="sr-only" id="realtime-model-meta">等待同步</span> · <span id="main-input-pill">未设置</span></span>
-                  </div>
-                  <div class="realtime-runtime-item">
-                    <span class="realtime-runtime-label">语言</span>
-                    <span class="realtime-runtime-value" id="main-lang-pill">未设置</span>
-                    <span class="realtime-runtime-meta" id="main-engine-pill">已关闭</span>
-                  </div>
-                  <div class="realtime-runtime-item">
-                    <span class="realtime-runtime-label">录制</span>
-                    <span class="realtime-runtime-value" id="realtime-recording-timer">--:--:--</span>
-                    <span class="realtime-runtime-meta"><span id="realtime-recording-buffer">缓冲 0/0 sec</span> · <span id="realtime-recording-sentences">0</span> 句 · <span id="realtime-recording-device">输入未绑定</span></span>
-                  </div>
-                </div>
 
-                <div class="advanced-panel-body split-view transcript-shell">
-                  <section class="live-output-panel">
-                    <div class="live-output-panel-head">
-                      <div id="main-transcribed-label" class="live-output-preview-label">转写</div>
+                  <div class="output-grid transcript-shell" aria-label="实时输出">
+                    <article class="output-panel live-output-panel">
+                      <div class="output-head live-output-panel-head">
+                        <h2 id="main-transcribed-label" class="live-output-preview-label">转写</h2>
+                      </div>
+                      <div id="main-transcribed-output" class="output-body live-output is-preview">等待语音输入</div>
+                    </article>
+                    <article class="output-panel live-output-panel">
+                      <div class="output-head live-output-panel-head">
+                        <h2 id="main-translated-label" class="live-output-preview-label">翻译</h2>
+                      </div>
+                      <div id="main-translated-output" class="output-body live-output is-preview">等待翻译输出</div>
+                    </article>
+                  </div>
+                </section>
+              </section>
+
+              <section class="frame frame-config" aria-label="快速配置">
+                <div class="frame-grid dual-advanced-grid">
+                  <section class="surface-panel config-panel realtime-config-panel">
+                    <header class="panel-head">
+                      <div>
+                        <h2>设备配置</h2>
+                      </div>
+                      <div class="icon-row">
+                        <button class="icon-action" data-action="refresh-audio-devices" data-tooltip="刷新音频设备列表"
+                          title="刷新音频设备列表" aria-label="刷新音频设备列表"><span class="icon btn-glyph glyph-refresh" aria-hidden="true"></span></button>
+                        <button class="icon-action" data-action="save-settings" data-tooltip="保存实时配置"
+                          title="保存实时配置" aria-label="保存实时配置"><span class="icon btn-glyph glyph-save" aria-hidden="true"></span></button>
+                      </div>
+                    </header>
+                    <div class="field-grid two-col form-grid compact-form-grid">
+                      <label class="field">
+                        <span>输入</span>
+                        <select id="input_mode">
+                          <option value="mic">麦克风</option>
+                          <option value="speaker">扬声器</option>
+                        </select>
+                      </label>
+                      <label class="field"><span>主机 API</span><select id="hostAPI"></select></label>
+                      <label class="field"><span>麦克风</span><select id="mic"></select></label>
+                      <label class="field"><span>扬声器</span><select id="speaker"></select></label>
                     </div>
-                    <div id="main-transcribed-output" class="live-output is-preview">等待语音输入</div>
                   </section>
-                  <section class="live-output-panel">
-                    <div class="live-output-panel-head">
-                      <div id="main-translated-label" class="live-output-preview-label">翻译</div>
+
+                  <section class="surface-panel config-panel realtime-config-panel">
+                    <header class="panel-head">
+                      <div>
+                        <h2>语言配置</h2>
+                      </div>
+                      <button class="icon-action" data-action="save-settings" data-tooltip="保存实时配置"
+                        title="保存实时配置" aria-label="保存实时配置"><span class="icon btn-glyph glyph-save" aria-hidden="true"></span></button>
+                    </header>
+                    <div class="field-grid language-grid form-grid compact-form-grid realtime-language-form">
+                      <label class="field"><span>源语言</span><select id="source_lang_mw"></select></label>
+                      <label class="field"><span>目标语言</span><select id="target_lang_mw"></select></label>
+                      <label class="field span-2 field-span-2"><span>翻译引擎</span><select id="tl_engine_mw"></select></label>
                     </div>
-                    <div id="main-translated-output" class="live-output is-preview">等待翻译输出</div>
                   </section>
                 </div>
               </section>
 
-              <div class="dual-advanced-grid">
-                <details class="advanced-panel panel-card realtime-config-panel" open>
-                  <summary>
-                    <span class="settings-panel-heading">
-                      <span class="settings-panel-title">设备配置</span>
-                      <span class="settings-panel-meta">输入与设备</span>
-                    </span>
-                  </summary>
-                  <div class="floating-action-row">
-                    <button class="btn-icon btn-icon-blue" data-action="refresh-audio-devices" data-tooltip="刷新音频设备列表"
-                      title="刷新音频设备列表"><span class="btn-glyph glyph-refresh" aria-hidden="true"></span></button>
-                    <button class="btn-icon" data-action="save-settings" data-tooltip="保存实时配置" title="保存实时配置"><span
-                        class="btn-glyph glyph-save" aria-hidden="true"></span></button>
-                  </div>
-                  <div class="advanced-panel-body">
-                    <div class="realtime-config-grid">
-                      <section class="realtime-config-group">
-                        <div class="realtime-config-group-head">
-                          <span class="realtime-config-group-title">采集入口</span>
-                        </div>
-                        <div class="form-grid compact-form-grid">
-                          <label>
-                            <span>输入</span>
-                            <select id="input_mode">
-                              <option value="mic">麦克风</option>
-                              <option value="speaker">扬声器</option>
-                            </select>
-                          </label>
-                          <label>
-                            <span>主机 API</span>
-                            <select id="hostAPI"></select>
-                          </label>
-                        </div>
-                      </section>
-                      <section class="realtime-config-group">
-                        <div class="realtime-config-group-head">
-                          <span class="realtime-config-group-title">设备路由</span>
-                        </div>
-                        <div class="form-grid compact-form-grid">
-                          <label>
-                            <span>麦克风</span>
-                            <select id="mic"></select>
-                          </label>
-                          <label>
-                            <span>扬声器</span>
-                            <select id="speaker"></select>
-                          </label>
-                        </div>
-                      </section>
+              <section class="frame frame-detached" aria-label="独立窗口">
+                <section class="surface-panel detached-workbench detached-workbench-panel">
+                  <header class="panel-head detached-head">
+                    <div>
+                      <h2>独立窗口</h2>
                     </div>
-                  </div>
-                </details>
+                  </header>
+                  <div class="detached-grid detached-workbench-grid">
+                    <article class="detached-card detached-workbench-card">
+                      <div class="detached-card-head detached-window-row-head">
+                        <div>
+                          <h3>转写窗口 <span>TC</span></h3>
+                          <p><i aria-hidden="true"></i><span id="detached-tc-state">未打开</span> · <span id="detached-tc-geometry">900x240 · 置顶 · 可交互</span></p>
+                        </div>
+                        <div class="icon-row detached-window-actions" data-detached-actions="tc">
+                          <button type="button" class="icon-action icon-action-primary detached-action-button detached-action-primary" data-detached-toggle="tc" data-action="create-detached-tc" title="打开转写窗口" aria-label="打开转写窗口"><span class="icon btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
+                          <button type="button" class="icon-action detached-action-button detached-action-secondary is-hidden" data-detached-visibility="tc" data-action="hide-detached-tc" title="隐藏转写窗口" aria-label="隐藏转写窗口"><span class="icon btn-glyph glyph-eye-off" aria-hidden="true"></span></button>
+                          <button type="button" class="icon-action detached-action-button detached-action-secondary" data-action="open-detached-settings-tc" title="转写窗口设置" aria-label="转写窗口设置"><span class="icon btn-glyph glyph-settings" aria-hidden="true"></span></button>
+                        </div>
+                      </div>
+                      <div class="detached-control-grid form-grid detached-config-mini-grid">
+                        <label class="field"><span>尺寸</span><input id="ex_tc_geometry_main" type="text" placeholder="900x240" /></label>
+                        <label class="field"><span>位置</span><input id="ex_tc_pos_main" type="text" placeholder="auto" /></label>
+                        <label class="field"><span>透明度</span><input id="ex_tc_opacity_main" type="range" min="0.1" max="1" step="0.05" /></label>
+                        <label class="field"><span>字体</span><input id="tb_ex_tc_font_main" type="text" placeholder="Arial" /></label>
+                        <label class="field"><span>字号</span><input id="tb_ex_tc_font_size_main" type="number" min="8" max="96" step="1" /></label>
+                        <label class="field"><span>字色</span><input id="tb_ex_tc_font_color_main" type="text" placeholder="#FFFFFF" /></label>
+                        <label class="field"><span>背景</span><input id="tb_ex_tc_bg_color_main" type="text" placeholder="#000000" /></label>
+                        <label class="field"><span>最大字符</span><input id="tb_ex_tc_max_main" type="number" min="1" step="1" /></label>
+                        <label class="field"><span>每行长度</span><input id="tb_ex_tc_max_per_line_main" type="number" min="1" step="1" /></label>
+                        <label class="field"><span>限制策略</span><input id="tb_ex_tc_limit_policy_main" type="text" value="关闭" readonly tabindex="-1" /></label>
+                      </div>
+                      <div class="detached-toggle-grid">
+                        <label class="switch-control toggle-row"><input id="ex_tc_always_on_top_main" type="checkbox" /><span></span><b>置顶</b></label>
+                        <label class="switch-control toggle-row"><input id="ex_tc_no_title_bar_main" type="checkbox" /><span></span><b>无标题栏</b></label>
+                        <label class="switch-control toggle-row"><input id="ex_tc_click_through_main" type="checkbox" /><span></span><b>点击穿透</b></label>
+                        <label class="switch-control toggle-row"><input id="tb_ex_tc_use_conf_color_main" type="checkbox" /><span></span><b>置信度颜色</b></label>
+                        <label class="switch-control toggle-row"><input id="tb_ex_tc_font_bold_main" type="checkbox" /><span></span><b>粗体</b></label>
+                        <label class="switch-control toggle-row"><input id="tb_ex_tc_limit_max_main" type="checkbox" /><span></span><b>限制字符</b></label>
+                        <label class="switch-control toggle-row"><input id="tb_ex_tc_limit_max_per_line_main" type="checkbox" /><span></span><b>限制每行</b></label>
+                      </div>
+                      <input id="ex_tc_pos" type="hidden" />
+                    </article>
 
-                <details class="advanced-panel panel-card realtime-config-panel" open>
-                  <summary>
-                    <span class="settings-panel-heading">
-                      <span class="settings-panel-title">语言配置</span>
-                      <span class="settings-panel-meta">识别与翻译</span>
-                    </span>
-                  </summary>
-                  <div class="floating-action-row">
-                    <button class="btn-icon" data-action="save-settings" data-tooltip="保存实时配置" title="保存实时配置"><span
-                        class="btn-glyph glyph-save" aria-hidden="true"></span></button>
+                    <article class="detached-card detached-workbench-card">
+                      <div class="detached-card-head detached-window-row-head">
+                        <div>
+                          <h3>翻译窗口 <span>TL</span></h3>
+                          <p><i aria-hidden="true"></i><span id="detached-tl-state">未打开</span> · <span id="detached-tl-geometry">900x240 · 置顶 · 可交互</span></p>
+                        </div>
+                        <div class="icon-row detached-window-actions" data-detached-actions="tl">
+                          <button type="button" class="icon-action icon-action-primary detached-action-button detached-action-primary" data-detached-toggle="tl" data-action="create-detached-tl" title="打开翻译窗口" aria-label="打开翻译窗口"><span class="icon btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
+                          <button type="button" class="icon-action detached-action-button detached-action-secondary is-hidden" data-detached-visibility="tl" data-action="hide-detached-tl" title="隐藏翻译窗口" aria-label="隐藏翻译窗口"><span class="icon btn-glyph glyph-eye-off" aria-hidden="true"></span></button>
+                          <button type="button" class="icon-action detached-action-button detached-action-secondary" data-action="open-detached-settings-tl" title="翻译窗口设置" aria-label="翻译窗口设置"><span class="icon btn-glyph glyph-settings" aria-hidden="true"></span></button>
+                        </div>
+                      </div>
+                      <div class="detached-control-grid form-grid detached-config-mini-grid">
+                        <label class="field"><span>尺寸</span><input id="ex_tl_geometry_main" type="text" placeholder="960x280" /></label>
+                        <label class="field"><span>位置</span><input id="ex_tl_pos_main" type="text" placeholder="auto" /></label>
+                        <label class="field"><span>透明度</span><input id="ex_tl_opacity_main" type="range" min="0.1" max="1" step="0.05" /></label>
+                        <label class="field"><span>字体</span><input id="tb_ex_tl_font_main" type="text" placeholder="Arial" /></label>
+                        <label class="field"><span>字号</span><input id="tb_ex_tl_font_size_main" type="number" min="8" max="96" step="1" /></label>
+                        <label class="field"><span>字色</span><input id="tb_ex_tl_font_color_main" type="text" placeholder="#FFFFFF" /></label>
+                        <label class="field"><span>背景</span><input id="tb_ex_tl_bg_color_main" type="text" placeholder="#000000" /></label>
+                        <label class="field"><span>最大字符</span><input id="tb_ex_tl_max_main" type="number" min="1" step="1" /></label>
+                        <label class="field"><span>每行长度</span><input id="tb_ex_tl_max_per_line_main" type="number" min="1" step="1" /></label>
+                        <label class="field"><span>限制策略</span><input id="tb_ex_tl_limit_policy_main" type="text" value="关闭" readonly tabindex="-1" /></label>
+                      </div>
+                      <div class="detached-toggle-grid">
+                        <label class="switch-control toggle-row"><input id="ex_tl_always_on_top_main" type="checkbox" /><span></span><b>置顶</b></label>
+                        <label class="switch-control toggle-row"><input id="ex_tl_no_title_bar_main" type="checkbox" /><span></span><b>无标题栏</b></label>
+                        <label class="switch-control toggle-row"><input id="ex_tl_click_through_main" type="checkbox" /><span></span><b>点击穿透</b></label>
+                        <label class="switch-control toggle-row"><input id="tb_ex_tl_use_conf_color_main" type="checkbox" /><span></span><b>置信度颜色</b></label>
+                        <label class="switch-control toggle-row"><input id="tb_ex_tl_font_bold_main" type="checkbox" /><span></span><b>粗体</b></label>
+                        <label class="switch-control toggle-row"><input id="tb_ex_tl_limit_max_main" type="checkbox" /><span></span><b>限制字符</b></label>
+                        <label class="switch-control toggle-row"><input id="tb_ex_tl_limit_max_per_line_main" type="checkbox" /><span></span><b>限制每行</b></label>
+                      </div>
+                      <input id="ex_tl_pos" type="hidden" />
+                    </article>
                   </div>
-                  <div class="advanced-panel-body">
-                    <div class="realtime-config-grid">
-                      <section class="realtime-config-group">
-                        <div class="realtime-config-group-head">
-                          <span class="realtime-config-group-title">识别链路</span>
-                        </div>
-                        <div class="form-grid compact-form-grid">
-                          <label>
-                            <span>源语言</span>
-                            <select id="source_lang_mw"></select>
-                          </label>
-                        </div>
-                      </section>
-                      <section class="realtime-config-group">
-                        <div class="realtime-config-group-head">
-                          <span class="realtime-config-group-title">翻译链路</span>
-                        </div>
-                        <div class="form-grid compact-form-grid">
-                          <label>
-                            <span>目标语言</span>
-                            <select id="target_lang_mw"></select>
-                          </label>
-                          <label>
-                            <span>翻译引擎</span>
-                            <select id="tl_engine_mw"></select>
-                          </label>
-                        </div>
-                      </section>
-                    </div>
-                  </div>
-                </details>
-
-                <details class="advanced-panel panel-card grid-span-all detached-workbench-panel" open>
-                  <summary>
-                    <span class="settings-panel-heading">
-                      <span class="settings-panel-title">独立窗口</span>
-                      <span class="settings-panel-meta">悬浮转写 / 翻译</span>
-                    </span>
-                  </summary>
-                  <div class="advanced-panel-body">
-                    <div class="detached-workbench-grid">
-                      <section class="detached-workbench-card">
-                        <div class="detached-window-row-head">
-                          <div>
-                            <div class="settings-section-title">转写窗口 (TC)</div>
-                            <div class="detached-window-state-line">
-                              <span id="detached-tc-state">未打开</span>
-                              <span id="detached-tc-geometry">900x240 · 置顶 · 可交互</span>
-                            </div>
-                          </div>
-                          <div class="detached-window-actions" data-detached-actions="tc">
-                            <button type="button" class="detached-action-button detached-action-primary" data-detached-toggle="tc" data-action="create-detached-tc">打开窗口</button>
-                            <button type="button" class="detached-action-button detached-action-secondary is-hidden" data-detached-visibility="tc" data-action="hide-detached-tc">隐藏</button>
-                            <button type="button" class="detached-action-button detached-action-secondary" data-action="open-detached-settings-tc">设置</button>
-                          </div>
-                        </div>
-                        <div class="form-grid detached-config-mini-grid">
-                          <label>
-                            <span>尺寸</span>
-                            <input id="ex_tc_geometry_main" type="text" placeholder="900x240" />
-                          </label>
-                          <label>
-                            <span>透明度</span>
-                            <input id="ex_tc_opacity_main" type="range" min="0.1" max="1" step="0.05" />
-                          </label>
-                          <label class="toggle-row"><input id="ex_tc_always_on_top_main" type="checkbox" /> 置顶</label>
-                          <label class="toggle-row"><input id="ex_tc_no_title_bar_main" type="checkbox" /> 无标题栏</label>
-                          <label class="toggle-row"><input id="ex_tc_click_through_main" type="checkbox" /> 点击穿透</label>
-                          <label class="toggle-row"><input id="tb_ex_tc_use_conf_color_main" type="checkbox" /> 置信度颜色</label>
-                        </div>
-                      </section>
-                      <section class="detached-workbench-card">
-                        <div class="detached-window-row-head">
-                          <div>
-                            <div class="settings-section-title">翻译窗口 (TL)</div>
-                            <div class="detached-window-state-line">
-                              <span id="detached-tl-state">未打开</span>
-                              <span id="detached-tl-geometry">900x240 · 置顶 · 可交互</span>
-                            </div>
-                          </div>
-                          <div class="detached-window-actions" data-detached-actions="tl">
-                            <button type="button" class="detached-action-button detached-action-primary" data-detached-toggle="tl" data-action="create-detached-tl">打开窗口</button>
-                            <button type="button" class="detached-action-button detached-action-secondary is-hidden" data-detached-visibility="tl" data-action="hide-detached-tl">隐藏</button>
-                            <button type="button" class="detached-action-button detached-action-secondary" data-action="open-detached-settings-tl">设置</button>
-                          </div>
-                        </div>
-                        <div class="form-grid detached-config-mini-grid">
-                          <label>
-                            <span>尺寸</span>
-                            <input id="ex_tl_geometry_main" type="text" placeholder="960x280" />
-                          </label>
-                          <label>
-                            <span>透明度</span>
-                            <input id="ex_tl_opacity_main" type="range" min="0.1" max="1" step="0.05" />
-                          </label>
-                          <label class="toggle-row"><input id="ex_tl_always_on_top_main" type="checkbox" /> 置顶</label>
-                          <label class="toggle-row"><input id="ex_tl_no_title_bar_main" type="checkbox" /> 无标题栏</label>
-                          <label class="toggle-row"><input id="ex_tl_click_through_main" type="checkbox" /> 点击穿透</label>
-                          <label class="toggle-row"><input id="tb_ex_tl_use_conf_color_main" type="checkbox" /> 置信度颜色</label>
-                        </div>
-                      </section>
-                    </div>
-                  </div>
-                </details>
-              </div>
+                </section>
+              </section>
             </article>
           </div>
         </section>
