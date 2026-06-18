@@ -4852,41 +4852,26 @@ textarea:focus {
   width: max-content;
 }
 
-.model-selection-inline-summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  align-items: start;
-}
-
-.model-selection-inline-row {
-  display: grid;
-  gap: 2px;
+.model-selection-runtime-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
-  padding: 2px 0 6px;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
 }
 
-.model-selection-inline-label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: #64748b;
-}
-
-.model-selection-inline-value {
+.model-selection-runtime-meta {
   min-width: 0;
-  font-size: 0.95rem;
-  font-weight: 600;
-  line-height: 1.28;
-  color: #0f172a;
-}
-
-.model-selection-inline-meta {
-  min-width: 0;
-  font-size: 0.7rem;
-  line-height: 1.38;
+  font-size: 0.74rem;
+  line-height: 1.35;
   color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-selection-main-actions {
+  align-items: center;
+  justify-content: space-between;
 }
 
 .model-selection-kicker,
@@ -5010,14 +4995,13 @@ textarea:focus {
 }
 
 #tab-model .model-manager-summary-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px 6px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(260px, 1.8fr) minmax(170px, 1fr) minmax(150px, 0.9fr);
+  gap: 6px 8px;
 }
 
 #tab-model .model-manager-summary-row .pill {
   justify-content: flex-start;
-  flex: 1 1 calc(50% - 6px);
   min-width: 0;
   max-width: 100%;
   min-height: 22px;
@@ -6359,17 +6343,12 @@ button.btn-icon:hover {
   line-height: 1.28;
 }
 
-#tab-model .model-selection-inline-summary {
-  gap: 12px;
+#tab-model .model-selection-runtime-row {
+  flex-wrap: nowrap;
 }
 
-#tab-model .model-selection-inline-value {
-  font-size: 0.9rem;
-}
-
-#tab-model .model-selection-inline-meta {
-  font-size: 0.68rem;
-  line-height: 1.34;
+#tab-model .model-selection-main-actions {
+  flex-wrap: nowrap;
 }
 
 #tab-model .model-selection-status-grid .status-overview-meta {

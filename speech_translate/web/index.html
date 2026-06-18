@@ -91,29 +91,13 @@
                         </label>
                       </div>
                       <div class="model-selection-main-foot">
-                        <div class="status-row compact-status-row">
-                          <span class="pill pill-muted" id="model-manager-dir-pill">模型目录</span>
+                        <div class="status-row compact-status-row model-selection-runtime-row" aria-label="运行状态">
+                          <span class="pill pill-muted" id="model-selection-runtime">运行：未加载</span>
+                          <span class="model-selection-runtime-meta" id="model-selection-runtime-meta">加载后在这里同步当前模型</span>
                         </div>
-                        <label class="toggle-row model-selection-inline-toggle"><input id="condition_on_previous_text" type="checkbox" />
-                          使用上一次输出作为提示</label>
-                        <div class="model-selection-inline-summary" aria-label="运行配置摘要">
-                          <div class="model-selection-inline-row">
-                            <span class="model-selection-inline-label">运行状态</span>
-                            <span class="model-selection-inline-value" id="model-selection-runtime">未加载</span>
-                            <span class="model-selection-inline-meta" id="model-selection-runtime-meta">加载后在这里同步当前模型</span>
-                          </div>
-                          <div class="model-selection-inline-row">
-                            <span class="model-selection-inline-label">设备策略</span>
-                            <span class="model-selection-inline-value" id="model-selection-device">AUTO</span>
-                            <span class="model-selection-inline-meta" id="model-selection-device-meta">自动选择可用设备</span>
-                          </div>
-                          <div class="model-selection-inline-row">
-                            <span class="model-selection-inline-label">缓存覆盖</span>
-                            <span class="model-selection-inline-value" id="model-selection-cache">自动检查中</span>
-                            <span class="model-selection-inline-meta" id="model-selection-cache-meta">启动后自动扫描当前后端的本地模型缓存</span>
-                          </div>
-                        </div>
-                        <div class="inline-actions compact-gap">
+                        <div class="inline-actions compact-gap model-selection-main-actions">
+                          <label class="toggle-row model-selection-inline-toggle"><input id="condition_on_previous_text" type="checkbox" />
+                            使用上一次输出作为提示</label>
                           <button type="button" class="btn-with-icon" data-action="pick-model-dir">设置模型目录</button>
                           <button type="button" class="btn-with-icon" data-open-dir="model">打开模型目录</button>
                         </div>
@@ -154,8 +138,8 @@
                       </div>
                       <div class="status-row import-status model-manager-summary-row">
                         <span class="pill pill-muted" id="model-manager-dir-pill">模型目录</span>
-                        <span class="pill pill-muted" id="model-manager-engine-pill">引擎</span>
                         <span class="pill pill-muted" id="model-manager-selection-pill">模型</span>
+                        <span class="pill pill-muted" id="model-manager-cache-pill">缓存</span>
                         <span class="pill pill-muted" id="model-manager-download-pill">下载</span>
                       </div>
                     </div>

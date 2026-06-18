@@ -11,8 +11,6 @@ const state = {
   modelPollTimer: null,
   modelCheckedOnce: false,
   modelManagerCheckedEngines: {},
-  modelManagerCheckInFlight: null,
-  modelManagerCheckErrors: {},
   seleniumSaveInFlight: false,
   detachedModeSelected: 'tc',
   detachedOpen: { tc: false, tl: false },
@@ -1389,75 +1387,20 @@ async function refreshFileProcessingState() {
 function renderModelSelectionOverview(data) {
   const importUi = data?.import_ui || {};
   const runtime = data?.runtime_model || {};
-  const settings = data?.settings || {};
-  const summaryEngine = getModelSelectionEngine(data);
-  const modelManager = state.modelManagerState || {};
   const selectedModelLabel = importUi.selected_model_key || importUi.selected_model || '未选择';
-  const backend = importUi.selected_backend || 'whisper';
   const runtimeLoaded = Boolean(runtime.loaded);
   const runtimeLoading = Boolean(runtime.loading);
   const runtimeMessage = String(runtime.message || '').trim();
-  const devicePref = summarizeModelDevicePreference(settings.model_device_preference);
-  const managerRows = Array.isArray(modelManager.rows) ? modelManager.rows : [];
-  const scopedRows = managerRows.filter((row) => String(row?.engine || '') === summaryEngine);
-  const downloadedCount = scopedRows.filter((row) => row && row.downloaded === true).length;
-  const missingCount = scopedRows.filter((row) => row && row.downloaded === false).length;
-  const coverageTotal = scopedRows.length
-    || (String(modelManager.selected_engine || '') === summaryEngine && Array.isArray(modelManager.model_options)
-      ? modelManager.model_options.length
-      : 0);
-  const checked = modelManager.checked && String(modelManager.checked.engine || modelManager.selected_engine || '') === summaryEngine
-    ? modelManager.checked
-    : null;
-  const cacheCheckInFlight = state.modelManagerCheckInFlight && state.modelManagerCheckInFlight.engine === summaryEngine;
-  const cacheCheckError = state.modelManagerCheckErrors[summaryEngine] || '';
-
-  ensureModelSelectionCacheState(data);
 
   if (els.modelSelectionRuntime) {
     els.modelSelectionRuntime.textContent = runtimeLoaded
-      ? '已加载'
+      ? '运行：已加载'
       : runtimeLoading
-        ? '加载中'
-        : '未加载';
+        ? '运行：加载中'
+        : '运行：未加载';
   }
   if (els.modelSelectionRuntimeMeta) {
-    if (checked) {
-      const checkedStatus = checked.downloaded ? '已校验可用' : (checked.error ? `检查失败：${checked.error}` : '本地缺失');
-      els.modelSelectionRuntimeMeta.textContent = runtimeMessage || `${checked.model} · ${checkedStatus}`;
-    } else {
-      els.modelSelectionRuntimeMeta.textContent = runtimeMessage || (runtimeLoaded ? `当前运行：${runtime.key || selectedModelLabel}` : '等待加载');
-    }
-  }
-  if (els.modelSelectionDevice) {
-    els.modelSelectionDevice.textContent = devicePref.label;
-  }
-  if (els.modelSelectionDeviceMeta) {
-    els.modelSelectionDeviceMeta.textContent = devicePref.meta;
-  }
-  if (els.modelSelectionCache) {
-    els.modelSelectionCache.textContent = coverageTotal > 0
-      ? `${downloadedCount} / ${coverageTotal}`
-      : cacheCheckInFlight
-        ? '自动检查中'
-        : cacheCheckError
-          ? '检查失败'
-          : '同步中';
-  }
-  if (els.modelSelectionCacheMeta) {
-    if (modelManager.download_running) {
-      els.modelSelectionCacheMeta.textContent = '下载进行中，缓存状态持续刷新';
-    } else if (coverageTotal > 0) {
-      els.modelSelectionCacheMeta.textContent = missingCount > 0
-        ? `已下载 ${downloadedCount} 个，本引擎仍缺 ${missingCount} 个`
-        : `本引擎 ${coverageTotal} 个模型均已就绪`;
-    } else if (cacheCheckInFlight) {
-      els.modelSelectionCacheMeta.textContent = `正在扫描 ${backend} 的本地模型缓存`;
-    } else if (cacheCheckError) {
-      els.modelSelectionCacheMeta.textContent = cacheCheckError;
-    } else {
-      els.modelSelectionCacheMeta.textContent = `正在同步 ${backend} 的缓存状态`;
-    }
+    els.modelSelectionRuntimeMeta.textContent = runtimeMessage || (runtimeLoaded ? `当前运行：${runtime.key || selectedModelLabel}` : '等待加载');
   }
 }
 
@@ -2295,53 +2238,6 @@ function getModelSelectionEngine(data = state.data || {}) {
   return backend === 'faster-whisper' ? 'faster-whisper' : 'whisper';
 }
 
-function ensureModelSelectionCacheState(data = state.data || {}) {
-  const targetEngine = getModelSelectionEngine(data);
-  const modelManager = state.modelManagerState || {};
-  const rows = Array.isArray(modelManager.rows) ? modelManager.rows : [];
-  const hasScopedRows = rows.some((row) => String(row?.engine || '') === targetEngine);
-  const checkedEngine = String(modelManager.checked?.engine || modelManager.selected_engine || '').trim();
-  const hasScopedCheck = Boolean(modelManager.checked) && checkedEngine === targetEngine;
-  const selectedEngineMatches = String(modelManager.selected_engine || '').trim() === targetEngine;
-  const inFlight = state.modelManagerCheckInFlight;
-  if (inFlight && inFlight.engine === targetEngine) {
-    return;
-  }
-  if (state.modelManagerCheckErrors[targetEngine]) {
-    return;
-  }
-  if (selectedEngineMatches && (hasScopedRows || hasScopedCheck || modelManager.download_running)) {
-    return;
-  }
-
-  const shouldFullCheck = !state.modelManagerCheckedEngines[targetEngine];
-  state.modelManagerCheckInFlight = { engine: targetEngine, mode: shouldFullCheck ? 'check' : 'refresh' };
-  window.setTimeout(() => {
-    const task = shouldFullCheck
-      ? checkAllModelManagerState(targetEngine).then((payload) => {
-        state.modelManagerCheckedEngines[targetEngine] = true;
-        state.modelManagerCheckErrors[targetEngine] = '';
-        return payload;
-      })
-      : refreshModelManagerState(targetEngine).then((payload) => {
-        state.modelManagerCheckErrors[targetEngine] = '';
-        return payload;
-      });
-    task
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : String(error || '未知错误');
-        state.modelManagerCheckErrors[targetEngine] = `自动检查失败：${message}`;
-        console.debug(`Model cache auto-${shouldFullCheck ? 'check' : 'refresh'} failed`, error);
-      })
-      .finally(() => {
-        if (state.modelManagerCheckInFlight && state.modelManagerCheckInFlight.engine === targetEngine) {
-          state.modelManagerCheckInFlight = null;
-        }
-        renderModelSelectionOverview(state.data || {});
-      });
-  }, 0);
-}
-
 function setSelectedModelManagerEngine(engine) {
   const targetEngine = engine || 'whisper';
   const tabs = document.querySelectorAll('#model-manager-engine-bar .model-engine-tab');
@@ -2363,13 +2259,22 @@ function renderModelManagerState(data) {
   setSelectedModelManagerEngine(selectedEngine);
 
   if (els.modelManagerDirPill) {
-    els.modelManagerDirPill.textContent = `模型目录：${modelUi.model_dir || 'auto'}`;
-  }
-  if (els.modelManagerEnginePill) {
-    els.modelManagerEnginePill.textContent = `引擎：${selectedEngine}`;
+    els.modelManagerDirPill.textContent = `目录：${modelUi.model_dir || '默认位置'}`;
   }
   if (els.modelManagerSelectionPill) {
-    els.modelManagerSelectionPill.textContent = `当前：${selectedModel} · ${selectedEstimateText}`;
+    els.modelManagerSelectionPill.textContent = `当前：${selectedEngine} · ${selectedModel} · ${selectedEstimateText}`;
+  }
+  if (els.modelManagerCachePill) {
+    const downloadedCount = rows.filter((row) => row && row.downloaded === true).length;
+    const missingCount = rows.filter((row) => row && row.downloaded === false).length;
+    const totalCount = rows.length || (Array.isArray(modelUi.model_options) ? modelUi.model_options.length : 0);
+    if (totalCount > 0) {
+      els.modelManagerCachePill.textContent = missingCount > 0
+        ? `缓存：${downloadedCount} / ${totalCount}，缺 ${missingCount}`
+        : `缓存：${totalCount} / ${totalCount}，已齐全`;
+    } else {
+      els.modelManagerCachePill.textContent = modelUi.download_running ? '缓存：刷新中' : '缓存：自动检查中';
+    }
   }
   if (els.modelManagerDownloadPill) {
     els.modelManagerDownloadPill.textContent = `下载：${modelUi.download_running ? '进行中' : '空闲'}`;
@@ -4350,8 +4255,8 @@ async function init() {
     els.importLangPill = $('import-lang-pill');
     els.modelManagerEngineBar = $('model-manager-engine-bar');
     els.modelManagerDirPill = $('model-manager-dir-pill');
-    els.modelManagerEnginePill = $('model-manager-engine-pill');
     els.modelManagerSelectionPill = $('model-manager-selection-pill');
+    els.modelManagerCachePill = $('model-manager-cache-pill');
     els.modelManagerDownloadPill = $('model-manager-download-pill');
     els.fileExportDirPill = $('file-export-dir-pill');
     els.fileImportList = $('file_import_list');
@@ -4375,10 +4280,6 @@ async function init() {
     els.realtimeRecordingDevice = $('realtime-recording-device');
     els.modelSelectionRuntime = $('model-selection-runtime');
     els.modelSelectionRuntimeMeta = $('model-selection-runtime-meta');
-    els.modelSelectionDevice = $('model-selection-device');
-    els.modelSelectionDeviceMeta = $('model-selection-device-meta');
-    els.modelSelectionCache = $('model-selection-cache');
-    els.modelSelectionCacheMeta = $('model-selection-cache-meta');
     els.fileImportQueueCount = $('file-import-queue-count');
     els.fileImportQueueMeta = $('file-import-queue-meta');
     els.fileImportProcessingState = $('file-import-processing-state');
