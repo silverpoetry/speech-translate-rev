@@ -81,7 +81,7 @@ class AppStartupControllerTests(unittest.TestCase):
         self.ffmpeg_calls = []
         self.log_levels = []
         self.bridge_binding = FakeBridgeBinding()
-        self.settings = FakeSettings({"log_level": "INFO", "mw_size": "1140x680"})
+        self.settings = FakeSettings({"log_level": "INFO", "mw_size": "1140x680", "mw_pos": ""})
         self.controller = AppStartupController(
             bridge_factory=lambda: self.bridge,
             ffmpeg_path_adder=lambda weak=False: self.ffmpeg_calls.append(weak) or True,
@@ -117,8 +117,19 @@ class AppStartupControllerTests(unittest.TestCase):
         self.assertEqual(len(fake_tray_calls), 1)
         self.assertIs(self.bridge_binding.bridge, self.bridge)
 
+    def test_start_restores_saved_logical_position(self) -> None:
+        self.settings.cache["mw_pos"] = "180,120"
+
+        with patch("speech_translate.app_startup_controller.AppTray"):
+            self.controller.start(with_log_init=False, log_initializer=None)
+
+        _, kwargs = self.fake_webview.create_calls[0]
+        self.assertEqual((kwargs["width"], kwargs["height"]), (1140, 680))
+        self.assertEqual((kwargs["x"], kwargs["y"]), (180, 120))
+
     def test_start_disables_tray_when_flag_present(self) -> None:
-        with patch("speech_translate.app_startup_controller.sys.argv",
+        with patch(
+            "speech_translate.app_startup_controller.sys.argv",
             ["app.py", "--no-tray"],
         ), patch("speech_translate.app_startup_controller.AppTray") as fake_tray:
             self.controller.start(with_log_init=False, log_initializer=None)
@@ -126,7 +137,8 @@ class AppStartupControllerTests(unittest.TestCase):
         fake_tray.assert_not_called()
 
     def test_start_enables_debug_mode_when_flag_present(self) -> None:
-        with patch("speech_translate.app_startup_controller.sys.argv",
+        with patch(
+            "speech_translate.app_startup_controller.sys.argv",
             ["app.py", "--debug-webview"],
         ), patch("speech_translate.app_startup_controller.AppTray"):
             self.controller.start(with_log_init=False, log_initializer=None)

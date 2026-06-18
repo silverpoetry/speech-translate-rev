@@ -108,6 +108,7 @@ class SettingDict(TypedDict):
     supress_hidden_to_tray: bool
     supress_record_warning: bool
     mw_size: str
+    mw_pos: str
     dir_log: str
     dir_model: str
     file_slice_start: str
@@ -271,6 +272,7 @@ class SettingDict(TypedDict):
     tb_mw_tl_use_conf_color: bool
     # Tc sub
     ex_tc_geometry: str
+    ex_tc_pos: str
     ex_tc_always_on_top: Literal[0, 1]
     ex_tc_click_through: Literal[0, 1]
     ex_tc_no_title_bar: Literal[0, 1]
@@ -287,6 +289,7 @@ class SettingDict(TypedDict):
     tb_ex_tc_use_conf_color: bool
     # Tl sub
     ex_tl_geometry: str
+    ex_tl_pos: str
     ex_tl_always_on_top: Literal[0, 1]
     ex_tl_click_through: Literal[0, 1]
     ex_tl_no_title_bar: Literal[0, 1]

@@ -22,8 +22,6 @@ class FakeSettings:
 
 class FakeWindow:
     def __init__(self) -> None:
-        self.width = 900
-        self.height = 620
         self.destroyed = False
         self.shown = False
         self.brought = False
@@ -58,13 +56,21 @@ class FakeBridge:
 
 
 class MainWindowControllerTests(unittest.TestCase):
-    def test_save_main_window_geometry_uses_fallback_window_size(self) -> None:
+    def test_save_main_window_geometry_persists_logical_size_and_position_from_outer_bounds(self) -> None:
         settings = FakeSettings()
         bridge = FakeBridge()
         controller = MainWindowController(bridge, settings)
-        bridge.window = FakeWindow()
+        window = FakeWindow()
+        window.native = SimpleNamespace(
+            DeviceDpi=168,
+            Bounds=SimpleNamespace(X=210, Y=245, Width=1995, Height=1190),
+        )
+        bridge.window = window
+
         controller.save_main_window_geometry()
-        self.assertEqual(settings.saved["mw_size"], "900x620")
+
+        self.assertEqual(settings.saved["mw_size"], "1140x680")
+        self.assertEqual(settings.saved["mw_pos"], "120,140")
 
     def test_show_main_window_marks_allowed_and_shows_window(self) -> None:
         settings = FakeSettings()
@@ -102,29 +108,19 @@ class MainWindowControllerTests(unittest.TestCase):
         settings = FakeSettings()
         bridge = FakeBridge()
         controller = MainWindowController(bridge, settings)
-        bridge.window = FakeWindow()
+        window = FakeWindow()
+        window.native = SimpleNamespace(
+            DeviceDpi=168,
+            Bounds=SimpleNamespace(X=210, Y=245, Width=1995, Height=1190),
+        )
+        bridge.window = window
 
         controller.save_main_window_geometry()
         first_saved = dict(settings.saved)
         controller.save_main_window_geometry()
 
         self.assertEqual(settings.saved, first_saved)
-        self.assertEqual(controller.main_geometry_last_saved, "900x620")
-
-    def test_save_main_window_geometry_uses_native_scaled_client_size(self) -> None:
-        settings = FakeSettings()
-        bridge = FakeBridge()
-        controller = MainWindowController(bridge, settings)
-        window = FakeWindow()
-        window.native = SimpleNamespace(
-            scale_factor=2.0,
-            ClientSize=SimpleNamespace(Width=1800, Height=1240),
-        )
-        bridge.window = window
-
-        controller.save_main_window_geometry()
-
-        self.assertEqual(settings.saved["mw_size"], "900x620")
+        self.assertEqual(controller.main_geometry_last_saved, "1140x680@120,140")
 
     def test_bind_window_registers_event_handlers(self) -> None:
         settings = FakeSettings()

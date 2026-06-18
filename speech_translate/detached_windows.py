@@ -15,7 +15,7 @@ from speech_translate.controller_protocols import (
 from speech_translate.detached_window_api import DetachedWindowApi, RecordingWindowApi
 from speech_translate.detached_window_geometry import (
     log_detached_window_loaded_geometry,
-    persist_detached_window_geometry,
+    persist_detached_window_placement,
     resolve_detached_window_placement,
 )
 from speech_translate.detached_window_native import apply_native_window_settings, apply_window_topmost
@@ -72,13 +72,6 @@ class DetachedWindowManager:
             return False
         window.move(x, y)
         return True
-
-    def remember_window_geometry(self, mode: str, width: int, height: int) -> None:
-        mode = normalize_detached_mode(mode)
-        self.runtime.set_window_geometry_hint(mode, width, height)
-        if self.settings is not None and width >= 200 and height >= 80:
-            self.settings.save_key(f"ex_{mode}_geometry", f"{int(width)}x{int(height)}")
-            logger.info(f"[DetachedGeometry][remember] mode={mode} saved_logical={width}x{height}")
 
     def _flush_pending(self, mode: str, include_content: bool = True) -> None:
         if not self.runtime.is_window_loaded(mode):
@@ -161,15 +154,7 @@ class DetachedWindowManager:
         self._drop_window_ref(mode)
 
     def _persist_window_geometry(self, mode: str) -> None:
-        geometry_hint = self.runtime.get_window_geometry_hint(mode) or (None, None)
-        fallback_width, fallback_height = geometry_hint
-        persist_detached_window_geometry(
-            self.settings,
-            mode,
-            self.windows.get(mode),
-            fallback_width=fallback_width,
-            fallback_height=fallback_height,
-        )
+        persist_detached_window_placement(self.settings, mode, self.windows.get(mode))
 
     def _attach_window_events(self, mode: str, window: WebviewWindowLike) -> None:
         try:
@@ -217,14 +202,16 @@ class DetachedWindowManager:
             )
 
             cache_value = None
+            pos_cache = None
             if self.settings is not None:
-                cache_value = build_detached_window_settings(self.settings.cache, mode).geometry_cache
+                cached_settings = build_detached_window_settings(self.settings.cache, mode)
+                cache_value = cached_settings.geometry_cache
+                pos_cache = cached_settings.position_cache
             logger.info(
                 f"[DetachedGeometry][open-created] mode={mode} "
-                f"requested={width}x{height} position={x},{y} cache={cache_value}"
+                f"requested={width}x{height} position={x},{y} cache={cache_value} cache_pos={pos_cache}"
             )
-            self.runtime.set_window_geometry_hint(mode, width, height)
-            window_url = f"{html_path}?mode={mode}&outerWidth={width}&outerHeight={height}"
+            window_url = f"{html_path}?mode={mode}"
 
             window = webview.create_window(
                 f"Speech Translate - {'Transcribed' if mode == 'tc' else 'Translated'}",

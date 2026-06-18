@@ -34,24 +34,6 @@ class DetachedWindowApi:
             logger.error(f"Failed to move detached window {mode}: {exc}")
             return {"status": "error", "mode": mode, "error": str(exc)}
 
-    def update_detached_window_geometry(self, mode: str, width: object, height: object) -> JsonDict:
-        mode = normalize_detached_mode(mode)
-        try:
-            logical_width = int(round(float(width)))
-            logical_height = int(round(float(height)))
-        except Exception:
-            return {"status": "invalid", "mode": mode}
-
-        if logical_width < 200 or logical_height < 80:
-            return {"status": "ignored", "mode": mode, "width": logical_width, "height": logical_height}
-
-        try:
-            self._manager.remember_window_geometry(mode, logical_width, logical_height)
-            return {"status": "updated", "mode": mode, "width": logical_width, "height": logical_height}
-        except Exception as exc:
-            logger.error(f"Failed to remember detached window geometry {mode}: {exc}")
-            return {"status": "error", "mode": mode, "error": str(exc)}
-
     def detached_window_ready(self, mode: str) -> JsonDict:
         mode = normalize_detached_mode(mode)
         self._manager.mark_window_content_ready(mode)

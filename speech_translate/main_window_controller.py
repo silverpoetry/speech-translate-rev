@@ -6,7 +6,7 @@ from typing import Optional
 
 from speech_translate.controller_protocols import MainWindowBridge, SettingsStore, TrayLike, FolderDialogWindow
 from speech_translate.log_helpers import logger
-from speech_translate.window_geometry import extract_native_window_geometry
+from speech_translate.window_geometry import extract_window_placement, format_window_position, format_window_size
 
 
 class MainWindowController:
@@ -116,44 +116,39 @@ class MainWindowController:
             logger.exception("Failed to quit app from main window close event")
             return None
 
-    def _extract_window_size(self, window: FolderDialogWindow) -> tuple[int | None, int | None]:
-        try:
-            return int(getattr(window, "width")), int(getattr(window, "height"))
-        except Exception:
-            return None, None
-
-    def _save_geometry_if_changed(self, geometry: str, *, force: bool) -> bool:
+    def _save_geometry_if_changed(self, signature: str, geometry: str, position: str, *, force: bool) -> bool:
         with self.main_geometry_lock:
-            if not force and geometry == self.main_geometry_last_saved:
+            if not force and signature == self.main_geometry_last_saved:
                 return False
-            self.main_geometry_last_saved = geometry
+            self.main_geometry_last_saved = signature
             self.settings.save_key("mw_size", geometry)
+            self.settings.save_key("mw_pos", position)
         return True
 
     def save_main_window_geometry(self, force: bool = False) -> None:
         window = self.bridge.get_window()
         if window is None:
             return
-        native_window = getattr(window, "native", None)
-        native_geometry = extract_native_window_geometry(native_window)
-        width = native_geometry.width
-        height = native_geometry.height
-        raw_width = native_geometry.raw_width
-        raw_height = native_geometry.raw_height
-        scale_factor = native_geometry.scale_factor
-        if width is None or height is None:
-            width, height = self._extract_window_size(window)
-            raw_width, raw_height = None, None
-        if width is None or height is None:
+        try:
+            geometry = extract_window_placement(window)
+        except Exception:
+            logger.exception("[MainGeometry][save] failed to read native outer geometry")
             return
+        width = geometry.width
+        height = geometry.height
+        x = geometry.x
+        y = geometry.y
 
         if width >= 600 and height >= 300:
-            geometry = f"{width}x{height}"
-            if not self._save_geometry_if_changed(geometry, force=force):
+            geometry_text = format_window_size(width, height)
+            position_text = format_window_position(x, y)
+            signature = f"{geometry_text}@{position_text}"
+            if not self._save_geometry_if_changed(signature, geometry_text, position_text, force=force):
                 return
             logger.info(
-                f"[MainGeometry][save] logical={geometry} raw_client={raw_width}x{raw_height} "
-                f"scale_factor={scale_factor:.3f} force={force}"
+                f"[MainGeometry][save] logical={geometry_text} pos={position_text} "
+                f"raw_bounds={geometry.raw_x},{geometry.raw_y},{geometry.raw_width}x{geometry.raw_height} "
+                f"scale_factor={geometry.scale_factor:.3f} source={geometry.source} force={force}"
             )
 
     def quit_app(self) -> None:

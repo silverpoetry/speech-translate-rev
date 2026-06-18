@@ -17,7 +17,10 @@ from speech_translate.detached_windows import (
     get_detached_live_content,
     normalize_detached_mode,
 )
-from speech_translate.detached_window_geometry import persist_detached_window_geometry, resolve_detached_window_placement
+from speech_translate.detached_window_geometry import (
+    persist_detached_window_placement,
+    resolve_detached_window_placement,
+)
 from speech_translate.detached_window_settings import build_detached_window_settings
 
 
@@ -29,7 +32,7 @@ class DetachedWindowHelpersTests(unittest.TestCase):
 
         class FakeWindow:
             def __init__(self) -> None:
-                self.events = SimpleNamespace(closed=EventHook(), loaded=EventHook())
+                self.events = SimpleNamespace(closing=EventHook(), closed=EventHook(), loaded=EventHook())
                 self.native = None
 
             def show(self) -> None:
@@ -48,7 +51,7 @@ class DetachedWindowHelpersTests(unittest.TestCase):
 
         fake_webview = FakeWebview()
         manager = DetachedWindowManager(
-            settings=type("Settings", (), {"cache": {"ex_tc_geometry": "900x240"}})(),
+            settings=type("Settings", (), {"cache": {"ex_tc_geometry": "900x240", "ex_tc_pos": "10,20"}})(),
             webview_loader=lambda: fake_webview,
         )
 
@@ -60,8 +63,7 @@ class DetachedWindowHelpersTests(unittest.TestCase):
         args, kwargs = fake_webview.calls[0]
         self.assertEqual(args[0], "Speech Translate - Transcribed")
         self.assertIn("mode=tc", args[1])
-        self.assertIn("outerWidth=700", args[1])
-        self.assertIn("outerHeight=300", args[1])
+        self.assertNotIn("outerWidth", args[1])
         self.assertEqual(kwargs["width"], 700)
         self.assertEqual(kwargs["height"], 300)
         self.assertEqual((kwargs["x"], kwargs["y"]), (10, 20))
@@ -103,10 +105,11 @@ class DetachedWindowHelpersTests(unittest.TestCase):
             },
         )
 
-    def test_build_detached_window_settings_collects_geometry_and_config(self) -> None:
+    def test_build_detached_window_settings_collects_geometry_and_position(self) -> None:
         settings_view = build_detached_window_settings(
             {
                 "ex_tl_geometry": "640x320",
+                "ex_tl_pos": "180,120",
                 "tb_ex_tl_font": "Arial",
                 "tb_ex_tl_font_size": 15,
             },
@@ -115,6 +118,7 @@ class DetachedWindowHelpersTests(unittest.TestCase):
 
         self.assertEqual(settings_view.mode, "tl")
         self.assertEqual(settings_view.geometry_cache, "640x320")
+        self.assertEqual(settings_view.position_cache, "180,120")
         self.assertEqual(settings_view.config.to_payload()["font"], "Arial")
         self.assertEqual(settings_view.config.to_payload()["font_size"], 15)
         self.assertEqual(settings_view.config.to_payload()["max"], 120)
@@ -147,7 +151,9 @@ class DetachedWindowHelpersTests(unittest.TestCase):
             {
                 "windows": {"tc": FakeWindow()},
                 "has_window": lambda self, mode: mode in self.windows,
-                "move_window": lambda self, mode, x, y: (self.windows[mode].move(x, y) or True) if mode in self.windows else False,
+                "move_window": lambda self, mode, x, y: (self.windows[mode].move(x, y) or True)
+                if mode in self.windows
+                else False,
                 "mark_window_content_ready": lambda self, mode: None,
             },
         )()
@@ -171,29 +177,6 @@ class DetachedWindowHelpersTests(unittest.TestCase):
         self.assertEqual(result, {"status": "ready", "mode": "tc"})
         self.assertEqual(manager.ready_modes, ["tc"])
 
-    def test_detached_window_api_updates_logical_geometry(self) -> None:
-        class FakeManager:
-            def __init__(self) -> None:
-                self.geometry_updates = []
-
-            def remember_window_geometry(self, mode: str, width: int, height: int) -> None:
-                self.geometry_updates.append((mode, width, height))
-
-        manager = FakeManager()
-        api = DetachedWindowApi(manager)
-        result = api.update_detached_window_geometry("TC", "640.4", 188)
-        self.assertEqual(result, {"status": "updated", "mode": "tc", "width": 640, "height": 188})
-        self.assertEqual(manager.geometry_updates, [("tc", 640, 188)])
-
-    def test_detached_window_api_ignores_too_small_geometry(self) -> None:
-        class FakeManager:
-            def remember_window_geometry(self, mode: str, width: int, height: int) -> None:
-                raise AssertionError("should not be called")
-
-        api = DetachedWindowApi(FakeManager())
-        result = api.update_detached_window_geometry("tl", 120, 60)
-        self.assertEqual(result, {"status": "ignored", "mode": "tl", "width": 120, "height": 60})
-
     def test_recording_window_api_returns_provider_snapshot(self) -> None:
         api = RecordingWindowApi(lambda: {"status": "Recording", "active": True})
         self.assertEqual(api.get_recording_state(), {"status": "Recording", "active": True})
@@ -209,8 +192,8 @@ class DetachedWindowHelpersTests(unittest.TestCase):
         )
         self.assertEqual((width, height, x, y), (640, 320, 10, 20))
 
-    def test_manager_resolve_window_placement_uses_cached_geometry_defaults(self) -> None:
-        settings = type("Settings", (), {"cache": {"ex_tc_geometry": "640x320"}})()
+    def test_manager_resolve_window_placement_uses_cached_geometry_and_position(self) -> None:
+        settings = type("Settings", (), {"cache": {"ex_tc_geometry": "640x320", "ex_tc_pos": "180,120"}})()
         width, height, x, y = resolve_detached_window_placement(
             settings,
             "tc",
@@ -219,29 +202,27 @@ class DetachedWindowHelpersTests(unittest.TestCase):
             width=None,
             height=None,
         )
-        self.assertEqual((width, height), (640, 320))
-        self.assertIsInstance(x, int)
-        self.assertIsInstance(y, int)
+        self.assertEqual((width, height, x, y), (640, 320, 180, 120))
 
     def test_manager_resolve_window_placement_allows_width_override_only(self) -> None:
-        settings = type("Settings", (), {"cache": {"ex_tc_geometry": "640x320"}})()
+        settings = type("Settings", (), {"cache": {"ex_tc_geometry": "640x320", "ex_tc_pos": "30,40"}})()
         width, height, x, y = resolve_detached_window_placement(
             settings,
             "tc",
-            x=30,
-            y=40,
+            x=None,
+            y=None,
             width=800,
             height=None,
         )
         self.assertEqual((width, height, x, y), (800, 320, 30, 40))
 
     def test_manager_resolve_window_placement_allows_height_override_only(self) -> None:
-        settings = type("Settings", (), {"cache": {"ex_tc_geometry": "640x320"}})()
+        settings = type("Settings", (), {"cache": {"ex_tc_geometry": "640x320", "ex_tc_pos": "30,40"}})()
         width, height, x, y = resolve_detached_window_placement(
             settings,
             "tc",
-            x=30,
-            y=40,
+            x=None,
+            y=None,
             width=None,
             height=500,
         )
@@ -286,43 +267,7 @@ class DetachedWindowHelpersTests(unittest.TestCase):
 
         self.assertEqual(len(manager.windows["tc"].scripts), 1)
 
-    def test_manager_remember_window_geometry_persists_logical_size(self) -> None:
-        class FakeSettings:
-            def __init__(self) -> None:
-                self.saved = {}
-
-            def save_key(self, key: str, value: object) -> None:
-                self.saved[key] = value
-
-        manager = DetachedWindowManager(settings=FakeSettings())
-        manager.remember_window_geometry("TC", 640, 188)
-
-        self.assertEqual(manager.runtime.get_window_geometry_hint("tc"), (640, 188))
-        self.assertEqual(manager.settings.saved["ex_tc_geometry"], "640x188")
-
-    def test_manager_persist_window_geometry_uses_shared_native_geometry_logic(self) -> None:
-        class FakeSettings:
-            def __init__(self) -> None:
-                self.saved = {}
-
-            def save_key(self, key: str, value: object) -> None:
-                self.saved[key] = value
-
-        class FakeWindow:
-            def __init__(self) -> None:
-                self.width = 900
-                self.height = 620
-                self.native = SimpleNamespace(
-                    scale_factor=2.0,
-                    ClientSize=SimpleNamespace(Width=1800, Height=1240),
-                )
-
-        settings = FakeSettings()
-        persist_detached_window_geometry(settings, "tc", FakeWindow())
-
-        self.assertEqual(settings.saved["ex_tc_geometry"], "900x620")
-
-    def test_manager_persist_window_geometry_prefers_fallback_hint_when_outer_size_is_unavailable(self) -> None:
+    def test_manager_persist_window_geometry_uses_shared_native_outer_geometry_logic(self) -> None:
         class FakeSettings:
             def __init__(self) -> None:
                 self.saved = {}
@@ -333,22 +278,17 @@ class DetachedWindowHelpersTests(unittest.TestCase):
         class FakeWindow:
             def __init__(self) -> None:
                 self.native = SimpleNamespace(
-                    scale_factor=2.25,
-                    ClientSize=SimpleNamespace(Width=1901, Height=236),
+                    DeviceDpi=168,
+                    Bounds=SimpleNamespace(X=210, Y=245, Width=1575, Height=420),
                 )
 
         settings = FakeSettings()
-        persist_detached_window_geometry(
-            settings,
-            "tc",
-            FakeWindow(),
-            fallback_width=873,
-            fallback_height=184,
-        )
+        persist_detached_window_placement(settings, "tc", FakeWindow())
 
-        self.assertEqual(settings.saved["ex_tc_geometry"], "873x184")
+        self.assertEqual(settings.saved["ex_tc_geometry"], "900x240")
+        self.assertEqual(settings.saved["ex_tc_pos"], "120,140")
 
-    def test_manager_persist_window_geometry_prefers_fallback_hint_over_native_measurement(self) -> None:
+    def test_manager_persist_window_geometry_reports_missing_native_geometry(self) -> None:
         class FakeSettings:
             def __init__(self) -> None:
                 self.saved = {}
@@ -357,24 +297,11 @@ class DetachedWindowHelpersTests(unittest.TestCase):
                 self.saved[key] = value
 
         class FakeWindow:
-            def __init__(self) -> None:
-                self.width = 1425
-                self.height = 306
-                self.native = SimpleNamespace(
-                    scale_factor=2.25,
-                    ClientSize=SimpleNamespace(Width=1399, Height=280),
-                )
+            native = None
 
         settings = FakeSettings()
-        persist_detached_window_geometry(
-            settings,
-            "tl",
-            FakeWindow(),
-            fallback_width=649,
-            fallback_height=180,
-        )
-
-        self.assertEqual(settings.saved["ex_tl_geometry"], "649x180")
+        persist_detached_window_placement(settings, "tc", FakeWindow())
+        self.assertEqual(settings.saved, {})
 
 
 if __name__ == "__main__":

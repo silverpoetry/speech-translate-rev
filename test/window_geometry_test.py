@@ -12,9 +12,14 @@ from speech_translate.window_geometry import (
     center_window_pos,
     ensure_visible_or_center,
     extract_native_window_geometry,
+    extract_window_placement,
+    format_window_position,
+    format_window_size,
     logical_to_native_size,
+    logical_to_physical_point,
     native_to_logical_size,
     normalize_scale_factor,
+    parse_window_position,
     parse_window_size,
     physical_to_logical_point,
     resolve_native_scale_factor,
@@ -55,17 +60,16 @@ class WindowGeometryTests(unittest.TestCase):
     def test_parse_window_size_applies_minimums(self) -> None:
         self.assertEqual(parse_window_size("20x30", 980, 620), (320, 180))
 
+    def test_parse_window_position_reads_logical_pair(self) -> None:
+        self.assertEqual(parse_window_position("120, 340"), (120, 340))
+        self.assertEqual(parse_window_position("invalid"), (None, None))
+
+    def test_formatters_use_single_persisted_contract(self) -> None:
+        self.assertEqual(format_window_size(640, 320), "640x320")
+        self.assertEqual(format_window_position(120, 340), "120,340")
+
     def test_center_window_pos_centers_using_virtual_bounds(self) -> None:
         metrics = FakeMetricsProvider(virtual_bounds=(100, 50, 1000, 800))
-        self.assertEqual(center_window_pos(400, 200, metrics=metrics), (400, 350))
-
-    def test_center_window_pos_windows_falls_back_when_scale_factor_is_invalid(self) -> None:
-        metrics = FakeMetricsProvider(
-            screen_size=(1920, 1080),
-            virtual_bounds=(100, 50, 1000, 800),
-            scale_factor=0.0,
-            platform_name="Windows",
-        )
         self.assertEqual(center_window_pos(400, 200, metrics=metrics), (400, 350))
 
     def test_ensure_visible_or_center_recenters_offscreen_window(self) -> None:
@@ -81,26 +85,18 @@ class WindowGeometryTests(unittest.TestCase):
         placement = resolve_window_placement("640x360", 980, 620, x=80, y=40, metrics=metrics)
         self.assertEqual((placement.width, placement.height, placement.x, placement.y), (640, 360, 80, 40))
 
-    def test_windows_centering_applies_scale_factor(self) -> None:
-        metrics = FakeMetricsProvider(
-            screen_size=(1920, 1080),
-            virtual_bounds=(0, 0, 1920, 1080),
-            scale_factor=1.5,
-            platform_name="Windows",
-        )
-        self.assertEqual(center_window_pos(900, 600, metrics=metrics), (510, 240))
+    def test_resolve_window_placement_uses_saved_logical_position(self) -> None:
+        metrics = FakeMetricsProvider(virtual_bounds=(0, 0, 1280, 720))
+        placement = resolve_window_placement("640x360", 980, 620, raw_position="180,120", metrics=metrics)
+        self.assertEqual((placement.width, placement.height, placement.x, placement.y), (640, 360, 180, 120))
 
-    def test_parse_window_size_clamps_windows_size_to_screen(self) -> None:
+    def test_windows_size_is_clamped_to_screen(self) -> None:
         metrics = FakeMetricsProvider(
             screen_size=(800, 600),
             virtual_bounds=(0, 0, 800, 600),
             platform_name="Windows",
         )
         self.assertEqual(parse_window_size("2000x2000", 980, 620, metrics=metrics), (720, 480))
-
-    def test_resolve_native_scale_factor_defaults_when_invalid(self) -> None:
-        native_window = type("NativeWindow", (), {"scale_factor": 0})()
-        self.assertEqual(resolve_native_scale_factor(native_window), 1.0)
 
     def test_normalize_scale_factor_defaults_when_invalid(self) -> None:
         self.assertEqual(normalize_scale_factor(0), 1.0)
@@ -111,6 +107,9 @@ class WindowGeometryTests(unittest.TestCase):
 
     def test_native_to_logical_size_applies_scale_factor(self) -> None:
         self.assertEqual(native_to_logical_size(2277, 1217, scale_factor=2.25), (1012, 541))
+
+    def test_logical_to_physical_point_applies_scale_factor(self) -> None:
+        self.assertEqual(logical_to_physical_point(680, 400, scale_factor=2.25), (1530, 900))
 
     def test_physical_to_logical_point_applies_scale_factor(self) -> None:
         self.assertEqual(physical_to_logical_point(1530, 900, scale_factor=2.25), (680, 400))
@@ -124,21 +123,33 @@ class WindowGeometryTests(unittest.TestCase):
         )
         self.assertEqual(clamp_window_position(1300, 800, 152, 168, metrics=metrics), (1128, 552))
 
-    def test_extract_native_window_geometry_returns_logical_and_raw_sizes(self) -> None:
+    def test_resolve_native_scale_factor_prefers_device_dpi(self) -> None:
+        native_window = type("NativeWindow", (), {"DeviceDpi": 168})()
+        self.assertEqual(resolve_native_scale_factor(native_window), 1.75)
+
+    def test_extract_native_window_geometry_returns_logical_outer_bounds(self) -> None:
         native_window = type(
             "NativeWindow",
             (),
             {
-                "scale_factor": 2.0,
-                "ClientSize": type("ClientSize", (), {"Width": 1800, "Height": 1240})(),
+                "DeviceDpi": 168,
+                "Bounds": type("Bounds", (), {"X": 210, "Y": 245, "Width": 1575, "Height": 420})(),
             },
         )()
 
         geometry = extract_native_window_geometry(native_window)
 
-        self.assertEqual((geometry.width, geometry.height), (900, 620))
-        self.assertEqual((geometry.raw_width, geometry.raw_height), (1800, 1240))
-        self.assertEqual(geometry.scale_factor, 2.0)
+        self.assertEqual((geometry.width, geometry.height), (900, 240))
+        self.assertEqual((geometry.x, geometry.y), (120, 140))
+        self.assertEqual((geometry.raw_x, geometry.raw_y), (210, 245))
+        self.assertEqual((geometry.raw_width, geometry.raw_height), (1575, 420))
+        self.assertEqual(geometry.scale_factor, 1.75)
+        self.assertEqual(geometry.source, "bounds")
+
+    def test_extract_window_placement_requires_native_outer_bounds(self) -> None:
+        window = type("Window", (), {"native": None})()
+        with self.assertRaises(RuntimeError):
+            extract_window_placement(window)
 
 
 if __name__ == "__main__":

@@ -23,6 +23,11 @@ class DetachedWindowConfig:
     font_bold: object
     font_color: object
     bg_color: object
+    limit_max: object
+    limit_max_per_line: object
+    max: object
+    max_per_line: object
+    use_conf_color: object
     always_on_top: object
     no_title_bar: object
     opacity: object
@@ -35,6 +40,11 @@ class DetachedWindowConfig:
             "font_bold": self.font_bold,
             "font_color": self.font_color,
             "bg_color": self.bg_color,
+            "limit_max": self.limit_max,
+            "limit_max_per_line": self.limit_max_per_line,
+            "max": self.max,
+            "max_per_line": self.max_per_line,
+            "use_conf_color": self.use_conf_color,
             "always_on_top": self.always_on_top,
             "no_title_bar": self.no_title_bar,
             "opacity": self.opacity,
@@ -46,6 +56,7 @@ class DetachedWindowConfig:
 class DetachedWindowSettings:
     mode: str
     geometry_cache: str
+    position_cache: str
     config: DetachedWindowConfig
 
 
@@ -57,6 +68,11 @@ def build_detached_window_config(settings_snapshot: Mapping[str, object], mode: 
         font_bold=settings_snapshot.get(f"tb_ex_{normalized_mode}_font_bold", True),
         font_color=settings_snapshot.get(f"tb_ex_{normalized_mode}_font_color", "#FFFFFF"),
         bg_color=settings_snapshot.get(f"tb_ex_{normalized_mode}_bg_color", "#000000"),
+        limit_max=settings_snapshot.get(f"tb_ex_{normalized_mode}_limit_max", False),
+        limit_max_per_line=settings_snapshot.get(f"tb_ex_{normalized_mode}_limit_max_per_line", False),
+        max=settings_snapshot.get(f"tb_ex_{normalized_mode}_max", 120),
+        max_per_line=settings_snapshot.get(f"tb_ex_{normalized_mode}_max_per_line", 30),
+        use_conf_color=settings_snapshot.get(f"tb_ex_{normalized_mode}_use_conf_color", True),
         always_on_top=settings_snapshot.get(f"ex_{normalized_mode}_always_on_top", 0),
         no_title_bar=settings_snapshot.get(f"ex_{normalized_mode}_no_title_bar", 0),
         opacity=settings_snapshot.get(f"ex_{normalized_mode}_opacity", 1.0),
@@ -69,6 +85,7 @@ def build_detached_window_settings(settings_snapshot: Mapping[str, object], mode
     return DetachedWindowSettings(
         mode=normalized_mode,
         geometry_cache=str(settings_snapshot.get(f"ex_{normalized_mode}_geometry", DETACHED_WINDOW_DEFAULT_GEOMETRY)),
+        position_cache=str(settings_snapshot.get(f"ex_{normalized_mode}_pos", "")),
         config=build_detached_window_config(settings_snapshot, normalized_mode),
     )
 

@@ -23,6 +23,7 @@ class StartupContext:
     tray_enabled: bool
     debug_enabled: bool
     raw_main_size: str
+    raw_main_position: str
 
 
 def _get_default_settings() -> SettingsStore:
@@ -70,6 +71,7 @@ class AppStartupController:
             tray_enabled="--no-tray" not in sys.argv,
             debug_enabled="--debug-webview" in sys.argv or "--debug" in sys.argv,
             raw_main_size=self.prepare_main_window_size(),
+            raw_main_position=str(self.settings.cache.get("mw_pos", "") or "").strip(),
         )
 
     def _initialize_logging(self, *, with_log_init: bool, log_initializer: Callable[[str], None] | None) -> None:
@@ -100,8 +102,8 @@ class AppStartupController:
         self.bridge_setter(bridge)
         return bridge
 
-    def _create_main_window(self, *, webview, bridge: StartupBridge, raw_main_size: str):
-        main_placement = resolve_window_placement(raw_main_size, 1140, 680)
+    def _create_main_window(self, *, webview, bridge: StartupBridge, raw_main_size: str, raw_main_position: str):
+        main_placement = resolve_window_placement(raw_main_size, 1140, 680, raw_position=raw_main_position)
         bridge.log_startup_marker("before_create_main_window")
         window = webview.create_window(
             APP_NAME,
@@ -138,7 +140,12 @@ class AppStartupController:
         context = self._create_startup_context()
         webview = self._initialize_webview_runtime()
         bridge = self._create_bridge(context.startup_t0)
-        self._create_main_window(webview=webview, bridge=bridge, raw_main_size=context.raw_main_size)
+        self._create_main_window(
+            webview=webview,
+            bridge=bridge,
+            raw_main_size=context.raw_main_size,
+            raw_main_position=context.raw_main_position,
+        )
         bridge.log_startup_marker("before_webview_start")
         webview.start(
             self._build_webview_ready_callback(bridge=bridge, tray_enabled=context.tray_enabled),

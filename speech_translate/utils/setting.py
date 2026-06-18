@@ -50,6 +50,7 @@ default_setting: SettingDict = {
     "supress_hidden_to_tray": False,
     "supress_record_warning": False,
     "mw_size": "1140x680",
+    "mw_pos": "",
     "dir_log": "auto",
     "dir_model": "auto",
     "file_slice_start": "",  # empty will be read as None
@@ -208,6 +209,7 @@ default_setting: SettingDict = {
     "tb_mw_tl_use_conf_color": True,
     # Tc sub
     "ex_tc_geometry": "900x240",
+    "ex_tc_pos": "",
     "ex_tc_always_on_top": 1,
     "ex_tc_click_through": 0,
     "ex_tc_no_title_bar": 1,
@@ -224,6 +226,7 @@ default_setting: SettingDict = {
     "tb_ex_tc_use_conf_color": True,
     # Tl sub
     "ex_tl_geometry": "900x240",
+    "ex_tl_pos": "",
     "ex_tl_always_on_top": 1,
     "ex_tl_click_through": 0,
     "ex_tl_no_title_bar": 1,
