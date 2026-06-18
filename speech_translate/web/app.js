@@ -1207,7 +1207,7 @@ function renderImportSettings(data) {
   }
   if (els.fileImportExportDir) {
     const exportDir = settings.dir_export ?? 'auto';
-    els.fileImportExportDir.textContent = summarizeSettingText(exportDir, 'auto', 44);
+    els.fileImportExportDir.textContent = summarizeSettingText(exportDir, 'auto', 30);
   }
   if (els.fileImportExportMeta) {
     const engine = importUi.selected_engine || '未知';
