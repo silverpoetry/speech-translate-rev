@@ -60,6 +60,7 @@ class WebSettingsContractTests(unittest.TestCase):
     def test_audio_device_refresh_action_exists(self) -> None:
         self.assertIn("action === 'refresh-audio-devices'", self.app_js)
         self.assertIn("await refreshAudioSourceOptions(els.hostAPI ? els.hostAPI.value : '', true);", self.app_js)
+        self.assertIn("async function persistRecordDeviceSelection(hostApiValue, micValue, speakerValue)", self.app_js)
 
     def test_task_runtime_pills_are_rendered(self) -> None:
         self.assertIn("function renderTaskRuntimePills(data)", self.app_js)
@@ -93,11 +94,13 @@ class WebSettingsContractTests(unittest.TestCase):
         self.assertIn("els.decodingPresetToolbar = $('decoding_preset_toolbar');", self.app_js)
         self.assertIn("els.bestOfToolbar = $('best_of_toolbar');", self.app_js)
         self.assertIn("els.suppressBlankToolbar = $('suppress_blank_toolbar');", self.app_js)
-        self.assertIn("bindToolbarMirror(els.hostAPIToolbar, els.hostAPI, 'value');", self.app_js)
-        self.assertIn("bindToolbarMirror(els.exportTxtToolbar, els.exportTxt, 'checked');", self.app_js)
-        self.assertIn("bindToolbarMirror(els.decodingPresetToolbar, els.decodingPreset, 'value');", self.app_js)
-        self.assertIn("bindToolbarMirror(els.bestOfToolbar, els.bestOf, 'value');", self.app_js)
-        self.assertIn("bindToolbarMirror(els.suppressBlankToolbar, els.suppressBlank, 'checked');", self.app_js)
+        self.assertIn("function bindToolbarMirrorValues(pairs = [])", self.app_js)
+        self.assertIn("function bindToolbarMirrorChecks(pairs = [])", self.app_js)
+        self.assertIn("[els.hostAPIToolbar, els.hostAPI]", self.app_js)
+        self.assertIn("[els.exportTxtToolbar, els.exportTxt]", self.app_js)
+        self.assertIn("[els.decodingPresetToolbar, els.decodingPreset]", self.app_js)
+        self.assertIn("[els.bestOfToolbar, els.bestOf]", self.app_js)
+        self.assertIn("[els.suppressBlankToolbar, els.suppressBlank]", self.app_js)
         self.assertIn("function syncToolbarMirrorValues(pairs = [])", self.app_js)
         self.assertIn("function syncToolbarMirrorChecks(pairs = [])", self.app_js)
         self.assertIn("[els.exportFormat, els.exportFormatToolbar, '%Y-%m-%d %f {file}/{task-lang}']", self.app_js)
@@ -107,6 +110,12 @@ class WebSettingsContractTests(unittest.TestCase):
         self.assertIn("[els.autoOpenDirExport, els.autoOpenDirExportToolbar, true]", self.app_js)
         self.assertIn("[els.exportFormatToolbar, els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}']", self.app_js)
         self.assertIn("[els.exportTxtToolbar, els.exportTxt, true]", self.app_js)
+
+    def test_select_setting_persistence_uses_shared_binding_helper(self) -> None:
+        self.assertIn("function bindSelectSettingPersistence(node, apiName, key, options = {})", self.app_js)
+        self.assertIn("bindSelectSettingPersistence(els.mic, 'set_record_setting', 'mic');", self.app_js)
+        self.assertIn("bindSelectSettingPersistence(els.speaker, 'set_record_setting', 'speaker');", self.app_js)
+        self.assertIn("bindSelectSettingPersistence(els.modelImport, 'set_import_setting', 'model_f_import', {", self.app_js)
 
     def test_settings_toolbar_actions_exist(self) -> None:
         self.assertIn('data-action="save-settings"', self.index_html)

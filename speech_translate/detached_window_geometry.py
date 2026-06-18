@@ -9,6 +9,7 @@ from speech_translate.window_geometry import (
     extract_window_placement,
     format_window_position,
     format_window_size,
+    WindowPlacement,
     resolve_window_placement,
 )
 
@@ -24,7 +25,7 @@ def resolve_detached_window_placement(
     y: Optional[int],
     width: Optional[int],
     height: Optional[int],
-) -> tuple[int, int, int, int]:
+) -> WindowPlacement:
     geometry_cache = DETACHED_WINDOW_DEFAULT_GEOMETRY
     position_cache = ""
     if settings is not None:
@@ -40,20 +41,20 @@ def resolve_detached_window_placement(
         min_width=DETACHED_MIN_WIDTH,
         min_height=DETACHED_MIN_HEIGHT,
     )
-    resolved_width = int(width) if width is not None else cached_placement.width
-    resolved_height = int(height) if height is not None else cached_placement.height
-
-    placement = resolve_window_placement(
-        format_window_size(resolved_width, resolved_height),
-        resolved_width,
-        resolved_height,
+    resolved_geometry = format_window_size(
+        int(width) if width is not None else cached_placement.width,
+        int(height) if height is not None else cached_placement.height,
+    )
+    return resolve_window_placement(
+        resolved_geometry,
+        cached_placement.width,
+        cached_placement.height,
         raw_position=position_cache,
         x=x,
         y=y,
         min_width=DETACHED_MIN_WIDTH,
         min_height=DETACHED_MIN_HEIGHT,
     )
-    return placement.width, placement.height, placement.x, placement.y
 
 
 def persist_detached_window_placement(

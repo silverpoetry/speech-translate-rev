@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Optional
 
 from speech_translate.controller_protocols import DetachedWindowBridge, DetachedWindowManagerApi, JsonDict, SettingsStore
@@ -11,14 +10,6 @@ from speech_translate.detached_window_settings import (
     get_detached_live_content,
     normalize_detached_mode,
 )
-
-
-@dataclass(frozen=True)
-class DetachedPlacement:
-    width: int
-    height: int
-    x: int
-    y: int
 
 
 class DetachedWindowController:
@@ -36,7 +27,7 @@ class DetachedWindowController:
         return detached_setting_key(mode, key)
 
     def _resolve_window_placement(self, mode: str, x: Optional[int], y: Optional[int]):
-        width, height, resolved_x, resolved_y = resolve_detached_window_placement(
+        return resolve_detached_window_placement(
             self.settings,
             mode,
             x=x,
@@ -44,7 +35,6 @@ class DetachedWindowController:
             width=None,
             height=None,
         )
-        return DetachedPlacement(width=width, height=height, x=resolved_x, y=resolved_y)
 
     def _push_live_content_if_available(self, mode: str) -> None:
         html = get_detached_live_content(mode, self.bridge.snapshot_live_state())

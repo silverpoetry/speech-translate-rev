@@ -181,6 +181,18 @@ function bindToolbarMirror(source, target, kind = 'value') {
   });
 }
 
+function bindToolbarMirrorValues(pairs = []) {
+  for (const [source, target] of pairs) {
+    bindToolbarMirror(source, target, 'value');
+  }
+}
+
+function bindToolbarMirrorChecks(pairs = []) {
+  for (const [source, target] of pairs) {
+    bindToolbarMirror(source, target, 'checked');
+  }
+}
+
 function syncToolbarMirrorValues(pairs = []) {
   for (const [target, source, fallback = ''] of pairs) {
     syncToolbarMirrorValue(target, source, fallback);
@@ -207,6 +219,33 @@ async function persistApiPairs(apiName, updates = []) {
   for (const [key, value] of updates) {
     await apiCall(apiName, key, value);
   }
+}
+
+async function persistRecordDeviceSelection(hostApiValue, micValue, speakerValue) {
+  await persistApiPairs('set_record_setting', [
+    ['hostAPI', hostApiValue],
+    ['mic', micValue],
+    ['speaker', speakerValue],
+  ]);
+}
+
+function bindSelectSettingPersistence(node, apiName, key, options = {}) {
+  if (!node) {
+    return;
+  }
+  const read = typeof options.read === 'function' ? options.read : ((currentNode) => currentNode.value);
+  const onError = typeof options.onError === 'function' ? options.onError : null;
+  node.addEventListener('change', async () => {
+    try {
+      await apiCall(apiName, key, read(node));
+    } catch (error) {
+      if (onError) {
+        onError(error);
+        return;
+      }
+      console.error(`保存 ${apiName}:${key} 失败`, error);
+    }
+  });
 }
 
 function setAppModalHidden(hidden) {
@@ -1257,9 +1296,11 @@ async function refreshAudioSourceOptions(hostApiValue, persistSelection = false)
   populateSelect(els.speaker, speakerOptions, nextSpeaker);
 
   if (persistSelection) {
-    await apiCall('set_record_setting', 'hostAPI', els.hostAPI ? els.hostAPI.value : nextHostApi);
-    await apiCall('set_record_setting', 'mic', els.mic ? els.mic.value : nextMic);
-    await apiCall('set_record_setting', 'speaker', els.speaker ? els.speaker.value : nextSpeaker);
+    await persistRecordDeviceSelection(
+      els.hostAPI ? els.hostAPI.value : nextHostApi,
+      els.mic ? els.mic.value : nextMic,
+      els.speaker ? els.speaker.value : nextSpeaker
+    );
   }
 }
 
@@ -3992,51 +4033,55 @@ function bindEvents() {
       });
     }
 
-    bindToolbarMirror(els.httpProxyToolbar, els.httpProxy, 'value');
-    bindToolbarMirror(els.httpsProxyToolbar, els.httpsProxy, 'value');
-    bindToolbarMirror(els.libreLinkToolbar, els.libreLink, 'value');
-    bindToolbarMirror(els.libreApiKeyToolbar, els.libreApiKey, 'value');
-    bindToolbarMirror(els.exportFormatToolbar, els.exportFormat, 'value');
-    bindToolbarMirror(els.segmentMaxWordsToolbar, els.segmentMaxWords, 'value');
-    bindToolbarMirror(els.segmentMaxCharsToolbar, els.segmentMaxChars, 'value');
-    bindToolbarMirror(els.segmentSplitOrNewlineToolbar, els.segmentSplitOrNewline, 'value');
-    bindToolbarMirror(els.transcribeRateToolbar, els.transcribeRate, 'value');
-    bindToolbarMirror(els.decodingPresetToolbar, els.decodingPreset, 'value');
-    bindToolbarMirror(els.temperatureToolbar, els.temperature, 'value');
-    bindToolbarMirror(els.bestOfToolbar, els.bestOf, 'value');
-    bindToolbarMirror(els.beamSizeToolbar, els.beamSize, 'value');
-    bindToolbarMirror(els.noSpeechThresholdToolbar, els.noSpeechThreshold, 'value');
-    bindToolbarMirror(els.logprobThresholdToolbar, els.logprobThreshold, 'value');
-    bindToolbarMirror(els.patienceToolbar, els.patience, 'value');
-    bindToolbarMirror(els.compressionRatioThresholdToolbar, els.compressionRatioThreshold, 'value');
-    bindToolbarMirror(els.suppressTokensToolbar, els.suppressTokens, 'value');
-    bindToolbarMirror(els.httpProxyEnableToolbar, els.httpProxyEnable, 'checked');
-    bindToolbarMirror(els.httpsProxyEnableToolbar, els.httpsProxyEnable, 'checked');
-    bindToolbarMirror(els.autoOpenDirExportToolbar, els.autoOpenDirExport, 'checked');
-    bindToolbarMirror(els.exportTxtToolbar, els.exportTxt, 'checked');
-    bindToolbarMirror(els.exportSrtToolbar, els.exportSrt, 'checked');
-    bindToolbarMirror(els.exportVttToolbar, els.exportVtt, 'checked');
-    bindToolbarMirror(els.exportJsonToolbar, els.exportJson, 'checked');
-    bindToolbarMirror(els.exportAssToolbar, els.exportAss, 'checked');
-    bindToolbarMirror(els.exportCsvToolbar, els.exportCsv, 'checked');
-    bindToolbarMirror(els.exportTsvToolbar, els.exportTsv, 'checked');
-    bindToolbarMirror(els.exportMp4Toolbar, els.exportMp4, 'checked');
-    bindToolbarMirror(els.recAskConfirmationFirstToolbar, els.recAskConfirmationFirst, 'checked');
-    bindToolbarMirror(els.supressHiddenToTrayToolbar, els.supressHiddenToTray, 'checked');
-    bindToolbarMirror(els.useEnModelToolbar, els.useEnModel, 'checked');
-    bindToolbarMirror(els.suppressBlankToolbar, els.suppressBlank, 'checked');
-    bindToolbarMirror(els.fp16Toolbar, els.fp16, 'checked');
-    bindToolbarMirror(els.useTempAltToolbar, els.useTempAlt, 'checked');
-    bindToolbarMirror(els.keepTempToolbar, els.keepTemp, 'checked');
-    bindToolbarMirror(els.fileUseOfficialWhisperToolbar, els.fileUseOfficialWhisper, 'checked');
-    bindToolbarMirror(els.supressRecordWarningToolbar, els.supressRecordWarning, 'checked');
-    bindToolbarMirror(els.debugRealtimeRecordToolbar, els.debugRealtimeRecord, 'checked');
-    bindToolbarMirror(els.debugTranslateToolbar, els.debugTranslate, 'checked');
-    bindToolbarMirror(els.segmentEvenSplitToolbar, els.segmentEvenSplit, 'checked');
-    bindToolbarMirror(els.segmentLevelToolbar, els.segmentLevel, 'checked');
-    bindToolbarMirror(els.wordLevelToolbar, els.wordLevel, 'checked');
-    bindToolbarMirror(els.hostAPIToolbar, els.hostAPI, 'value');
-    bindToolbarMirror(els.modelDevicePreferenceToolbar, els.modelDevicePreference, 'value');
+    bindToolbarMirrorValues([
+      [els.httpProxyToolbar, els.httpProxy],
+      [els.httpsProxyToolbar, els.httpsProxy],
+      [els.libreLinkToolbar, els.libreLink],
+      [els.libreApiKeyToolbar, els.libreApiKey],
+      [els.exportFormatToolbar, els.exportFormat],
+      [els.segmentMaxWordsToolbar, els.segmentMaxWords],
+      [els.segmentMaxCharsToolbar, els.segmentMaxChars],
+      [els.segmentSplitOrNewlineToolbar, els.segmentSplitOrNewline],
+      [els.transcribeRateToolbar, els.transcribeRate],
+      [els.decodingPresetToolbar, els.decodingPreset],
+      [els.temperatureToolbar, els.temperature],
+      [els.bestOfToolbar, els.bestOf],
+      [els.beamSizeToolbar, els.beamSize],
+      [els.noSpeechThresholdToolbar, els.noSpeechThreshold],
+      [els.logprobThresholdToolbar, els.logprobThreshold],
+      [els.patienceToolbar, els.patience],
+      [els.compressionRatioThresholdToolbar, els.compressionRatioThreshold],
+      [els.suppressTokensToolbar, els.suppressTokens],
+      [els.hostAPIToolbar, els.hostAPI],
+      [els.modelDevicePreferenceToolbar, els.modelDevicePreference],
+    ]);
+    bindToolbarMirrorChecks([
+      [els.httpProxyEnableToolbar, els.httpProxyEnable],
+      [els.httpsProxyEnableToolbar, els.httpsProxyEnable],
+      [els.autoOpenDirExportToolbar, els.autoOpenDirExport],
+      [els.exportTxtToolbar, els.exportTxt],
+      [els.exportSrtToolbar, els.exportSrt],
+      [els.exportVttToolbar, els.exportVtt],
+      [els.exportJsonToolbar, els.exportJson],
+      [els.exportAssToolbar, els.exportAss],
+      [els.exportCsvToolbar, els.exportCsv],
+      [els.exportTsvToolbar, els.exportTsv],
+      [els.exportMp4Toolbar, els.exportMp4],
+      [els.recAskConfirmationFirstToolbar, els.recAskConfirmationFirst],
+      [els.supressHiddenToTrayToolbar, els.supressHiddenToTray],
+      [els.useEnModelToolbar, els.useEnModel],
+      [els.suppressBlankToolbar, els.suppressBlank],
+      [els.fp16Toolbar, els.fp16],
+      [els.useTempAltToolbar, els.useTempAlt],
+      [els.keepTempToolbar, els.keepTemp],
+      [els.fileUseOfficialWhisperToolbar, els.fileUseOfficialWhisper],
+      [els.supressRecordWarningToolbar, els.supressRecordWarning],
+      [els.debugRealtimeRecordToolbar, els.debugRealtimeRecord],
+      [els.debugTranslateToolbar, els.debugTranslate],
+      [els.segmentEvenSplitToolbar, els.segmentEvenSplit],
+      [els.segmentLevelToolbar, els.segmentLevel],
+      [els.wordLevelToolbar, els.wordLevel],
+    ]);
     if (els.hostAPIToolbar) {
       els.hostAPIToolbar.addEventListener('change', async () => {
         if (els.hostAPI) {
@@ -4046,17 +4091,8 @@ function bindEvents() {
       });
     }
 
-  if (els.mic) {
-    els.mic.addEventListener('change', async () => {
-      await apiCall('set_record_setting', 'mic', els.mic.value);
-    });
-  }
-
-  if (els.speaker) {
-    els.speaker.addEventListener('change', async () => {
-      await apiCall('set_record_setting', 'speaker', els.speaker.value);
-    });
-  }
+  bindSelectSettingPersistence(els.mic, 'set_record_setting', 'mic');
+  bindSelectSettingPersistence(els.speaker, 'set_record_setting', 'speaker');
 
   if (els.modelManagerEngineBar) {
     els.modelManagerEngineBar.addEventListener('click', async (event) => {
@@ -4087,16 +4123,11 @@ function bindEvents() {
     });
   }
 
-  if (els.modelImport) {
-    els.modelImport.addEventListener('change', async () => {
-      try {
-        // 只保存选择；不要自动触发模型加载。
-        await apiCall('set_import_setting', 'model_f_import', els.modelImport.value);
-      } catch (error) {
-        console.error('保存模型选择失败', error);
-      }
-    });
-  }
+  bindSelectSettingPersistence(els.modelImport, 'set_import_setting', 'model_f_import', {
+    onError(error) {
+      console.error('保存模型选择失败', error);
+    },
+  });
 
   // 加载按钮由页面的 data-action 统一事件处理器处理（action='load-model'），无需额外绑定。
 

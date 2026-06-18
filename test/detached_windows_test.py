@@ -281,7 +281,7 @@ class DetachedWindowHelpersTests(unittest.TestCase):
         self.assertEqual(api.get_recording_state(), {"status": "Recording", "active": True})
 
     def test_manager_resolve_window_placement_preserves_explicit_coordinates(self) -> None:
-        width, height, x, y = resolve_detached_window_placement(
+        placement = resolve_detached_window_placement(
             None,
             "tc",
             x=10,
@@ -289,11 +289,11 @@ class DetachedWindowHelpersTests(unittest.TestCase):
             width=640,
             height=320,
         )
-        self.assertEqual((width, height, x, y), (640, 320, 10, 20))
+        self.assertEqual(placement, WindowPlacement(width=640, height=320, x=10, y=20))
 
     def test_manager_resolve_window_placement_uses_cached_geometry_and_position(self) -> None:
         settings = type("Settings", (), {"cache": {"ex_tc_geometry": "640x320", "ex_tc_pos": "180,120"}})()
-        width, height, x, y = resolve_detached_window_placement(
+        placement = resolve_detached_window_placement(
             settings,
             "tc",
             x=None,
@@ -301,11 +301,11 @@ class DetachedWindowHelpersTests(unittest.TestCase):
             width=None,
             height=None,
         )
-        self.assertEqual((width, height, x, y), (640, 320, 180, 120))
+        self.assertEqual(placement, WindowPlacement(width=640, height=320, x=180, y=120))
 
     def test_manager_resolve_window_placement_allows_width_override_only(self) -> None:
         settings = type("Settings", (), {"cache": {"ex_tc_geometry": "640x320", "ex_tc_pos": "30,40"}})()
-        width, height, x, y = resolve_detached_window_placement(
+        placement = resolve_detached_window_placement(
             settings,
             "tc",
             x=None,
@@ -313,11 +313,11 @@ class DetachedWindowHelpersTests(unittest.TestCase):
             width=800,
             height=None,
         )
-        self.assertEqual((width, height, x, y), (800, 320, 30, 40))
+        self.assertEqual(placement, WindowPlacement(width=800, height=320, x=30, y=40))
 
     def test_manager_resolve_window_placement_allows_height_override_only(self) -> None:
         settings = type("Settings", (), {"cache": {"ex_tc_geometry": "640x320", "ex_tc_pos": "30,40"}})()
-        width, height, x, y = resolve_detached_window_placement(
+        placement = resolve_detached_window_placement(
             settings,
             "tc",
             x=None,
@@ -325,7 +325,7 @@ class DetachedWindowHelpersTests(unittest.TestCase):
             width=None,
             height=500,
         )
-        self.assertEqual((width, height, x, y), (640, 500, 30, 40))
+        self.assertEqual(placement, WindowPlacement(width=640, height=500, x=30, y=40))
 
     def test_manager_update_window_content_skips_duplicate_payload_after_send(self) -> None:
         class FakeWindow:

@@ -254,7 +254,7 @@ class DetachedWindowManager:
             create_captionless = bool(create_config.get("no_title_bar", 0))
             self.runtime.mark_window_loaded(mode, False)
             self.runtime.mark_window_content_ready(mode, False)
-            width, height, x, y = resolve_detached_window_placement(
+            placement = resolve_detached_window_placement(
                 self.settings,
                 mode,
                 x=x,
@@ -262,7 +262,7 @@ class DetachedWindowManager:
                 width=width,
                 height=height,
             )
-            self._requested_placements[mode] = WindowPlacement(width=width, height=height, x=x, y=y)
+            self._requested_placements[mode] = placement
             cache_value = None
             pos_cache = None
             if self.settings is not None:
@@ -271,8 +271,8 @@ class DetachedWindowManager:
                 pos_cache = cached_settings.position_cache
             logger.info(
                 f"[DetachedGeometry][open-created] mode={mode} "
-                f"requested={width}x{height} native_request={width}x{height} "
-                f"captionless={create_captionless} position={x},{y} cache={cache_value} cache_pos={pos_cache}"
+                f"requested={placement.width}x{placement.height} native_request={placement.width}x{placement.height} "
+                f"captionless={create_captionless} position={placement.x},{placement.y} cache={cache_value} cache_pos={pos_cache}"
             )
             window_url = f"{html_path}?mode={mode}"
             window = create_preloaded_window(
