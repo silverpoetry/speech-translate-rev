@@ -34,11 +34,15 @@ class DetachedWindowHelpersTests(unittest.TestCase):
             def __init__(self) -> None:
                 self.events = SimpleNamespace(closing=EventHook(), closed=EventHook(), loaded=EventHook())
                 self.native = None
+                self.show_calls = 0
+                self.bring_calls = 0
 
             def show(self) -> None:
+                self.show_calls += 1
                 return None
 
             def bring_to_front(self) -> None:
+                self.bring_calls += 1
                 return None
 
         class FakeWebview:
@@ -67,6 +71,24 @@ class DetachedWindowHelpersTests(unittest.TestCase):
         self.assertEqual(kwargs["width"], 700)
         self.assertEqual(kwargs["height"], 300)
         self.assertEqual((kwargs["x"], kwargs["y"]), (10, 20))
+        self.assertEqual(kwargs["hidden"], True)
+
+    def test_loaded_window_is_shown_after_geometry_and_config_sync(self) -> None:
+        class FakeWindow:
+            def __init__(self) -> None:
+                self.events = SimpleNamespace()
+                self.native = None
+                self.show_calls = 0
+
+            def show(self) -> None:
+                self.show_calls += 1
+
+        manager = DetachedWindowManager(settings=None)
+        window = FakeWindow()
+        manager.windows["tc"] = window
+        manager._show_loaded_window("tc")
+
+        self.assertEqual(window.show_calls, 1)
 
     def test_normalize_detached_mode_defaults_invalid_mode(self) -> None:
         self.assertEqual(normalize_detached_mode("invalid"), "tl")

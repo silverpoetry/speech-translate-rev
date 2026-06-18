@@ -172,6 +172,20 @@ class DetachedWindowManager:
         except Exception:
             pass
 
+    def _show_loaded_window(self, mode: str) -> None:
+        window = self.windows.get(mode)
+        if window is None:
+            return
+        try:
+            window.show()
+        except Exception:
+            logger.exception(f"[DetachedOpen] failed to show loaded window mode={mode}")
+            return
+        try:
+            self._apply_topmost(mode, focus_nudge=True)
+        except Exception:
+            logger.exception(f"[DetachedOpen] failed to raise loaded window mode={mode}")
+
     def create_window(
         self,
         mode: str = "tc",
@@ -230,6 +244,7 @@ class DetachedWindowManager:
                 background_color="#060b14",
                 transparent=True,
                 on_top=always_on_top,
+                hidden=True,
             )
 
             self.windows[mode] = window
@@ -261,6 +276,7 @@ class DetachedWindowManager:
                 logger.exception(f"[DetachedGeometry][normalize-loaded] failed mode={mode}")
         log_detached_window_loaded_geometry(mode, self.windows.get(mode))
         self._flush_pending(mode, include_content=False)
+        self._show_loaded_window(mode)
 
     def mark_window_content_ready(self, mode: str) -> None:
         mode = normalize_detached_mode(mode)
