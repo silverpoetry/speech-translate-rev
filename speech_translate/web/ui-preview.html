@@ -701,78 +701,66 @@
 
             <article class="workflow-card tab-panel is-active" id="tab-realtime" role="tabpanel">
               <section class="panel-card core-card">
-                <div class="floating-action-row">
-                  <button class="btn-icon" data-action="create-detached-tc" data-tooltip="打开转写独立窗口"
-                    title="打开转写独立窗口"><span class="btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
-                  <button class="btn-icon btn-icon-blue" data-action="create-detached-tl" data-tooltip="打开翻译独立窗口"
-                    title="打开翻译独立窗口"><span class="btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
-                </div>
-                <div class="hero-toolbar hero-toolbar-compact">
-                  <div class="hero-toolbar-main">
-                    <button class="primary btn-with-icon btn-recording" data-action="start-recording"
-                      id="btn-recording-toggle">开始录制</button>
+                <div class="section-head realtime-page-head">
+                  <div>
+                    <h3>实时转写</h3>
+                    <p>录制、转写与翻译输出</p>
                   </div>
-                  <div class="hero-toolbar-pills">
-                    <label class="toggle-row"><input id="transcribe_mw" type="checkbox" checked /> 转写</label>
-                    <label class="toggle-row"><input id="translate_mw" type="checkbox" checked /> 翻译</label>
+                  <div class="realtime-head-actions">
+                    <button class="btn-icon" data-action="create-detached-tc" data-tooltip="打开转写独立窗口"
+                      title="打开转写独立窗口"><span class="btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
+                    <button class="btn-icon btn-icon-blue" data-action="create-detached-tl" data-tooltip="打开翻译独立窗口"
+                      title="打开翻译独立窗口"><span class="btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
                   </div>
                 </div>
 
-                <div class="realtime-command-deck">
-                  <div class="realtime-command-bar">
-                    <div class="record-visualizer-card realtime-live-meter" id="record_visualizer_card" aria-live="polite">
-                      <div class="record-visualizer-head">
-                        <span id="record_visualizer_label">等待录制</span>
-                      </div>
-                      <div class="record-visualizer-track" aria-hidden="true">
-                        <div class="record-visualizer-threshold" id="record_visualizer_threshold"></div>
-                        <div class="record-visualizer-fill" id="record_visualizer_fill"></div>
-                      </div>
-                      <div class="record-visualizer-meta">
-                        <span id="record_visualizer_db">-</span>
-                        <span id="record_visualizer_threshold_text">阈值 - dB</span>
-                      </div>
+                <div class="realtime-session-bar">
+                  <div class="realtime-session-actions">
+                    <button class="primary btn-with-icon btn-recording" data-action="start-recording"
+                      id="btn-recording-toggle">开始录制</button>
+                    <label class="toggle-row"><input id="transcribe_mw" type="checkbox" checked /> 转写</label>
+                    <label class="toggle-row"><input id="translate_mw" type="checkbox" checked /> 翻译</label>
+                  </div>
+                  <div class="record-visualizer-card realtime-live-meter" id="record_visualizer_card" aria-live="polite">
+                    <div class="record-visualizer-head">
+                      <span id="record_visualizer_label">等待录制</span>
                     </div>
-                    <div class="realtime-inline-stats" aria-label="实时录制概览">
-                      <div class="realtime-inline-stat">
-                        <span class="realtime-inline-label">模型</span>
-                        <span class="realtime-inline-value" id="realtime-model-state">未加载</span>
-                        <span class="realtime-inline-meta" id="realtime-model-meta">等待同步</span>
-                      </div>
-                      <div class="realtime-inline-stat">
-                        <span class="realtime-inline-label">状态</span>
-                        <span class="realtime-inline-value" id="realtime-task-state">空闲</span>
-                        <span class="realtime-inline-meta" id="realtime-task-message">等待任务</span>
-                      </div>
-                      <div class="realtime-inline-stat realtime-inline-stat-compact">
-                        <span class="realtime-inline-label">录制</span>
-                        <span class="realtime-inline-value" id="realtime-recording-timer">--:--:--</span>
-                        <span class="realtime-inline-meta" id="realtime-recording-buffer">缓冲 0/0 sec</span>
-                      </div>
-                      <div class="realtime-inline-stat realtime-inline-stat-compact">
-                        <span class="realtime-inline-label">片段</span>
-                        <span class="realtime-inline-value" id="realtime-recording-sentences">0</span>
-                        <span class="realtime-inline-meta" id="realtime-recording-device">输入 -</span>
-                      </div>
+                    <div class="record-visualizer-track" aria-hidden="true">
+                      <div class="record-visualizer-threshold" id="record_visualizer_threshold"></div>
+                      <div class="record-visualizer-fill" id="record_visualizer_fill"></div>
+                    </div>
+                    <div class="record-visualizer-meta">
+                      <span id="record_visualizer_db">-</span>
+                      <span id="record_visualizer_threshold_text">阈值 - dB</span>
                     </div>
                   </div>
-                  <div class="realtime-summary-row">
-                    <span class="pill pill-muted realtime-summary-pill">
-                      <span class="realtime-summary-pill-label">输入源</span>
-                      <span class="realtime-summary-pill-value" id="main-input-pill">未设置</span>
-                    </span>
-                    <span class="pill pill-muted realtime-summary-pill">
-                      <span class="realtime-summary-pill-label">模型</span>
-                      <span class="realtime-summary-pill-value" id="main-model-pill">未设置</span>
-                    </span>
-                    <span class="pill pill-muted realtime-summary-pill">
-                      <span class="realtime-summary-pill-label">语言</span>
-                      <span class="realtime-summary-pill-value" id="main-lang-pill">未设置</span>
-                    </span>
-                    <span class="pill pill-muted realtime-summary-pill">
-                      <span class="realtime-summary-pill-label">翻译引擎</span>
-                      <span class="realtime-summary-pill-value" id="main-engine-pill">未设置</span>
-                    </span>
+                </div>
+
+                <div class="realtime-runtime-strip" aria-label="实时录制概览">
+                  <div class="realtime-runtime-item realtime-runtime-item-wide">
+                    <span class="realtime-runtime-label">状态</span>
+                    <span class="realtime-runtime-value" id="realtime-task-state">空闲</span>
+                    <span class="realtime-runtime-meta" id="realtime-task-message">等待任务</span>
+                  </div>
+                  <div class="realtime-runtime-item">
+                    <span class="realtime-runtime-label">模型</span>
+                    <span class="realtime-runtime-value" id="main-model-pill">未设置</span>
+                    <span class="realtime-runtime-meta"><span id="realtime-model-state">未加载</span><span class="sr-only" id="realtime-model-meta">等待同步</span></span>
+                  </div>
+                  <div class="realtime-runtime-item">
+                    <span class="realtime-runtime-label">输入</span>
+                    <span class="realtime-runtime-value" id="main-input-pill">未设置</span>
+                    <span class="realtime-runtime-meta" id="realtime-recording-device">输入未绑定</span>
+                  </div>
+                  <div class="realtime-runtime-item">
+                    <span class="realtime-runtime-label">语言</span>
+                    <span class="realtime-runtime-value" id="main-lang-pill">未设置</span>
+                    <span class="realtime-runtime-meta" id="main-engine-pill">已关闭</span>
+                  </div>
+                  <div class="realtime-runtime-item">
+                    <span class="realtime-runtime-label">录制</span>
+                    <span class="realtime-runtime-value" id="realtime-recording-timer">--:--:--</span>
+                    <span class="realtime-runtime-meta"><span id="realtime-recording-buffer">缓冲 0/0 sec</span> · <span id="realtime-recording-sentences">0</span> 句</span>
                   </div>
                 </div>
 
