@@ -13,6 +13,7 @@ from speech_translate.controller_settings import (
     build_runtime_model_load_settings,
     build_selenium_settings,
     build_setting_response,
+    normalize_import_setting_value,
     normalize_record_setting_value,
     normalize_system_setting_value,
 )
@@ -92,9 +93,14 @@ class ControllerSettingsTests(unittest.TestCase):
         self.assertEqual(settings.as_settings_updates()["selenium_compact_level"], 3)
 
     def test_normalize_system_setting_value_handles_invalid_compact_level(self) -> None:
+        self.assertEqual(normalize_system_setting_value("model_mw", "⚡ Tiny [1GB VRAM] (Fastest)"), "tiny")
         self.assertEqual(normalize_system_setting_value("selenium_compact_level", "bad"), 2)
         self.assertEqual(normalize_system_setting_value("selenium_z_order_mode", "BOTTOM"), "bottom")
         self.assertEqual(normalize_system_setting_value("selenium_chrome_user_data_dir", " D:\\data "), "D:\\data")
+
+    def test_normalize_import_setting_value_normalizes_model_key(self) -> None:
+        self.assertEqual(normalize_import_setting_value("model_f_import", "⛵ Small [2GB VRAM] (Moderate)"), "small")
+        self.assertEqual(normalize_import_setting_value("tl_engine_f_import", "Google Translate"), "Google Translate")
 
     def test_normalize_record_setting_value_normalizes_device_preference(self) -> None:
         self.assertEqual(normalize_record_setting_value("model_device_preference", "GPU"), "auto")

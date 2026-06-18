@@ -6,6 +6,7 @@ from typing import Dict, Optional
 
 from speech_translate.controller_protocols import JsonDict, ModelManagerBridge, SettingsStore, WhisperLoadApiGetter
 from speech_translate.log_helpers import logger
+from speech_translate.model_selection import normalize_model_key as normalize_shared_model_key
 from speech_translate.model_manager_runtime import RuntimeModelStateMachine, estimate_whisper_model_bytes
 from speech_translate.ui_protocol import UI_SECTION_TASK
 from speech_translate.model_manager_workflows import (
@@ -15,7 +16,7 @@ from speech_translate.model_manager_workflows import (
     RuntimeModelLoadService,
 )
 from speech_translate.utils.whisper.paths import get_default_download_root
-from speech_translate.utils.whisper.helper import model_select_dict, model_values
+from speech_translate.utils.whisper.helper import model_values
 
 
 def _get_whisper_download_api():
@@ -106,14 +107,7 @@ class ModelManagerController:
         return estimate_whisper_model_bytes(model_key, normalize_model_key=self.normalize_model_key)
 
     def normalize_model_key(self, value: str) -> str:
-        if value in model_select_dict:
-            return model_select_dict[value]
-        if value in model_values:
-            return value
-        for _display_name, model_key in model_select_dict.items():
-            if model_key == value:
-                return model_key
-        return value
+        return normalize_shared_model_key(value)
 
     def normalize_engine_name(self, value: str) -> str:
         return value

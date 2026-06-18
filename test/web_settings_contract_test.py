@@ -26,6 +26,14 @@ class WebSettingsContractTests(unittest.TestCase):
             "['tsv', els.exportTsv],",
             self.app_js,
         )
+        self.assertIn(
+            "['export_format', readStringValue(els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}')],",
+            self.app_js,
+        )
+        self.assertIn(
+            "['file_slice_start', readStringValue(els.fileSliceStart, '')],",
+            self.app_js,
+        )
 
     def test_import_auto_save_bucket_includes_tsv_toggle(self) -> None:
         self.assertIn(

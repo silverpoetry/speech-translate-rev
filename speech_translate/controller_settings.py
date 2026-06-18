@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Callable, Mapping, cast
 
 from speech_translate.controller_protocols import JsonDict
+from speech_translate.model_selection import normalize_model_key as normalize_shared_model_key
 from speech_translate.utils.types import SettingDict
 from speech_translate.utils.whisper.helper import model_values
 
@@ -134,6 +135,8 @@ def build_selenium_settings(payload: object) -> SeleniumSettings:
 
 
 def normalize_system_setting_value(key: str, value: object) -> object:
+    if key == "model_mw":
+        return normalize_shared_model_key(value)
     if key == "selenium_compact_level":
         return _normalize_compact_level(value, default=2)
     if key == "selenium_z_order_mode":
@@ -142,6 +145,12 @@ def normalize_system_setting_value(key: str, value: object) -> object:
         return bool(value)
     if key == "selenium_chrome_user_data_dir":
         return str(value or "").strip()
+    return value
+
+
+def normalize_import_setting_value(key: str, value: object) -> object:
+    if key == "model_f_import":
+        return normalize_shared_model_key(value)
     return value
 
 
@@ -179,6 +188,7 @@ __all__ = [
     "build_runtime_model_load_settings",
     "build_selenium_settings",
     "build_setting_response",
+    "normalize_import_setting_value",
     "normalize_record_setting_value",
     "normalize_system_setting_value",
 ]

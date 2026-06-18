@@ -171,26 +171,57 @@ function bindToolbarMirror(source, target, kind = 'value') {
   if (!source || !target) {
     return;
   }
-  const eventName = source.tagName === 'SELECT' || kind === 'checked' ? 'change' : 'input';
-  source.addEventListener(eventName, () => {
-    if (kind === 'checked') {
-      target.checked = source.checked;
-      return;
-    }
-    target.value = source.value;
-  });
+  const bindDirection = (from, to) => {
+    const eventName = from.tagName === 'SELECT' || kind === 'checked' ? 'change' : 'input';
+    from.addEventListener(eventName, () => {
+      if (kind === 'checked') {
+        to.checked = from.checked;
+        return;
+      }
+      to.value = from.value;
+    });
+  };
+  bindDirection(source, target);
+  bindDirection(target, source);
+}
+
+function bindPairedInputValues(pairs = []) {
+  for (const [left, right] of pairs) {
+    bindToolbarMirror(left, right, 'value');
+  }
+}
+
+function bindPairedInputChecks(pairs = []) {
+  for (const [left, right] of pairs) {
+    bindToolbarMirror(left, right, 'checked');
+  }
 }
 
 function bindToolbarMirrorValues(pairs = []) {
-  for (const [source, target] of pairs) {
-    bindToolbarMirror(source, target, 'value');
-  }
+  bindPairedInputValues(pairs);
 }
 
 function bindToolbarMirrorChecks(pairs = []) {
-  for (const [source, target] of pairs) {
-    bindToolbarMirror(source, target, 'checked');
-  }
+  bindPairedInputChecks(pairs);
+}
+
+function syncMirroredFieldState() {
+  syncToolbarMirrorValues([
+    [els.dirExportFile, els.dirExport, 'auto'],
+    [els.exportFormatToolbar, els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}'],
+  ]);
+  syncToolbarMirrorChecks([
+    [els.autoOpenDirExportFile, els.autoOpenDirExport, true],
+  ]);
+}
+
+function bindSharedFieldMirrors() {
+  bindPairedInputValues([
+    [els.dirExport, els.dirExportFile],
+  ]);
+  bindPairedInputChecks([
+    [els.autoOpenDirExport, els.autoOpenDirExportFile],
+  ]);
 }
 
 function syncToolbarMirrorValues(pairs = []) {
@@ -1158,6 +1189,7 @@ function renderSettings(data) {
       try { els.initialPromptsContainer.innerHTML = ''; } catch (_e) {}
     }
   }
+  syncMirroredFieldState();
 }
 
 function renderAbout(data) {
@@ -2996,7 +3028,18 @@ async function saveImportSettings(shouldRefresh = true) {
     ['auto_open_dir_translate', autoOpenDirOnTaskDone],
     ['auto_open_dir_refinement', autoOpenDirOnTaskDone],
     ['auto_open_dir_alignment', autoOpenDirOnTaskDone],
+    ['export_format', readStringValue(els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}')],
     ['path_filter_file_import', readStringValue(els.pathFilterFileImport, 'auto')],
+    ['remove_repetition_file_import', readBooleanValue(els.removeRepetitionFileImport, false)],
+    ['remove_repetition_amount', readNumberValue(els.removeRepetitionAmount, 1)],
+    ['segment_max_words', readStringValue(els.segmentMaxWords, '')],
+    ['segment_max_chars', readStringValue(els.segmentMaxChars, '')],
+    ['segment_split_or_newline', readStringValue(els.segmentSplitOrNewline, 'split')],
+    ['segment_even_split', readBooleanValue(els.segmentEvenSplit, true)],
+    ['segment_level', readBooleanValue(els.segmentLevel, true)],
+    ['word_level', readBooleanValue(els.wordLevel, true)],
+    ['file_slice_start', readStringValue(els.fileSliceStart, '')],
+    ['file_slice_end', readStringValue(els.fileSliceEnd, '')],
   ]);
 
   const updates = [
@@ -3024,7 +3067,18 @@ async function saveImportSettings(shouldRefresh = true) {
     auto_open_dir_translate: autoOpenDirOnTaskDone,
     auto_open_dir_refinement: autoOpenDirOnTaskDone,
     auto_open_dir_alignment: autoOpenDirOnTaskDone,
+    export_format: readStringValue(els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}'),
     path_filter_file_import: readStringValue(els.pathFilterFileImport, 'auto'),
+    remove_repetition_file_import: readBooleanValue(els.removeRepetitionFileImport, false),
+    remove_repetition_amount: readNumberValue(els.removeRepetitionAmount, 1),
+    segment_max_words: readStringValue(els.segmentMaxWords, ''),
+    segment_max_chars: readStringValue(els.segmentMaxChars, ''),
+    segment_split_or_newline: readStringValue(els.segmentSplitOrNewline, 'split'),
+    segment_even_split: readBooleanValue(els.segmentEvenSplit, true),
+    segment_level: readBooleanValue(els.segmentLevel, true),
+    word_level: readBooleanValue(els.wordLevel, true),
+    file_slice_start: readStringValue(els.fileSliceStart, ''),
+    file_slice_end: readStringValue(els.fileSliceEnd, ''),
   });
   patchLocalImportUi({
     selected_backend: backend,
@@ -4082,6 +4136,7 @@ function bindEvents() {
       [els.segmentLevelToolbar, els.segmentLevel],
       [els.wordLevelToolbar, els.wordLevel],
     ]);
+    bindSharedFieldMirrors();
     if (els.hostAPIToolbar) {
       els.hostAPIToolbar.addEventListener('change', async () => {
         if (els.hostAPI) {

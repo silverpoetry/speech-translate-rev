@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Mapping, cast
 
 from speech_translate.controller_protocols import JsonDict
+from speech_translate.model_selection import normalize_model_key
 
 
 @dataclass(frozen=True)
@@ -162,7 +163,7 @@ def build_state_view_settings(settings_snapshot: Mapping[str, object]) -> StateV
         log_level=str(snapshot.get("log_level", "DEBUG")),
         main_ui=MainViewSettings(
             selected_input=snapshot.get("input"),
-            selected_model=snapshot.get("model_mw"),
+            selected_model=normalize_model_key(snapshot.get("model_mw")),
             selected_backend="faster-whisper" if bool(snapshot.get("use_faster_whisper", True)) else "whisper",
             selected_source=snapshot.get("source_lang_mw"),
             selected_target=snapshot.get("target_lang_mw"),
@@ -193,11 +194,10 @@ def build_state_view_settings(settings_snapshot: Mapping[str, object]) -> StateV
                 "dir_export": snapshot.get("dir_export"),
                 "dir_model": snapshot.get("dir_model"),
                 "dir_log": snapshot.get("dir_log"),
-                "export_to": snapshot.get("export_to"),
                 "source_lang_mw": snapshot.get("source_lang_mw"),
                 "target_lang_mw": snapshot.get("target_lang_mw"),
                 "input": snapshot.get("input"),
-                "model_mw": snapshot.get("model_mw"),
+                "model_mw": normalize_model_key(snapshot.get("model_mw")),
                 "tl_engine_mw": snapshot.get("tl_engine_mw"),
                 "transcribe_mw": bool(snapshot.get("transcribe_mw", True)),
                 "translate_mw": bool(snapshot.get("translate_mw", True)),
@@ -211,7 +211,7 @@ def build_state_view_settings(settings_snapshot: Mapping[str, object]) -> StateV
                 "transcribe_f_import": snapshot.get("transcribe_f_import"),
                 "translate_f_import": snapshot.get("translate_f_import"),
                 "tl_engine_f_import": snapshot.get("tl_engine_f_import"),
-                "model_f_import": snapshot.get("model_f_import"),
+                "model_f_import": normalize_model_key(snapshot.get("model_f_import")),
                 "selenium_compact_level": snapshot.get("selenium_compact_level", 2),
                 "selenium_z_order_mode": snapshot.get("selenium_z_order_mode", "behind-main"),
                 "selenium_auto_close_on_task_done": snapshot.get("selenium_auto_close_on_task_done", True),

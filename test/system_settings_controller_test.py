@@ -39,6 +39,12 @@ class FakeModelManager:
     def resolve_model_dir(self):
         return "D:\\models"
 
+    def normalize_model_key(self, value: str) -> str:
+        return {
+            "⚡ Tiny [1GB VRAM] (Fastest)": "tiny",
+            "⛵ Small [2GB VRAM] (Moderate)": "small",
+        }.get(value, value)
+
 
 class FakeWindow:
     def __init__(self, selected=None) -> None:
@@ -106,6 +112,16 @@ class SystemSettingsControllerTests(unittest.TestCase):
         chrome_dir = self.controller.set_setting("selenium_chrome_user_data_dir", " D:\\chrome-profile ")
         self.assertEqual(compact["value"], 3)
         self.assertEqual(chrome_dir["value"], "D:\\chrome-profile")
+
+    def test_set_setting_normalizes_main_model_selection_to_model_key(self) -> None:
+        result = self.controller.set_setting("model_mw", "⚡ Tiny [1GB VRAM] (Fastest)")
+        self.assertEqual(result["value"], "tiny")
+        self.assertEqual(self.settings.saved["model_mw"], "tiny")
+
+    def test_set_import_setting_normalizes_model_selection_to_model_key(self) -> None:
+        result = self.controller.set_import_setting("model_f_import", "⛵ Small [2GB VRAM] (Moderate)")
+        self.assertEqual(result["value"], "small")
+        self.assertEqual(self.settings.saved["model_f_import"], "small")
 
     def test_select_directory_updates_setting_and_clears_model_cache(self) -> None:
         self.bridge.window = FakeWindow()

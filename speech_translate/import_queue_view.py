@@ -4,6 +4,7 @@ from time import gmtime, strftime, time
 from typing import Mapping
 
 from speech_translate.controller_protocols import JsonDict, ModelManagerControllerApi
+from speech_translate.model_selection import resolve_model_display_name
 from speech_translate.utils.whisper.helper import model_select_dict
 
 
@@ -13,16 +14,6 @@ IMPORT_ENGINE_OPTIONS = [
     "MyMemoryTranslator",
     "LibreTranslate",
 ] + list(model_select_dict.keys())
-
-MODEL_DISPLAY_BY_KEY = {model_key: display_name for display_name, model_key in model_select_dict.items()}
-
-
-def _resolve_model_display_name(model_key: str) -> str:
-    normalized = str(model_key or "").strip()
-    if not normalized:
-        return ""
-    return MODEL_DISPLAY_BY_KEY.get(normalized, normalized)
-
 
 def count_completed_items(display_queue: list[JsonDict]) -> int:
     return sum(1 for item in display_queue if item.get("is_completed", False))
@@ -58,7 +49,7 @@ def build_import_ui_payload(
             available_model_options = [
                 {
                     "value": selected_model_key,
-                    "label": _resolve_model_display_name(selected_model_key),
+                    "label": resolve_model_display_name(selected_model_key),
                 }
             ]
 
@@ -68,7 +59,7 @@ def build_import_ui_payload(
         "model_options": available_model_options,
         "selected_model": selected_model_key,
         "selected_model_key": selected_model_key,
-        "selected_model_label": _resolve_model_display_name(selected_model_key),
+        "selected_model_label": resolve_model_display_name(selected_model_key),
         "engine_options": IMPORT_ENGINE_OPTIONS,
         "selected_engine": engine,
         "source_options": source_dict_ref.get(engine, source_dict_ref["Google Translate"]),

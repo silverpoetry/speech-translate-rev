@@ -308,6 +308,17 @@ class StateViewBuilderTests(unittest.TestCase):
         self.assertEqual(compact["tb_mw_tl_font"], "Consolas")
         self.assertEqual(compact["tb_mw_tl_font_color"], "#ccbbaa")
 
+    def test_build_state_view_settings_normalizes_legacy_model_display_values(self) -> None:
+        self.settings.cache["model_mw"] = "⚡ Tiny [1GB VRAM] (Fastest)"
+        self.settings.cache["model_f_import"] = "⛵ Small [2GB VRAM] (Moderate)"
+
+        view_settings = build_state_view_settings(self.settings.cache)
+        compact = view_settings.compact_settings.to_payload()
+
+        self.assertEqual(view_settings.main_ui.selected_model, "tiny")
+        self.assertEqual(compact["model_mw"], "tiny")
+        self.assertEqual(compact["model_f_import"], "small")
+
     def test_build_record_device_view_settings_extracts_device_thresholds(self) -> None:
         device_settings = build_record_device_view_settings(self.settings.cache, "speaker")
 

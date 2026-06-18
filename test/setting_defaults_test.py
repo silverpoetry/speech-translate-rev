@@ -32,6 +32,17 @@ class DefaultSettingTests(unittest.TestCase):
 
         self.assertEqual(migrated["threshold_auto_level_mic"], "3")
 
+    def test_migrate_legacy_model_display_names_to_model_keys(self) -> None:
+        migrated = _migrate_legacy_setting_keys(
+            {
+                "model_mw": "⚡ Tiny [1GB VRAM] (Fastest)",
+                "model_f_import": "⛵ Small [2GB VRAM] (Moderate)",
+            }
+        )
+
+        self.assertEqual(migrated["model_mw"], "tiny")
+        self.assertEqual(migrated["model_f_import"], "small")
+
     def test_migrate_legacy_setting_keys_removes_obsolete_webview_migration_keys(self) -> None:
         migrated = _migrate_legacy_setting_keys(
             {
@@ -59,6 +70,10 @@ class DefaultSettingTests(unittest.TestCase):
     def test_main_window_textbox_font_color_defaults_exist(self) -> None:
         self.assertEqual(default_setting["tb_mw_tc_font_color"], "#FFFFFF")
         self.assertEqual(default_setting["tb_mw_tl_font_color"], "#FFFFFF")
+
+    def test_default_model_selection_values_use_model_keys(self) -> None:
+        self.assertEqual(default_setting["model_mw"], "small")
+        self.assertEqual(default_setting["model_f_import"], "small")
 
     def test_detached_translated_window_textbox_defaults_exist(self) -> None:
         self.assertEqual(default_setting["tb_ex_tl_font"], "Arial")

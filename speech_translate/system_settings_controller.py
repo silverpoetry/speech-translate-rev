@@ -10,6 +10,7 @@ from speech_translate.controller_settings import (
     build_compound_setting_response,
     build_selenium_settings,
     build_setting_response,
+    normalize_import_setting_value,
     normalize_record_setting_value,
     normalize_system_setting_value,
 )
@@ -183,7 +184,7 @@ class SystemSettingsController:
         )
 
     def set_import_setting(self, key: str, value: object) -> Dict[str, object]:
-        return self._persist_setting(key, value)
+        return self._persist_setting(key, value, normalizer=normalize_import_setting_value)
 
     def set_record_setting(self, key: str, value: object) -> Dict[str, object]:
         return self._persist_setting(key, value, normalizer=normalize_record_setting_value)

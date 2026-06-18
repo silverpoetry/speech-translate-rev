@@ -127,14 +127,11 @@ class StateViewBuilder:
 
     def build_main_ui(self) -> JsonDict:
         view_settings = build_state_view_settings(self._settings_snapshot())
-        selected_model = self.dependencies.model_manager_controller.normalize_model_key(
-            str(view_settings.main_ui.selected_model or "")
-        )
         return {
             "input_options": ["mic", "speaker"],
             "backend_options": ["whisper", "faster-whisper"],
             "model_options": self.dependencies.model_manager_controller.get_model_manager_keys(),
-            "selected_model": selected_model,
+            "selected_model": str(view_settings.main_ui.selected_model or ""),
             "source_options": WHISPER_LANG_LIST,
             "target_options": WHISPER_LANG_LIST,
             "engine_options": [

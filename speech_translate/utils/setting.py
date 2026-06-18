@@ -7,6 +7,7 @@ import threading
 
 from speech_translate._version import __setting_version__
 from speech_translate.log_helpers import logger
+from speech_translate.model_selection import normalize_model_key
 from speech_translate.utils.types import SettingDict
 
 try:
@@ -33,8 +34,8 @@ default_setting: SettingDict = {
     "translate_mw": True,
     "transcribe_f_import": True,
     "translate_f_import": True,
-    "model_mw": "⛵ Small [2GB VRAM] (Moderate)",
-    "model_f_import": "⛵ Small [2GB VRAM] (Moderate)",
+    "model_mw": "small",
+    "model_f_import": "small",
     "source_lang_mw": "English",
     "target_lang_mw": "Indonesian",
     "source_lang_f_import": "English",
@@ -280,6 +281,9 @@ def _migrate_legacy_setting_keys(data: SettingDict) -> SettingDict:
             data[current_key] = data[legacy_key]
     for legacy_key in legacy_removed_keys:
         data.pop(legacy_key, None)
+    for model_setting_key in ("model_mw", "model_f_import"):
+        if model_setting_key in data:
+            data[model_setting_key] = normalize_model_key(data.get(model_setting_key))
     return data
 
 
