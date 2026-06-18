@@ -53,6 +53,11 @@ class SeleniumWebTranslator:
         )
         return any(token in message for token in signals)
 
+    @staticmethod
+    def _is_timeout_error(exc: Exception) -> bool:
+        message = str(exc or "").lower()
+        return "timeout" in message or "timed out" in message
+
     def _reset_driver(self) -> None:
         if self._driver is not None:
             try:
@@ -573,6 +578,10 @@ class SeleniumWebTranslator:
     def _normalize_page_text(self, text: str) -> str:
         return str(text).replace("\r", "").strip()
 
+    @staticmethod
+    def _join_non_empty_lines(lines: Iterable[str]) -> str:
+        return "\n".join(str(line).strip() for line in lines if str(line).strip()).strip()
+
     def _read_payload_lines(self) -> List[str]:
         driver = self._ensure_driver()
         lines = driver.execute_script(
@@ -690,7 +699,7 @@ class SeleniumWebTranslator:
             try:
                 self._ensure_page_template_loaded(lang_hint)
                 baseline = self._normalize_page_text(self._set_payload_text(raw_lines))
-                _ = self._wait_translation_event(baseline, wait_timeout_sec)
+                observed_text = self._normalize_page_text(self._wait_translation_event(baseline, wait_timeout_sec))
                 translated_lines = self._read_payload_lines()
                 if not any(line.strip() for line in translated_lines):
                     # Fallback if page translation changed DOM unexpectedly.
@@ -698,6 +707,14 @@ class SeleniumWebTranslator:
                     translated_lines = [
                         part.strip() for part in translated_text.split(self._line_sep_token) if part.strip()
                     ]
+                candidate_text = self._normalize_page_text(
+                    self._join_non_empty_lines(translated_lines) or observed_text
+                )
+                if not candidate_text or candidate_text == baseline:
+                    logger.info(
+                        "Page-translate result stayed unchanged after timeout; returning original text for next injection cycle."
+                    )
+                    return raw_lines
                 if translated_lines:
                     return translated_lines
             except Exception as exc:
@@ -705,6 +722,11 @@ class SeleniumWebTranslator:
                 if attempt == 0 and self._is_connection_lost_error(exc):
                     self._reset_driver()
                     continue
+                if self._is_timeout_error(exc):
+                    logger.info(
+                        "Page-translate timed out while waiting for mutation; returning original text for next injection cycle."
+                    )
+                    return raw_lines
                 raise
 
         if last_error is not None and self._is_connection_lost_error(last_error):

@@ -1900,7 +1900,7 @@ function renderDetachedWindowOverview(data) {
       const icon = toggleButton.querySelector('.btn-glyph, .icon');
       if (icon) {
         icon.classList.toggle('glyph-close', open);
-        icon.classList.toggle(`glyph-detach-${mode}`, !open);
+        icon.classList.toggle('glyph-window', !open);
       }
     }
 

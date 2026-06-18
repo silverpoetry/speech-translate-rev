@@ -390,12 +390,13 @@
           <button type="button" class="menu-item" data-nav-target="settings"><span
               class="menu-icon menu-icon-settings"></span><span>设置</span></button>
         </nav>
-        <div class="sidebar-actions">
-          <button class="btn-with-icon" data-open-dir="model">模型目录</button>
-          <button class="btn-with-icon" data-open-dir="export">导出目录</button>
-          <button class="btn-with-icon" data-open-dir="log">日志目录</button>
-          <button class="btn-with-icon" data-action="hide-to-tray">隐藏到托盘</button>
-          <button class="btn-with-icon btn-danger-soft" data-action="quit-app">退出程序</button>
+        <div class="sidebar-actions" aria-label="窗口操作">
+          <button class="side-action" data-action="hide-to-tray" title="隐藏到托盘" aria-label="隐藏到托盘">
+            <span class="btn-glyph glyph-detach" aria-hidden="true"></span><span>托盘</span>
+          </button>
+          <button class="side-action side-action-danger" data-action="quit-app" title="退出程序" aria-label="退出程序">
+            <span class="btn-glyph glyph-close" aria-hidden="true"></span><span>退出</span>
+          </button>
         </div>
       </aside>
 
@@ -701,19 +702,18 @@
 
             <article class="workflow-card tab-panel is-active" id="tab-realtime" role="tabpanel">
               <section class="frame frame-main" aria-label="实时转写主工作区">
-                <header class="work-header">
-                  <div>
-                    <h1>实时转写</h1>
-                  </div>
-                  <div class="header-actions realtime-head-actions" aria-label="独立窗口快捷入口">
-                    <button class="icon-action" data-action="create-detached-tc" data-tooltip="打开转写独立窗口"
-                      title="打开转写独立窗口" aria-label="打开转写独立窗口"><span class="icon btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
-                    <button class="icon-action" data-action="create-detached-tl" data-tooltip="打开翻译独立窗口"
-                      title="打开翻译独立窗口" aria-label="打开翻译独立窗口"><span class="icon btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
-                  </div>
-                </header>
-
                 <section class="surface-panel hero-panel realtime-vnext-core">
+                  <header class="panel-head realtime-hero-head">
+                    <div>
+                      <h2>实时转写</h2>
+                    </div>
+                    <div class="header-actions realtime-head-actions" aria-label="独立窗口快捷入口">
+                      <button class="icon-action" data-action="create-detached-tc" data-tooltip="打开转写独立窗口"
+                        title="打开转写独立窗口" aria-label="打开转写独立窗口"><span class="btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
+                      <button class="icon-action" data-action="create-detached-tl" data-tooltip="打开翻译独立窗口"
+                        title="打开翻译独立窗口" aria-label="打开翻译独立窗口"><span class="btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
+                    </div>
+                  </header>
                   <div class="realtime-toolbar" aria-label="实时控制">
                     <button class="record-action" data-action="start-recording" id="btn-recording-toggle">
                       <span class="record-dot" aria-hidden="true"></span>
@@ -774,9 +774,9 @@
                       </div>
                       <div class="icon-row">
                         <button class="icon-action" data-action="refresh-audio-devices" data-tooltip="刷新音频设备列表"
-                          title="刷新音频设备列表" aria-label="刷新音频设备列表"><span class="icon btn-glyph glyph-refresh" aria-hidden="true"></span></button>
+                          title="刷新音频设备列表" aria-label="刷新音频设备列表"><span class="btn-glyph glyph-refresh" aria-hidden="true"></span></button>
                         <button class="icon-action" data-action="save-settings" data-tooltip="保存实时配置"
-                          title="保存实时配置" aria-label="保存实时配置"><span class="icon btn-glyph glyph-save" aria-hidden="true"></span></button>
+                          title="保存实时配置" aria-label="保存实时配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
                       </div>
                     </header>
                     <div class="field-grid two-col form-grid compact-form-grid">
@@ -799,7 +799,7 @@
                         <h2>语言配置</h2>
                       </div>
                       <button class="icon-action" data-action="save-settings" data-tooltip="保存实时配置"
-                        title="保存实时配置" aria-label="保存实时配置"><span class="icon btn-glyph glyph-save" aria-hidden="true"></span></button>
+                        title="保存实时配置" aria-label="保存实时配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
                     </header>
                     <div class="field-grid language-grid form-grid compact-form-grid realtime-language-form">
                       <label class="field"><span>源语言</span><select id="source_lang_mw"></select></label>
@@ -825,9 +825,9 @@
                           <p><i aria-hidden="true"></i><span id="detached-tc-state">未打开</span> · <span id="detached-tc-geometry">900x240 · 置顶 · 可交互</span></p>
                         </div>
                         <div class="icon-row detached-window-actions" data-detached-actions="tc">
-                          <button type="button" class="icon-action icon-action-primary detached-action-button detached-action-primary" data-detached-toggle="tc" data-action="create-detached-tc" title="打开转写窗口" aria-label="打开转写窗口"><span class="icon btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
-                          <button type="button" class="icon-action detached-action-button detached-action-secondary is-hidden" data-detached-visibility="tc" data-action="hide-detached-tc" title="隐藏转写窗口" aria-label="隐藏转写窗口"><span class="icon btn-glyph glyph-eye-off" aria-hidden="true"></span></button>
-                          <button type="button" class="icon-action detached-action-button detached-action-secondary" data-action="open-detached-settings-tc" title="转写窗口设置" aria-label="转写窗口设置"><span class="icon btn-glyph glyph-settings" aria-hidden="true"></span></button>
+                          <button type="button" class="icon-action icon-action-primary detached-action-button detached-action-primary" data-detached-toggle="tc" data-action="create-detached-tc" title="打开转写窗口" aria-label="打开转写窗口"><span class="btn-glyph glyph-window" aria-hidden="true"></span></button>
+                          <button type="button" class="icon-action detached-action-button detached-action-secondary is-hidden" data-detached-visibility="tc" data-action="hide-detached-tc" title="隐藏转写窗口" aria-label="隐藏转写窗口"><span class="btn-glyph glyph-eye-off" aria-hidden="true"></span></button>
+                          <button type="button" class="icon-action detached-action-button detached-action-secondary" data-action="open-detached-settings-tc" title="转写窗口设置" aria-label="转写窗口设置"><span class="btn-glyph glyph-settings" aria-hidden="true"></span></button>
                         </div>
                       </div>
                       <div class="detached-control-grid form-grid detached-config-mini-grid">
@@ -861,9 +861,9 @@
                           <p><i aria-hidden="true"></i><span id="detached-tl-state">未打开</span> · <span id="detached-tl-geometry">900x240 · 置顶 · 可交互</span></p>
                         </div>
                         <div class="icon-row detached-window-actions" data-detached-actions="tl">
-                          <button type="button" class="icon-action icon-action-primary detached-action-button detached-action-primary" data-detached-toggle="tl" data-action="create-detached-tl" title="打开翻译窗口" aria-label="打开翻译窗口"><span class="icon btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
-                          <button type="button" class="icon-action detached-action-button detached-action-secondary is-hidden" data-detached-visibility="tl" data-action="hide-detached-tl" title="隐藏翻译窗口" aria-label="隐藏翻译窗口"><span class="icon btn-glyph glyph-eye-off" aria-hidden="true"></span></button>
-                          <button type="button" class="icon-action detached-action-button detached-action-secondary" data-action="open-detached-settings-tl" title="翻译窗口设置" aria-label="翻译窗口设置"><span class="icon btn-glyph glyph-settings" aria-hidden="true"></span></button>
+                          <button type="button" class="icon-action icon-action-primary detached-action-button detached-action-primary" data-detached-toggle="tl" data-action="create-detached-tl" title="打开翻译窗口" aria-label="打开翻译窗口"><span class="btn-glyph glyph-window" aria-hidden="true"></span></button>
+                          <button type="button" class="icon-action detached-action-button detached-action-secondary is-hidden" data-detached-visibility="tl" data-action="hide-detached-tl" title="隐藏翻译窗口" aria-label="隐藏翻译窗口"><span class="btn-glyph glyph-eye-off" aria-hidden="true"></span></button>
+                          <button type="button" class="icon-action detached-action-button detached-action-secondary" data-action="open-detached-settings-tl" title="翻译窗口设置" aria-label="翻译窗口设置"><span class="btn-glyph glyph-settings" aria-hidden="true"></span></button>
                         </div>
                       </div>
                       <div class="detached-control-grid form-grid detached-config-mini-grid">
