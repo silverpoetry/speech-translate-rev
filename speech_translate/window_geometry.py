@@ -44,6 +44,14 @@ class NativeWindowGeometry:
     source: str
 
 
+@dataclass(frozen=True)
+class PersistedWindowGeometry:
+    geometry_text: str
+    position_text: str
+    signature: str
+    native: NativeWindowGeometry
+
+
 class DefaultMetricsProvider:
     def platform_name(self) -> str:
         return system()
@@ -503,6 +511,26 @@ def extract_window_placement(window: object | None) -> NativeWindowGeometry:
     return native_geometry
 
 
+def build_persisted_window_geometry(
+    window: object | None,
+    *,
+    min_width: int,
+    min_height: int,
+) -> PersistedWindowGeometry | None:
+    native_geometry = extract_window_placement(window)
+    if native_geometry.width < min_width or native_geometry.height < min_height:
+        return None
+
+    geometry_text = format_window_size(native_geometry.width, native_geometry.height)
+    position_text = format_window_position(native_geometry.x, native_geometry.y)
+    return PersistedWindowGeometry(
+        geometry_text=geometry_text,
+        position_text=position_text,
+        signature=f"{geometry_text}@{position_text}",
+        native=native_geometry,
+    )
+
+
 def run_on_native_ui_thread(native_window: object | None, callback: Callable[[], _UIResultT]) -> _UIResultT:
     if native_window is None or not getattr(native_window, "InvokeRequired", False):
         return callback()
@@ -569,6 +597,7 @@ __all__ = [
     "MIN_WINDOW_HEIGHT",
     "MIN_WINDOW_WIDTH",
     "NativeWindowGeometry",
+    "PersistedWindowGeometry",
     "MetricsProvider",
     "WindowPlacement",
     "WINDOW_SCREEN_MARGIN_X",
@@ -579,6 +608,7 @@ __all__ = [
     "clamp_window_position",
     "ensure_visible_or_center",
     "detached_captionless_resizable_style",
+    "build_persisted_window_geometry",
     "extract_native_window_geometry",
     "extract_window_placement",
     "format_window_position",

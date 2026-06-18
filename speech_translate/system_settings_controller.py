@@ -43,6 +43,34 @@ class SystemSettingsController:
     def _settings_snapshot(self) -> Dict[str, object]:
         return dict(self.settings.cache)
 
+    def _persist_setting(
+        self,
+        key: str,
+        value: object,
+        *,
+        normalizer=None,
+        side_effect=None,
+    ) -> Dict[str, object]:
+        normalized_value = normalizer(key, value) if normalizer is not None else value
+        self.settings.save_key(key, normalized_value)
+        if side_effect is not None:
+            side_effect(key, normalized_value)
+        return build_setting_response(key, self._settings_snapshot())
+
+    def _persist_setting_batch(self, updates: Dict[str, object]) -> None:
+        for setting_key, setting_value in updates.items():
+            self.settings.save_key(setting_key, setting_value)
+
+    def _apply_system_setting_side_effects(self, key: str, value: object) -> None:
+        if key == "log_level":
+            from speech_translate._logging import change_log_level
+
+            change_log_level(str(value), self.resolve_log_dir())
+        elif key == "dir_log":
+            from speech_translate._logging import change_log_level
+
+            change_log_level(str(self._settings_value("log_level", "DEBUG")), self.resolve_log_dir())
+
     def _directory_mapping(self) -> Dict[str, str]:
         return {
             "export": self.resolve_export_dir(),
@@ -144,31 +172,21 @@ class SystemSettingsController:
         if key == "selenium_settings":
             selenium_settings = build_selenium_settings(value)
             normalized = selenium_settings.as_settings_updates()
-            for setting_key, setting_value in normalized.items():
-                self.settings.save_key(setting_key, setting_value)
-
+            self._persist_setting_batch(normalized)
             return build_compound_setting_response(key, self._settings_snapshot(), normalized)
 
-        value = normalize_system_setting_value(key, value)
-        self.settings.save_key(key, value)
-        if key == "log_level":
-            from speech_translate._logging import change_log_level
-
-            change_log_level(str(value), self.resolve_log_dir())
-        elif key == "dir_log":
-            from speech_translate._logging import change_log_level
-
-            change_log_level(str(self._settings_value("log_level", "DEBUG")), self.resolve_log_dir())
-        return build_setting_response(key, self._settings_snapshot())
+        return self._persist_setting(
+            key,
+            value,
+            normalizer=normalize_system_setting_value,
+            side_effect=self._apply_system_setting_side_effects,
+        )
 
     def set_import_setting(self, key: str, value: object) -> Dict[str, object]:
-        self.settings.save_key(key, value)
-        return build_setting_response(key, self._settings_snapshot())
+        return self._persist_setting(key, value)
 
     def set_record_setting(self, key: str, value: object) -> Dict[str, object]:
-        value = normalize_record_setting_value(key, value)
-        self.settings.save_key(key, value)
-        return build_setting_response(key, self._settings_snapshot())
+        return self._persist_setting(key, value, normalizer=normalize_record_setting_value)
 
     def get_log_file_name(self) -> str:
         from speech_translate._logging import current_log

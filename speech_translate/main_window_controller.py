@@ -7,9 +7,7 @@ from typing import Optional
 from speech_translate.controller_protocols import MainWindowBridge, SettingsStore, TrayLike, FolderDialogWindow
 from speech_translate.log_helpers import logger
 from speech_translate.window_geometry import (
-    extract_window_placement,
-    format_window_position,
-    format_window_size,
+    build_persisted_window_geometry,
 )
 from speech_translate.window_lifecycle import (
     get_target_placement,
@@ -151,26 +149,30 @@ class MainWindowController:
         if should_skip_preloaded_geometry_save(window, show_allowed=self.main_window_show_allowed):
             return
         try:
-            geometry = extract_window_placement(window)
+            persisted = build_persisted_window_geometry(
+                window,
+                min_width=600,
+                min_height=300,
+            )
         except Exception:
             logger.exception("[MainGeometry][save] failed to read native outer geometry")
             return
-        width = geometry.width
-        height = geometry.height
-        x = geometry.x
-        y = geometry.y
+        if persisted is None:
+            return
 
-        if width >= 600 and height >= 300:
-            geometry_text = format_window_size(width, height)
-            position_text = format_window_position(x, y)
-            signature = f"{geometry_text}@{position_text}"
-            if not self._save_geometry_if_changed(signature, geometry_text, position_text, force=force):
-                return
-            logger.info(
-                f"[MainGeometry][save] logical={geometry_text} pos={position_text} "
-                f"raw_bounds={geometry.raw_x},{geometry.raw_y},{geometry.raw_width}x{geometry.raw_height} "
-                f"scale_factor={geometry.scale_factor:.3f} source={geometry.source} force={force}"
-            )
+        if not self._save_geometry_if_changed(
+            persisted.signature,
+            persisted.geometry_text,
+            persisted.position_text,
+            force=force,
+        ):
+            return
+        geometry = persisted.native
+        logger.info(
+            f"[MainGeometry][save] logical={persisted.geometry_text} pos={persisted.position_text} "
+            f"raw_bounds={geometry.raw_x},{geometry.raw_y},{geometry.raw_width}x{geometry.raw_height} "
+            f"scale_factor={geometry.scale_factor:.3f} source={geometry.source} force={force}"
+        )
 
     def quit_app(self) -> None:
         self.quit_in_progress = True

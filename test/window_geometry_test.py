@@ -9,6 +9,7 @@ to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
 from speech_translate.window_geometry import (
+    build_persisted_window_geometry,
     clamp_window_position,
     center_window_pos,
     ensure_visible_or_center,
@@ -166,6 +167,50 @@ class WindowGeometryTests(unittest.TestCase):
         window = type("Window", (), {"native": None})()
         with self.assertRaises(RuntimeError):
             extract_window_placement(window)
+
+    def test_build_persisted_window_geometry_formats_signature_from_logical_bounds(self) -> None:
+        window = type(
+            "Window",
+            (),
+            {
+                "native": type(
+                    "NativeWindow",
+                    (),
+                    {
+                        "DeviceDpi": 168,
+                        "Bounds": type("Bounds", (), {"X": 210, "Y": 245, "Width": 1575, "Height": 420})(),
+                    },
+                )(),
+            },
+        )()
+
+        persisted = build_persisted_window_geometry(window, min_width=600, min_height=200)
+
+        assert persisted is not None
+        self.assertEqual(persisted.geometry_text, "900x240")
+        self.assertEqual(persisted.position_text, "120,140")
+        self.assertEqual(persisted.signature, "900x240@120,140")
+        self.assertEqual(persisted.native.source, "bounds")
+
+    def test_build_persisted_window_geometry_returns_none_below_minimums(self) -> None:
+        window = type(
+            "Window",
+            (),
+            {
+                "native": type(
+                    "NativeWindow",
+                    (),
+                    {
+                        "DeviceDpi": 168,
+                        "Bounds": type("Bounds", (), {"X": 210, "Y": 245, "Width": 700, "Height": 140})(),
+                    },
+                )(),
+            },
+        )()
+
+        persisted = build_persisted_window_geometry(window, min_width=600, min_height=200)
+
+        self.assertIsNone(persisted)
 
 
 if __name__ == "__main__":

@@ -6,8 +6,8 @@ from speech_translate.controller_protocols import SettingsStore, WebviewWindowLi
 from speech_translate.detached_window_settings import DETACHED_WINDOW_DEFAULT_GEOMETRY, build_detached_window_settings
 from speech_translate.log_helpers import logger
 from speech_translate.window_geometry import (
+    build_persisted_window_geometry,
     extract_window_placement,
-    format_window_position,
     format_window_size,
     WindowPlacement,
     resolve_window_placement,
@@ -66,20 +66,23 @@ def persist_detached_window_placement(
         return
 
     try:
-        geometry = extract_window_placement(window)
+        persisted = build_persisted_window_geometry(
+            window,
+            min_width=DETACHED_MIN_WIDTH,
+            min_height=DETACHED_MIN_HEIGHT,
+        )
     except Exception:
         logger.exception(f"[DetachedGeometry][save] failed to read native outer geometry mode={mode}")
         return
 
-    if geometry.width < 200 or geometry.height < 80:
+    if persisted is None:
         return
 
-    logical_size = format_window_size(geometry.width, geometry.height)
-    logical_pos = format_window_position(geometry.x, geometry.y)
-    settings.save_key(f"ex_{mode}_geometry", logical_size)
-    settings.save_key(f"ex_{mode}_pos", logical_pos)
+    geometry = persisted.native
+    settings.save_key(f"ex_{mode}_geometry", persisted.geometry_text)
+    settings.save_key(f"ex_{mode}_pos", persisted.position_text)
     logger.info(
-        f"[DetachedGeometry][save] mode={mode} logical={logical_size} pos={logical_pos} "
+        f"[DetachedGeometry][save] mode={mode} logical={persisted.geometry_text} pos={persisted.position_text} "
         f"raw_bounds={geometry.raw_x},{geometry.raw_y},{geometry.raw_width}x{geometry.raw_height} "
         f"scale_factor={geometry.scale_factor:.3f} source={geometry.source}"
     )
