@@ -1,16 +1,24 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Optional
 
 from speech_translate.controller_protocols import DetachedWindowBridge, DetachedWindowManagerApi, JsonDict, SettingsStore
+from speech_translate.detached_window_geometry import resolve_detached_window_placement
 from speech_translate.detached_window_settings import (
-    DETACHED_WINDOW_DEFAULT_GEOMETRY,
     build_detached_window_settings,
     detached_setting_key,
     get_detached_live_content,
     normalize_detached_mode,
 )
-from speech_translate.window_geometry import resolve_window_placement
+
+
+@dataclass(frozen=True)
+class DetachedPlacement:
+    width: int
+    height: int
+    x: int
+    y: int
 
 
 class DetachedWindowController:
@@ -28,14 +36,15 @@ class DetachedWindowController:
         return detached_setting_key(mode, key)
 
     def _resolve_window_placement(self, mode: str, x: Optional[int], y: Optional[int]):
-        settings_view = build_detached_window_settings(self.settings.cache, mode)
-        return resolve_window_placement(
-            settings_view.geometry_cache or DETACHED_WINDOW_DEFAULT_GEOMETRY,
-            900,
-            240,
+        width, height, resolved_x, resolved_y = resolve_detached_window_placement(
+            self.settings,
+            mode,
             x=x,
             y=y,
+            width=None,
+            height=None,
         )
+        return DetachedPlacement(width=width, height=height, x=resolved_x, y=resolved_y)
 
     def _push_live_content_if_available(self, mode: str) -> None:
         html = get_detached_live_content(mode, self.bridge.snapshot_live_state())
@@ -67,7 +76,7 @@ class DetachedWindowController:
 
     def toggle_detached_window(self, mode: str = "tc", x: Optional[int] = None, y: Optional[int] = None) -> JsonDict:
         normalized_mode = self._normalize_mode(mode)
-        if normalized_mode in self.window_manager.windows:
+        if self.window_manager.has_window(normalized_mode):
             self.window_manager.close_window(normalized_mode)
             return {"status": "closed", "mode": normalized_mode}
         return self.create_detached_window(normalized_mode, x, y)
@@ -89,7 +98,7 @@ class DetachedWindowController:
 
     def update_detached_content(self, mode: str, html_content: str) -> JsonDict:
         normalized_mode = self._normalize_mode(mode)
-        if normalized_mode not in self.window_manager.windows:
+        if not self.window_manager.has_window(normalized_mode):
             return {"status": "missing", "mode": normalized_mode}
         self.window_manager.update_window_content(normalized_mode, html_content)
         return {"status": "updated", "mode": normalized_mode}

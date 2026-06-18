@@ -11,6 +11,7 @@ from speech_translate.log_helpers import logger
 from speech_translate.webview_runtime import load_webview_runtime
 from speech_translate.window_geometry import (
     DEFAULT_METRICS_PROVIDER,
+    clamp_window_position,
     logical_to_native_size,
     physical_to_logical_point,
     resolve_native_scale_factor,
@@ -136,7 +137,7 @@ class AppTray:
 
     def _panel_placement(self, width: int, height: int) -> tuple[int, int]:
         x, y = self._cursor_position()
-        return max(12, x - width + 24), max(12, y - height - 14)
+        return clamp_window_position(x - width + 24, y - height - 14, width, height, metrics=DEFAULT_METRICS_PROVIDER)
 
     def _run_on_ui_thread(self, callback):
         window = self.bridge.get_window()

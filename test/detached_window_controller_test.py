@@ -53,6 +53,15 @@ class FakeWindowManager:
         self.created.append((mode, x, y, width, height))
         self.windows[mode] = object()
 
+    def has_window(self, mode):
+        return mode in self.windows
+
+    def get_window(self, mode):
+        return self.windows.get(mode)
+
+    def move_window(self, mode, x, y):
+        return mode in self.windows
+
     def close_window(self, mode):
         self.closed.append(mode)
         self.windows.pop(mode, None)

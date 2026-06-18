@@ -75,6 +75,29 @@ class MainWindowControllerTests(unittest.TestCase):
         self.assertTrue(bridge.window.shown)
         self.assertTrue(bridge.window.brought)
 
+    def test_hide_main_window_to_tray_requires_tray(self) -> None:
+        settings = FakeSettings()
+        bridge = FakeBridge()
+        controller = MainWindowController(bridge, settings)
+        bridge.window = FakeWindow()
+
+        result = controller.hide_main_window_to_tray()
+
+        self.assertEqual(result["ok"], False)
+        self.assertEqual(result["message"], "Tray not available")
+
+    def test_hide_main_window_to_tray_hides_window_when_tray_available(self) -> None:
+        settings = FakeSettings()
+        bridge = FakeBridge()
+        bridge.tray = object()
+        controller = MainWindowController(bridge, settings)
+        bridge.window = FakeWindow()
+
+        result = controller.hide_main_window_to_tray()
+
+        self.assertEqual(result, {"ok": True})
+        self.assertTrue(bridge.window.hidden)
+
     def test_save_main_window_geometry_skips_duplicate_save_without_force(self) -> None:
         settings = FakeSettings()
         bridge = FakeBridge()

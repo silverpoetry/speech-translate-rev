@@ -121,6 +121,14 @@
     // Window state
     const state = {
       windowMode: 'tl',
+      initialOuterWidth: 0,
+      initialOuterHeight: 0,
+    };
+
+    const geometryState = {
+      widthAdjustment: 0,
+      heightAdjustment: 0,
+      calibrated: false,
     };
 
     const dragState = {
@@ -135,6 +143,8 @@
     // Get parameters from URL
     const params = new URLSearchParams(window.location.search);
     state.windowMode = params.get('mode') || 'tc';
+    state.initialOuterWidth = Number(params.get('outerWidth') || 0);
+    state.initialOuterHeight = Number(params.get('outerHeight') || 0);
 
     // Update window title
     const currentTitle = '翻译字幕窗口';
@@ -183,6 +193,66 @@
         await api.move_detached_window(state.windowMode, x, y);
       } catch (_error) {
         // Ignore drag transport errors so the window remains usable.
+      }
+    }
+
+    function measureViewportGeometry() {
+      const width = Number(window.innerWidth || document.documentElement.clientWidth || 0);
+      const height = Number(window.innerHeight || document.documentElement.clientHeight || 0);
+      return {
+        width: Math.round(width),
+        height: Math.round(height),
+      };
+    }
+
+    function calibrateWindowGeometry(width, height) {
+      if (geometryState.calibrated) {
+        return;
+      }
+
+      if (state.initialOuterWidth >= 200 && width >= 200) {
+        geometryState.widthAdjustment = Math.round(state.initialOuterWidth - width);
+      }
+      if (state.initialOuterHeight >= 80 && height >= 80) {
+        geometryState.heightAdjustment = Math.round(state.initialOuterHeight - height);
+      }
+      geometryState.calibrated = true;
+    }
+
+    function resolveReportedWindowGeometry() {
+      const { width, height } = measureViewportGeometry();
+      if (!Number.isFinite(width) || !Number.isFinite(height)) {
+        return null;
+      }
+
+      calibrateWindowGeometry(width, height);
+
+      return {
+        width: width + geometryState.widthAdjustment,
+        height: height + geometryState.heightAdjustment,
+      };
+    }
+
+    async function reportWindowGeometry() {
+      const api = window.pywebview && window.pywebview.api;
+      if (!api || typeof api.update_detached_window_geometry !== 'function') {
+        return;
+      }
+
+      const geometry = resolveReportedWindowGeometry();
+      if (!geometry) {
+        return;
+      }
+
+      const { width, height } = geometry;
+      if (!Number.isFinite(width) || !Number.isFinite(height) || width < 200 || height < 80) {
+        return;
+      }
+
+      try {
+        await api.update_detached_window_geometry(state.windowMode, Math.round(width), Math.round(height));
+      } catch (_error) {
+        // Ignore geometry sync failures; they should not break the detached window.
       }
     }
 
@@ -504,10 +574,17 @@
     }
 
     window.addEventListener('load', () => {
+      void reportWindowGeometry();
+      window.setTimeout(() => { void reportWindowGeometry(); }, 120);
+      window.setTimeout(() => { void reportWindowGeometry(); }, 360);
       void notifyBackendReady();
     });
 
-    // Kept for compatibility with browser-open workflows.
+    window.addEventListener('resize', () => {
+      void reportWindowGeometry();
+    });
+
+    // Browser-open fallback so manual preview tabs can detect readiness too.
     window.opener?.postMessage({ type: 'detached-window-ready', mode: state.windowMode }, '*');
   </script>
 </body>

@@ -13,6 +13,7 @@ class DetachedWindowDeliveryRuntime:
         self.pending_configs: dict[str, JsonDict] = {}
         self.window_loaded: dict[str, bool] = {}
         self.window_content_ready: dict[str, bool] = {}
+        self.window_geometry_hint: dict[str, tuple[int, int]] = {}
         self.last_content_payload: dict[str, str] = {}
         self.last_config_payload: dict[str, str] = {}
         self.window_style_cache: dict[str, tuple[int, int]] = {}
@@ -30,6 +31,12 @@ class DetachedWindowDeliveryRuntime:
 
     def mark_window_content_ready(self, mode: str, ready: bool) -> None:
         self.window_content_ready[mode] = ready
+
+    def set_window_geometry_hint(self, mode: str, width: int, height: int) -> None:
+        self.window_geometry_hint[mode] = (int(width), int(height))
+
+    def get_window_geometry_hint(self, mode: str) -> tuple[int, int] | None:
+        return self.window_geometry_hint.get(mode)
 
     def set_pending_content(self, mode: str, html_content: str) -> str | None:
         previous = self.pending_updates.get(mode)
@@ -92,6 +99,7 @@ class DetachedWindowDeliveryRuntime:
     def drop_window_ref(self, mode: str) -> None:
         self.window_loaded.pop(mode, None)
         self.window_content_ready.pop(mode, None)
+        self.window_geometry_hint.pop(mode, None)
         self.content_sender_busy.pop(mode, None)
         self.last_content_payload.pop(mode, None)
         self.last_config_payload.pop(mode, None)

@@ -8,6 +8,7 @@ to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
 from speech_translate.window_geometry import (
+    clamp_window_position,
     center_window_pos,
     ensure_visible_or_center,
     extract_native_window_geometry,
@@ -87,7 +88,7 @@ class WindowGeometryTests(unittest.TestCase):
             scale_factor=1.5,
             platform_name="Windows",
         )
-        self.assertEqual(center_window_pos(900, 600, metrics=metrics), (340, 160))
+        self.assertEqual(center_window_pos(900, 600, metrics=metrics), (510, 240))
 
     def test_parse_window_size_clamps_windows_size_to_screen(self) -> None:
         metrics = FakeMetricsProvider(
@@ -113,6 +114,15 @@ class WindowGeometryTests(unittest.TestCase):
 
     def test_physical_to_logical_point_applies_scale_factor(self) -> None:
         self.assertEqual(physical_to_logical_point(1530, 900, scale_factor=2.25), (680, 400))
+
+    def test_clamp_window_position_keeps_popup_within_logical_bounds(self) -> None:
+        metrics = FakeMetricsProvider(
+            screen_size=(1280, 720),
+            virtual_bounds=(0, 0, 1280, 720),
+            scale_factor=2.0,
+            platform_name="Windows",
+        )
+        self.assertEqual(clamp_window_position(1300, 800, 152, 168, metrics=metrics), (1128, 552))
 
     def test_extract_native_window_geometry_returns_logical_and_raw_sizes(self) -> None:
         native_window = type(

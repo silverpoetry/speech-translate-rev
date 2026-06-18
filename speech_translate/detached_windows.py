@@ -1,22 +1,25 @@
 from __future__ import annotations
 
-import ctypes
 import json
 from pathlib import Path
-from platform import system
 from time import time
 from typing import Callable, Mapping, Optional
 
 from speech_translate.controller_protocols import (
     DetachedWindowManagerBridge,
     JsonDict,
-    RecordingStateProvider,
     SettingsStore,
     StartupWebviewModule,
     WebviewWindowLike,
 )
+from speech_translate.detached_window_api import DetachedWindowApi, RecordingWindowApi
+from speech_translate.detached_window_geometry import (
+    log_detached_window_loaded_geometry,
+    persist_detached_window_geometry,
+    resolve_detached_window_placement,
+)
+from speech_translate.detached_window_native import apply_native_window_settings, apply_window_topmost
 from speech_translate.detached_window_settings import (
-    DETACHED_WINDOW_DEFAULT_GEOMETRY,
     build_detached_window_config,
     build_detached_window_settings,
     detached_setting_key,
@@ -26,7 +29,6 @@ from speech_translate.detached_window_settings import (
 from speech_translate.detached_window_runtime import DetachedWindowDeliveryRuntime
 from speech_translate.log_helpers import logger
 from speech_translate.webview_runtime import load_webview_runtime
-from speech_translate.window_geometry import extract_native_window_geometry, resolve_window_placement
 
 
 def build_detached_config(settings_cache: Mapping[str, object], mode: object) -> JsonDict:
@@ -35,23 +37,6 @@ def build_detached_config(settings_cache: Mapping[str, object], mode: object) ->
 
 class DetachedWindowManager:
     """Manages detached subtitle windows using pywebview."""
-
-    _GWL_STYLE = -16
-    _GWL_EXSTYLE = -20
-    _WS_CAPTION = 0x00C00000
-    _WS_THICKFRAME = 0x00040000
-    _WS_MINIMIZEBOX = 0x00020000
-    _WS_MAXIMIZEBOX = 0x00010000
-    _WS_SYSMENU = 0x00080000
-    _WS_BORDER = 0x00800000
-    _WS_DLGFRAME = 0x00400000
-    _WS_EX_LAYERED = 0x00080000
-    _SWP_NOSIZE = 0x0001
-    _SWP_NOMOVE = 0x0002
-    _SWP_NOZORDER = 0x0004
-    _SWP_FRAMECHANGED = 0x0020
-    _SWP_SHOWWINDOW = 0x0040
-    _LWA_ALPHA = 0x00000002
 
     def __init__(
         self,
@@ -75,101 +60,25 @@ class DetachedWindowManager:
         self.recording_window: WebviewWindowLike | None = None
         self.pending_recording_payload: JsonDict | None = None
 
-    def _get_window_hwnd(self, mode: str) -> Optional[int]:
-        window = self.windows.get(mode)
-        if window is None:
-            return None
+    def has_window(self, mode: str) -> bool:
+        return normalize_detached_mode(mode) in self.windows
 
-        native_window = getattr(window, "native", None)
-        if native_window is None:
-            return None
+    def get_window(self, mode: str) -> WebviewWindowLike | None:
+        return self.windows.get(normalize_detached_mode(mode))
 
-        try:
-            handle = getattr(native_window, "Handle", None)
-            if handle is not None:
-                return int(handle.ToInt32())
-        except Exception:
-            pass
+    def move_window(self, mode: str, x: int, y: int) -> bool:
+        window = self.get_window(mode)
+        if window is None or not hasattr(window, "move"):
+            return False
+        window.move(x, y)
+        return True
 
-        try:
-            return int(getattr(native_window, "handle"))
-        except Exception:
-            return None
-
-    def _cache_window_style(self, mode: str, hwnd: int) -> None:
-        if self.runtime.get_cached_window_style(mode) is not None:
-            return
-
-        try:
-            style = int(ctypes.windll.user32.GetWindowLongW(hwnd, self._GWL_STYLE))
-            ex_style = int(ctypes.windll.user32.GetWindowLongW(hwnd, self._GWL_EXSTYLE))
-            self.runtime.cache_window_style(mode, style, ex_style)
-        except Exception:
-            pass
-
-    def _apply_native_window_settings(self, mode: str, config: Optional[JsonDict] = None) -> None:
-        if system() != "Windows":
-            return
-
-        hwnd = self._get_window_hwnd(mode)
-        if hwnd is None:
-            return
-
-        self._cache_window_style(mode, hwnd)
-        original = self.runtime.get_cached_window_style(mode)
-        if original is None:
-            return
-
-        window = self.windows.get(mode)
-        if window is None:
-            return
-
-        cfg = config or self.runtime.get_pending_config(mode) or {}
-        no_title_bar = bool(cfg.get("no_title_bar", 0))
-        opacity_raw = cfg.get("opacity", 1.0)
-        try:
-            opacity = max(0.1, min(1.0, float(opacity_raw)))
-        except Exception:
-            opacity = 1.0
-
-        try:
-            style, ex_style = original
-            style = int(style)
-            ex_style = int(ex_style)
-
-            if no_title_bar:
-                style &= ~(
-                    self._WS_CAPTION
-                    | self._WS_MINIMIZEBOX
-                    | self._WS_MAXIMIZEBOX
-                    | self._WS_SYSMENU
-                    | self._WS_BORDER
-                    | self._WS_DLGFRAME
-                )
-            if opacity < 0.999:
-                ex_style |= self._WS_EX_LAYERED
-            else:
-                ex_style &= ~self._WS_EX_LAYERED
-
-            ctypes.windll.user32.SetWindowLongW(hwnd, self._GWL_STYLE, style)
-            ctypes.windll.user32.SetWindowLongW(hwnd, self._GWL_EXSTYLE, ex_style)
-
-            if opacity < 0.999:
-                ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, 0, int(round(opacity * 255)), self._LWA_ALPHA)
-            else:
-                ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, 0, 255, self._LWA_ALPHA)
-
-            ctypes.windll.user32.SetWindowPos(
-                hwnd,
-                None,
-                0,
-                0,
-                0,
-                0,
-                self._SWP_NOMOVE | self._SWP_NOSIZE | self._SWP_NOZORDER | self._SWP_FRAMECHANGED | self._SWP_SHOWWINDOW,
-            )
-        except Exception as exc:
-            logger.error(f"Failed to apply detached window settings for {mode}: {exc}")
+    def remember_window_geometry(self, mode: str, width: int, height: int) -> None:
+        mode = normalize_detached_mode(mode)
+        self.runtime.set_window_geometry_hint(mode, width, height)
+        if self.settings is not None and width >= 200 and height >= 80:
+            self.settings.save_key(f"ex_{mode}_geometry", f"{int(width)}x{int(height)}")
+            logger.info(f"[DetachedGeometry][remember] mode={mode} saved_logical={width}x{height}")
 
     def _flush_pending(self, mode: str, include_content: bool = True) -> None:
         if not self.runtime.is_window_loaded(mode):
@@ -194,30 +103,8 @@ class DetachedWindowManager:
             logger.debug(f"[DetachedOpen] _apply_topmost skip missing window mode={mode}")
             return
 
-        window = self.windows[mode]
         enabled = self._is_always_on_top_enabled(mode)
-        applied = False
-
-        try:
-            if hasattr(window, "set_on_top"):
-                window.set_on_top(enabled)
-                applied = True
-        except Exception:
-            pass
-
-        if not applied:
-            try:
-                setattr(window, "on_top", enabled)
-                applied = True
-            except Exception:
-                pass
-
-        if enabled and focus_nudge:
-            try:
-                window.show()
-                window.bring_to_front()
-            except Exception:
-                pass
+        apply_window_topmost(self.windows.get(mode), enabled=enabled, focus_nudge=focus_nudge)
         logger.debug(f"[DetachedOpen] _apply_topmost done mode={mode} enabled={enabled}")
 
     def _drop_window_ref(self, mode: str):
@@ -270,85 +157,30 @@ class DetachedWindowManager:
             if self.runtime.should_restart_content_sender(mode, window_exists=(mode in self.windows)):
                 self._start_content_sender(mode)
 
-    def _persist_window_geometry(self, mode: str) -> None:
-        if self.settings is None:
-            return
-
-        window = self.windows.get(mode)
-        if window is None:
-            return
-
-        native_window = getattr(window, "native", None)
-        if native_window is None:
-            return
-
-        native_geometry = extract_native_window_geometry(native_window)
-        width = native_geometry.width
-        height = native_geometry.height
-        raw_width = native_geometry.raw_width
-        raw_height = native_geometry.raw_height
-        scale_factor = native_geometry.scale_factor
-        if width is None or height is None:
-            return
-
-        current_outer_w = None
-        current_outer_h = None
-        try:
-            current_outer_w = int(getattr(window, "width"))
-            current_outer_h = int(getattr(window, "height"))
-        except Exception:
-            pass
-
-        if width >= 200 and height >= 80:
-            self.settings.save_key(f"ex_{mode}_geometry", f"{width}x{height}")
-            logger.info(
-                f"[DetachedGeometry][save] mode={mode} "
-                f"saved_logical={width}x{height} raw_client={raw_width}x{raw_height} "
-                f"scale_factor={scale_factor:.3f} current_outer={current_outer_w}x{current_outer_h}"
-            )
-
     def _on_window_closed(self, mode: str) -> None:
-        self._persist_window_geometry(mode)
         self._drop_window_ref(mode)
+
+    def _persist_window_geometry(self, mode: str) -> None:
+        geometry_hint = self.runtime.get_window_geometry_hint(mode) or (None, None)
+        fallback_width, fallback_height = geometry_hint
+        persist_detached_window_geometry(
+            self.settings,
+            mode,
+            self.windows.get(mode),
+            fallback_width=fallback_width,
+            fallback_height=fallback_height,
+        )
 
     def _attach_window_events(self, mode: str, window: WebviewWindowLike) -> None:
         try:
+            if hasattr(window, "events") and hasattr(window.events, "closing"):
+                window.events.closing += lambda *_: self._persist_window_geometry(mode)
             if hasattr(window, "events") and hasattr(window.events, "closed"):
                 window.events.closed += lambda *_: self._on_window_closed(mode)
             if hasattr(window, "events") and hasattr(window.events, "loaded"):
                 window.events.loaded += lambda *_: self._on_window_loaded(mode)
         except Exception:
             pass
-
-    def _resolve_window_placement(
-        self,
-        mode: str,
-        *,
-        x: Optional[int],
-        y: Optional[int],
-        width: Optional[int],
-        height: Optional[int],
-    ) -> tuple[int, int, int, int]:
-        geometry_cache = DETACHED_WINDOW_DEFAULT_GEOMETRY
-        if self.settings is not None:
-            geometry_cache = build_detached_window_settings(self.settings.cache, mode).geometry_cache
-
-        cached_placement = resolve_window_placement(
-            geometry_cache,
-            900,
-            240,
-        )
-        resolved_width = int(width) if width is not None else cached_placement.width
-        resolved_height = int(height) if height is not None else cached_placement.height
-
-        placement = resolve_window_placement(
-            f"{resolved_width}x{resolved_height}",
-            resolved_width,
-            resolved_height,
-            x=x,
-            y=y,
-        )
-        return placement.width, placement.height, placement.x, placement.y
 
     def create_window(
         self,
@@ -375,7 +207,8 @@ class DetachedWindowManager:
             html_path = str(Path(__file__).with_name("web") / "detached_window.html")
             always_on_top = self._is_always_on_top_enabled(mode)
             self.runtime.mark_window_loaded(mode, False)
-            width, height, x, y = self._resolve_window_placement(
+            width, height, x, y = resolve_detached_window_placement(
+                self.settings,
                 mode,
                 x=x,
                 y=y,
@@ -390,10 +223,12 @@ class DetachedWindowManager:
                 f"[DetachedGeometry][open-created] mode={mode} "
                 f"requested={width}x{height} position={x},{y} cache={cache_value}"
             )
+            self.runtime.set_window_geometry_hint(mode, width, height)
+            window_url = f"{html_path}?mode={mode}&outerWidth={width}&outerHeight={height}"
 
             window = webview.create_window(
                 f"Speech Translate - {'Transcribed' if mode == 'tc' else 'Translated'}",
-                f"{html_path}?mode={mode}",
+                window_url,
                 js_api=DetachedWindowApi(self),
                 width=width,
                 height=height,
@@ -421,38 +256,7 @@ class DetachedWindowManager:
     def _on_window_loaded(self, mode: str) -> None:
         self.runtime.mark_window_loaded(mode, True)
         self.runtime.mark_window_content_ready(mode, False)
-
-        window = self.windows.get(mode)
-        if window is not None:
-            native_window = getattr(window, "native", None)
-            outer_w = None
-            outer_h = None
-            client_w = None
-            client_h = None
-            try:
-                outer_w = int(getattr(window, "width"))
-                outer_h = int(getattr(window, "height"))
-            except Exception:
-                pass
-            try:
-                client_size = getattr(native_window, "ClientSize", None)
-                if client_size is not None:
-                    client_w = int(getattr(client_size, "Width"))
-                    client_h = int(getattr(client_size, "Height"))
-            except Exception:
-                pass
-
-            scale_factor = None
-            try:
-                scale_factor = float(getattr(native_window, "scale_factor", 1.0) or 1.0)
-            except Exception:
-                pass
-
-            logger.info(
-                f"[DetachedGeometry][open-loaded] mode={mode} "
-                f"outer={outer_w}x{outer_h} client={client_w}x{client_h} scale_factor={scale_factor}"
-            )
-
+        log_detached_window_loaded_geometry(mode, self.windows.get(mode))
         self._flush_pending(mode, include_content=False)
 
     def mark_window_content_ready(self, mode: str) -> None:
@@ -519,7 +323,7 @@ class DetachedWindowManager:
         mode = normalize_detached_mode(mode)
         self.runtime.set_pending_config(mode, config)
         if mode in self.windows and self.runtime.is_window_loaded(mode):
-            self._apply_native_window_settings(mode, config)
+            apply_native_window_settings(self.runtime, mode, self.windows.get(mode), config=config)
             try:
                 config_json = json.dumps(config, ensure_ascii=False, sort_keys=True)
                 if self.runtime.should_skip_config_payload(mode, config_json):
@@ -591,46 +395,12 @@ class DetachedWindowManager:
         self.pending_recording_payload = payload
 
 
-class DetachedWindowApi:
-    """Minimal JS API for detached subtitle windows."""
-
-    __slots__ = ("_manager",)
-
-    def __init__(self, manager: DetachedWindowManager):
-        self._manager = manager
-
-    def move_detached_window(self, mode: str, x: object, y: object) -> JsonDict:
-        mode = normalize_detached_mode(mode)
-        window = self._manager.windows.get(mode)
-        if window is None or not hasattr(window, "move"):
-            return {"status": "missing", "mode": mode}
-
-        try:
-            target_x = int(round(float(x)))
-            target_y = int(round(float(y)))
-        except Exception:
-            return {"status": "invalid", "mode": mode}
-
-        try:
-            window.move(target_x, target_y)
-            return {"status": "moved", "mode": mode, "x": target_x, "y": target_y}
-        except Exception as exc:
-            logger.error(f"Failed to move detached window {mode}: {exc}")
-            return {"status": "error", "mode": mode, "error": str(exc)}
-
-    def detached_window_ready(self, mode: str) -> JsonDict:
-        mode = normalize_detached_mode(mode)
-        self._manager.mark_window_content_ready(mode)
-        return {"status": "ready", "mode": mode}
-
-
-class RecordingWindowApi:
-    """Minimal API exposed to the recording popup window."""
-
-    __slots__ = ("_get_recording_state",)
-
-    def __init__(self, get_recording_state: RecordingStateProvider):
-        self._get_recording_state = get_recording_state
-
-    def get_recording_state(self) -> JsonDict:
-        return self._get_recording_state()
+__all__ = [
+    "DetachedWindowApi",
+    "DetachedWindowManager",
+    "RecordingWindowApi",
+    "build_detached_config",
+    "detached_setting_key",
+    "get_detached_live_content",
+    "normalize_detached_mode",
+]

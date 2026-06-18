@@ -103,6 +103,48 @@ function syncToolbarMirrorChecked(target, source, fallback = false) {
   target.checked = typeof source.checked === 'boolean' ? source.checked : fallback;
 }
 
+function isBooleanInput(node) {
+  if (!(node instanceof HTMLInputElement)) {
+    return false;
+  }
+  const type = String(node.type || '').toLowerCase();
+  return type === 'checkbox' || type === 'radio';
+}
+
+function readInputValue(node, fallback = '') {
+  if (!node) {
+    return fallback;
+  }
+  if (isBooleanInput(node)) {
+    return Boolean(node.checked);
+  }
+  if (node instanceof HTMLInputElement) {
+    const type = String(node.type || '').toLowerCase();
+    if (type === 'number' || type === 'range') {
+      const parsed = Number(node.value);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+  }
+  if (typeof node.value !== 'undefined') {
+    return node.value;
+  }
+  return fallback;
+}
+
+function writeInputValue(node, value, fallback = '') {
+  if (!node) {
+    return;
+  }
+  const resolved = value ?? fallback;
+  if (isBooleanInput(node)) {
+    node.checked = Boolean(resolved);
+    return;
+  }
+  if (typeof node.value !== 'undefined') {
+    node.value = String(resolved);
+  }
+}
+
 function bindToolbarMirror(source, target, kind = 'value') {
   if (!source || !target) {
     return;
@@ -639,11 +681,7 @@ function renderSettings(data) {
     if (!node) {
       continue;
     }
-    if (typeof node.checked !== 'undefined') {
-      node.checked = Boolean(settings[key] ?? fallback);
-      continue;
-    }
-    node.value = String(settings[key] ?? fallback);
+    writeInputValue(node, settings[key], fallback);
   }
   for (const pairs of Object.values(DETACHED_WINDOW_MIRROR_PAIRS)) {
     for (const [mirrorId, sourceId] of pairs) {
@@ -652,11 +690,7 @@ function renderSettings(data) {
       if (!sourceNode || !mirrorNode) {
         continue;
       }
-      if (typeof sourceNode.checked !== 'undefined' && typeof mirrorNode.checked !== 'undefined') {
-        mirrorNode.checked = Boolean(sourceNode.checked);
-      } else {
-        mirrorNode.value = String(sourceNode.value ?? '');
-      }
+      writeInputValue(mirrorNode, readInputValue(sourceNode, ''), '');
     }
   }
   if (els.dirExport) {
@@ -2750,15 +2784,7 @@ async function saveSettings(shouldRefresh = true) {
       continue;
     }
     const fallback = DETACHED_WINDOW_PANEL_DEFAULTS[key];
-    let value;
-    if (typeof node.checked !== 'undefined') {
-      value = checkedOf(node, Boolean(fallback));
-    } else if (typeof fallback === 'number') {
-      value = numberOf(node, fallback);
-    } else {
-      value = valueOf(node, fallback);
-    }
-    updates.push([key, value]);
+    updates.push([key, readInputValue(node, fallback)]);
   }
 
   for (const [key, value] of updates) {
@@ -3084,11 +3110,7 @@ function syncDetachedMirrorControls(mode) {
     if (!mirror || !source) {
       continue;
     }
-    if (typeof mirror.checked !== 'undefined' && typeof source.checked !== 'undefined') {
-      source.checked = Boolean(mirror.checked);
-    } else {
-      source.value = String(mirror.value ?? '');
-    }
+    writeInputValue(source, readInputValue(mirror, ''), '');
   }
 }
 
@@ -3248,13 +3270,18 @@ function bindAutoSaveEvents() {
       return;
     }
 
-    if (resolveAutoSaveBucket(target.id || '') !== 'detachedMain') {
+    const bucket = resolveAutoSaveBucket(target.id || '');
+    if (bucket === 'detachedMain') {
+      const mode = getDetachedMirrorMode(target.id || '');
+      if (mode) {
+        syncDetachedMirrorControls(mode);
+      }
+      scheduleAutoSave('settings', () => saveSettings(false));
       return;
     }
 
-    const mode = getDetachedMirrorMode(target.id || '');
-    if (mode) {
-      syncDetachedMirrorControls(mode);
+    if (bucket === 'settings' && DETACHED_WINDOW_PANEL_KEYS.includes(target.id || '')) {
+      scheduleAutoSave('settings', () => saveSettings(false));
     }
   });
 

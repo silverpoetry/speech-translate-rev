@@ -162,16 +162,6 @@ def get_virtual_screen_bounds(*, metrics: MetricsProvider = DEFAULT_METRICS_PROV
 
 
 def center_window_pos(width: int, height: int, *, metrics: MetricsProvider = DEFAULT_METRICS_PROVIDER) -> tuple[int, int]:
-    if metrics.platform_name() == "Windows":
-        try:
-            screen_width, screen_height = metrics.screen_size()
-            scale_factor = metrics.scale_factor()
-            centered_x_px = max(0, (screen_width - max(1, width)) // 2)
-            centered_y_px = max(0, (screen_height - max(1, height)) // 2)
-            return int(round(centered_x_px / scale_factor)), int(round(centered_y_px / scale_factor))
-        except Exception:
-            pass
-
     return _center_on_virtual_screen(width, height, metrics=metrics)
 
 
@@ -198,6 +188,20 @@ def ensure_visible_or_center(
         return x, y
 
     return center_window_pos(width, height, metrics=metrics)
+
+
+def clamp_window_position(
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    *,
+    metrics: MetricsProvider = DEFAULT_METRICS_PROVIDER,
+) -> tuple[int, int]:
+    left, top, v_width, v_height = metrics.virtual_screen_bounds()
+    max_x = left + max(0, v_width - max(1, width))
+    max_y = top + max(0, v_height - max(1, height))
+    return min(max(int(x), left), max_x), min(max(int(y), top), max_y)
 
 
 def resolve_window_placement(

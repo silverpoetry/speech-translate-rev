@@ -86,6 +86,9 @@ class DetachedWindowManagerApi(Protocol):
     def move_window(self, mode: str, x: int, y: int) -> bool:
         ...
 
+    def remember_window_geometry(self, mode: str, width: int, height: int) -> None:
+        ...
+
     def close_window(self, mode: str) -> None:
         ...
 
