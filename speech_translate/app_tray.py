@@ -9,6 +9,7 @@ from speech_translate._path import p_app_icon
 from speech_translate.controller_protocols import AppTrayBridge
 from speech_translate.log_helpers import logger
 from speech_translate.webview_runtime import load_webview_runtime
+from speech_translate.window_factory import create_preloaded_window
 from speech_translate.window_geometry import (
     DEFAULT_METRICS_PROVIDER,
     WindowPlacement,
@@ -19,7 +20,6 @@ from speech_translate.window_geometry import (
 )
 from speech_translate.window_lifecycle import (
     is_preloaded_window,
-    preload_window_creation,
     reveal_preloaded_window,
 )
 
@@ -319,24 +319,21 @@ class AppTray:
         logger.debug(f"[Tray] create_panel x={x} y={y} scale={self._screen_scale_factor():.3f}")
         _bind_tray_panel_owner(self)
         requested = WindowPlacement(width=self.PANEL_WIDTH, height=self.PANEL_HEIGHT, x=x, y=y)
-        with preload_window_creation(requested) as preload_plan:
-            self.panel_window = webview.create_window(
-                "Speech Translate",
-                html_path,
-                js_api=TrayPanelApi(),
-                width=self.PANEL_WIDTH,
-                height=self.PANEL_HEIGHT,
-                x=preload_plan.offscreen_placement.x,
-                y=preload_plan.offscreen_placement.y,
-                resizable=False,
-                min_size=(120, 120),
-                hidden=False,
-                frameless=True,
-                easy_drag=False,
-                shadow=True,
-                background_color="#f8fafc",
-                on_top=True,
-            )
+        self.panel_window = create_preloaded_window(
+            webview,
+            "Speech Translate",
+            html_path,
+            js_api=TrayPanelApi(),
+            placement=requested,
+            resizable=False,
+            min_size=(120, 120),
+            hidden=False,
+            frameless=True,
+            easy_drag=False,
+            shadow=True,
+            background_color="#f8fafc",
+            on_top=True,
+        )
         self._bind_panel_events(self.panel_window)
         return self.panel_window
 

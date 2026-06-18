@@ -32,11 +32,11 @@ from speech_translate.detached_window_settings import (
 )
 from speech_translate.detached_window_runtime import DetachedWindowDeliveryRuntime
 from speech_translate.log_helpers import logger
-from speech_translate.webview_runtime import load_webview_runtime, set_pending_window_contract
+from speech_translate.webview_runtime import load_webview_runtime
+from speech_translate.window_factory import create_preloaded_window
 from speech_translate.window_geometry import WindowPlacement
 from speech_translate.window_lifecycle import (
     is_preloaded_window,
-    preload_window_creation,
     reveal_preloaded_window,
     should_skip_preloaded_geometry_save,
 )
@@ -275,26 +275,20 @@ class DetachedWindowManager:
                 f"captionless={create_captionless} position={x},{y} cache={cache_value} cache_pos={pos_cache}"
             )
             window_url = f"{html_path}?mode={mode}"
-            set_pending_window_contract(build_detached_native_contract(create_config))
-            try:
-                with preload_window_creation(self._requested_placements[mode]) as preload_plan:
-                    window = webview.create_window(
-                        f"Speech Translate - {'Transcribed' if mode == 'tc' else 'Translated'}",
-                        window_url,
-                        js_api=DetachedWindowApi(self),
-                        width=width,
-                        height=height,
-                        x=preload_plan.offscreen_placement.x,
-                        y=preload_plan.offscreen_placement.y,
-                        background_color="#060b14",
-                        transparent=True,
-                        on_top=always_on_top,
-                        hidden=False,
-                        frameless=False,
-                        easy_drag=True,
-                    )
-            finally:
-                set_pending_window_contract(None)
+            window = create_preloaded_window(
+                webview,
+                f"Speech Translate - {'Transcribed' if mode == 'tc' else 'Translated'}",
+                window_url,
+                js_api=DetachedWindowApi(self),
+                placement=self._requested_placements[mode],
+                native_contract=build_detached_native_contract(create_config),
+                background_color="#060b14",
+                transparent=True,
+                on_top=always_on_top,
+                hidden=False,
+                frameless=False,
+                easy_drag=True,
+            )
 
             self.windows[mode] = window
             self._attach_window_events(mode, window)
@@ -429,19 +423,16 @@ class DetachedWindowManager:
             assert self.bridge is not None
             recording_window_api = RecordingWindowApi(self.bridge.get_recording_state)
             requested = WindowPlacement(width=width, height=height, x=x, y=y)
-            with preload_window_creation(requested) as preload_plan:
-                self.recording_window = webview.create_window(
-                    "Speech Translate - Recording Session",
-                    html_path,
-                    js_api=recording_window_api,
-                    width=width,
-                    height=height,
-                    x=preload_plan.offscreen_placement.x,
-                    y=preload_plan.offscreen_placement.y,
-                    background_color="#060b14",
-                    on_top=True,
-                    hidden=False,
-                )
+            self.recording_window = create_preloaded_window(
+                webview,
+                "Speech Translate - Recording Session",
+                html_path,
+                js_api=recording_window_api,
+                placement=requested,
+                background_color="#060b14",
+                on_top=True,
+                hidden=False,
+            )
             self._attach_recording_window_events(self.recording_window)
             logger.info("Created recording popup window")
         except Exception as exc:

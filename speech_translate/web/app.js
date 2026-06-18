@@ -146,6 +146,27 @@ function writeInputValue(node, value, fallback = '') {
   }
 }
 
+function readStringValue(node, fallback = '') {
+  const value = readInputValue(node, fallback);
+  return value == null ? String(fallback ?? '') : String(value);
+}
+
+function readBooleanValue(node, fallback = false) {
+  return Boolean(readInputValue(node, fallback));
+}
+
+function readNumberValue(node, fallback = 0) {
+  const parsed = Number(readInputValue(node, fallback));
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function readSelectedLabel(node, fallback = '') {
+  if (!node || !node.selectedOptions || !node.selectedOptions[0]) {
+    return fallback;
+  }
+  return String(node.selectedOptions[0].textContent || node.value || fallback);
+}
+
 function bindToolbarMirror(source, target, kind = 'value') {
   if (!source || !target) {
     return;
@@ -158,6 +179,34 @@ function bindToolbarMirror(source, target, kind = 'value') {
     }
     target.value = source.value;
   });
+}
+
+function syncToolbarMirrorValues(pairs = []) {
+  for (const [target, source, fallback = ''] of pairs) {
+    syncToolbarMirrorValue(target, source, fallback);
+  }
+}
+
+function syncToolbarMirrorChecks(pairs = []) {
+  for (const [target, source, fallback = false] of pairs) {
+    syncToolbarMirrorChecked(target, source, fallback);
+  }
+}
+
+function collectCheckedValues(definitions = []) {
+  const values = [];
+  for (const [value, node] of definitions) {
+    if (readBooleanValue(node, false)) {
+      values.push(value);
+    }
+  }
+  return values;
+}
+
+async function persistApiPairs(apiName, updates = []) {
+  for (const [key, value] of updates) {
+    await apiCall(apiName, key, value);
+  }
 }
 
 function setAppModalHidden(hidden) {
@@ -1494,49 +1543,54 @@ function summarizeInitialPromptState(settings) {
 function renderSettingsToolbarOverview(data) {
   const settings = data?.settings || {};
 
-  syncToolbarMirrorChecked(els.httpProxyEnableToolbar, els.httpProxyEnable, false);
-  syncToolbarMirrorChecked(els.httpsProxyEnableToolbar, els.httpsProxyEnable, false);
-  syncToolbarMirrorValue(els.httpProxyToolbar, els.httpProxy, '');
-  syncToolbarMirrorValue(els.httpsProxyToolbar, els.httpsProxy, '');
-  syncToolbarMirrorValue(els.libreLinkToolbar, els.libreLink, '');
-  syncToolbarMirrorValue(els.libreApiKeyToolbar, els.libreApiKey, '');
-  syncToolbarMirrorValue(els.exportFormatToolbar, els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}');
-  syncToolbarMirrorChecked(els.autoOpenDirExportToolbar, els.autoOpenDirExport, true);
-  syncToolbarMirrorValue(els.segmentMaxWordsToolbar, els.segmentMaxWords, '');
-  syncToolbarMirrorValue(els.segmentMaxCharsToolbar, els.segmentMaxChars, '');
-  syncToolbarMirrorValue(els.segmentSplitOrNewlineToolbar, els.segmentSplitOrNewline, 'Split');
-  syncToolbarMirrorChecked(els.exportTxtToolbar, els.exportTxt, true);
-  syncToolbarMirrorChecked(els.exportSrtToolbar, els.exportSrt, true);
-  syncToolbarMirrorChecked(els.exportVttToolbar, els.exportVtt, true);
-  syncToolbarMirrorChecked(els.exportJsonToolbar, els.exportJson, true);
-  syncToolbarMirrorChecked(els.exportAssToolbar, els.exportAss, true);
-  syncToolbarMirrorChecked(els.exportCsvToolbar, els.exportCsv, false);
-  syncToolbarMirrorChecked(els.exportTsvToolbar, els.exportTsv, false);
-  syncToolbarMirrorChecked(els.exportMp4Toolbar, els.exportMp4, false);
-  syncToolbarMirrorChecked(els.recAskConfirmationFirstToolbar, els.recAskConfirmationFirst, true);
-  syncToolbarMirrorChecked(els.supressHiddenToTrayToolbar, els.supressHiddenToTray, false);
-  syncToolbarMirrorValue(els.decodingPresetToolbar, els.decodingPreset, 'beam search');
-  syncToolbarMirrorValue(els.temperatureToolbar, els.temperature, '0.0, 0.2, 0.4, 0.6, 0.8, 1.0');
-  syncToolbarMirrorValue(els.bestOfToolbar, els.bestOf, '3');
-  syncToolbarMirrorValue(els.beamSizeToolbar, els.beamSize, '3');
-  syncToolbarMirrorValue(els.noSpeechThresholdToolbar, els.noSpeechThreshold, '0.72');
-  syncToolbarMirrorValue(els.logprobThresholdToolbar, els.logprobThreshold, '-1.0');
-  syncToolbarMirrorValue(els.patienceToolbar, els.patience, '1.0');
-  syncToolbarMirrorValue(els.compressionRatioThresholdToolbar, els.compressionRatioThreshold, '2.4');
-  syncToolbarMirrorValue(els.suppressTokensToolbar, els.suppressTokens, '');
-  syncToolbarMirrorChecked(els.useEnModelToolbar, els.useEnModel, true);
-  syncToolbarMirrorChecked(els.fp16Toolbar, els.fp16, true);
-  syncToolbarMirrorChecked(els.suppressBlankToolbar, els.suppressBlank, true);
-  syncToolbarMirrorChecked(els.useTempAltToolbar, els.useTempAlt, false);
-  syncToolbarMirrorChecked(els.keepTempToolbar, els.keepTemp, false);
-  syncToolbarMirrorChecked(els.fileUseOfficialWhisperToolbar, els.fileUseOfficialWhisper, false);
-  syncToolbarMirrorChecked(els.supressRecordWarningToolbar, els.supressRecordWarning, false);
-  syncToolbarMirrorChecked(els.debugRealtimeRecordToolbar, els.debugRealtimeRecord, false);
-  syncToolbarMirrorChecked(els.debugTranslateToolbar, els.debugTranslate, false);
-  syncToolbarMirrorChecked(els.segmentEvenSplitToolbar, els.segmentEvenSplit, true);
-  syncToolbarMirrorChecked(els.segmentLevelToolbar, els.segmentLevel, true);
-  syncToolbarMirrorChecked(els.wordLevelToolbar, els.wordLevel, true);
-  syncToolbarMirrorValue(els.modelDevicePreferenceToolbar, els.modelDevicePreference, 'auto');
+  syncToolbarMirrorValues([
+    [els.httpProxyToolbar, els.httpProxy, ''],
+    [els.httpsProxyToolbar, els.httpsProxy, ''],
+    [els.libreLinkToolbar, els.libreLink, ''],
+    [els.libreApiKeyToolbar, els.libreApiKey, ''],
+    [els.exportFormatToolbar, els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}'],
+    [els.segmentMaxWordsToolbar, els.segmentMaxWords, ''],
+    [els.segmentMaxCharsToolbar, els.segmentMaxChars, ''],
+    [els.segmentSplitOrNewlineToolbar, els.segmentSplitOrNewline, 'Split'],
+    [els.decodingPresetToolbar, els.decodingPreset, 'beam search'],
+    [els.temperatureToolbar, els.temperature, '0.0, 0.2, 0.4, 0.6, 0.8, 1.0'],
+    [els.bestOfToolbar, els.bestOf, '3'],
+    [els.beamSizeToolbar, els.beamSize, '3'],
+    [els.noSpeechThresholdToolbar, els.noSpeechThreshold, '0.72'],
+    [els.logprobThresholdToolbar, els.logprobThreshold, '-1.0'],
+    [els.patienceToolbar, els.patience, '1.0'],
+    [els.compressionRatioThresholdToolbar, els.compressionRatioThreshold, '2.4'],
+    [els.suppressTokensToolbar, els.suppressTokens, ''],
+    [els.modelDevicePreferenceToolbar, els.modelDevicePreference, 'auto'],
+    [els.transcribeRateToolbar, els.transcribeRate, '300'],
+  ]);
+  syncToolbarMirrorChecks([
+    [els.httpProxyEnableToolbar, els.httpProxyEnable, false],
+    [els.httpsProxyEnableToolbar, els.httpsProxyEnable, false],
+    [els.autoOpenDirExportToolbar, els.autoOpenDirExport, true],
+    [els.exportTxtToolbar, els.exportTxt, true],
+    [els.exportSrtToolbar, els.exportSrt, true],
+    [els.exportVttToolbar, els.exportVtt, true],
+    [els.exportJsonToolbar, els.exportJson, true],
+    [els.exportAssToolbar, els.exportAss, true],
+    [els.exportCsvToolbar, els.exportCsv, false],
+    [els.exportTsvToolbar, els.exportTsv, false],
+    [els.exportMp4Toolbar, els.exportMp4, false],
+    [els.recAskConfirmationFirstToolbar, els.recAskConfirmationFirst, true],
+    [els.supressHiddenToTrayToolbar, els.supressHiddenToTray, false],
+    [els.useEnModelToolbar, els.useEnModel, true],
+    [els.fp16Toolbar, els.fp16, true],
+    [els.suppressBlankToolbar, els.suppressBlank, true],
+    [els.useTempAltToolbar, els.useTempAlt, false],
+    [els.keepTempToolbar, els.keepTemp, false],
+    [els.fileUseOfficialWhisperToolbar, els.fileUseOfficialWhisper, false],
+    [els.supressRecordWarningToolbar, els.supressRecordWarning, false],
+    [els.debugRealtimeRecordToolbar, els.debugRealtimeRecord, false],
+    [els.debugTranslateToolbar, els.debugTranslate, false],
+    [els.segmentEvenSplitToolbar, els.segmentEvenSplit, true],
+    [els.segmentLevelToolbar, els.segmentLevel, true],
+    [els.wordLevelToolbar, els.wordLevel, true],
+  ]);
   if (els.hostAPIToolbar && els.hostAPI) {
     populateSelect(
       els.hostAPIToolbar,
@@ -1544,8 +1598,6 @@ function renderSettingsToolbarOverview(data) {
       els.hostAPI.value || ''
     );
   }
-  syncToolbarMirrorValue(els.transcribeRateToolbar, els.transcribeRate, '300');
-
   if (els.decodePresetKpi) {
     els.decodePresetKpi.textContent = String(settings.decoding_preset || 'greedy');
   }
@@ -2532,168 +2584,166 @@ async function refreshTaskState() {
 }
 
 async function saveSettings(shouldRefresh = true) {
-  const valueOf = (node, fallback = '') => (node && typeof node.value !== 'undefined' ? node.value : fallback);
-  const checkedOf = (node, fallback = false) => (node && typeof node.checked !== 'undefined' ? Boolean(node.checked) : fallback);
-  const numberOf = (node, fallback = 0) => {
-    const raw = valueOf(node, fallback);
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) ? parsed : fallback;
-  };
   const currentSetting = (key, fallback = '') => {
     const settings = state.data && state.data.settings ? state.data.settings : null;
     const value = settings ? settings[key] : undefined;
     return value === undefined ? fallback : value;
   };
 
-  syncToolbarMirrorValue(els.httpProxy, els.httpProxyToolbar, '');
-  syncToolbarMirrorValue(els.httpsProxy, els.httpsProxyToolbar, '');
-  syncToolbarMirrorValue(els.libreLink, els.libreLinkToolbar, '');
-  syncToolbarMirrorValue(els.libreApiKey, els.libreApiKeyToolbar, '');
-  syncToolbarMirrorValue(els.exportFormat, els.exportFormatToolbar, '%Y-%m-%d %f {file}/{task-lang}');
-  syncToolbarMirrorValue(els.segmentMaxWords, els.segmentMaxWordsToolbar, '');
-  syncToolbarMirrorValue(els.segmentMaxChars, els.segmentMaxCharsToolbar, '');
-  syncToolbarMirrorValue(els.segmentSplitOrNewline, els.segmentSplitOrNewlineToolbar, 'Split');
-  syncToolbarMirrorValue(els.transcribeRate, els.transcribeRateToolbar, '300');
-  syncToolbarMirrorValue(els.decodingPreset, els.decodingPresetToolbar, 'beam search');
-  syncToolbarMirrorValue(els.temperature, els.temperatureToolbar, '0.0, 0.2, 0.4, 0.6, 0.8, 1.0');
-  syncToolbarMirrorValue(els.bestOf, els.bestOfToolbar, '3');
-  syncToolbarMirrorValue(els.beamSize, els.beamSizeToolbar, '3');
-  syncToolbarMirrorValue(els.noSpeechThreshold, els.noSpeechThresholdToolbar, '0.72');
-  syncToolbarMirrorValue(els.logprobThreshold, els.logprobThresholdToolbar, '-1.0');
-  syncToolbarMirrorValue(els.patience, els.patienceToolbar, '1.0');
-  syncToolbarMirrorValue(els.compressionRatioThreshold, els.compressionRatioThresholdToolbar, '2.4');
-  syncToolbarMirrorValue(els.suppressTokens, els.suppressTokensToolbar, '');
-  syncToolbarMirrorChecked(els.httpProxyEnable, els.httpProxyEnableToolbar, false);
-  syncToolbarMirrorChecked(els.httpsProxyEnable, els.httpsProxyEnableToolbar, false);
-  syncToolbarMirrorChecked(els.autoOpenDirExport, els.autoOpenDirExportToolbar, true);
-  syncToolbarMirrorChecked(els.exportTxt, els.exportTxtToolbar, true);
-  syncToolbarMirrorChecked(els.exportSrt, els.exportSrtToolbar, true);
-  syncToolbarMirrorChecked(els.exportVtt, els.exportVttToolbar, true);
-  syncToolbarMirrorChecked(els.exportJson, els.exportJsonToolbar, true);
-  syncToolbarMirrorChecked(els.exportAss, els.exportAssToolbar, true);
-  syncToolbarMirrorChecked(els.exportCsv, els.exportCsvToolbar, false);
-  syncToolbarMirrorChecked(els.exportTsv, els.exportTsvToolbar, false);
-  syncToolbarMirrorChecked(els.exportMp4, els.exportMp4Toolbar, false);
-  syncToolbarMirrorChecked(els.recAskConfirmationFirst, els.recAskConfirmationFirstToolbar, true);
-  syncToolbarMirrorChecked(els.supressHiddenToTray, els.supressHiddenToTrayToolbar, false);
-  syncToolbarMirrorChecked(els.useEnModel, els.useEnModelToolbar, true);
-  syncToolbarMirrorChecked(els.fp16, els.fp16Toolbar, true);
-  syncToolbarMirrorChecked(els.suppressBlank, els.suppressBlankToolbar, true);
-  syncToolbarMirrorChecked(els.useTempAlt, els.useTempAltToolbar, false);
-  syncToolbarMirrorChecked(els.keepTemp, els.keepTempToolbar, false);
-  syncToolbarMirrorChecked(els.fileUseOfficialWhisper, els.fileUseOfficialWhisperToolbar, false);
-  syncToolbarMirrorChecked(els.supressRecordWarning, els.supressRecordWarningToolbar, false);
-  syncToolbarMirrorChecked(els.debugRealtimeRecord, els.debugRealtimeRecordToolbar, false);
-  syncToolbarMirrorChecked(els.debugTranslate, els.debugTranslateToolbar, false);
-  syncToolbarMirrorChecked(els.segmentEvenSplit, els.segmentEvenSplitToolbar, true);
-  syncToolbarMirrorChecked(els.segmentLevel, els.segmentLevelToolbar, true);
-  syncToolbarMirrorChecked(els.wordLevel, els.wordLevelToolbar, true);
-  syncToolbarMirrorValue(els.modelDevicePreference, els.modelDevicePreferenceToolbar, 'auto');
+  syncToolbarMirrorValues([
+    [els.httpProxy, els.httpProxyToolbar, ''],
+    [els.httpsProxy, els.httpsProxyToolbar, ''],
+    [els.libreLink, els.libreLinkToolbar, ''],
+    [els.libreApiKey, els.libreApiKeyToolbar, ''],
+    [els.exportFormat, els.exportFormatToolbar, '%Y-%m-%d %f {file}/{task-lang}'],
+    [els.segmentMaxWords, els.segmentMaxWordsToolbar, ''],
+    [els.segmentMaxChars, els.segmentMaxCharsToolbar, ''],
+    [els.segmentSplitOrNewline, els.segmentSplitOrNewlineToolbar, 'Split'],
+    [els.transcribeRate, els.transcribeRateToolbar, '300'],
+    [els.decodingPreset, els.decodingPresetToolbar, 'beam search'],
+    [els.temperature, els.temperatureToolbar, '0.0, 0.2, 0.4, 0.6, 0.8, 1.0'],
+    [els.bestOf, els.bestOfToolbar, '3'],
+    [els.beamSize, els.beamSizeToolbar, '3'],
+    [els.noSpeechThreshold, els.noSpeechThresholdToolbar, '0.72'],
+    [els.logprobThreshold, els.logprobThresholdToolbar, '-1.0'],
+    [els.patience, els.patienceToolbar, '1.0'],
+    [els.compressionRatioThreshold, els.compressionRatioThresholdToolbar, '2.4'],
+    [els.suppressTokens, els.suppressTokensToolbar, ''],
+    [els.modelDevicePreference, els.modelDevicePreferenceToolbar, 'auto'],
+  ]);
+  syncToolbarMirrorChecks([
+    [els.httpProxyEnable, els.httpProxyEnableToolbar, false],
+    [els.httpsProxyEnable, els.httpsProxyEnableToolbar, false],
+    [els.autoOpenDirExport, els.autoOpenDirExportToolbar, true],
+    [els.exportTxt, els.exportTxtToolbar, true],
+    [els.exportSrt, els.exportSrtToolbar, true],
+    [els.exportVtt, els.exportVttToolbar, true],
+    [els.exportJson, els.exportJsonToolbar, true],
+    [els.exportAss, els.exportAssToolbar, true],
+    [els.exportCsv, els.exportCsvToolbar, false],
+    [els.exportTsv, els.exportTsvToolbar, false],
+    [els.exportMp4, els.exportMp4Toolbar, false],
+    [els.recAskConfirmationFirst, els.recAskConfirmationFirstToolbar, true],
+    [els.supressHiddenToTray, els.supressHiddenToTrayToolbar, false],
+    [els.useEnModel, els.useEnModelToolbar, true],
+    [els.fp16, els.fp16Toolbar, true],
+    [els.suppressBlank, els.suppressBlankToolbar, true],
+    [els.useTempAlt, els.useTempAltToolbar, false],
+    [els.keepTemp, els.keepTempToolbar, false],
+    [els.fileUseOfficialWhisper, els.fileUseOfficialWhisperToolbar, false],
+    [els.supressRecordWarning, els.supressRecordWarningToolbar, false],
+    [els.debugRealtimeRecord, els.debugRealtimeRecordToolbar, false],
+    [els.debugTranslate, els.debugTranslateToolbar, false],
+    [els.segmentEvenSplit, els.segmentEvenSplitToolbar, true],
+    [els.segmentLevel, els.segmentLevelToolbar, true],
+    [els.wordLevel, els.wordLevelToolbar, true],
+  ]);
   if (els.hostAPI && els.hostAPIToolbar) {
     els.hostAPI.value = els.hostAPIToolbar.value;
   }
 
-  const exportTo = [];
-  if (els.exportTxt && checkedOf(els.exportTxt)) exportTo.push('txt');
-  if (els.exportSrt && checkedOf(els.exportSrt)) exportTo.push('srt');
-  if (els.exportVtt && checkedOf(els.exportVtt)) exportTo.push('vtt');
-  if (els.exportAss && checkedOf(els.exportAss)) exportTo.push('ass');
-  if (els.exportJson && checkedOf(els.exportJson)) exportTo.push('json');
-  if (els.exportCsv && checkedOf(els.exportCsv)) exportTo.push('csv');
-  if (els.exportTsv && checkedOf(els.exportTsv)) exportTo.push('tsv');
-  if (els.exportMp4 && checkedOf(els.exportMp4)) exportTo.push('mp4');
+  const exportTo = collectCheckedValues([
+    ['txt', els.exportTxt],
+    ['srt', els.exportSrt],
+    ['vtt', els.exportVtt],
+    ['ass', els.exportAss],
+    ['json', els.exportJson],
+    ['csv', els.exportCsv],
+    ['tsv', els.exportTsv],
+    ['mp4', els.exportMp4],
+  ]);
 
   const updates = [
-    ['dir_export', els.dirExport ? valueOf(els.dirExport, 'auto') : currentSetting('dir_export', 'auto')],
-    ['dir_log', valueOf(els.dirLog, currentSetting('dir_log', 'auto'))],
-    ['log_level', valueOf(els.logLevel, currentSetting('log_level', 'DEBUG'))],
-    ['mw_size', valueOf(els.mainWindowSize, currentSetting('mw_size', '1140x680'))],
+    ['dir_export', els.dirExport ? readStringValue(els.dirExport, 'auto') : currentSetting('dir_export', 'auto')],
+    ['dir_log', readStringValue(els.dirLog, currentSetting('dir_log', 'auto'))],
+    ['log_level', readStringValue(els.logLevel, currentSetting('log_level', 'DEBUG'))],
+    ['mw_size', readStringValue(els.mainWindowSize, currentSetting('mw_size', '1140x680'))],
     ['export_to', exportTo],
-    ['input', valueOf(els.inputMode, 'mic')],
-    ['use_faster_whisper', valueOf(els.backendMain, currentSetting('use_faster_whisper', true) ? 'faster-whisper' : 'whisper') === 'faster-whisper'],
-    ['model_mw', valueOf(els.modelMain, currentSetting('model_mw', ''))],
-    ['source_lang_mw', valueOf(els.sourceLangMain, 'English')],
-    ['target_lang_mw', valueOf(els.targetLangMain, 'Indonesian')],
-    ['tl_engine_mw', valueOf(els.translateEngineMain, 'Google Translate')],
-    ['transcribe_mw', checkedOf(els.transcribeMain, true)],
-    ['translate_mw', checkedOf(els.translateMain, true)],
-    ['auto_scroll_log', checkedOf(els.autoScrollLog, true)],
-    ['auto_refresh_log', checkedOf(els.autoRefreshLog, false)],
-    ['filter_rec', checkedOf(els.filterRec, true)],
-    ['filter_rec_case_sensitive', checkedOf(els.filterRecCaseSensitive, false)],
-    ['filter_rec_strip', checkedOf(els.filterRecStrip, true)],
-    ['filter_rec_exact_match', checkedOf(els.filterRecExactMatch, false)],
-    ['filter_rec_ignore_punctuations', valueOf(els.filterRecIgnorePunctuations, "\"',.?!")],
-    ['filter_rec_similarity', Number(valueOf(els.filterRecSimilarity, 0.75))],
-    ['http_proxy_enable', checkedOf(els.httpProxyEnable, false)],
-    ['http_proxy', valueOf(els.httpProxy, '')],
-    ['https_proxy_enable', checkedOf(els.httpsProxyEnable, false)],
-    ['https_proxy', valueOf(els.httpsProxy, '')],
-    ['libre_link', valueOf(els.libreLink, '')],
-    ['libre_api_key', valueOf(els.libreApiKey, '')],
-    ['auto_open_dir_export', checkedOf(els.autoOpenDirExport, true)],
-    ['export_format', valueOf(els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}')],
-    ['remove_repetition_file_import', checkedOf(els.removeRepetitionFileImport, false)],
-    ['remove_repetition_amount', numberOf(els.removeRepetitionAmount, 1)],
-    ['segment_max_words', valueOf(els.segmentMaxWords, '')],
-    ['segment_max_chars', valueOf(els.segmentMaxChars, '')],
-    ['segment_split_or_newline', valueOf(els.segmentSplitOrNewline, 'split')],
-    ['segment_even_split', checkedOf(els.segmentEvenSplit, true)],
-    ['segment_level', checkedOf(els.segmentLevel, true)],
-    ['word_level', checkedOf(els.wordLevel, true)],
-    ['use_en_model', checkedOf(els.useEnModel, true)],
-    ['decoding_preset', valueOf(els.decodingPreset, 'beam search')],
-    ['temperature', valueOf(els.temperature, '0.0, 0.2, 0.4, 0.6, 0.8, 1.0')],
-    ['best_of', numberOf(els.bestOf, 3)],
-    ['beam_size', numberOf(els.beamSize, 3)],
-    ['patience', numberOf(els.patience, 1.0)],
-    ['compression_ratio_threshold', numberOf(els.compressionRatioThreshold, 2.4)],
-    ['logprob_threshold', numberOf(els.logprobThreshold, -1.0)],
-    ['no_speech_threshold', numberOf(els.noSpeechThreshold, 0.72)],
-    ['suppress_tokens', valueOf(els.suppressTokens, '')],
-    ['suppress_blank', checkedOf(els.suppressBlank, true)],
-    ['fp16', checkedOf(els.fp16, true)],
-    ['initial_prompt', valueOf(els.initialPrompt, '') || null],
-    ['prefix', valueOf(els.prefix, '') || null],
-    ['max_initial_timestamp', numberOf(els.maxInitialTimestamp, 1.0)],
-    ['whisper_args', valueOf(els.whisperArgs, '')],
-    ['path_filter_rec', valueOf(els.pathFilterRec, 'auto')],
-    ['path_filter_file_import', valueOf(els.pathFilterFileImport, 'auto')],
-    ['file_slice_start', valueOf(els.fileSliceStart, '')],
-    ['file_slice_end', valueOf(els.fileSliceEnd, '')],
-    ['auto_open_dir_translate', checkedOf(els.autoOpenDirTranslate, true)],
-    ['auto_open_dir_refinement', checkedOf(els.autoOpenDirRefinement, true)],
-    ['auto_open_dir_alignment', checkedOf(els.autoOpenDirAlignment, true)],
-    ['rec_ask_confirmation_first', checkedOf(els.recAskConfirmationFirst, false)],
-    ['close_to_tray_on_close', checkedOf(els.closeToTrayOnClose, true)],
-    ['supress_hidden_to_tray', checkedOf(els.supressHiddenToTray, false)],
-    ['supress_record_warning', checkedOf(els.supressRecordWarning, false)],
-    ['debug_realtime_record', checkedOf(els.debugRealtimeRecord, false)],
-    ['debug_translate', checkedOf(els.debugTranslate, false)],
-    ['colorize_per_segment', checkedOf(els.colorizePerSegment, true)],
-    ['colorize_per_word', checkedOf(els.colorizePerWord, false)],
-    ['gradient_low_conf', valueOf(els.gradientLowConf, '#FF0000')],
-    ['gradient_high_conf', valueOf(els.gradientHighConf, '#00FF00')],
-    ['tb_mw_tc_auto_scroll', checkedOf(els.tbMwTcAutoScroll, true)],
-    ['tb_mw_tc_limit_max', checkedOf(els.tbMwTcLimitMax, false)],
-    ['tb_mw_tc_limit_max_per_line', checkedOf(els.tbMwTcLimitMaxPerLine, false)],
-    ['tb_mw_tc_max', numberOf(els.tbMwTcMax, 300)],
-    ['tb_mw_tc_max_per_line', numberOf(els.tbMwTcMaxPerLine, 30)],
-    ['tb_mw_tc_font', valueOf(els.tbMwTcFont, 'TKDefaultFont')],
-    ['tb_mw_tc_font_bold', checkedOf(els.tbMwTcFontBold, false)],
-    ['tb_mw_tc_font_size', numberOf(els.tbMwTcFontSize, 10)],
-    ['tb_mw_tc_font_color', valueOf(els.tbMwTcFontColor, '#FFFFFF')],
-    ['tb_mw_tc_use_conf_color', checkedOf(els.tbMwTcUseConfColor, true)],
-    ['tb_mw_tl_auto_scroll', checkedOf(els.tbMwTlAutoScroll, true)],
-    ['tb_mw_tl_limit_max', checkedOf(els.tbMwTlLimitMax, false)],
-    ['tb_mw_tl_limit_max_per_line', checkedOf(els.tbMwTlLimitMaxPerLine, false)],
-    ['tb_mw_tl_max', numberOf(els.tbMwTlMax, 300)],
-    ['tb_mw_tl_max_per_line', numberOf(els.tbMwTlMaxPerLine, 30)],
-    ['tb_mw_tl_font', valueOf(els.tbMwTlFont, 'TKDefaultFont')],
-    ['tb_mw_tl_font_bold', checkedOf(els.tbMwTlFontBold, false)],
-    ['tb_mw_tl_font_size', numberOf(els.tbMwTlFontSize, 10)],
-    ['tb_mw_tl_font_color', valueOf(els.tbMwTlFontColor, '#FFFFFF')],
-    ['tb_mw_tl_use_conf_color', checkedOf(els.tbMwTlUseConfColor, true)],
+    ['input', readStringValue(els.inputMode, 'mic')],
+    ['use_faster_whisper', readStringValue(els.backendMain, currentSetting('use_faster_whisper', true) ? 'faster-whisper' : 'whisper') === 'faster-whisper'],
+    ['model_mw', readStringValue(els.modelMain, currentSetting('model_mw', ''))],
+    ['source_lang_mw', readStringValue(els.sourceLangMain, 'English')],
+    ['target_lang_mw', readStringValue(els.targetLangMain, 'Indonesian')],
+    ['tl_engine_mw', readStringValue(els.translateEngineMain, 'Google Translate')],
+    ['transcribe_mw', readBooleanValue(els.transcribeMain, true)],
+    ['translate_mw', readBooleanValue(els.translateMain, true)],
+    ['auto_scroll_log', readBooleanValue(els.autoScrollLog, true)],
+    ['auto_refresh_log', readBooleanValue(els.autoRefreshLog, false)],
+    ['filter_rec', readBooleanValue(els.filterRec, true)],
+    ['filter_rec_case_sensitive', readBooleanValue(els.filterRecCaseSensitive, false)],
+    ['filter_rec_strip', readBooleanValue(els.filterRecStrip, true)],
+    ['filter_rec_exact_match', readBooleanValue(els.filterRecExactMatch, false)],
+    ['filter_rec_ignore_punctuations', readStringValue(els.filterRecIgnorePunctuations, "\"',.?!")],
+    ['filter_rec_similarity', readNumberValue(els.filterRecSimilarity, 0.75)],
+    ['http_proxy_enable', readBooleanValue(els.httpProxyEnable, false)],
+    ['http_proxy', readStringValue(els.httpProxy, '')],
+    ['https_proxy_enable', readBooleanValue(els.httpsProxyEnable, false)],
+    ['https_proxy', readStringValue(els.httpsProxy, '')],
+    ['libre_link', readStringValue(els.libreLink, '')],
+    ['libre_api_key', readStringValue(els.libreApiKey, '')],
+    ['auto_open_dir_export', readBooleanValue(els.autoOpenDirExport, true)],
+    ['export_format', readStringValue(els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}')],
+    ['remove_repetition_file_import', readBooleanValue(els.removeRepetitionFileImport, false)],
+    ['remove_repetition_amount', readNumberValue(els.removeRepetitionAmount, 1)],
+    ['segment_max_words', readStringValue(els.segmentMaxWords, '')],
+    ['segment_max_chars', readStringValue(els.segmentMaxChars, '')],
+    ['segment_split_or_newline', readStringValue(els.segmentSplitOrNewline, 'split')],
+    ['segment_even_split', readBooleanValue(els.segmentEvenSplit, true)],
+    ['segment_level', readBooleanValue(els.segmentLevel, true)],
+    ['word_level', readBooleanValue(els.wordLevel, true)],
+    ['use_en_model', readBooleanValue(els.useEnModel, true)],
+    ['decoding_preset', readStringValue(els.decodingPreset, 'beam search')],
+    ['temperature', readStringValue(els.temperature, '0.0, 0.2, 0.4, 0.6, 0.8, 1.0')],
+    ['best_of', readNumberValue(els.bestOf, 3)],
+    ['beam_size', readNumberValue(els.beamSize, 3)],
+    ['patience', readNumberValue(els.patience, 1.0)],
+    ['compression_ratio_threshold', readNumberValue(els.compressionRatioThreshold, 2.4)],
+    ['logprob_threshold', readNumberValue(els.logprobThreshold, -1.0)],
+    ['no_speech_threshold', readNumberValue(els.noSpeechThreshold, 0.72)],
+    ['suppress_tokens', readStringValue(els.suppressTokens, '')],
+    ['suppress_blank', readBooleanValue(els.suppressBlank, true)],
+    ['fp16', readBooleanValue(els.fp16, true)],
+    ['initial_prompt', readStringValue(els.initialPrompt, '') || null],
+    ['prefix', readStringValue(els.prefix, '') || null],
+    ['max_initial_timestamp', readNumberValue(els.maxInitialTimestamp, 1.0)],
+    ['whisper_args', readStringValue(els.whisperArgs, '')],
+    ['path_filter_rec', readStringValue(els.pathFilterRec, 'auto')],
+    ['path_filter_file_import', readStringValue(els.pathFilterFileImport, 'auto')],
+    ['file_slice_start', readStringValue(els.fileSliceStart, '')],
+    ['file_slice_end', readStringValue(els.fileSliceEnd, '')],
+    ['auto_open_dir_translate', readBooleanValue(els.autoOpenDirTranslate, true)],
+    ['auto_open_dir_refinement', readBooleanValue(els.autoOpenDirRefinement, true)],
+    ['auto_open_dir_alignment', readBooleanValue(els.autoOpenDirAlignment, true)],
+    ['rec_ask_confirmation_first', readBooleanValue(els.recAskConfirmationFirst, false)],
+    ['close_to_tray_on_close', readBooleanValue(els.closeToTrayOnClose, true)],
+    ['supress_hidden_to_tray', readBooleanValue(els.supressHiddenToTray, false)],
+    ['supress_record_warning', readBooleanValue(els.supressRecordWarning, false)],
+    ['debug_realtime_record', readBooleanValue(els.debugRealtimeRecord, false)],
+    ['debug_translate', readBooleanValue(els.debugTranslate, false)],
+    ['colorize_per_segment', readBooleanValue(els.colorizePerSegment, true)],
+    ['colorize_per_word', readBooleanValue(els.colorizePerWord, false)],
+    ['gradient_low_conf', readStringValue(els.gradientLowConf, '#FF0000')],
+    ['gradient_high_conf', readStringValue(els.gradientHighConf, '#00FF00')],
+    ['tb_mw_tc_auto_scroll', readBooleanValue(els.tbMwTcAutoScroll, true)],
+    ['tb_mw_tc_limit_max', readBooleanValue(els.tbMwTcLimitMax, false)],
+    ['tb_mw_tc_limit_max_per_line', readBooleanValue(els.tbMwTcLimitMaxPerLine, false)],
+    ['tb_mw_tc_max', readNumberValue(els.tbMwTcMax, 300)],
+    ['tb_mw_tc_max_per_line', readNumberValue(els.tbMwTcMaxPerLine, 30)],
+    ['tb_mw_tc_font', readStringValue(els.tbMwTcFont, 'TKDefaultFont')],
+    ['tb_mw_tc_font_bold', readBooleanValue(els.tbMwTcFontBold, false)],
+    ['tb_mw_tc_font_size', readNumberValue(els.tbMwTcFontSize, 10)],
+    ['tb_mw_tc_font_color', readStringValue(els.tbMwTcFontColor, '#FFFFFF')],
+    ['tb_mw_tc_use_conf_color', readBooleanValue(els.tbMwTcUseConfColor, true)],
+    ['tb_mw_tl_auto_scroll', readBooleanValue(els.tbMwTlAutoScroll, true)],
+    ['tb_mw_tl_limit_max', readBooleanValue(els.tbMwTlLimitMax, false)],
+    ['tb_mw_tl_limit_max_per_line', readBooleanValue(els.tbMwTlLimitMaxPerLine, false)],
+    ['tb_mw_tl_max', readNumberValue(els.tbMwTlMax, 300)],
+    ['tb_mw_tl_max_per_line', readNumberValue(els.tbMwTlMaxPerLine, 30)],
+    ['tb_mw_tl_font', readStringValue(els.tbMwTlFont, 'TKDefaultFont')],
+    ['tb_mw_tl_font_bold', readBooleanValue(els.tbMwTlFontBold, false)],
+    ['tb_mw_tl_font_size', readNumberValue(els.tbMwTlFontSize, 10)],
+    ['tb_mw_tl_font_color', readStringValue(els.tbMwTlFontColor, '#FFFFFF')],
+    ['tb_mw_tl_use_conf_color', readBooleanValue(els.tbMwTlUseConfColor, true)],
   ];
 
   for (const key of DETACHED_WINDOW_PANEL_KEYS) {
@@ -2705,13 +2755,12 @@ async function saveSettings(shouldRefresh = true) {
     updates.push([key, readInputValue(node, fallback)]);
   }
 
-  for (const [key, value] of updates) {
-    await apiCall('set_setting', key, value);
-  }
-
-  await apiCall('set_record_setting', 'hostAPI', valueOf(els.hostAPI, ''));
-  await apiCall('set_record_setting', 'mic', valueOf(els.mic, ''));
-  await apiCall('set_record_setting', 'speaker', valueOf(els.speaker, ''));
+  await persistApiPairs('set_setting', updates);
+  await persistApiPairs('set_record_setting', [
+    ['hostAPI', readStringValue(els.hostAPI, '')],
+    ['mic', readStringValue(els.mic, '')],
+    ['speaker', readStringValue(els.speaker, '')],
+  ]);
 
   try {
     await apiCall('rerender_live_text');
@@ -2857,19 +2906,23 @@ async function saveImportSettings(shouldRefresh = true) {
   const backend = getSelectedImportModelEngine();
   await apiCall('set_setting', 'use_faster_whisper', backend === 'faster-whisper');
 
-  syncToolbarMirrorValue(els.exportFormatToolbar, els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}');
-  syncToolbarMirrorChecked(els.autoOpenDirExportToolbar, els.autoOpenDirExport, true);
-  syncToolbarMirrorChecked(els.exportTxtToolbar, els.exportTxt, true);
-  syncToolbarMirrorChecked(els.exportSrtToolbar, els.exportSrt, true);
-  syncToolbarMirrorChecked(els.exportVttToolbar, els.exportVtt, true);
-  syncToolbarMirrorChecked(els.exportJsonToolbar, els.exportJson, true);
-  syncToolbarMirrorChecked(els.exportAssToolbar, els.exportAss, true);
-  syncToolbarMirrorChecked(els.exportCsvToolbar, els.exportCsv, false);
-  syncToolbarMirrorChecked(els.exportTsvToolbar, els.exportTsv, false);
-  syncToolbarMirrorChecked(els.exportMp4Toolbar, els.exportMp4, false);
-  syncToolbarMirrorChecked(els.useTempAltToolbar, els.useTempAlt, false);
-  syncToolbarMirrorChecked(els.keepTempToolbar, els.keepTemp, false);
-  syncToolbarMirrorChecked(els.fileUseOfficialWhisperToolbar, els.fileUseOfficialWhisper, false);
+  syncToolbarMirrorValues([
+    [els.exportFormatToolbar, els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}'],
+  ]);
+  syncToolbarMirrorChecks([
+    [els.autoOpenDirExportToolbar, els.autoOpenDirExport, true],
+    [els.exportTxtToolbar, els.exportTxt, true],
+    [els.exportSrtToolbar, els.exportSrt, true],
+    [els.exportVttToolbar, els.exportVtt, true],
+    [els.exportJsonToolbar, els.exportJson, true],
+    [els.exportAssToolbar, els.exportAss, true],
+    [els.exportCsvToolbar, els.exportCsv, false],
+    [els.exportTsvToolbar, els.exportTsv, false],
+    [els.exportMp4Toolbar, els.exportMp4, false],
+    [els.useTempAltToolbar, els.useTempAlt, false],
+    [els.keepTempToolbar, els.keepTemp, false],
+    [els.fileUseOfficialWhisperToolbar, els.fileUseOfficialWhisper, false],
+  ]);
 
   if (els.dirExport && els.dirExportFile) {
     const normalizedExportDir = String(els.dirExportFile.value || els.dirExport.value || 'auto');
@@ -2880,50 +2933,47 @@ async function saveImportSettings(shouldRefresh = true) {
     els.autoOpenDirExport.checked = Boolean(els.autoOpenDirExportFile.checked);
   }
 
-  const exportTo = [];
-  if (els.exportTxt && els.exportTxt.checked) exportTo.push('txt');
-  if (els.exportSrt && els.exportSrt.checked) exportTo.push('srt');
-  if (els.exportVtt && els.exportVtt.checked) exportTo.push('vtt');
-  if (els.exportAss && els.exportAss.checked) exportTo.push('ass');
-  if (els.exportJson && els.exportJson.checked) exportTo.push('json');
-  if (els.exportCsv && els.exportCsv.checked) exportTo.push('csv');
-  if (els.exportTsv && els.exportTsv.checked) exportTo.push('tsv');
-  if (els.exportMp4 && els.exportMp4.checked) exportTo.push('mp4');
+  const exportTo = collectCheckedValues([
+    ['txt', els.exportTxt],
+    ['srt', els.exportSrt],
+    ['vtt', els.exportVtt],
+    ['ass', els.exportAss],
+    ['json', els.exportJson],
+    ['csv', els.exportCsv],
+    ['tsv', els.exportTsv],
+    ['mp4', els.exportMp4],
+  ]);
 
   const exportDir = els.dirExport
     ? els.dirExport.value
     : ((state.data && state.data.settings && state.data.settings.dir_export) || 'auto');
-  await apiCall('set_setting', 'dir_export', exportDir);
-  await apiCall('set_setting', 'export_to', exportTo);
-  const autoOpenDirOnTaskDone = Boolean(els.autoOpenDirExport ? els.autoOpenDirExport.checked : true);
-  await apiCall('set_setting', 'auto_open_dir_export', autoOpenDirOnTaskDone);
-  await apiCall('set_setting', 'auto_open_dir_translate', autoOpenDirOnTaskDone);
-  await apiCall('set_setting', 'auto_open_dir_refinement', autoOpenDirOnTaskDone);
-  await apiCall('set_setting', 'auto_open_dir_alignment', autoOpenDirOnTaskDone);
-  await apiCall(
-    'set_setting',
-    'path_filter_file_import',
-    els.pathFilterFileImport ? els.pathFilterFileImport.value : 'auto'
-  );
+  const autoOpenDirOnTaskDone = readBooleanValue(els.autoOpenDirExport, true);
+  await persistApiPairs('set_setting', [
+    ['dir_export', exportDir],
+    ['export_to', exportTo],
+    ['auto_open_dir_export', autoOpenDirOnTaskDone],
+    ['auto_open_dir_translate', autoOpenDirOnTaskDone],
+    ['auto_open_dir_refinement', autoOpenDirOnTaskDone],
+    ['auto_open_dir_alignment', autoOpenDirOnTaskDone],
+    ['path_filter_file_import', readStringValue(els.pathFilterFileImport, 'auto')],
+  ]);
 
   const updates = [
-    ['model_f_import', els.modelImport.value],
-    ['tl_engine_f_import', els.engineImport.value],
-    ['source_lang_f_import', els.sourceImport.value],
-    ['target_lang_f_import', els.targetImport.value],
-    ['transcribe_f_import', els.transcribeImport.checked],
-    ['translate_f_import', els.translateImport.checked],
-    ['filter_file_import', els.filterFileImport ? els.filterFileImport.checked : true],
-    ['filter_file_import_case_sensitive', els.filterFileImportCaseSensitive ? els.filterFileImportCaseSensitive.checked : false],
-    ['filter_file_import_strip', els.filterFileImportStrip ? els.filterFileImportStrip.checked : true],
-    ['filter_file_import_exact_match', els.filterFileImportExactMatch ? els.filterFileImportExactMatch.checked : false],
-    ['filter_file_import_ignore_punctuations', els.filterFileImportIgnorePunctuations ? els.filterFileImportIgnorePunctuations.value : "\"',.?!"],
-    ['filter_file_import_similarity', els.filterFileImportSimilarity ? Number(els.filterFileImportSimilarity.value) : 0.75],
+    ['model_f_import', readStringValue(els.modelImport, '')],
+    ['tl_engine_f_import', readStringValue(els.engineImport, '')],
+    ['source_lang_f_import', readStringValue(els.sourceImport, '')],
+    ['target_lang_f_import', readStringValue(els.targetImport, '')],
+    ['transcribe_f_import', readBooleanValue(els.transcribeImport, true)],
+    ['translate_f_import', readBooleanValue(els.translateImport, true)],
+    ['filter_file_import', readBooleanValue(els.filterFileImport, true)],
+    ['filter_file_import_case_sensitive', readBooleanValue(els.filterFileImportCaseSensitive, false)],
+    ['filter_file_import_strip', readBooleanValue(els.filterFileImportStrip, true)],
+    ['filter_file_import_exact_match', readBooleanValue(els.filterFileImportExactMatch, false)],
+    ['filter_file_import_ignore_punctuations', readStringValue(els.filterFileImportIgnorePunctuations, "\"',.?!")],
+    ['filter_file_import_similarity', readNumberValue(els.filterFileImportSimilarity, 0.75)],
   ];
 
-  for (const [key, value] of updates) {
-    await apiCall('set_import_setting', key, value);
-  }
+  await persistApiPairs('set_import_setting', updates);
 
   patchLocalSettings({
     use_faster_whisper: backend === 'faster-whisper',
@@ -2933,20 +2983,18 @@ async function saveImportSettings(shouldRefresh = true) {
     auto_open_dir_translate: autoOpenDirOnTaskDone,
     auto_open_dir_refinement: autoOpenDirOnTaskDone,
     auto_open_dir_alignment: autoOpenDirOnTaskDone,
-    path_filter_file_import: els.pathFilterFileImport ? els.pathFilterFileImport.value : 'auto',
+    path_filter_file_import: readStringValue(els.pathFilterFileImport, 'auto'),
   });
   patchLocalImportUi({
     selected_backend: backend,
-    selected_model: els.modelImport ? els.modelImport.value : '',
-    selected_model_key: els.modelImport ? els.modelImport.value : '',
-    selected_model_label: els.modelImport && els.modelImport.selectedOptions && els.modelImport.selectedOptions[0]
-      ? String(els.modelImport.selectedOptions[0].textContent || els.modelImport.value)
-      : (els.modelImport ? els.modelImport.value : ''),
-    selected_engine: els.engineImport ? els.engineImport.value : '',
-    selected_source: els.sourceImport ? els.sourceImport.value : '',
-    selected_target: els.targetImport ? els.targetImport.value : '',
-    transcribe: Boolean(els.transcribeImport && els.transcribeImport.checked),
-    translate: Boolean(els.translateImport && els.translateImport.checked),
+    selected_model: readStringValue(els.modelImport, ''),
+    selected_model_key: readStringValue(els.modelImport, ''),
+    selected_model_label: readSelectedLabel(els.modelImport, readStringValue(els.modelImport, '')),
+    selected_engine: readStringValue(els.engineImport, ''),
+    selected_source: readStringValue(els.sourceImport, ''),
+    selected_target: readStringValue(els.targetImport, ''),
+    transcribe: readBooleanValue(els.transcribeImport, true),
+    translate: readBooleanValue(els.translateImport, true),
   });
 
   if (shouldRefresh) {
@@ -2982,60 +3030,52 @@ async function loadMainRuntimeModel() {
 }
 
 async function saveRecordSettings(shouldRefresh = true) {
-  const numberOr = (value, fallback) => {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : fallback;
-  };
-  const checked = (node) => Boolean(node && node.checked);
-
   const updates = [
-    ['hostAPI', els.hostAPI.value],
-    ['mic', els.mic.value],
-    ['speaker', els.speaker.value],
-    ['verbose_record', els.verboseRecord.value === 'true'],
-    ['model_device_preference', String(els.modelDevicePreference ? els.modelDevicePreference.value : 'auto').toLowerCase()],
-    ['transcribe_rate', numberOr(els.transcribeRate.value, 300)],
-    ['separate_with', els.separateWith.value],
-    ['use_temp', checked(els.useTempAlt)],
-    ['keep_temp', checked(els.keepTemp)],
-    ['file_use_official_whisper', checked(els.fileUseOfficialWhisper)],
-    ['sample_rate_mic', numberOr(els.micSampleRate.value, 16000)],
-    ['chunk_size_mic', numberOr(els.micChunkSize.value, 1024)],
-    ['channels_mic', els.micChannels.value],
-    ['auto_sample_rate_mic', checked(els.micAutoSampleRate)],
-    ['auto_channels_mic', checked(els.micAutoChannels)],
-    ['min_input_length_mic', numberOr(els.micMinInputLength.value, 0.4)],
-    ['max_buffer_mic', numberOr(els.micMaxBuffer.value, 10)],
-    ['max_sentences_mic', numberOr(els.micMaxSentences.value, 5)],
-    ['mic_no_limit', checked(els.micNoLimit)],
-    ['threshold_enable_mic', checked(els.micThresholdEnable)],
-    ['threshold_auto_mic', checked(els.micThresholdAuto)],
-    ['auto_break_buffer_mic', checked(els.micAutoBreakBuffer)],
-    ['threshold_auto_level_mic', numberOr(els.micThresholdAutoLevel.value, 3)],
-    ['threshold_auto_silero_mic', checked(els.micThresholdAutoSilero)],
-    ['threshold_silero_mic_min', numberOr(els.micThresholdSileroMin.value, 0.7)],
-    ['threshold_db_mic', numberOr(els.micThresholdDb.value, -30.0)],
-    ['sample_rate_speaker', numberOr(els.speakerSampleRate.value, 44100)],
-    ['chunk_size_speaker', numberOr(els.speakerChunkSize.value, 1024)],
-    ['channels_speaker', els.speakerChannels.value],
-    ['auto_sample_rate_speaker', checked(els.speakerAutoSampleRate)],
-    ['auto_channels_speaker', checked(els.speakerAutoChannels)],
-    ['min_input_length_speaker', numberOr(els.speakerMinInputLength.value, 0.4)],
-    ['max_buffer_speaker', numberOr(els.speakerMaxBuffer.value, 10)],
-    ['max_sentences_speaker', numberOr(els.speakerMaxSentences.value, 5)],
-    ['speaker_no_limit', checked(els.speakerNoLimit)],
-    ['threshold_enable_speaker', checked(els.speakerThresholdEnable)],
-    ['threshold_auto_speaker', checked(els.speakerThresholdAuto)],
-    ['auto_break_buffer_speaker', checked(els.speakerAutoBreakBuffer)],
-    ['threshold_auto_level_speaker', numberOr(els.speakerThresholdAutoLevel.value, 3)],
-    ['threshold_auto_silero_speaker', checked(els.speakerThresholdAutoSilero)],
-    ['threshold_silero_speaker_min', numberOr(els.speakerThresholdSileroMin.value, 0.7)],
-    ['threshold_db_speaker', numberOr(els.speakerThresholdDb.value, -30.0)],
+    ['hostAPI', readStringValue(els.hostAPI, '')],
+    ['mic', readStringValue(els.mic, '')],
+    ['speaker', readStringValue(els.speaker, '')],
+    ['verbose_record', readStringValue(els.verboseRecord, 'false') === 'true'],
+    ['model_device_preference', readStringValue(els.modelDevicePreference, 'auto').toLowerCase()],
+    ['transcribe_rate', readNumberValue(els.transcribeRate, 300)],
+    ['separate_with', readStringValue(els.separateWith, '')],
+    ['use_temp', readBooleanValue(els.useTempAlt, false)],
+    ['keep_temp', readBooleanValue(els.keepTemp, false)],
+    ['file_use_official_whisper', readBooleanValue(els.fileUseOfficialWhisper, false)],
+    ['sample_rate_mic', readNumberValue(els.micSampleRate, 16000)],
+    ['chunk_size_mic', readNumberValue(els.micChunkSize, 1024)],
+    ['channels_mic', readStringValue(els.micChannels, '')],
+    ['auto_sample_rate_mic', readBooleanValue(els.micAutoSampleRate, false)],
+    ['auto_channels_mic', readBooleanValue(els.micAutoChannels, false)],
+    ['min_input_length_mic', readNumberValue(els.micMinInputLength, 0.4)],
+    ['max_buffer_mic', readNumberValue(els.micMaxBuffer, 10)],
+    ['max_sentences_mic', readNumberValue(els.micMaxSentences, 5)],
+    ['mic_no_limit', readBooleanValue(els.micNoLimit, false)],
+    ['threshold_enable_mic', readBooleanValue(els.micThresholdEnable, false)],
+    ['threshold_auto_mic', readBooleanValue(els.micThresholdAuto, false)],
+    ['auto_break_buffer_mic', readBooleanValue(els.micAutoBreakBuffer, false)],
+    ['threshold_auto_level_mic', readNumberValue(els.micThresholdAutoLevel, 3)],
+    ['threshold_auto_silero_mic', readBooleanValue(els.micThresholdAutoSilero, false)],
+    ['threshold_silero_mic_min', readNumberValue(els.micThresholdSileroMin, 0.7)],
+    ['threshold_db_mic', readNumberValue(els.micThresholdDb, -30.0)],
+    ['sample_rate_speaker', readNumberValue(els.speakerSampleRate, 44100)],
+    ['chunk_size_speaker', readNumberValue(els.speakerChunkSize, 1024)],
+    ['channels_speaker', readStringValue(els.speakerChannels, '')],
+    ['auto_sample_rate_speaker', readBooleanValue(els.speakerAutoSampleRate, false)],
+    ['auto_channels_speaker', readBooleanValue(els.speakerAutoChannels, false)],
+    ['min_input_length_speaker', readNumberValue(els.speakerMinInputLength, 0.4)],
+    ['max_buffer_speaker', readNumberValue(els.speakerMaxBuffer, 10)],
+    ['max_sentences_speaker', readNumberValue(els.speakerMaxSentences, 5)],
+    ['speaker_no_limit', readBooleanValue(els.speakerNoLimit, false)],
+    ['threshold_enable_speaker', readBooleanValue(els.speakerThresholdEnable, false)],
+    ['threshold_auto_speaker', readBooleanValue(els.speakerThresholdAuto, false)],
+    ['auto_break_buffer_speaker', readBooleanValue(els.speakerAutoBreakBuffer, false)],
+    ['threshold_auto_level_speaker', readNumberValue(els.speakerThresholdAutoLevel, 3)],
+    ['threshold_auto_silero_speaker', readBooleanValue(els.speakerThresholdAutoSilero, false)],
+    ['threshold_silero_speaker_min', readNumberValue(els.speakerThresholdSileroMin, 0.7)],
+    ['threshold_db_speaker', readNumberValue(els.speakerThresholdDb, -30.0)],
   ];
 
-  for (const [key, value] of updates) {
-    await apiCall('set_record_setting', key, value);
-  }
+  await persistApiPairs('set_record_setting', updates);
 
   if (shouldRefresh) {
     await refreshState();

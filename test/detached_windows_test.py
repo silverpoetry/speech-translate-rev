@@ -72,7 +72,7 @@ class DetachedWindowHelpersTests(unittest.TestCase):
                 {"offscreen_placement": WindowPlacement(width=700, height=300, x=2610, y=140)},
             )()
 
-        with patch("speech_translate.detached_windows.preload_window_creation", fake_preload_window_creation):
+        with patch("speech_translate.window_factory.preload_window_creation", fake_preload_window_creation):
             window = manager.create_window("tc", x=10, y=20, width=700, height=300)
 
         self.assertIsNotNone(window)
@@ -130,12 +130,12 @@ class DetachedWindowHelpersTests(unittest.TestCase):
             )()
 
         with (
-            patch("speech_translate.detached_windows.preload_window_creation", fake_preload_window_creation),
+            patch("speech_translate.window_factory.preload_window_creation", fake_preload_window_creation),
             patch(
                 "speech_translate.detached_windows.build_detached_native_contract",
                 return_value={"kind": "detached_window"},
             ) as build_contract,
-            patch("speech_translate.detached_windows.set_pending_window_contract") as set_contract,
+            patch("speech_translate.window_factory.set_pending_window_contract") as set_contract,
         ):
             manager.create_window("tc", x=10, y=20, width=700, height=300)
 

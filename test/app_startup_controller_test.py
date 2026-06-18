@@ -6,7 +6,7 @@ import unittest
 from contextlib import contextmanager
 from unittest.mock import patch
 
-from speech_translate.window_geometry import WindowPlacement
+from speech_translate.window_geometry import WindowPlacement, resolve_window_placement
 
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
@@ -133,12 +133,13 @@ class AppStartupControllerTests(unittest.TestCase):
 
         with (
             patch("speech_translate.app_startup_controller.AppTray"),
-            patch("speech_translate.app_startup_controller.preload_window_creation", fake_preload_window_creation),
+            patch("speech_translate.window_factory.preload_window_creation", fake_preload_window_creation),
         ):
             self.controller.start(with_log_init=False, log_initializer=None)
 
         _, kwargs = self.fake_webview.create_calls[0]
-        self.assertEqual((kwargs["width"], kwargs["height"]), (1140, 680))
+        expected = resolve_window_placement("1140x680", 1140, 680, raw_position="180,120")
+        self.assertEqual((kwargs["width"], kwargs["height"]), (expected.width, expected.height))
         self.assertEqual((kwargs["x"], kwargs["y"]), (2600, 140))
         self.assertEqual(kwargs["background_color"], "#f5f5f5")
         self.assertFalse(kwargs["hidden"])

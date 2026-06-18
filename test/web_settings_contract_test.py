@@ -19,7 +19,11 @@ class WebSettingsContractTests(unittest.TestCase):
 
     def test_save_import_settings_persists_tsv_export(self) -> None:
         self.assertIn(
-            "if (els.exportTsv && els.exportTsv.checked) exportTo.push('tsv');",
+            "const exportTo = collectCheckedValues([",
+            self.app_js,
+        )
+        self.assertIn(
+            "['tsv', els.exportTsv],",
             self.app_js,
         )
 
@@ -94,13 +98,15 @@ class WebSettingsContractTests(unittest.TestCase):
         self.assertIn("bindToolbarMirror(els.decodingPresetToolbar, els.decodingPreset, 'value');", self.app_js)
         self.assertIn("bindToolbarMirror(els.bestOfToolbar, els.bestOf, 'value');", self.app_js)
         self.assertIn("bindToolbarMirror(els.suppressBlankToolbar, els.suppressBlank, 'checked');", self.app_js)
-        self.assertIn("syncToolbarMirrorValue(els.exportFormat, els.exportFormatToolbar", self.app_js)
-        self.assertIn("syncToolbarMirrorChecked(els.exportTxt, els.exportTxtToolbar", self.app_js)
-        self.assertIn("syncToolbarMirrorValue(els.bestOf, els.bestOfToolbar", self.app_js)
-        self.assertIn("syncToolbarMirrorChecked(els.suppressBlank, els.suppressBlankToolbar", self.app_js)
-        self.assertIn("syncToolbarMirrorChecked(els.autoOpenDirExport, els.autoOpenDirExportToolbar", self.app_js)
-        self.assertIn("syncToolbarMirrorValue(els.exportFormatToolbar, els.exportFormat", self.app_js)
-        self.assertIn("syncToolbarMirrorChecked(els.exportTxtToolbar, els.exportTxt", self.app_js)
+        self.assertIn("function syncToolbarMirrorValues(pairs = [])", self.app_js)
+        self.assertIn("function syncToolbarMirrorChecks(pairs = [])", self.app_js)
+        self.assertIn("[els.exportFormat, els.exportFormatToolbar, '%Y-%m-%d %f {file}/{task-lang}']", self.app_js)
+        self.assertIn("[els.exportTxt, els.exportTxtToolbar, true]", self.app_js)
+        self.assertIn("[els.bestOf, els.bestOfToolbar, '3']", self.app_js)
+        self.assertIn("[els.suppressBlank, els.suppressBlankToolbar, true]", self.app_js)
+        self.assertIn("[els.autoOpenDirExport, els.autoOpenDirExportToolbar, true]", self.app_js)
+        self.assertIn("[els.exportFormatToolbar, els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}']", self.app_js)
+        self.assertIn("[els.exportTxtToolbar, els.exportTxt, true]", self.app_js)
 
     def test_settings_toolbar_actions_exist(self) -> None:
         self.assertIn('data-action="save-settings"', self.index_html)

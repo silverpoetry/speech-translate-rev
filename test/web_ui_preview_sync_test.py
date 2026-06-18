@@ -15,11 +15,12 @@ class WebUiPreviewSyncTests(unittest.TestCase):
         cls.index_html = (web_dir / "index.html").read_text(encoding="utf-8")
         cls.preview_html = (web_dir / "ui-preview.html").read_text(encoding="utf-8")
 
-    def test_preview_contains_model_manager_overview_meta_nodes(self) -> None:
+    def test_preview_contains_model_manager_summary_nodes(self) -> None:
         for node_id in (
-            "model-manager-overview-model-meta",
-            "model-manager-overview-engine-meta",
-            "model-manager-overview-download-meta",
+            "model-manager-dir-pill",
+            "model-manager-selection-pill",
+            "model-manager-cache-pill",
+            "model-manager-download-pill",
         ):
             with self.subTest(node_id=node_id):
                 self.assertIn(f'id="{node_id}"', self.preview_html)
@@ -30,15 +31,17 @@ class WebUiPreviewSyncTests(unittest.TestCase):
 
     def test_index_and_preview_share_same_core_feature_ids(self) -> None:
         required_ids = {
-            "mw_size",
             "global-statusbar",
             "global-model-state",
             "global-task-state",
             "global-task-progress-wrap",
+            "btn-load-model",
+            "model_f_import",
             "record_visualizer_card",
-            "model-manager-overview-model-meta",
-            "model-manager-overview-engine-meta",
-            "model-manager-overview-download-meta",
+            "model-manager-dir-pill",
+            "model-manager-selection-pill",
+            "model-manager-cache-pill",
+            "model-manager-download-pill",
         }
         index_ids = set(re.findall(r'id="([^"]+)"', self.index_html))
         preview_ids = set(re.findall(r'id="([^"]+)"', self.preview_html))
@@ -51,7 +54,6 @@ class WebUiPreviewSyncTests(unittest.TestCase):
             'data-action="check-model-current"',
             'data-action="check-all-models"',
             'data-settings-jump="Whisper 解码参数"',
-            'data-settings-jump="Selenium 翻译窗口"',
             'data-settings-jump="翻译网络与 LibreTranslate"',
             'data-settings-jump="录制设置（麦克风 / 扬声器）"',
             'data-settings-jump="系统与日志"',
@@ -63,10 +65,8 @@ class WebUiPreviewSyncTests(unittest.TestCase):
 
     def test_preview_contains_model_selection_summary_nodes(self) -> None:
         for node_id in (
-            "model-selection-device",
-            "model-selection-device-meta",
-            "model-selection-cache",
-            "model-selection-cache-meta",
+            "model-selection-runtime",
+            "model-selection-runtime-meta",
         ):
             with self.subTest(node_id=node_id):
                 self.assertIn(f'id="{node_id}"', self.preview_html)
@@ -98,10 +98,6 @@ class WebUiPreviewSyncTests(unittest.TestCase):
 
     def test_preview_contains_settings_workbench_nodes(self) -> None:
         for node_id in (
-            "settings_toolbar_network",
-            "settings_toolbar_network_meta",
-            "settings_toolbar_decode",
-            "settings_toolbar_decode_meta",
             "http_proxy_enable_toolbar",
             "https_proxy_enable_toolbar",
             "http_proxy_toolbar",
