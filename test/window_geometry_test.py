@@ -19,6 +19,7 @@ from speech_translate.window_geometry import (
     logical_to_native_size,
     logical_to_physical_point,
     inflate_window_request_for_style,
+    offscreen_window_pos,
     native_to_logical_size,
     normalize_scale_factor,
     parse_window_position,
@@ -73,6 +74,12 @@ class WindowGeometryTests(unittest.TestCase):
     def test_center_window_pos_centers_using_virtual_bounds(self) -> None:
         metrics = FakeMetricsProvider(virtual_bounds=(100, 50, 1000, 800))
         self.assertEqual(center_window_pos(400, 200, metrics=metrics), (400, 350))
+
+    def test_offscreen_window_pos_places_window_beyond_virtual_right_edge(self) -> None:
+        metrics = FakeMetricsProvider(virtual_bounds=(100, 50, 1000, 800))
+        x, y = offscreen_window_pos(400, 200, metrics=metrics)
+        self.assertGreater(x, 1100)
+        self.assertEqual(y, 350)
 
     def test_ensure_visible_or_center_recenters_offscreen_window(self) -> None:
         metrics = FakeMetricsProvider(virtual_bounds=(0, 0, 1280, 720))

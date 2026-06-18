@@ -458,6 +458,10 @@ function sleep(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+function nextUiTurn() {
+  return new Promise((resolve) => window.setTimeout(resolve, 0));
+}
+
 function isCompactViewport(maxWidth = 780) {
   return window.innerWidth <= maxWidth;
 }
@@ -4625,6 +4629,11 @@ async function init() {
     await refreshState();
     await startupMark('after_refresh_state');
 
+    updatePageScrollIndicator();
+    state.initialized = true;
+    await startupMark('before_first_paint');
+    await nextUiTurn();
+    await nextUiTurn();
     await startupMark('before_show_main_window');
     try {
       await apiCall('show_main_window');
@@ -4632,10 +4641,7 @@ async function init() {
       console.debug('Show main window skipped', error);
     }
     await startupMark('after_show_main_window');
-
-    updatePageScrollIndicator();
     await startupMark('init_complete');
-    state.initialized = true;
   })();
 
   try {

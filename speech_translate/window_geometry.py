@@ -298,6 +298,12 @@ def center_window_pos(width: int, height: int, *, metrics: MetricsProvider = DEF
     return _center_on_virtual_screen(width, height, metrics=metrics)
 
 
+def offscreen_window_pos(width: int, height: int, *, metrics: MetricsProvider = DEFAULT_METRICS_PROVIDER) -> tuple[int, int]:
+    left, top, v_width, _v_height = metrics.virtual_screen_bounds()
+    _centered_x, centered_y = _center_on_virtual_screen(width, height, metrics=metrics)
+    return left + max(1, v_width) + max(64, min(int(width), 240)), centered_y
+
+
 def ensure_visible_or_center(
     x: int,
     y: int,
@@ -571,6 +577,7 @@ __all__ = [
     "measure_style_frame_delta",
     "native_to_logical_size",
     "normalize_scale_factor",
+    "offscreen_window_pos",
     "parse_window_position",
     "parse_window_size",
     "physical_to_logical_point",

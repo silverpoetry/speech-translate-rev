@@ -4,6 +4,9 @@ import os
 import sys
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
+
+from speech_translate.window_geometry import WindowPlacement
 
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
@@ -80,6 +83,20 @@ class MainWindowControllerTests(unittest.TestCase):
         controller.show_main_window()
         self.assertTrue(bridge.window.shown)
         self.assertTrue(bridge.window.brought)
+
+    def test_show_main_window_restores_target_placement_before_show(self) -> None:
+        settings = FakeSettings()
+        bridge = FakeBridge()
+        controller = MainWindowController(bridge, settings)
+        bridge.window = FakeWindow()
+        bridge.window._speechtranslate_target_placement = WindowPlacement(width=1140, height=680, x=180, y=120)
+
+        with patch("speech_translate.main_window_controller.apply_native_window_placement", return_value=True) as apply_placement:
+            controller.show_main_window()
+
+        apply_placement.assert_called_once()
+        self.assertTrue(bridge.window.brought)
+        self.assertTrue(bridge.window.shown)
 
     def test_hide_main_window_to_tray_requires_tray(self) -> None:
         settings = FakeSettings()

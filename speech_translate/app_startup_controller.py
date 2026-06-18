@@ -14,7 +14,7 @@ from speech_translate.controller_protocols import FfmpegPathAdder, SettingsStore
 from speech_translate.log_helpers import logger
 from speech_translate.runtime_registry import get_current_bridge, set_current_bridge, settings_registry
 from speech_translate.webview_runtime import load_webview_runtime
-from speech_translate.window_geometry import resolve_window_placement
+from speech_translate.window_geometry import offscreen_window_pos, resolve_window_placement
 
 
 @dataclass(frozen=True)
@@ -104,6 +104,7 @@ class AppStartupController:
 
     def _create_main_window(self, *, webview, bridge: StartupBridge, raw_main_size: str, raw_main_position: str):
         main_placement = resolve_window_placement(raw_main_size, 1140, 680, raw_position=raw_main_position)
+        preload_x, preload_y = offscreen_window_pos(main_placement.width, main_placement.height)
         bridge.log_startup_marker("before_create_main_window")
         window = webview.create_window(
             APP_NAME,
@@ -111,11 +112,13 @@ class AppStartupController:
             js_api=bridge,
             width=main_placement.width,
             height=main_placement.height,
-            x=main_placement.x,
-            y=main_placement.y,
+            x=preload_x,
+            y=preload_y,
             min_size=(1040, 620),
             hidden=True,
+            background_color="#f5f5f5",
         )
+        setattr(window, "_speechtranslate_target_placement", main_placement)
         bridge.log_startup_marker("after_create_main_window")
         bridge.bind_window(window)
         return window

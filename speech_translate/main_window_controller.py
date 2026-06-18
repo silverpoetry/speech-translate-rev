@@ -6,7 +6,12 @@ from typing import Optional
 
 from speech_translate.controller_protocols import MainWindowBridge, SettingsStore, TrayLike, FolderDialogWindow
 from speech_translate.log_helpers import logger
-from speech_translate.window_geometry import extract_window_placement, format_window_position, format_window_size
+from speech_translate.window_geometry import (
+    apply_native_window_placement,
+    extract_window_placement,
+    format_window_position,
+    format_window_size,
+)
 
 
 class MainWindowController:
@@ -69,6 +74,12 @@ class MainWindowController:
         window = self.bridge.get_window()
         if not window:
             return
+        target_placement = getattr(window, "_speechtranslate_target_placement", None)
+        if target_placement is not None:
+            try:
+                apply_native_window_placement(getattr(window, "native", None), target_placement)
+            except Exception:
+                logger.exception("[Startup] failed to restore main window target placement before show")
         try:
             window.show()
         except Exception:

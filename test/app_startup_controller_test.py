@@ -120,12 +120,18 @@ class AppStartupControllerTests(unittest.TestCase):
     def test_start_restores_saved_logical_position(self) -> None:
         self.settings.cache["mw_pos"] = "180,120"
 
-        with patch("speech_translate.app_startup_controller.AppTray"):
+        with (
+            patch("speech_translate.app_startup_controller.AppTray"),
+            patch("speech_translate.app_startup_controller.offscreen_window_pos", return_value=(2600, 140)),
+        ):
             self.controller.start(with_log_init=False, log_initializer=None)
 
         _, kwargs = self.fake_webview.create_calls[0]
         self.assertEqual((kwargs["width"], kwargs["height"]), (1140, 680))
-        self.assertEqual((kwargs["x"], kwargs["y"]), (180, 120))
+        self.assertEqual((kwargs["x"], kwargs["y"]), (2600, 140))
+        self.assertEqual(kwargs["background_color"], "#f5f5f5")
+        self.assertEqual(getattr(self.bridge.bound_window, "_speechtranslate_target_placement").x, 180)
+        self.assertEqual(getattr(self.bridge.bound_window, "_speechtranslate_target_placement").y, 120)
 
     def test_start_disables_tray_when_flag_present(self) -> None:
         with patch(

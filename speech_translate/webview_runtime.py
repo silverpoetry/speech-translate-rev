@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from importlib import import_module
+import signal
+import sys
 from threading import local
 from typing import Literal
 
@@ -44,11 +46,55 @@ def _patch_webview_runtime(webview_module) -> None:
         winforms_module = import_module("webview.platforms.winforms")
         original_create_window = winforms_module.create_window
 
-        def patched_create_window(window):
-            contract = getattr(window, "_speechtranslate_native_contract", None)
-            if contract is None:
-                return original_create_window(window)
+        def _install_sigint_support():
+            handler = getattr(winforms_module, "_sigint_handler", None)
+            if handler is None:
+                return
+            try:
+                signal.signal(signal.SIGINT, handler)
+            except Exception:
+                pass
 
+        def _run_master_app_loop():
+            app = winforms_module.WinForms.Application
+            if hasattr(winforms_module, "_sigint_received"):
+
+                def timer_tick(sender, e):
+                    if bool(getattr(winforms_module, "_sigint_received", False)):
+                        app.Exit()
+
+                timer = winforms_module.WinForms.Timer()
+                timer.Interval = 500
+                timer.Tick += timer_tick
+                timer.Start()
+
+            app.Run()
+
+        def _start_winforms_app(window, create_callback):
+            if window.uid == "master":
+                _install_sigint_support()
+
+                if winforms_module.is_chromium:
+                    winforms_module.init_storage()
+
+                if sys.getwindowsversion().major >= 6:
+                    winforms_module.windll.user32.SetProcessDPIAware()
+
+                if winforms_module.is_cef:
+                    winforms_module.CEF.init(window, winforms_module.cache_dir)
+
+                thread = winforms_module.Thread(winforms_module.ThreadStart(create_callback))
+                thread.SetApartmentState(winforms_module.ApartmentState.STA)
+                thread.Start()
+
+                while thread.IsAlive:
+                    thread.Join(500)
+            else:
+                winforms_module._main_window_created.wait()
+                instance = list(winforms_module.BrowserView.instances.values())[0]
+                instance.Invoke(winforms_module.Func[winforms_module.Type](create_callback))
+
+        def _create_detached_contract_window(window, contract):
             def create():
                 browser = winforms_module.BrowserView.BrowserForm(window, winforms_module.cache_dir)
                 winforms_module.BrowserView.instances[window.uid] = browser
@@ -71,42 +117,18 @@ def _patch_webview_runtime(webview_module) -> None:
                 winforms_module._main_window_created.set()
 
                 if window.uid == "master":
+                    _run_master_app_loop()
 
-                    def timer_tick(sender, e):
-                        if winforms_module._sigint_received:
-                            app.Exit()
+            _start_winforms_app(window, create)
 
-                    timer = winforms_module.WinForms.Timer()
-                    timer.Interval = 500
-                    timer.Tick += timer_tick
-                    timer.Start()
-
-                    app.Run()
-
-            app = winforms_module.WinForms.Application
-
-            if window.uid == "master":
-                winforms_module.signal.signal(winforms_module.signal.SIGINT, winforms_module._sigint_handler)
-
-                if winforms_module.is_chromium:
-                    winforms_module.init_storage()
-
-                if winforms_module.sys.getwindowsversion().major >= 6:
-                    winforms_module.windll.user32.SetProcessDPIAware()
-
-                if winforms_module.is_cef:
-                    winforms_module.CEF.init(window, winforms_module.cache_dir)
-
-                thread = winforms_module.Thread(winforms_module.ThreadStart(create))
-                thread.SetApartmentState(winforms_module.ApartmentState.STA)
-                thread.Start()
-
-                while thread.IsAlive:
-                    thread.Join(500)
-            else:
-                winforms_module._main_window_created.wait()
-                instance = list(winforms_module.BrowserView.instances.values())[0]
-                instance.Invoke(winforms_module.Func[winforms_module.Type](create))
+        def patched_create_window(window):
+            contract = getattr(window, "_speechtranslate_native_contract", None)
+            if contract is None:
+                return original_create_window(window)
+            kind = str(contract.get("kind") or "")
+            if kind == "detached_window":
+                return _create_detached_contract_window(window, contract)
+            return original_create_window(window)
 
         winforms_module.create_window = patched_create_window
     except Exception:
