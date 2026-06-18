@@ -462,6 +462,29 @@ function nextUiTurn() {
   return new Promise((resolve) => window.setTimeout(resolve, 0));
 }
 
+function nextAnimationFrame() {
+  return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+}
+
+function revealStartupShell() {
+  const body = document.body;
+  if (!body) {
+    return;
+  }
+  body.classList.remove('startup-loading');
+  body.classList.add('app-ready');
+  const cover = $('startup_cover');
+  if (!cover) {
+    return;
+  }
+  cover.classList.add('startup-cover-hidden');
+  window.setTimeout(() => {
+    if (cover.parentNode) {
+      cover.parentNode.removeChild(cover);
+    }
+  }, 220);
+}
+
 function isCompactViewport(maxWidth = 780) {
   return window.innerWidth <= maxWidth;
 }
@@ -4640,6 +4663,9 @@ async function init() {
     } catch (error) {
       console.debug('Show main window skipped', error);
     }
+    await nextAnimationFrame();
+    await nextAnimationFrame();
+    revealStartupShell();
     await startupMark('after_show_main_window');
     await startupMark('init_complete');
   })();
@@ -4654,6 +4680,7 @@ async function init() {
 function initWithErrorRender() {
   init().catch((error) => {
     console.error(error);
+    revealStartupShell();
     const node = $('model-status-card');
     if (node) {
       node.innerHTML = `<div class="state-row"><div class="state-key error">启动失败</div><div class="state-value">${escapeHtml(error.message || String(error))}</div></div>`;
