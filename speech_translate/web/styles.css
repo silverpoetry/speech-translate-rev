@@ -3855,51 +3855,30 @@ button.btn-icon[data-tooltip]::before {
 }
 
 .detached-workbench-panel {
-  background:
-    radial-gradient(circle at 14% 8%, rgba(56, 189, 248, 0.11), transparent 29%),
-    linear-gradient(135deg, rgba(241, 245, 249, 0.96), rgba(248, 250, 252, 0.9));
-  border-color: rgba(148, 163, 184, 0.24);
+  background: #f7f8fa;
+  border-color: #d9e0ea;
 }
 
 .detached-workbench-panel > summary {
-  background:
-    linear-gradient(90deg, rgba(241, 245, 249, 0.92), rgba(248, 250, 252, 0.6));
-  border-bottom: 1px solid rgba(203, 213, 225, 0.68);
+  background: #fbfcfd;
+  border-bottom: 1px solid #dce3ed;
 }
 
 .detached-workbench-panel .advanced-panel-body {
-  background:
-    linear-gradient(180deg, rgba(226, 232, 240, 0.2), rgba(255, 255, 255, 0.16));
+  background: #f4f6f8;
 }
 
 .detached-workbench-card {
   position: relative;
   display: grid;
   gap: 10px;
-  padding: 13px 14px;
-  border: 1px solid rgba(148, 163, 184, 0.34);
-  border-radius: 16px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(248, 250, 252, 0.68));
+  padding: 14px;
+  border: 1px solid #d7dee8;
+  border-radius: 14px;
+  background: #ffffff;
   min-width: 0;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.8),
-    0 12px 28px rgba(15, 23, 42, 0.055);
-  backdrop-filter: blur(10px);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   overflow: hidden;
-}
-
-.detached-workbench-card::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
-  background: linear-gradient(90deg, rgba(37, 99, 235, 0.72), rgba(20, 184, 166, 0.42), transparent);
-  opacity: 0.78;
-}
-
-.detached-workbench-card:nth-child(2)::before {
-  background: linear-gradient(90deg, rgba(14, 165, 233, 0.7), rgba(99, 102, 241, 0.46), transparent);
 }
 
 .detached-window-row-head {
@@ -3952,13 +3931,12 @@ button.btn-icon[data-tooltip]::before {
 .detached-window-actions {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   flex: 0 0 auto;
-  padding: 3px;
-  border: 1px solid rgba(203, 213, 225, 0.76);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.58);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  padding: 2px;
+  border: 1px solid #d9e0ea;
+  border-radius: 10px;
+  background: #f6f8fb;
 }
 
 .detached-action-button {
@@ -3968,16 +3946,16 @@ button.btn-icon[data-tooltip]::before {
   width: 29px;
   height: 29px;
   min-width: 29px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: #475569;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #405166;
   cursor: pointer;
   transition:
     background-color 140ms ease,
+    border-color 140ms ease,
     color 140ms ease,
-    transform 140ms ease,
-    box-shadow 140ms ease;
+    transform 140ms ease;
 }
 
 .detached-action-button::before {
@@ -3994,9 +3972,9 @@ button.btn-icon[data-tooltip]::before {
 }
 
 .detached-action-button:hover {
-  background: rgba(37, 99, 235, 0.09);
-  color: #1d4ed8;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12);
+  border-color: #b8c7da;
+  background: #eef3f8;
+  color: #1e3a5f;
 }
 
 .detached-action-button:active {
@@ -4004,9 +3982,9 @@ button.btn-icon[data-tooltip]::before {
 }
 
 .detached-action-danger:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: #dc2626;
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.12);
+  border-color: #e9b5b5;
+  background: #fbf1f1;
+  color: #b42318;
 }
 
 .detached-action-button[data-action^="create-detached"]::before {
