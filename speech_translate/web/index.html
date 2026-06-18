@@ -859,44 +859,10 @@
               <span class="settings-search-meta" id="settings_search_meta">显示全部设置</span>
             </div>
             <div class="inline-actions settings-toolbar-actions">
-              <button type="button" class="btn-with-icon" data-action="save-settings">保存全局设置</button>
-              <button type="button" class="btn-with-icon" data-action="save-record-settings">保存录制设置</button>
-              <button type="button" class="btn-with-icon" data-action="save-import-settings">保存文件设置</button>
+              <button type="button" class="btn-with-icon" data-action="save-all-settings">保存设置</button>
               <button type="button" class="btn-with-icon" data-action="refresh-audio-devices">刷新设备列表</button>
               <button type="button" class="btn-with-icon" data-action="refresh">刷新状态</button>
               <button type="button" class="btn-with-icon" data-action="show-main-window">显示主窗口</button>
-            </div>
-            <div class="settings-toolbar-overview" aria-label="设置总览">
-              <article class="settings-overview-card settings-overview-card-primary">
-                <span class="settings-overview-label">模型</span>
-                <span class="settings-overview-value" id="settings_toolbar_model">等待同步</span>
-                <span class="settings-overview-meta" id="settings_toolbar_model_meta">运行后端与当前模型</span>
-              </article>
-              <article class="settings-overview-card">
-                <span class="settings-overview-label">导出</span>
-                <span class="settings-overview-value" id="settings_toolbar_export">等待同步</span>
-                <span class="settings-overview-meta" id="settings_toolbar_export_meta">输出格式与目录策略</span>
-              </article>
-              <article class="settings-overview-card">
-                <span class="settings-overview-label">录制</span>
-                <span class="settings-overview-value" id="settings_toolbar_record">等待同步</span>
-                <span class="settings-overview-meta" id="settings_toolbar_record_meta">输入源、节流与确认策略</span>
-              </article>
-              <article class="settings-overview-card">
-                <span class="settings-overview-label">独立窗</span>
-                <span class="settings-overview-value" id="settings_toolbar_detached">等待同步</span>
-                <span class="settings-overview-meta" id="settings_toolbar_detached_meta">TC / TL 窗口尺寸与展示</span>
-              </article>
-              <article class="settings-overview-card">
-                <span class="settings-overview-label">网络</span>
-                <span class="settings-overview-value" id="settings_toolbar_network">等待同步</span>
-                <span class="settings-overview-meta" id="settings_toolbar_network_meta">代理与 LibreTranslate</span>
-              </article>
-              <article class="settings-overview-card">
-                <span class="settings-overview-label">解码</span>
-                <span class="settings-overview-value" id="settings_toolbar_decode">等待同步</span>
-                <span class="settings-overview-meta" id="settings_toolbar_decode_meta">预设、精度与温度</span>
-              </article>
             </div>
           </section>
 
@@ -1221,7 +1187,6 @@
               <div class="inline-actions import-actions compact-gap">
                 <button type="button" class="btn-with-icon" data-action="refresh">刷新状态</button>
                 <button type="button" class="btn-with-icon" data-action="show-main-window">显示主窗口</button>
-                <button type="button" class="btn-with-icon" data-action="save-window-geometry">保存窗口尺寸</button>
                 <button type="button" class="btn-with-icon" data-action="open-repo">项目仓库</button>
                 <button type="button" class="btn-with-icon" data-open-dir="debug">调试目录</button>
                 <button type="button" class="btn-with-icon" data-action="refresh-log">刷新日志</button>
@@ -1620,10 +1585,6 @@
 
           <details class="advanced-panel settings-panel-wide">
             <summary>Selenium 翻译窗口</summary>
-            <div class="floating-action-row">
-              <button class="btn-icon" data-action="save-selenium-settings" data-tooltip="保存 Selenium 设置"
-                title="保存 Selenium 设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
-            </div>
             <div class="advanced-panel-body">
               <div class="selenium-settings-shell">
                 <div class="selenium-settings-main">
@@ -1819,10 +1780,6 @@
 
           <details class="advanced-panel settings-panel-wide">
             <summary>录制设置（麦克风 / 扬声器）</summary>
-            <div class="floating-action-row">
-              <button class="btn-icon" data-action="save-record-settings" data-tooltip="保存录制设置" title="保存录制设置"><span
-                  class="btn-glyph glyph-save" aria-hidden="true"></span></button>
-            </div>
             <div class="advanced-panel-body">
               <div class="recording-settings-shell">
                 <div class="recording-settings-main">
@@ -1987,7 +1944,6 @@
                       <div class="section-inline-head">
                         <h3 class="section-inline-title">实时转写过滤 (Record)</h3>
                         <button class="btn-icon btn-icon-blue btn-icon-sm" data-action="open-filter-rec" data-tooltip="打开实时配置词典" title="打开实时配置词典"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
-                        <button class="btn-icon btn-icon-sm" data-action="save-settings" data-tooltip="保存录音配置" title="保存录音配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
                       </div>
                       <p class="section-inline-meta">过滤 Whisper 在录音静音期间生成的幻觉文本。</p>
                     </div>
@@ -2020,7 +1976,6 @@
                       <div class="section-inline-head">
                         <h3 class="section-inline-title">文件导入过滤 (File Import)</h3>
                         <button class="btn-icon btn-icon-blue btn-icon-sm" data-action="open-filter-file" data-tooltip="打开文件导入配置词典" title="打开文件导入配置词典"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
-                        <button class="btn-icon btn-icon-sm" data-action="save-import-settings" data-tooltip="保存导入配置" title="保存导入配置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
                       </div>
                       <p class="section-inline-meta">过滤文件导入解析期间的幻觉文本。</p>
                     </div>
@@ -2060,8 +2015,6 @@
                   class="btn-glyph glyph-trash" aria-hidden="true"></span></button>
               <button class="btn-icon" id="clear_initial_prompts" data-tooltip="清空并移除自定义语言行" title="清空并移除自定义语言行"><span
                   class="btn-glyph glyph-trash" aria-hidden="true"></span></button>
-              <button class="btn-icon" data-action="save-initial-prompts" data-tooltip="保存引导词" title="保存引导词"><span
-                  class="btn-glyph glyph-save" aria-hidden="true"></span></button>
             </div>
             <div class="advanced-panel-body">
               <div class="prompt-workbench">

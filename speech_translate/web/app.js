@@ -1522,61 +1522,6 @@ function summarizeInitialPromptState(settings) {
 
 function renderSettingsToolbarOverview(data) {
   const settings = data?.settings || {};
-  const runtime = data?.runtime_model || {};
-  const importUi = data?.import_ui || {};
-  const recordUi = data?.record_ui || {};
-  const exportFormats = summarizeExportFormats(settings);
-  const networkText = settings.http_proxy_enable || settings.https_proxy_enable ? '代理已启用' : '无代理';
-  const decodePreset = String(settings.decoding_preset || 'beam search');
-  const temperature = String(settings.temperature ?? '').trim() || '默认';
-  const modelText = runtime.loaded
-    ? `${runtime.key || importUi.selected_model || '未知'} / ${importUi.selected_backend || '后端未知'}`
-    : `${importUi.selected_model || '未选择'} / ${importUi.selected_backend || '后端未知'}`;
-  const recordText = `${recordUi.input || settings.input || 'mic'} · ${(recordUi.transcribe_rate ?? settings.transcribe_rate ?? 300)}ms · ${settings.rec_ask_confirmation_first ? '确认' : '直启'}`;
-  const detachedText = `TC ${settings.ex_tc_geometry || '900x240'} · TL ${settings.ex_tl_geometry || '900x240'}`;
-
-  if (els.settingsToolbarModel) {
-    els.settingsToolbarModel.textContent = modelText;
-  }
-  if (els.settingsToolbarExport) {
-    els.settingsToolbarExport.textContent = exportFormats;
-  }
-  if (els.settingsToolbarRecord) {
-    els.settingsToolbarRecord.textContent = recordText;
-  }
-  if (els.settingsToolbarDetached) {
-    els.settingsToolbarDetached.textContent = detachedText;
-  }
-  if (els.settingsToolbarNetwork) {
-    els.settingsToolbarNetwork.textContent = networkText;
-  }
-  if (els.settingsToolbarDecode) {
-    const precision = settings.fp16 ? 'FP16' : 'FP32';
-    els.settingsToolbarDecode.textContent = `${decodePreset} · ${precision}`;
-  }
-  if (els.settingsToolbarModelMeta) {
-    els.settingsToolbarModelMeta.textContent = runtime.loaded ? '已加载模型' : '待加载模型';
-  }
-  if (els.settingsToolbarExportMeta) {
-    els.settingsToolbarExportMeta.textContent = settings.auto_open_dir_export ? '自动打开目录' : '不自动打开';
-  }
-  if (els.settingsToolbarRecordMeta) {
-    els.settingsToolbarRecordMeta.textContent = `${settings.rec_ask_confirmation_first ? '录前确认' : '直接录制'} · ${settings.model_device_preference || 'auto'}`;
-  }
-  if (els.settingsToolbarDetachedMeta) {
-    els.settingsToolbarDetachedMeta.textContent = `${settings.ex_tc_always_on_top ? 'TC置顶' : 'TC常规'} · ${settings.ex_tl_always_on_top ? 'TL置顶' : 'TL常规'}`;
-  }
-  if (els.settingsToolbarNetworkMeta) {
-    els.settingsToolbarNetworkMeta.textContent = [
-      settings.http_proxy_enable ? 'HTTP 开' : null,
-      settings.https_proxy_enable ? 'HTTPS 开' : null,
-      settings.libre_link ? 'LT 已配' : 'LT 未配',
-      settings.libre_api_key ? 'Key 已配' : null,
-    ].filter(Boolean).join(' · ') || '网络设置';
-  }
-  if (els.settingsToolbarDecodeMeta) {
-    els.settingsToolbarDecodeMeta.textContent = `${temperature} · ${settings.use_en_model ? '.en' : '多语'}`;
-  }
 
   syncToolbarMirrorChecked(els.httpProxyEnableToolbar, els.httpProxyEnable, false);
   syncToolbarMirrorChecked(els.httpsProxyEnableToolbar, els.httpsProxyEnable, false);
@@ -2813,6 +2758,15 @@ async function saveSettings(shouldRefresh = true) {
   }
 }
 
+async function saveAllSettings() {
+  await saveSettings(false);
+  await saveRecordSettings(false);
+  await saveImportSettings(false);
+  await saveSeleniumSettings(false);
+  await saveInitialPromptsSettings(false);
+  await refreshState();
+}
+
 async function saveSeleniumSettings(shouldRefresh = true) {
   if (state.seleniumSaveInFlight) {
     return;
@@ -3711,10 +3665,8 @@ function collectSearchTerms(root, selectors) {
 function applySettingsFilter(rawQuery = '') {
   const query = normalizeSearchText(rawQuery);
   const panels = getSettingsPanels();
-  const overviewCards = Array.from(document.querySelectorAll('.settings-toolbar-overview .settings-overview-card'));
   const workbenchCards = Array.from(document.querySelectorAll('.settings-workbench-card'));
   let visibleCount = 0;
-  let overviewMatchCount = 0;
   let workbenchMatchCount = 0;
 
   for (const panel of panels) {
@@ -3760,20 +3712,6 @@ function applySettingsFilter(rawQuery = '') {
     }
   }
 
-  for (const card of overviewCards) {
-    const haystack = collectSearchTerms(card, [
-      '.settings-overview-label',
-      '.settings-overview-value',
-      '.settings-overview-meta',
-    ]);
-    const matched = Boolean(query && haystack.includes(query));
-    card.classList.toggle('settings-overview-card-match', matched);
-    card.classList.toggle('settings-overview-card-hidden', Boolean(query && !matched));
-    if (matched) {
-      overviewMatchCount += 1;
-    }
-  }
-
   const shortcuts = Array.from(document.querySelectorAll('[data-settings-jump]'));
   for (const shortcut of shortcuts) {
     const target = normalizeSearchText(shortcut.getAttribute('data-settings-jump') || '');
@@ -3782,7 +3720,7 @@ function applySettingsFilter(rawQuery = '') {
 
   if (els.settingsSearchMeta) {
     els.settingsSearchMeta.textContent = query
-      ? `筛选结果：${visibleCount} 个设置面板，${overviewMatchCount} 个总览卡片，${workbenchMatchCount} 个工作台卡片`
+      ? `筛选结果：${visibleCount} 个设置面板，${workbenchMatchCount} 个工作台卡片`
       : '显示全部设置';
   }
 
@@ -3958,6 +3896,8 @@ function bindEvents() {
         }
       } else if (action === 'save-selenium-settings') {
         await saveSeleniumSettings();
+      } else if (action === 'save-all-settings') {
+        await saveAllSettings();
       } else if (action === 'save-settings') {
         await saveSettings();
       } else if (action === 'check-model-current') {
@@ -4448,18 +4388,6 @@ async function init() {
     els.settingsSearch = $('settings_search');
     els.settingsSearchClear = $('settings_search_clear');
     els.settingsSearchMeta = $('settings_search_meta');
-    els.settingsToolbarModel = $('settings_toolbar_model');
-    els.settingsToolbarExport = $('settings_toolbar_export');
-    els.settingsToolbarRecord = $('settings_toolbar_record');
-    els.settingsToolbarDetached = $('settings_toolbar_detached');
-    els.settingsToolbarNetwork = $('settings_toolbar_network');
-    els.settingsToolbarDecode = $('settings_toolbar_decode');
-    els.settingsToolbarModelMeta = $('settings_toolbar_model_meta');
-    els.settingsToolbarExportMeta = $('settings_toolbar_export_meta');
-    els.settingsToolbarRecordMeta = $('settings_toolbar_record_meta');
-    els.settingsToolbarDetachedMeta = $('settings_toolbar_detached_meta');
-    els.settingsToolbarNetworkMeta = $('settings_toolbar_network_meta');
-    els.settingsToolbarDecodeMeta = $('settings_toolbar_decode_meta');
     els.decodePresetKpi = $('decode_preset_kpi');
     els.decodeTemperatureKpi = $('decode_temperature_kpi');
     els.decodeOutputKpi = $('decode_output_kpi');
