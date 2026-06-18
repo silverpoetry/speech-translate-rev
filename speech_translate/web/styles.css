@@ -4848,13 +4848,45 @@ textarea:focus {
   border-top: 1px solid rgba(226, 232, 240, 0.9);
 }
 
-.model-selection-inline-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
 .model-selection-inline-toggle {
   width: max-content;
+}
+
+.model-selection-inline-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.model-selection-inline-row {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 2px 0 6px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
+}
+
+.model-selection-inline-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.model-selection-inline-value {
+  min-width: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.28;
+  color: #0f172a;
+}
+
+.model-selection-inline-meta {
+  min-width: 0;
+  font-size: 0.7rem;
+  line-height: 1.38;
+  color: #475569;
 }
 
 .model-selection-kicker,
@@ -6346,18 +6378,17 @@ button.btn-icon:hover {
   line-height: 1.28;
 }
 
-#tab-model .model-selection-inline-grid .status-overview-card {
-  min-height: 58px;
-  padding: 8px 9px;
+#tab-model .model-selection-inline-summary {
+  gap: 12px;
 }
 
-#tab-model .model-selection-inline-grid .status-overview-value {
-  font-size: 0.86rem;
+#tab-model .model-selection-inline-value {
+  font-size: 0.9rem;
 }
 
-#tab-model .model-selection-inline-grid .status-overview-meta {
-  font-size: 0.66rem;
-  line-height: 1.3;
+#tab-model .model-selection-inline-meta {
+  font-size: 0.68rem;
+  line-height: 1.34;
 }
 
 #tab-model .model-selection-status-grid .status-overview-meta {

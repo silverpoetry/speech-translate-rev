@@ -451,30 +451,24 @@
                       <div class="model-selection-main-foot">
                         <div class="status-row compact-status-row">
                           <span class="pill pill-muted" id="model-manager-dir-pill">模型目录</span>
-                          <span class="pill pill-muted" id="model-selection-history">历史提示</span>
                         </div>
                         <label class="toggle-row model-selection-inline-toggle"><input id="condition_on_previous_text" type="checkbox" />
                           使用上一次输出作为提示</label>
-                        <div class="status-overview-grid model-selection-inline-grid" aria-label="运行配置摘要">
-                          <div class="status-overview-card status-overview-card-compact">
-                            <span class="status-overview-label">运行状态</span>
-                            <span class="status-overview-value" id="model-selection-runtime">未加载</span>
-                            <span class="status-overview-meta" id="model-selection-runtime-meta">等待加载</span>
+                        <div class="model-selection-inline-summary" aria-label="运行配置摘要">
+                          <div class="model-selection-inline-row">
+                            <span class="model-selection-inline-label">运行状态</span>
+                            <span class="model-selection-inline-value" id="model-selection-runtime">未加载</span>
+                            <span class="model-selection-inline-meta" id="model-selection-runtime-meta">加载后在这里同步当前模型</span>
                           </div>
-                          <div class="status-overview-card status-overview-card-compact">
-                            <span class="status-overview-label">设备策略</span>
-                            <span class="status-overview-value" id="model-selection-device">AUTO</span>
-                            <span class="status-overview-meta" id="model-selection-device-meta">自动选择可用设备</span>
+                          <div class="model-selection-inline-row">
+                            <span class="model-selection-inline-label">设备策略</span>
+                            <span class="model-selection-inline-value" id="model-selection-device">AUTO</span>
+                            <span class="model-selection-inline-meta" id="model-selection-device-meta">自动选择可用设备</span>
                           </div>
-                          <div class="status-overview-card status-overview-card-compact">
-                            <span class="status-overview-label">缓存覆盖</span>
-                            <span class="status-overview-value" id="model-selection-cache">7 / 14</span>
-                            <span class="status-overview-meta" id="model-selection-cache-meta">已下载 7 个，本引擎仍缺 7 个</span>
-                          </div>
-                          <div class="status-overview-card status-overview-card-compact">
-                            <span class="status-overview-label">提示策略</span>
-                            <span class="status-overview-value" id="model-selection-history-card">未设置</span>
-                            <span class="status-overview-meta" id="model-selection-history-meta">condition_on_previous_text</span>
+                          <div class="model-selection-inline-row">
+                            <span class="model-selection-inline-label">缓存覆盖</span>
+                            <span class="model-selection-inline-value" id="model-selection-cache">7 / 14</span>
+                            <span class="model-selection-inline-meta" id="model-selection-cache-meta">自动扫描当前后端后显示已下载模型数量</span>
                           </div>
                         </div>
                         <div class="inline-actions compact-gap">

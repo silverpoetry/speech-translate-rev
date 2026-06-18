@@ -10,6 +10,9 @@ const state = {
   pageScrollBound: false,
   modelPollTimer: null,
   modelCheckedOnce: false,
+  modelManagerCheckedEngines: {},
+  modelManagerCheckInFlight: null,
+  modelManagerCheckErrors: {},
   seleniumSaveInFlight: false,
   detachedModeSelected: 'tc',
   detachedOpen: { tc: false, tl: false },
@@ -1387,19 +1390,29 @@ function renderModelSelectionOverview(data) {
   const importUi = data?.import_ui || {};
   const runtime = data?.runtime_model || {};
   const settings = data?.settings || {};
+  const summaryEngine = getModelSelectionEngine(data);
   const modelManager = state.modelManagerState || {};
   const selectedModelLabel = importUi.selected_model_key || importUi.selected_model || '未选择';
-  const backend = importUi.selected_backend || '未知';
+  const backend = importUi.selected_backend || 'whisper';
   const runtimeLoaded = Boolean(runtime.loaded);
   const runtimeLoading = Boolean(runtime.loading);
   const runtimeMessage = String(runtime.message || '').trim();
   const devicePref = summarizeModelDevicePreference(settings.model_device_preference);
   const managerRows = Array.isArray(modelManager.rows) ? modelManager.rows : [];
-  const scopedRows = managerRows.filter((row) => String(row?.engine || '') === String(modelManager.selected_engine || backend || ''));
+  const scopedRows = managerRows.filter((row) => String(row?.engine || '') === summaryEngine);
   const downloadedCount = scopedRows.filter((row) => row && row.downloaded === true).length;
   const missingCount = scopedRows.filter((row) => row && row.downloaded === false).length;
-  const coverageTotal = scopedRows.length || (Array.isArray(modelManager.model_options) ? modelManager.model_options.length : 0);
-  const checked = modelManager.checked || null;
+  const coverageTotal = scopedRows.length
+    || (String(modelManager.selected_engine || '') === summaryEngine && Array.isArray(modelManager.model_options)
+      ? modelManager.model_options.length
+      : 0);
+  const checked = modelManager.checked && String(modelManager.checked.engine || modelManager.selected_engine || '') === summaryEngine
+    ? modelManager.checked
+    : null;
+  const cacheCheckInFlight = state.modelManagerCheckInFlight && state.modelManagerCheckInFlight.engine === summaryEngine;
+  const cacheCheckError = state.modelManagerCheckErrors[summaryEngine] || '';
+
+  ensureModelSelectionCacheState(data);
 
   if (els.modelSelectionRuntime) {
     els.modelSelectionRuntime.textContent = runtimeLoaded
@@ -1416,17 +1429,6 @@ function renderModelSelectionOverview(data) {
       els.modelSelectionRuntimeMeta.textContent = runtimeMessage || (runtimeLoaded ? `当前运行：${runtime.key || selectedModelLabel}` : '等待加载');
     }
   }
-  if (els.modelSelectionHistory) {
-    els.modelSelectionHistory.textContent = settings.condition_on_previous_text ? '已启用' : '已关闭';
-  }
-  if (els.modelSelectionHistoryCard) {
-    els.modelSelectionHistoryCard.textContent = settings.condition_on_previous_text ? '已启用' : '已关闭';
-  }
-  if (els.modelSelectionHistoryMeta) {
-    els.modelSelectionHistoryMeta.textContent = settings.condition_on_previous_text
-      ? '将使用上次输出作为提示'
-      : '每次独立转写';
-  }
   if (els.modelSelectionDevice) {
     els.modelSelectionDevice.textContent = devicePref.label;
   }
@@ -1434,7 +1436,13 @@ function renderModelSelectionOverview(data) {
     els.modelSelectionDeviceMeta.textContent = devicePref.meta;
   }
   if (els.modelSelectionCache) {
-    els.modelSelectionCache.textContent = coverageTotal > 0 ? `${downloadedCount} / ${coverageTotal}` : '等待检查';
+    els.modelSelectionCache.textContent = coverageTotal > 0
+      ? `${downloadedCount} / ${coverageTotal}`
+      : cacheCheckInFlight
+        ? '自动检查中'
+        : cacheCheckError
+          ? '检查失败'
+          : '同步中';
   }
   if (els.modelSelectionCacheMeta) {
     if (modelManager.download_running) {
@@ -1443,8 +1451,12 @@ function renderModelSelectionOverview(data) {
       els.modelSelectionCacheMeta.textContent = missingCount > 0
         ? `已下载 ${downloadedCount} 个，本引擎仍缺 ${missingCount} 个`
         : `本引擎 ${coverageTotal} 个模型均已就绪`;
+    } else if (cacheCheckInFlight) {
+      els.modelSelectionCacheMeta.textContent = `正在扫描 ${backend} 的本地模型缓存`;
+    } else if (cacheCheckError) {
+      els.modelSelectionCacheMeta.textContent = cacheCheckError;
     } else {
-      els.modelSelectionCacheMeta.textContent = '检查后显示已下载模型数量';
+      els.modelSelectionCacheMeta.textContent = `正在同步 ${backend} 的缓存状态`;
     }
   }
 }
@@ -2278,6 +2290,58 @@ function getSelectedModelManagerEngine() {
   return value || 'whisper';
 }
 
+function getModelSelectionEngine(data = state.data || {}) {
+  const backend = String(data?.import_ui?.selected_backend || '').trim();
+  return backend === 'faster-whisper' ? 'faster-whisper' : 'whisper';
+}
+
+function ensureModelSelectionCacheState(data = state.data || {}) {
+  const targetEngine = getModelSelectionEngine(data);
+  const modelManager = state.modelManagerState || {};
+  const rows = Array.isArray(modelManager.rows) ? modelManager.rows : [];
+  const hasScopedRows = rows.some((row) => String(row?.engine || '') === targetEngine);
+  const checkedEngine = String(modelManager.checked?.engine || modelManager.selected_engine || '').trim();
+  const hasScopedCheck = Boolean(modelManager.checked) && checkedEngine === targetEngine;
+  const selectedEngineMatches = String(modelManager.selected_engine || '').trim() === targetEngine;
+  const inFlight = state.modelManagerCheckInFlight;
+  if (inFlight && inFlight.engine === targetEngine) {
+    return;
+  }
+  if (state.modelManagerCheckErrors[targetEngine]) {
+    return;
+  }
+  if (selectedEngineMatches && (hasScopedRows || hasScopedCheck || modelManager.download_running)) {
+    return;
+  }
+
+  const shouldFullCheck = !state.modelManagerCheckedEngines[targetEngine];
+  state.modelManagerCheckInFlight = { engine: targetEngine, mode: shouldFullCheck ? 'check' : 'refresh' };
+  window.setTimeout(() => {
+    const task = shouldFullCheck
+      ? checkAllModelManagerState(targetEngine).then((payload) => {
+        state.modelManagerCheckedEngines[targetEngine] = true;
+        state.modelManagerCheckErrors[targetEngine] = '';
+        return payload;
+      })
+      : refreshModelManagerState(targetEngine).then((payload) => {
+        state.modelManagerCheckErrors[targetEngine] = '';
+        return payload;
+      });
+    task
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error || '未知错误');
+        state.modelManagerCheckErrors[targetEngine] = `自动检查失败：${message}`;
+        console.debug(`Model cache auto-${shouldFullCheck ? 'check' : 'refresh'} failed`, error);
+      })
+      .finally(() => {
+        if (state.modelManagerCheckInFlight && state.modelManagerCheckInFlight.engine === targetEngine) {
+          state.modelManagerCheckInFlight = null;
+        }
+        renderModelSelectionOverview(state.data || {});
+      });
+  }, 0);
+}
+
 function setSelectedModelManagerEngine(engine) {
   const targetEngine = engine || 'whisper';
   const tabs = document.querySelectorAll('#model-manager-engine-bar .model-engine-tab');
@@ -2498,11 +2562,13 @@ async function refreshState(options = {}) {
   const runHeavyRefresh = async () => {
     await refreshTaskState();
     await refreshImportUiDetails();
-    if (!state.modelCheckedOnce) {
-      await checkAllModelManagerState(getSelectedModelManagerEngine());
+    const modelEngine = getModelSelectionEngine(state.data || data);
+    if (!state.modelManagerCheckedEngines[modelEngine]) {
+      await checkAllModelManagerState(modelEngine);
+      state.modelManagerCheckedEngines[modelEngine] = true;
       state.modelCheckedOnce = true;
     } else {
-      await refreshModelManagerState(getSelectedModelManagerEngine());
+      await refreshModelManagerState(modelEngine);
     }
   };
 
@@ -4331,15 +4397,8 @@ async function init() {
     els.realtimeRecordingBuffer = $('realtime-recording-buffer');
     els.realtimeRecordingSentences = $('realtime-recording-sentences');
     els.realtimeRecordingDevice = $('realtime-recording-device');
-    els.modelSelectionCurrent = $('model-selection-current');
-    els.modelSelectionCurrentMeta = $('model-selection-current-meta');
     els.modelSelectionRuntime = $('model-selection-runtime');
     els.modelSelectionRuntimeMeta = $('model-selection-runtime-meta');
-    els.modelSelectionBackend = $('model-selection-backend');
-    els.modelSelectionBackendMeta = $('model-selection-backend-meta');
-    els.modelSelectionHistory = $('model-selection-history');
-    els.modelSelectionHistoryCard = $('model-selection-history-card');
-    els.modelSelectionHistoryMeta = $('model-selection-history-meta');
     els.modelSelectionDevice = $('model-selection-device');
     els.modelSelectionDeviceMeta = $('model-selection-device-meta');
     els.modelSelectionCache = $('model-selection-cache');
