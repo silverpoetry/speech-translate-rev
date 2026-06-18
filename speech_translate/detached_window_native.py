@@ -21,7 +21,6 @@ _SWP_NOSIZE = 0x0001
 _SWP_NOMOVE = 0x0002
 _SWP_NOZORDER = 0x0004
 _SWP_FRAMECHANGED = 0x0020
-_SWP_SHOWWINDOW = 0x0040
 _LWA_ALPHA = 0x00000002
 
 
@@ -107,7 +106,7 @@ def apply_native_window_settings(
             0,
             0,
             0,
-            _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOZORDER | _SWP_FRAMECHANGED | _SWP_SHOWWINDOW,
+            _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOZORDER | _SWP_FRAMECHANGED,
         )
     except Exception as exc:
         logger.error(f"Failed to apply detached window settings for {mode}: {exc}")
