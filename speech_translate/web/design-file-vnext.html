@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>File UI VNext Prototype</title>
+  <link rel="stylesheet" href="./design-file-vnext.css" />
+</head>
+<body>
+  <div class="vnext-shell">
+    <aside class="vnext-sidebar" aria-label="原型导航">
+      <div class="brand-mark">
+        <span class="brand-dot" aria-hidden="true"></span>
+        <span>语音翻译</span>
+      </div>
+      <nav class="nav-stack">
+        <button class="nav-item" type="button"><span class="nav-icon icon-message"></span><span>实时转写</span></button>
+        <button class="nav-item is-active" type="button"><span class="nav-icon icon-file"></span><span>文件转写</span></button>
+        <button class="nav-item" type="button"><span class="nav-icon icon-box"></span><span>模型选择</span></button>
+        <button class="nav-item" type="button"><span class="nav-icon icon-settings"></span><span>设置</span></button>
+      </nav>
+      <div class="nav-tools">
+        <button class="side-action" type="button" title="模型目录" aria-label="模型目录"><span class="mini-icon icon-folder"></span></button>
+        <button class="side-action" type="button" title="导出目录" aria-label="导出目录"><span class="mini-icon icon-folder"></span></button>
+        <span class="nav-divider" aria-hidden="true"></span>
+        <button class="side-action" type="button" title="隐藏到托盘" aria-label="隐藏到托盘"><span class="mini-icon icon-tray"></span></button>
+        <button class="side-action" type="button" title="退出程序" aria-label="退出程序"><span class="mini-icon icon-x"></span></button>
+      </div>
+    </aside>
+
+    <main class="vnext-content" aria-label="文件转写原型">
+      <section class="frame frame-file-top" id="frame-file-top" aria-label="顶部命令栏与状态">
+        <section class="surface-panel file-command-panel">
+          <header class="file-page-head">
+            <h1>文件转写</h1>
+            <div class="header-actions" aria-label="队列操作">
+              <button class="icon-action" type="button" title="导入文件" aria-label="导入文件"><span class="icon icon-import"></span></button>
+              <button class="icon-action icon-action-danger" type="button" title="清空队列" aria-label="清空队列"><span class="icon icon-trash"></span></button>
+            </div>
+          </header>
+
+          <div class="file-vnext-toolbar" aria-label="文件处理控制">
+            <div class="file-primary-actions">
+              <button class="primary-action" type="button">
+                <span class="icon icon-import" aria-hidden="true"></span>
+                <span>一键导入并处理</span>
+              </button>
+              <button class="secondary-action" type="button">
+                <span class="run-dot" aria-hidden="true"></span>
+                <span>开始处理</span>
+              </button>
+            </div>
+            <div class="mode-toggles" aria-label="输出开关">
+              <label class="switch-control"><input type="checkbox" checked /><span></span><b>转写</b></label>
+              <label class="switch-control"><input type="checkbox" checked /><span></span><b>翻译</b></label>
+            </div>
+          </div>
+
+          <div class="file-vnext-status" aria-label="批处理状态">
+            <span class="status-chip status-chip-strong"><i></i><small>队列</small> 0</span>
+            <span class="status-chip"><small>状态</small> 空闲</span>
+            <span class="status-chip status-chip-wide"><small>语言</small> English → Chinese</span>
+            <span class="status-chip status-chip-wide"><small>引擎</small> Selenium</span>
+            <span class="status-chip status-chip-wide"><small>格式</small> TXT / SRT / VTT</span>
+          </div>
+        </section>
+      </section>
+
+      <section class="frame frame-file-workbench" aria-label="队列工作区与配置侧栏">
+        <section class="surface-panel file-vnext-core" id="frame-file-workbench">
+          <div class="file-vnext-workbench">
+            <section class="file-vnext-queue" aria-label="待处理队列">
+              <header class="queue-head">
+                <h2>待处理队列</h2>
+                <span class="queue-count">0 个文件</span>
+              </header>
+              <div class="queue-table-head" aria-hidden="true">
+                <span>文件名</span>
+                <span>转写</span>
+                <span>翻译</span>
+                <span>操作</span>
+              </div>
+              <div class="queue-body">
+                <div class="queue-empty">
+                  <strong>暂无文件</strong>
+                  <span>导入音频或视频开始处理</span>
+                </div>
+              </div>
+            </section>
+
+            <aside class="file-vnext-side" aria-label="处理配置">
+              <header class="side-head">
+                <h2>处理配置</h2>
+                <button class="icon-action" type="button" title="保存文件设置" aria-label="保存文件设置"><span class="icon icon-save"></span></button>
+              </header>
+
+              <section class="file-vnext-section" aria-label="导出">
+                <h3>导出</h3>
+                <div class="side-field-row">
+                  <span>目录</span>
+                  <div class="input-row">
+                    <div class="text-like" title="D:\Projects\speechtranslateProj\speech_translate\export">D:\Projects\speechtranslateProj\speech_translate\export</div>
+                    <button class="icon-action" type="button" title="选择目录" aria-label="选择目录"><span class="icon icon-folder"></span></button>
+                    <button class="icon-action" type="button" title="打开目录" aria-label="打开目录"><span class="icon icon-open"></span></button>
+                  </div>
+                </div>
+                <div class="side-field-row">
+                  <span>命名</span>
+                  <div class="select-like">%Y-%m-%d %f {file}/{task-lang}</div>
+                </div>
+              </section>
+
+              <section class="file-vnext-section" aria-label="格式">
+                <h3>格式</h3>
+                <div class="format-choice-grid" aria-label="输出格式">
+                  <button class="format-choice is-selected" type="button">TXT</button>
+                  <button class="format-choice is-selected" type="button">SRT</button>
+                  <button class="format-choice is-selected" type="button">VTT</button>
+                  <button class="format-choice" type="button">ASS</button>
+                  <button class="format-choice is-selected" type="button">JSON</button>
+                  <button class="format-choice" type="button">CSV</button>
+                  <button class="format-choice" type="button">TSV</button>
+                  <button class="format-choice" type="button">MP4</button>
+                </div>
+              </section>
+
+              <section class="file-vnext-section" aria-label="过滤">
+                <h3>过滤</h3>
+                <div class="toggle-line">
+                  <label class="switch-control"><input type="checkbox" checked /><span></span><b>导入过滤</b></label>
+                  <p>词典 auto · 精准匹配</p>
+                </div>
+              </section>
+            </aside>
+          </div>
+        </section>
+      </section>
+
+      <section class="frame frame-file-settings" aria-label="下半段高级配置">
+        <div class="frame-grid" id="frame-file-settings">
+          <section class="surface-panel config-panel">
+            <header class="panel-head">
+              <h2>语言配置</h2>
+              <button class="icon-action" type="button" title="保存语言配置" aria-label="保存语言配置"><span class="icon icon-save"></span></button>
+            </header>
+            <div class="field-grid language-settings-grid">
+              <label class="field">
+                <span>源语言</span>
+                <div class="select-like has-arrow">English<i></i></div>
+              </label>
+              <label class="field">
+                <span>目标语言</span>
+                <div class="select-like has-arrow">Chinese (simplified)<i></i></div>
+              </label>
+              <label class="field span-2">
+                <span>翻译引擎</span>
+                <div class="select-like has-arrow">Selenium Chrome Translate<i></i></div>
+              </label>
+              <div class="language-route-summary span-2" aria-label="语言路径">
+                <span>English</span>
+                <i></i>
+                <span>Chinese</span>
+                <em>Selenium</em>
+              </div>
+            </div>
+          </section>
+
+          <section class="surface-panel config-panel">
+            <header class="panel-head">
+              <h2>输出与过滤</h2>
+              <button class="icon-action" type="button" title="保存输出设置" aria-label="保存输出设置"><span class="icon icon-save"></span></button>
+            </header>
+            <div class="field-grid output-settings-grid">
+              <label class="field span-2">
+                <span>导出目录</span>
+                <div class="input-row">
+                  <div class="text-like">D:\Projects\speechtranslateProj\speech_translate\export</div>
+                  <button class="icon-action" type="button" title="选择目录" aria-label="选择目录"><span class="icon icon-folder"></span></button>
+                  <button class="icon-action" type="button" title="打开目录" aria-label="打开目录"><span class="icon icon-open"></span></button>
+                </div>
+              </label>
+              <label class="field">
+                <span>文件切片</span>
+                <div class="select-like has-arrow">全量<i></i></div>
+              </label>
+              <label class="field">
+                <span>匹配策略</span>
+                <div class="select-like has-arrow">精准匹配<i></i></div>
+              </label>
+              <label class="field span-2">
+                <span>命名模板</span>
+                <div class="select-like">%Y-%m-%d %f {file}/{task-lang}</div>
+              </label>
+              <div class="settings-toggle-row span-2">
+                <label class="switch-control"><input type="checkbox" checked /><span></span><b>任务完成后打开目录</b></label>
+                <label class="switch-control"><input type="checkbox" checked /><span></span><b>导入过滤</b></label>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <div class="scroll-end-spacer" aria-hidden="true"></div>
+    </main>
+  </div>
+  <footer class="global-statusbar" aria-label="底部状态">
+    <span><strong>tiny</strong><em>缓存可用</em></span>
+    <span><strong>空闲</strong><em>文件队列 0 · Selenium</em></span>
+    <span><strong>输出</strong><em>TXT / SRT / VTT</em></span>
+  </footer>
+</body>
+</html>
