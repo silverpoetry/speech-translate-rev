@@ -86,10 +86,10 @@ class WebUiPreviewSyncTests(unittest.TestCase):
 
     def test_preview_contains_file_workbench_summary_nodes(self) -> None:
         for node_id in (
+            "file-import-queue-inline-count",
+            "file-import-format-state",
             "file-import-export-format",
             "file-import-export-format-meta",
-            "file-import-slice-range",
-            "file-import-slice-meta",
             "file-import-filter-state",
             "file-import-filter-meta",
         ):

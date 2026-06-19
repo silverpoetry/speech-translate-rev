@@ -210,18 +210,38 @@ function syncMirroredFieldState() {
   syncToolbarMirrorValues([
     [els.dirExportFile, els.dirExport, 'auto'],
     [els.exportFormatToolbar, els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}'],
+    [els.exportFormatFile, els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}'],
+    [els.segmentMaxWordsFile, els.segmentMaxWords, ''],
+    [els.segmentMaxCharsFile, els.segmentMaxChars, ''],
+    [els.segmentSplitOrNewlineFile, els.segmentSplitOrNewline, 'split'],
+    [els.fileSliceStartFile, els.fileSliceStart, ''],
+    [els.fileSliceEndFile, els.fileSliceEnd, ''],
+    [els.pathFilterFileImportFile, els.pathFilterFileImport, 'auto'],
+    [els.filterFileImportSimilarityFile, els.filterFileImportSimilarity, '0.75'],
   ]);
   syncToolbarMirrorChecks([
     [els.autoOpenDirExportFile, els.autoOpenDirExport, true],
+    [els.filterFileImportFile, els.filterFileImport, true],
+    [els.filterFileImportExactMatchFile, els.filterFileImportExactMatch, false],
   ]);
 }
 
 function bindSharedFieldMirrors() {
   bindPairedInputValues([
     [els.dirExport, els.dirExportFile],
+    [els.exportFormat, els.exportFormatFile],
+    [els.segmentMaxWords, els.segmentMaxWordsFile],
+    [els.segmentMaxChars, els.segmentMaxCharsFile],
+    [els.segmentSplitOrNewline, els.segmentSplitOrNewlineFile],
+    [els.fileSliceStart, els.fileSliceStartFile],
+    [els.fileSliceEnd, els.fileSliceEndFile],
+    [els.pathFilterFileImport, els.pathFilterFileImportFile],
+    [els.filterFileImportSimilarity, els.filterFileImportSimilarityFile],
   ]);
   bindPairedInputChecks([
     [els.autoOpenDirExport, els.autoOpenDirExportFile],
+    [els.filterFileImport, els.filterFileImportFile],
+    [els.filterFileImportExactMatch, els.filterFileImportExactMatchFile],
   ]);
 }
 
@@ -891,18 +911,18 @@ function collectSharedFileSettings() {
     auto_open_dir_translate: autoOpenDirOnTaskDone,
     auto_open_dir_refinement: autoOpenDirOnTaskDone,
     auto_open_dir_alignment: autoOpenDirOnTaskDone,
-    export_format: readStringValue(els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}'),
-    path_filter_file_import: readStringValue(els.pathFilterFileImport, 'auto'),
+    export_format: readStringValue(els.exportFormatFile || els.exportFormat, '%Y-%m-%d %f {file}/{task-lang}'),
+    path_filter_file_import: readStringValue(els.pathFilterFileImportFile || els.pathFilterFileImport, 'auto'),
     remove_repetition_file_import: readBooleanValue(els.removeRepetitionFileImport, false),
     remove_repetition_amount: readNumberValue(els.removeRepetitionAmount, 1),
-    segment_max_words: readStringValue(els.segmentMaxWords, ''),
-    segment_max_chars: readStringValue(els.segmentMaxChars, ''),
-    segment_split_or_newline: readStringValue(els.segmentSplitOrNewline, 'split'),
+    segment_max_words: readStringValue(els.segmentMaxWordsFile || els.segmentMaxWords, ''),
+    segment_max_chars: readStringValue(els.segmentMaxCharsFile || els.segmentMaxChars, ''),
+    segment_split_or_newline: readStringValue(els.segmentSplitOrNewlineFile || els.segmentSplitOrNewline, 'split'),
     segment_even_split: readBooleanValue(els.segmentEvenSplit, true),
     segment_level: readBooleanValue(els.segmentLevel, true),
     word_level: readBooleanValue(els.wordLevel, true),
-    file_slice_start: readStringValue(els.fileSliceStart, ''),
-    file_slice_end: readStringValue(els.fileSliceEnd, ''),
+    file_slice_start: readStringValue(els.fileSliceStartFile || els.fileSliceStart, ''),
+    file_slice_end: readStringValue(els.fileSliceEndFile || els.fileSliceEnd, ''),
   };
 }
 
@@ -949,9 +969,14 @@ function resolveFileProcessingSummary() {
     active,
     failed,
     queueLabel: total > 0 ? `队列：${total}，完成 ${completed}` : '队列：0',
+    queueValue: `${total}`,
+    queueInlineLabel: `${total} 个文件`,
     stateLabel: active
       ? (failed > 0 ? `状态：处理中，失败 ${failed}` : `状态：处理中，剩余 ${Math.max(total - completed, 0)}`)
       : (failed > 0 ? `状态：失败 ${failed}` : (total > 0 ? '状态：待启动' : '状态：空闲')),
+    stateValue: active
+      ? (failed > 0 ? `处理中，失败 ${failed}` : `处理中，剩余 ${Math.max(total - completed, 0)}`)
+      : (failed > 0 ? `失败 ${failed}` : (total > 0 ? '待启动' : '空闲')),
   };
 }
 
@@ -975,7 +1000,7 @@ function updateDetachedLimitPolicies() {
   updateDetachedLimitPolicy('tl');
 }
 
-function renderSettings(data) {
+function renderDetachedWindowSettingsFields(data) {
   const settings = data.settings || {};
   for (const [key, fallback] of Object.entries(DETACHED_WINDOW_PANEL_DEFAULTS)) {
     const node = $(key);
@@ -995,6 +1020,11 @@ function renderSettings(data) {
     }
   }
   updateDetachedLimitPolicies();
+}
+
+function renderSettings(data) {
+  const settings = data.settings || {};
+  renderDetachedWindowSettingsFields(data);
   if (els.dirExport) {
     els.dirExport.value = settings.dir_export ?? 'auto';
   }
@@ -1340,6 +1370,87 @@ function renderSettings(data) {
   syncMirroredFieldState();
 }
 
+function mergeDetachedConfigIntoState(mode, config) {
+  const normalized = normalizeDetachedMode(mode);
+  const payload = config || {};
+  state.data = state.data || {};
+  state.data.settings = state.data.settings || {};
+  state.data.detached_config = state.data.detached_config || {};
+
+  const previousConfig = state.data.detached_config[normalized] || {};
+  const nextConfig = { ...previousConfig, ...payload };
+  state.data.detached_config[normalized] = nextConfig;
+
+  const settings = state.data.settings;
+  const settingPrefix = `ex_${normalized}`;
+  const textPrefix = `tb_ex_${normalized}`;
+  let changed = false;
+  const assign = (key, value, fallback) => {
+    if (value !== undefined) {
+      if (settings[key] !== value) {
+        changed = true;
+      }
+      settings[key] = value;
+    } else if (settings[key] === undefined && fallback !== undefined) {
+      changed = true;
+      settings[key] = fallback;
+    }
+  };
+
+  for (const [key, value] of Object.entries(payload)) {
+    if (previousConfig[key] !== value) {
+      changed = true;
+    }
+  }
+
+  assign(`${settingPrefix}_geometry`, nextConfig.geometry, DETACHED_WINDOW_PANEL_DEFAULTS[`${settingPrefix}_geometry`]);
+  assign(`${settingPrefix}_pos`, nextConfig.position, DETACHED_WINDOW_PANEL_DEFAULTS[`${settingPrefix}_pos`]);
+  assign(`${settingPrefix}_always_on_top`, nextConfig.always_on_top, DETACHED_WINDOW_PANEL_DEFAULTS[`${settingPrefix}_always_on_top`]);
+  assign(`${settingPrefix}_no_title_bar`, nextConfig.no_title_bar, DETACHED_WINDOW_PANEL_DEFAULTS[`${settingPrefix}_no_title_bar`]);
+  assign(`${settingPrefix}_click_through`, nextConfig.click_through, DETACHED_WINDOW_PANEL_DEFAULTS[`${settingPrefix}_click_through`]);
+  assign(`${settingPrefix}_opacity`, nextConfig.opacity, DETACHED_WINDOW_PANEL_DEFAULTS[`${settingPrefix}_opacity`]);
+  assign(`${textPrefix}_font`, nextConfig.font, DETACHED_WINDOW_PANEL_DEFAULTS[`${textPrefix}_font`]);
+  assign(`${textPrefix}_font_bold`, nextConfig.font_bold, DETACHED_WINDOW_PANEL_DEFAULTS[`${textPrefix}_font_bold`]);
+  assign(`${textPrefix}_font_size`, nextConfig.font_size, DETACHED_WINDOW_PANEL_DEFAULTS[`${textPrefix}_font_size`]);
+  assign(`${textPrefix}_font_color`, nextConfig.font_color, DETACHED_WINDOW_PANEL_DEFAULTS[`${textPrefix}_font_color`]);
+  assign(`${textPrefix}_bg_color`, nextConfig.bg_color, DETACHED_WINDOW_PANEL_DEFAULTS[`${textPrefix}_bg_color`]);
+  assign(`${textPrefix}_limit_max`, nextConfig.limit_max, DETACHED_WINDOW_PANEL_DEFAULTS[`${textPrefix}_limit_max`]);
+  assign(`${textPrefix}_limit_max_per_line`, nextConfig.limit_max_per_line, DETACHED_WINDOW_PANEL_DEFAULTS[`${textPrefix}_limit_max_per_line`]);
+  assign(`${textPrefix}_max`, nextConfig.max, DETACHED_WINDOW_PANEL_DEFAULTS[`${textPrefix}_max`]);
+  assign(`${textPrefix}_max_per_line`, nextConfig.max_per_line, DETACHED_WINDOW_PANEL_DEFAULTS[`${textPrefix}_max_per_line`]);
+  assign(`${textPrefix}_use_conf_color`, nextConfig.use_conf_color, DETACHED_WINDOW_PANEL_DEFAULTS[`${textPrefix}_use_conf_color`]);
+  return changed;
+}
+
+async function refreshDetachedWindowConfigState(modeOverride = null, options = {}) {
+  if (typeof pywebview === 'undefined' || !pywebview.api) {
+    return false;
+  }
+
+  const rerender = options.rerender !== false;
+  const forceRerender = options.forceRerender === true;
+  const modes = modeOverride ? [normalizeDetachedMode(modeOverride)] : ['tc', 'tl'];
+  let changed = false;
+  for (const mode of modes) {
+    const config = await apiCall('get_detached_config', mode);
+    changed = mergeDetachedConfigIntoState(mode, config) || changed;
+  }
+
+  if (!rerender) {
+    return changed;
+  }
+
+  if (!changed && !forceRerender) {
+    return false;
+  }
+
+  const data = state.data || {};
+  renderDetachedWindowSettingsFields(data);
+  renderDetachedWindowOverview(data);
+  renderSettingsPanelSummaries(data);
+  return true;
+}
+
 function renderAbout(data) {
   if (!els.aboutCard) {
     return;
@@ -1422,6 +1533,27 @@ function syncLogAutoRefresh() {
 function renderMainControls(data) {
   const mainUi = data.main_ui || {};
   const recordUi = data.record_ui || {};
+  const runtimeSummary = resolveModelRuntimeSummary(data);
+  const compactEngineLabel = (engine) => {
+    const raw = String(engine || '').trim();
+    if (!raw) {
+      return '已关闭';
+    }
+    const lower = raw.toLowerCase();
+    if (lower.includes('selenium') && lower.includes('translate')) {
+      return 'Selenium';
+    }
+    if (lower.includes('google') && lower.includes('translate')) {
+      return 'Google';
+    }
+    if (lower.includes('deepl')) {
+      return 'DeepL';
+    }
+    return raw
+      .replace(/\s+translate$/i, '')
+      .replace(/\s+translator$/i, '')
+      .trim();
+  };
   if (els.inputMode) populateSelect(els.inputMode, mainUi.input_options || [], mainUi.selected_input || '');
   if (els.hostAPI) populateSelect(els.hostAPI, recordUi.host_api_options || [], recordUi.selected_host_api || recordUi.host_api || '');
   if (els.mic) populateSelect(els.mic, recordUi.mic_options || [], recordUi.selected_mic || recordUi.mic || '');
@@ -1440,12 +1572,16 @@ function renderMainControls(data) {
   if (els.translateMain) els.translateMain.checked = Boolean(mainUi.translate ?? true);
   els.mainInputPill.textContent = mainUi.selected_input || '未设置';
   if (els.mainModelPill) {
-    const modelLabel = mainUi.selected_model || '未设置';
-    const backendLabel = mainUi.selected_backend || '未设置';
-    els.mainModelPill.textContent = `${modelLabel} · ${backendLabel}`;
+    const modelLabel = String(mainUi.selected_model || runtimeSummary.effectiveModelKey || '').trim();
+    const backendLabel = String(mainUi.selected_backend || runtimeSummary.selectedBackend || '').trim();
+    const compactParts = [
+      modelLabel && modelLabel !== '未知' ? modelLabel : '',
+      backendLabel && backendLabel !== '后端未知' ? backendLabel : '',
+    ].filter(Boolean);
+    els.mainModelPill.textContent = compactParts.length > 0 ? compactParts.join(' · ') : '未设置';
   }
   els.mainLangPill.textContent = `${mainUi.selected_source || '自动'} → ${mainUi.selected_target || '自动'}`;
-  els.mainEnginePill.textContent = mainUi.selected_engine || '已关闭';
+  els.mainEnginePill.textContent = compactEngineLabel(mainUi.selected_engine);
   if (els.btnLoadMainModel) {
     const hasModel = Array.isArray(mainUi.model_options) && mainUi.model_options.length > 0;
     els.btnLoadMainModel.disabled = !hasModel;
@@ -1497,18 +1633,10 @@ function renderImportSettings(data) {
   els.translateImport.checked = Boolean(importUi.translate);
   els.importModelPill.textContent = `模型：${importUi.selected_model_label || importUi.selected_model_key || importUi.selected_model || '未下载'}`;
   if (els.importEnginePill) {
-    els.importEnginePill.textContent = `引擎：${importUi.selected_engine || '未知'}`;
+    els.importEnginePill.textContent = importUi.selected_engine || '未知';
   }
   if (els.fileImportLanguageState) {
-    els.fileImportLanguageState.textContent = `语言：${importUi.selected_source || '自动'} → ${importUi.selected_target || '自动'}`;
-  }
-  if (els.fileImportExportDir) {
-    const exportDir = settings.dir_export ?? 'auto';
-    els.fileImportExportDir.textContent = summarizeSettingText(exportDir, 'auto', 30);
-  }
-  if (els.fileImportExportMeta) {
-    const engine = importUi.selected_engine || '未知';
-    els.fileImportExportMeta.textContent = `引擎：${engine}`;
+    els.fileImportLanguageState.textContent = `${importUi.selected_source || '自动'} → ${importUi.selected_target || '自动'}`;
   }
   if (els.fileImportExportFormat) {
     els.fileImportExportFormat.textContent = summarizeSettingText(
@@ -1519,29 +1647,10 @@ function renderImportSettings(data) {
   }
   if (els.fileImportExportFormatMeta) {
     const formats = Array.isArray(settings.export_to) ? settings.export_to : [];
-    const autoOpen = settings.auto_open_dir_export ? '自动打开目录' : '不自动打开';
     const exportFormats = formats.length > 0
       ? formats.map((item) => String(item).toUpperCase()).join(' / ')
       : '未设置格式';
-    els.fileImportExportFormatMeta.textContent = `${exportFormats} · ${autoOpen}`;
-  }
-  if (els.fileImportSliceRange) {
-    els.fileImportSliceRange.textContent = summarizeFileSliceRange(
-      settings.file_slice_start,
-      settings.file_slice_end
-    );
-  }
-  if (els.fileImportSliceMeta) {
-    const splitMode = String(settings.segment_split_or_newline || 'split');
-    const limits = [];
-    if (String(settings.segment_max_words ?? '').trim()) {
-      limits.push(`${settings.segment_max_words}词`);
-    }
-    if (String(settings.segment_max_chars ?? '').trim()) {
-      limits.push(`${settings.segment_max_chars}字`);
-    }
-    const limitText = limits.length > 0 ? limits.join(' / ') : '不限长';
-    els.fileImportSliceMeta.textContent = `${splitMode} · ${limitText}`;
+    els.fileImportExportFormatMeta.textContent = exportFormats;
   }
   if (els.fileImportFilterState) {
     els.fileImportFilterState.textContent = settings.filter_file_import ? '已启用' : '已关闭';
@@ -1564,6 +1673,12 @@ function renderImportSettings(data) {
       updateFileImportListUI(queued);
       state.fileImportQueue = queued;
     }
+    if (els.fileImportFormatState) {
+      const formats = Array.isArray(settings.export_to) ? settings.export_to : [];
+      els.fileImportFormatState.textContent = formats.length > 0
+        ? formats.map((item) => String(item).toUpperCase()).join(' / ')
+        : '未设置';
+    }
     renderFileImportProcessingOverview();
   } catch (e) {
     console.debug('Failed to render import queue', e);
@@ -1580,17 +1695,14 @@ function updateFileImportListUI(files) {
   if (!els.fileImportList) return;
   const list = Array.isArray(files) ? files : [];
   if (!list || list.length === 0) {
-    els.fileImportList.classList.add('is-empty');
     els.fileImportList.innerHTML = `
-      <li class="file-queue-empty">
-        <div class="file-queue-empty-title">队列为空</div>
-        <div class="file-queue-empty-meta">可以拖入音频/视频文件，或点击左上角导入按钮。</div>
+      <li class="file-vnext-queue-empty">
+        <strong>暂无文件</strong>
+        <span>导入音频或视频开始处理</span>
       </li>
     `;
     return;
   }
-
-  els.fileImportList.classList.remove('is-empty');
 
   // 辅助函数：根据状态文字生成对应的 HTML（包含进度条动画）
   const renderStatusCell = (statusText) => {
@@ -1700,10 +1812,13 @@ function renderFileImportProcessingOverview() {
   const summary = resolveFileProcessingSummary();
 
   if (els.fileImportQueueCount) {
-    els.fileImportQueueCount.textContent = summary.queueLabel;
+    els.fileImportQueueCount.textContent = summary.queueValue;
   }
   if (els.fileImportProcessingState) {
-    els.fileImportProcessingState.textContent = summary.stateLabel;
+    els.fileImportProcessingState.textContent = summary.stateValue;
+  }
+  if (els.fileImportQueueInlineCount) {
+    els.fileImportQueueInlineCount.textContent = summary.queueInlineLabel;
   }
 }
 
@@ -2390,16 +2505,10 @@ function renderGlobalStatusBar(task, data, recordingState = null) {
   const idleTaskState = hasError ? '错误' : '空闲';
   const recordingSummary = recActive
     ? [
-        isCompactViewport()
-          ? `${recordingState?.timer || '--:--:--'} · ${recordingState?.sentences || '0'}句`
-          : `计时 ${recordingState?.timer || '--:--:--'}`,
-        isCompactViewport()
-          ? null
-          : `缓冲 ${recordingState?.buffer || `${recordingState?.buffer_seconds || 0}/${recordingState?.max_buffer_seconds || 0} sec`}`,
-        isCompactViewport()
-          ? null
-          : `句子 ${recordingState?.sentences || '0'}`,
-      ].filter(Boolean).join(' | ')
+        `${recordingState?.timer || '--:--:--'}`,
+        `${recordingState?.buffer || `${recordingState?.buffer_seconds || 0}/${recordingState?.max_buffer_seconds || 0}s`}`,
+        `${recordingState?.sentences || '0'}句`,
+      ].filter(Boolean).join(' · ')
     : '';
 
   const taskMessage = recActive
@@ -2407,11 +2516,7 @@ function renderGlobalStatusBar(task, data, recordingState = null) {
     : active
       ? (task?.message || '正在处理任务...')
       : (hasError ? String(task?.error || '任务异常') : '等待任务');
-  const modelState = loaded
-    ? `已加载 (${modelKey})`
-    : loading
-      ? `加载中 (${modelKey})`
-      : `未加载 (${modelKey})`;
+  const modelState = modelKey || '未设置';
 
   if (els.globalModelState) {
     els.globalModelState.textContent = modelState;
@@ -2419,10 +2524,10 @@ function renderGlobalStatusBar(task, data, recordingState = null) {
   if (els.globalModelMeta) {
     const runtimeMsg = normalizeMessage(runtime.message);
     const modelMeta = loaded
-      ? (runtimeMsg || '模型缓存可用')
+      ? '缓存可用'
       : loading
-        ? `${runtimeMsg || '正在准备模型缓存'}${runtimeElapsed > 0 ? ` · 已耗时 ${runtimeElapsed.toFixed(0)}s` : ''}`
-        : (runtimeMsg && runtimeMsg.includes('失败') ? runtimeMsg : '可点击 Load Model 预加载');
+        ? `${runtimeMsg || '准备缓存'}${runtimeElapsed > 0 ? ` · ${runtimeElapsed.toFixed(0)}s` : ''}`
+        : (runtimeMsg && runtimeMsg.includes('失败') ? runtimeMsg : '未预加载');
     els.globalModelMeta.textContent = modelMeta;
   }
 
@@ -2444,9 +2549,9 @@ function renderGlobalStatusBar(task, data, recordingState = null) {
 
   if (els.realtimeModelState) {
     els.realtimeModelState.textContent = loaded
-      ? modelKey
+      ? '已加载'
       : loading
-        ? `${modelKey} 加载中`
+        ? '加载中'
         : '未加载';
   }
   if (els.realtimeModelMeta) {
@@ -2515,7 +2620,10 @@ function syncRecordingButton(recordingState) {
 function syncImportButton(active) {
   if (!els.btnImportStart) return;
   const isActive = Boolean(active);
-  els.btnImportStart.textContent = isActive ? '停止处理' : '开始处理';
+  els.btnImportStart.innerHTML = `
+    <span class="file-vnext-run-dot" aria-hidden="true"></span>
+    <span>${isActive ? '停止处理' : '开始处理'}</span>
+  `;
   els.btnImportStart.dataset.action = isActive ? 'stop-import-queue' : 'start-import-queue';
   els.btnImportStart.classList.toggle('is-stop', isActive);
 }
@@ -2795,6 +2903,15 @@ async function refreshTaskState() {
     syncRecordingButton(recordingState);
   } catch (error) {
     console.debug('Recording button sync skipped', error);
+  }
+  try {
+    const detachedConfigChanged = await refreshDetachedWindowConfigState(null, { rerender: false });
+    if (detachedConfigChanged) {
+      renderDetachedWindowSettingsFields(state.data || {});
+      renderSettingsPanelSummaries(state.data || {});
+    }
+  } catch (error) {
+    console.debug('Detached window config refresh skipped', error);
   }
   renderGlobalStatusBar(task, state.data, recordingState || state.data?.recording_state || null);
   renderRecordingVisualizer(recordingState || state.data?.recording_state || null);
@@ -3251,12 +3368,12 @@ function collectImportSpecificSettingUpdates() {
     ['target_lang_f_import', readStringValue(els.targetImport, '')],
     ['transcribe_f_import', readBooleanValue(els.transcribeImport, true)],
     ['translate_f_import', readBooleanValue(els.translateImport, true)],
-    ['filter_file_import', readBooleanValue(els.filterFileImport, true)],
+    ['filter_file_import', readBooleanValue(els.filterFileImportFile || els.filterFileImport, true)],
     ['filter_file_import_case_sensitive', readBooleanValue(els.filterFileImportCaseSensitive, false)],
     ['filter_file_import_strip', readBooleanValue(els.filterFileImportStrip, true)],
-    ['filter_file_import_exact_match', readBooleanValue(els.filterFileImportExactMatch, false)],
+    ['filter_file_import_exact_match', readBooleanValue(els.filterFileImportExactMatchFile || els.filterFileImportExactMatch, false)],
     ['filter_file_import_ignore_punctuations', readStringValue(els.filterFileImportIgnorePunctuations, "\"',.?!")],
-    ['filter_file_import_similarity', readNumberValue(els.filterFileImportSimilarity, 0.75)],
+    ['filter_file_import_similarity', readNumberValue(els.filterFileImportSimilarityFile || els.filterFileImportSimilarity, 0.75)],
   ];
 }
 
@@ -3325,6 +3442,7 @@ const AUTO_SAVE_BUCKETS = {
     'model_f_import', 'tl_engine_f_import', 'source_lang_f_import', 'target_lang_f_import',
     'transcribe_f_import', 'translate_f_import',
     'filter_file_import', 'filter_file_import_case_sensitive', 'filter_file_import_strip', 'filter_file_import_exact_match', 'filter_file_import_ignore_punctuations', 'filter_file_import_similarity',
+    'filter_file_import_file', 'filter_file_import_exact_match_file', 'filter_file_import_similarity_file',
   ]),
   fileShared: new Set([
     'dir_export', 'dir_export_file',
@@ -3348,6 +3466,13 @@ const AUTO_SAVE_BUCKETS = {
     'word_level', 'word_level_toolbar',
     'file_slice_start', 'file_slice_end',
     'path_filter_file_import',
+    'export_format_file',
+    'segment_max_words_file',
+    'segment_max_chars_file',
+    'segment_split_or_newline_file',
+    'file_slice_start_file',
+    'file_slice_end_file',
+    'path_filter_file_import_file',
   ]),
   detachedMain: new Set([
     ...Object.values(DETACHED_WINDOW_MIRROR_PAIRS).flat().map(([mirrorId]) => mirrorId),
@@ -3483,7 +3608,7 @@ async function createDetachedWindow(modeOverride = null) {
     if (result && result.status === 'closed') {
       state.detachedOpen[mode] = false;
       state.detachedVisible[mode] = false;
-      renderDetachedWindowOverview(state.data || {});
+      await refreshDetachedWindowConfigState(mode, { forceRerender: true });
       console.log(`已关闭${modeLabel}独立窗口`);
       return;
     }
@@ -3491,7 +3616,7 @@ async function createDetachedWindow(modeOverride = null) {
     state.detachedOpen[mode] = true;
     state.detachedVisible[mode] = true;
     await apiCall('update_detached_config', mode);
-    renderDetachedWindowOverview(state.data || {});
+    await refreshDetachedWindowConfigState(mode, { forceRerender: true });
     console.log(`Created ${modeLabel} detached window:`, result);
     console.log(`已打开${modeLabel}独立窗口`);
   } catch (error) {
@@ -3524,7 +3649,7 @@ async function controlDetachedWindow(action, modeOverride = null) {
       state.detachedOpen[mode] = false;
       state.detachedVisible[mode] = false;
     }
-    renderDetachedWindowOverview(state.data || {});
+    await refreshDetachedWindowConfigState(mode, { forceRerender: true });
     console.log(`${modeLabel}独立窗口操作完成:`, result);
   } catch (error) {
     console.error(`${modeLabel}独立窗口操作失败:`, error);
@@ -4335,15 +4460,19 @@ async function init() {
     els.autoOpenDirExport = $('auto_open_dir_export');
     els.autoOpenDirExportFile = $('auto_open_dir_export_file');
     els.exportFormat = $('export_format');
+    els.exportFormatFile = $('export_format_file');
     els.autoOpenDirExportToolbar = $('auto_open_dir_export_toolbar');
     els.exportFormatToolbar = $('export_format_toolbar');
     els.removeRepetitionFileImport = $('remove_repetition_file_import');
     els.removeRepetitionAmount = $('remove_repetition_amount');
     els.segmentMaxWords = $('segment_max_words');
+    els.segmentMaxWordsFile = $('segment_max_words_file');
     els.segmentMaxWordsToolbar = $('segment_max_words_toolbar');
     els.segmentMaxChars = $('segment_max_chars');
+    els.segmentMaxCharsFile = $('segment_max_chars_file');
     els.segmentMaxCharsToolbar = $('segment_max_chars_toolbar');
     els.segmentSplitOrNewline = $('segment_split_or_newline');
+    els.segmentSplitOrNewlineFile = $('segment_split_or_newline_file');
     els.segmentSplitOrNewlineToolbar = $('segment_split_or_newline_toolbar');
     els.segmentEvenSplit = $('segment_even_split');
     els.segmentEvenSplitToolbar = $('segment_even_split_toolbar');
@@ -4381,6 +4510,8 @@ async function init() {
     els.whisperArgs = $('whisper_args');
     els.fileSliceStart = $('file_slice_start');
     els.fileSliceEnd = $('file_slice_end');
+    els.fileSliceStartFile = $('file_slice_start_file');
+    els.fileSliceEndFile = $('file_slice_end_file');
     els.autoOpenDirTranslate = $('auto_open_dir_translate');
     els.autoOpenDirTranslateFile = $('auto_open_dir_translate_file');
     els.autoOpenDirRefinement = $('auto_open_dir_refinement');
@@ -4397,6 +4528,7 @@ async function init() {
     els.debugTranslate = $('debug_translate');
     els.pathFilterRec = $('path_filter_rec');
     els.pathFilterFileImport = $('path_filter_file_import');
+    els.pathFilterFileImportFile = $('path_filter_file_import_file');
     els.colorizePerSegment = $('colorize_per_segment');
     els.colorizePerWord = $('colorize_per_word');
     els.gradientLowConf = $('gradient_low_conf');
@@ -4553,8 +4685,10 @@ async function init() {
     els.modelSelectionRuntime = $('model-selection-runtime');
     els.modelSelectionRuntimeMeta = $('model-selection-runtime-meta');
     els.fileImportQueueCount = $('file-import-queue-count');
+    els.fileImportQueueInlineCount = $('file-import-queue-inline-count');
     els.fileImportProcessingState = $('file-import-processing-state');
     els.fileImportLanguageState = $('file-import-language-state');
+    els.fileImportFormatState = $('file-import-format-state');
     els.fileImportExportDir = $('file-import-export-dir');
     els.fileImportExportMeta = $('file-import-export-meta');
     els.fileImportExportFormat = $('file-import-export-format');
@@ -4614,11 +4748,14 @@ async function init() {
     els.filterRecIgnorePunctuations = $('filter_rec_ignore_punctuations');
     els.filterRecSimilarity = $('filter_rec_similarity');
     els.filterFileImport = $('filter_file_import');
+    els.filterFileImportFile = $('filter_file_import_file');
     els.filterFileImportCaseSensitive = $('filter_file_import_case_sensitive');
     els.filterFileImportStrip = $('filter_file_import_strip');
     els.filterFileImportExactMatch = $('filter_file_import_exact_match');
+    els.filterFileImportExactMatchFile = $('filter_file_import_exact_match_file');
     els.filterFileImportIgnorePunctuations = $('filter_file_import_ignore_punctuations');
     els.filterFileImportSimilarity = $('filter_file_import_similarity');
+    els.filterFileImportSimilarityFile = $('filter_file_import_similarity_file');
 
     // Per-language initial prompts UI
     els.enableInitialPrompts = $('enable_initial_prompt');

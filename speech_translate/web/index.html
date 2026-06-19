@@ -8,7 +8,7 @@
   <style>
     html, body { background: #f5f5f5; }
   </style>
-  <link rel="stylesheet" href="styles.css?v=20260618-ui-cn-55" />
+  <link rel="stylesheet" href="styles.css?v=20260619-ui-cn-63" />
 </head>
 
 <body>
@@ -33,11 +33,18 @@
               class="menu-icon menu-icon-settings"></span><span>设置</span></button>
         </nav>
         <div class="sidebar-actions" aria-label="窗口操作">
-          <button class="side-action" data-action="hide-to-tray" title="隐藏到托盘" aria-label="隐藏到托盘">
-            <span class="btn-glyph glyph-detach" aria-hidden="true"></span><span>托盘</span>
+          <button class="side-action side-action-icon" data-open-dir="model" title="打开模型目录" aria-label="打开模型目录">
+            <span class="btn-glyph glyph-model-dir" aria-hidden="true"></span>
           </button>
-          <button class="side-action side-action-danger" data-action="quit-app" title="退出程序" aria-label="退出程序">
-            <span class="btn-glyph glyph-close" aria-hidden="true"></span><span>退出</span>
+          <button class="side-action side-action-icon" data-open-dir="export" title="打开导出目录" aria-label="打开导出目录">
+            <span class="btn-glyph glyph-folder-export" aria-hidden="true"></span>
+          </button>
+          <span class="sidebar-actions-divider" aria-hidden="true"></span>
+          <button class="side-action side-action-icon" data-action="hide-to-tray" title="隐藏到托盘" aria-label="隐藏到托盘">
+            <span class="btn-glyph glyph-tray" aria-hidden="true"></span>
+          </button>
+          <button class="side-action side-action-icon side-action-danger" data-action="quit-app" title="退出程序" aria-label="退出程序">
+            <span class="btn-glyph glyph-close" aria-hidden="true"></span>
           </button>
         </div>
       </aside>
@@ -153,193 +160,206 @@
             </article>
 
             <article class="workflow-card tab-panel" id="tab-file" role="tabpanel">
-              <section class="panel-card core-card">
-                <div class="section-head">
-                  <div>
+              <div class="file-vnext-stack">
+                <section class="file-vnext-surface file-vnext-command-panel">
+                  <header class="file-vnext-head">
                     <h3>文件转写</h3>
-                  </div>
-                  <div class="floating-action-row">
-                    <button class="btn-icon btn-icon-blue" data-action="add-files-to-queue" data-tooltip="导入文件"
-                      title="导入文件"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
-                    <button class="btn-icon" data-action="clear-import-queue" data-tooltip="清空队列" title="清空队列"><span
-                        class="btn-glyph glyph-trash" aria-hidden="true"></span></button>
-                  </div>
-                </div>
+                    <div class="file-vnext-head-actions" aria-label="队列操作">
+                      <button class="icon-action" type="button" data-action="add-files-to-queue" title="导入文件" aria-label="导入文件">
+                        <span class="btn-glyph glyph-folder" aria-hidden="true"></span>
+                      </button>
+                      <button class="icon-action icon-action-danger" type="button" data-action="clear-import-queue" title="清空队列" aria-label="清空队列">
+                        <span class="btn-glyph glyph-trash" aria-hidden="true"></span>
+                      </button>
+                    </div>
+                  </header>
 
-                <div class="hero-toolbar hero-toolbar-compact">
-                  <div class="hero-toolbar-main">
-                    <button class="btn-with-icon btn-major" data-action="import-files">一键导入并处理</button>
-                    <button class="primary btn-with-icon btn-recording" data-action="start-import-queue"
-                      id="btn-import-start">开始处理</button>
-                    <span class="hero-toolbar-caption">批量导入后统一处理。</span>
-                  </div>
-                  <div class="hero-toolbar-pills">
-                    <label class="toggle-row"><input id="transcribe_f_import" type="checkbox" /> 转写</label>
-                    <label class="toggle-row"><input id="translate_f_import" type="checkbox" /> 翻译</label>
-                  </div>
-                </div>
-                <div class="status-row import-status file-import-runtime-row" aria-label="文件处理状态">
-                  <span class="pill pill-muted" id="file-import-queue-count">队列：0</span>
-                  <span class="pill pill-muted" id="file-import-processing-state">状态：空闲</span>
-                  <span class="pill pill-muted" id="file-import-language-state">语言：未知</span>
-                  <span class="pill pill-muted" id="import-engine-pill">引擎：未知</span>
-                </div>
-                <div class="file-workbench-shell">
-                  <div class="file-workbench-main">
-                    <div class="file-workspace-shell">
-                      <div class="file-queue-box">
-                        <div class="file-queue-section-head">
-                          <div class="file-queue-title">待处理队列</div>
-                        </div>
-                        <div class="file-queue-header">
-                          <span>文件名</span>
-                          <span>转写状态</span>
-                          <span>翻译状态</span>
-                          <span>操作</span>
-                        </div>
-                        <div class="file-queue-body">
-                          <ul id="file_import_list" class="file-queue-list">
-                          </ul>
-                        </div>
-                      </div>
+                  <div class="file-vnext-toolbar" aria-label="文件处理控制">
+                    <div class="file-vnext-primary-actions">
+                      <button class="file-vnext-action file-vnext-action-primary" type="button" data-action="import-files">
+                        <span class="btn-glyph glyph-folder" aria-hidden="true"></span>
+                        <span>一键导入并处理</span>
+                      </button>
+                      <button class="file-vnext-action file-vnext-action-secondary" type="button" data-action="start-import-queue" id="btn-import-start">
+                        <span class="file-vnext-run-dot" aria-hidden="true"></span>
+                        <span>开始处理</span>
+                      </button>
+                    </div>
+                    <div class="mode-toggles file-vnext-mode-toggles" aria-label="输出开关">
+                      <label class="switch-control"><input id="transcribe_f_import" type="checkbox" /><span></span><b>转写</b></label>
+                      <label class="switch-control"><input id="translate_f_import" type="checkbox" /><span></span><b>翻译</b></label>
                     </div>
                   </div>
 
-                  <aside class="file-ops-card">
-                    <div class="inline-actions file-ops-actions file-ops-actions-primary">
-                      <button type="button" class="btn-with-icon" data-action="add-files-to-queue">导入</button>
-                      <button type="button" class="btn-with-icon" data-action="pick-export-dir">设置导出</button>
-                      <button type="button" class="btn-with-icon" data-open-dir="export">打开导出</button>
-                      <button type="button" class="btn-with-icon" data-action="save-import-settings">保存配置</button>
-                    </div>
-                    <div class="file-ops-detail-list" aria-label="文件输出与过滤摘要">
-                      <div class="file-ops-detail-row">
-                        <span class="file-ops-detail-key">导出目录</span>
-                        <span class="file-ops-detail-value" id="file-import-export-dir">auto</span>
-                        <span class="file-ops-detail-meta" id="file-import-export-meta">输出设置</span>
-                      </div>
-                      <div class="file-ops-detail-row">
-                        <span class="file-ops-detail-key">导出命名</span>
-                        <span class="file-ops-detail-value" id="file-import-export-format">未设置</span>
-                        <span class="file-ops-detail-meta" id="file-import-export-format-meta">TXT / SRT / VTT ...</span>
-                      </div>
-                      <div class="file-ops-detail-row">
-                        <span class="file-ops-detail-key">文件切片</span>
-                        <span class="file-ops-detail-value" id="file-import-slice-range">全量</span>
-                        <span class="file-ops-detail-meta" id="file-import-slice-meta">Split / Newline</span>
-                      </div>
-                      <div class="file-ops-detail-row">
-                        <span class="file-ops-detail-key">导入过滤</span>
-                        <span class="file-ops-detail-value" id="file-import-filter-state">已启用</span>
-                        <span class="file-ops-detail-meta" id="file-import-filter-meta">词典 auto</span>
-                      </div>
-                    </div>
-                  </aside>
-                </div>
-              </section>
+                  <div class="file-vnext-status" aria-label="批处理状态">
+                    <span class="file-vnext-status-chip file-vnext-status-chip-strong"><i aria-hidden="true"></i><small>队列</small><span id="file-import-queue-count">0</span></span>
+                    <span class="file-vnext-status-chip"><small>状态</small><span id="file-import-processing-state">空闲</span></span>
+                    <span class="file-vnext-status-chip file-vnext-status-chip-wide"><small>语言</small><span id="file-import-language-state">自动 → 自动</span></span>
+                    <span class="file-vnext-status-chip file-vnext-status-chip-wide"><small>引擎</small><span id="import-engine-pill">未知</span></span>
+                    <span class="file-vnext-status-chip file-vnext-status-chip-wide"><small>格式</small><span id="file-import-format-state">未设置</span></span>
+                  </div>
+                </section>
 
-              <div class="dual-advanced-grid">
-                <details class="advanced-panel panel-card realtime-config-panel" open>
-                  <summary>
-                    <span class="settings-panel-heading">
-                      <span class="settings-panel-title">语言配置</span>
-                      <span class="settings-panel-meta">源/目标语言与翻译引擎</span>
-                    </span>
-                  </summary>
-                  <div class="advanced-panel-body">
-                    <div class="realtime-config-grid">
-                      <section class="realtime-config-group">
-                        <div class="realtime-config-group-head">
-                          <span class="realtime-config-group-title">识别链路</span>
+                <section class="file-vnext-surface file-vnext-workbench-shell">
+                  <div class="file-vnext-workbench">
+                    <section class="file-vnext-queue-panel" aria-label="待处理队列">
+                      <header class="file-vnext-panel-head">
+                        <h4>待处理队列</h4>
+                        <span class="file-vnext-inline-pill" id="file-import-queue-inline-count">0 个文件</span>
+                      </header>
+                      <div class="file-vnext-queue-table-head" aria-hidden="true">
+                        <span>文件名</span>
+                        <span>转写</span>
+                        <span>翻译</span>
+                        <span>操作</span>
+                      </div>
+                      <div class="file-vnext-queue-body">
+                        <ul id="file_import_list" class="file-vnext-queue-list"></ul>
+                      </div>
+                    </section>
+
+                    <aside class="file-vnext-side-panel" aria-label="处理配置">
+                      <header class="file-vnext-panel-head">
+                        <h4>处理配置</h4>
+                        <button class="icon-action" type="button" data-action="save-import-settings" title="保存文件设置" aria-label="保存文件设置">
+                          <span class="btn-glyph glyph-save" aria-hidden="true"></span>
+                        </button>
+                      </header>
+
+                      <section class="file-vnext-side-section" aria-label="导出">
+                        <h5>导出</h5>
+                        <div class="file-vnext-summary-row">
+                          <span>目录</span>
+                          <div class="file-vnext-input-row">
+                            <input id="dir_export_file" type="text" placeholder="auto" />
+                            <button class="icon-action" type="button" data-action="pick-export-dir" title="选择导出目录" aria-label="选择导出目录">
+                              <span class="btn-glyph glyph-folder" aria-hidden="true"></span>
+                            </button>
+                            <button class="icon-action" type="button" data-open-dir="export" title="打开导出目录" aria-label="打开导出目录">
+                              <span class="btn-glyph glyph-detach" aria-hidden="true"></span>
+                            </button>
+                          </div>
                         </div>
-                        <div class="form-grid compact-form-grid">
-                          <label class="field-span-2">
-                            <span>源语言</span>
-                            <select id="source_lang_f_import"></select>
-                          </label>
+                        <div class="file-vnext-summary-row">
+                          <span>命名</span>
+                          <div class="file-vnext-summary-value" id="file-import-export-format">%Y-%m-%d %f {file}/{task-lang}</div>
+                        </div>
+                        <div class="file-vnext-summary-meta" id="file-import-export-format-meta">TXT / SRT / VTT</div>
+                      </section>
+
+                      <section class="file-vnext-side-section" aria-label="格式">
+                        <h5>格式</h5>
+                        <div class="format-choice-grid" aria-label="输出格式">
+                          <label class="format-choice"><input id="export_txt" type="checkbox" /><span>TXT</span></label>
+                          <label class="format-choice"><input id="export_srt" type="checkbox" /><span>SRT</span></label>
+                          <label class="format-choice"><input id="export_vtt" type="checkbox" /><span>VTT</span></label>
+                          <label class="format-choice"><input id="export_ass" type="checkbox" /><span>ASS</span></label>
+                          <label class="format-choice"><input id="export_json" type="checkbox" /><span>JSON</span></label>
+                          <label class="format-choice"><input id="export_csv" type="checkbox" /><span>CSV</span></label>
+                          <label class="format-choice"><input id="export_tsv" type="checkbox" /><span>TSV</span></label>
+                          <label class="format-choice"><input id="export_mp4" type="checkbox" /><span>MP4</span></label>
                         </div>
                       </section>
-                      <section class="realtime-config-group">
-                        <div class="realtime-config-group-head">
-                          <span class="realtime-config-group-title">翻译链路</span>
-                        </div>
-                        <div class="form-grid compact-form-grid">
-                          <label>
-                            <span>目标语言</span>
-                            <select id="target_lang_f_import"></select>
-                          </label>
-                          <label>
-                            <span>翻译引擎</span>
-                            <select id="tl_engine_f_import"></select>
-                          </label>
+
+                      <section class="file-vnext-side-section" aria-label="过滤">
+                        <h5>过滤</h5>
+                        <div class="file-vnext-filter-preview">
+                          <span class="file-vnext-inline-pill" id="file-import-filter-state">已启用</span>
+                          <p id="file-import-filter-meta">词典 auto · 精准匹配</p>
                         </div>
                       </section>
-                    </div>
+                    </aside>
                   </div>
-                </details>
+                </section>
 
-                <details class="advanced-panel panel-card realtime-config-panel" open>
-                  <summary>
-                    <span class="settings-panel-heading">
-                      <span class="settings-panel-title">输出设置</span>
-                      <span class="settings-panel-meta">格式、目录与完成后动作</span>
-                    </span>
-                  </summary>
-                  <div class="floating-action-row">
-                    <button class="btn-icon btn-icon-blue" data-action="pick-export-dir" data-tooltip="设置导出目录"
-                      title="设置导出目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
-                  </div>
-                  <div class="advanced-panel-body">
-                    <div class="file-export-block">
-                      <div class="realtime-config-grid">
-                        <section class="realtime-config-group">
-                          <div class="realtime-config-group-head">
-                            <span class="realtime-config-group-title">输出格式</span>
-                          </div>
-                          <div class="file-export-formats file-export-format-cloud">
-                            <label class="toggle-row format-chip"><input id="export_txt" type="checkbox" /> TXT</label>
-                            <label class="toggle-row format-chip"><input id="export_srt" type="checkbox" /> SRT</label>
-                            <label class="toggle-row format-chip"><input id="export_vtt" type="checkbox" /> VTT</label>
-                            <label class="toggle-row format-chip"><input id="export_ass" type="checkbox" /> ASS</label>
-                            <label class="toggle-row format-chip"><input id="export_json" type="checkbox" /> JSON</label>
-                            <label class="toggle-row format-chip"><input id="export_csv" type="checkbox" /> CSV</label>
-                            <label class="toggle-row format-chip"><input id="export_tsv" type="checkbox" /> TSV</label>
-                            <label class="toggle-row format-chip"><input id="export_mp4" type="checkbox" /> MP4</label>
-                          </div>
-                        </section>
-                        <section class="realtime-config-group">
-                          <div class="realtime-config-group-head">
-                            <span class="realtime-config-group-title">目录策略</span>
-                          </div>
-                          <div class="file-export-grid form-grid compact-form-grid">
-                            <label class="field-span-2">
-                              <span>导出目录</span>
-                              <div class="input-action-row">
-                                <input id="dir_export_file" type="text" placeholder="auto" />
-                                <div class="inline-actions compact-gap">
-                                  <button type="button" class="btn-icon btn-icon-blue" data-action="pick-export-dir"
-                                    data-tooltip="选择导出目录" title="选择导出目录"><span class="btn-glyph glyph-folder"
-                                      aria-hidden="true"></span></button>
-                                  <button type="button" class="btn-icon" data-open-dir="export"
-                                    data-tooltip="打开导出目录" title="打开导出目录"><span class="btn-glyph glyph-detach"
-                                      aria-hidden="true"></span></button>
-                                </div>
-                              </div>
-                            </label>
-                          </div>
-                        </section>
-                        <section class="realtime-config-group">
-                          <div class="realtime-config-group-head">
-                            <span class="realtime-config-group-title">完成动作</span>
-                          </div>
-                          <div class="file-export-grid file-export-actions-grid form-grid compact-form-grid">
-                            <label class="toggle-row file-export-action-toggle"><input id="auto_open_dir_export_file" type="checkbox" /> 任务完成后自动打开目录</label>
-                          </div>
-                        </section>
-                      </div>
+                <div class="file-vnext-config-grid">
+                  <section class="file-vnext-surface file-vnext-config-panel">
+                    <header class="file-vnext-panel-head">
+                      <h4>语言配置</h4>
+                    </header>
+                    <div class="file-vnext-field-grid file-vnext-language-grid">
+                      <label class="file-vnext-field">
+                        <span>源语言</span>
+                        <select id="source_lang_f_import"></select>
+                      </label>
+                      <label class="file-vnext-field">
+                        <span>目标语言</span>
+                        <select id="target_lang_f_import"></select>
+                      </label>
+                      <label class="file-vnext-field file-vnext-span-2">
+                        <span>翻译引擎</span>
+                        <select id="tl_engine_f_import"></select>
+                      </label>
                     </div>
-                  </div>
-                </details>
+                  </section>
+
+                  <section class="file-vnext-surface file-vnext-config-panel">
+                    <header class="file-vnext-panel-head">
+                      <h4>输出与过滤</h4>
+                    </header>
+                    <div class="file-vnext-field-grid file-vnext-output-grid">
+                      <label class="file-vnext-field file-vnext-span-2">
+                        <span>命名模板</span>
+                        <input id="export_format_file" type="text" placeholder="%Y-%m-%d %f {file}/{task-lang}" />
+                      </label>
+                      <label class="file-vnext-field">
+                        <span>切片模式</span>
+                        <select id="segment_split_or_newline_file">
+                          <option value="split">split</option>
+                          <option value="newline">newline</option>
+                        </select>
+                      </label>
+                      <div class="file-vnext-field">
+                        <span>任务完成后</span>
+                        <label class="switch-control file-vnext-inline-switch">
+                          <input id="auto_open_dir_export_file" type="checkbox" />
+                          <span></span>
+                          <b>自动打开目录</b>
+                        </label>
+                      </div>
+                      <label class="file-vnext-field">
+                        <span>起始位置</span>
+                        <input id="file_slice_start_file" type="text" placeholder="留空表示从头开始" />
+                      </label>
+                      <label class="file-vnext-field">
+                        <span>结束位置</span>
+                        <input id="file_slice_end_file" type="text" placeholder="留空表示处理到末尾" />
+                      </label>
+                      <label class="file-vnext-field">
+                        <span>每段最多词数</span>
+                        <input id="segment_max_words_file" type="text" placeholder="留空表示不限制" />
+                      </label>
+                      <label class="file-vnext-field">
+                        <span>每段最多字符</span>
+                        <input id="segment_max_chars_file" type="text" placeholder="留空表示不限制" />
+                      </label>
+                      <label class="file-vnext-field file-vnext-span-2">
+                        <span>过滤词典</span>
+                        <input id="path_filter_file_import_file" type="text" placeholder="auto" />
+                      </label>
+                      <div class="file-vnext-field">
+                        <span>导入过滤</span>
+                        <label class="switch-control file-vnext-inline-switch">
+                          <input id="filter_file_import_file" type="checkbox" />
+                          <span></span>
+                          <b>启用过滤</b>
+                        </label>
+                      </div>
+                      <div class="file-vnext-field">
+                        <span>匹配策略</span>
+                        <label class="switch-control file-vnext-inline-switch">
+                          <input id="filter_file_import_exact_match_file" type="checkbox" />
+                          <span></span>
+                          <b>精准匹配</b>
+                        </label>
+                      </div>
+                      <label class="file-vnext-field file-vnext-span-2">
+                        <span>相似度阈值</span>
+                        <input id="filter_file_import_similarity_file" type="number" min="0.1" max="1.0" step="0.01" />
+                      </label>
+                    </div>
+                  </section>
+                </div>
               </div>
             </article>
 
@@ -349,12 +369,6 @@
                   <header class="panel-head realtime-hero-head">
                     <div>
                       <h2>实时转写</h2>
-                    </div>
-                    <div class="header-actions realtime-head-actions" aria-label="独立窗口快捷入口">
-                      <button class="icon-action" data-action="create-detached-tc" data-tooltip="打开转写独立窗口"
-                        title="打开转写独立窗口" aria-label="打开转写独立窗口"><span class="btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
-                      <button class="icon-action" data-action="create-detached-tl" data-tooltip="打开翻译独立窗口"
-                        title="打开翻译独立窗口" aria-label="打开翻译独立窗口"><span class="btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
                     </div>
                   </header>
                   <div class="realtime-toolbar" aria-label="实时控制">
@@ -366,29 +380,37 @@
                       <label class="switch-control"><input id="transcribe_mw" type="checkbox" checked /><span></span><b>转写</b></label>
                       <label class="switch-control"><input id="translate_mw" type="checkbox" checked /><span></span><b>翻译</b></label>
                     </div>
-                    <div class="audio-meter record-visualizer-card realtime-live-meter" id="record_visualizer_card" aria-live="polite">
-                      <div class="meter-label record-visualizer-head">
-                        <span id="record_visualizer_label">等待录制</span>
-                        <strong id="record_visualizer_db">- dB</strong>
+                    <div class="realtime-toolbar-utility">
+                      <div class="audio-meter record-visualizer-card realtime-live-meter" id="record_visualizer_card" aria-live="polite">
+                        <div class="meter-label record-visualizer-head">
+                          <span id="record_visualizer_label">等待录制</span>
+                          <strong id="record_visualizer_db">- dB</strong>
+                        </div>
+                        <div class="meter-track record-visualizer-track" aria-hidden="true">
+                          <div class="record-visualizer-threshold" id="record_visualizer_threshold"></div>
+                          <div class="meter-fill record-visualizer-fill" id="record_visualizer_fill"></div>
+                        </div>
+                        <div class="record-visualizer-meta sr-only">
+                          <span id="record_visualizer_threshold_text">阈值 - dB</span>
+                        </div>
                       </div>
-                      <div class="meter-track record-visualizer-track" aria-hidden="true">
-                        <div class="record-visualizer-threshold" id="record_visualizer_threshold"></div>
-                        <div class="meter-fill record-visualizer-fill" id="record_visualizer_fill"></div>
-                      </div>
-                      <div class="record-visualizer-meta sr-only">
-                        <span id="record_visualizer_threshold_text">阈值 - dB</span>
+                      <div class="header-actions realtime-toolbar-actions" aria-label="独立窗口快捷入口">
+                        <button class="icon-action" data-action="create-detached-tc" data-tooltip="打开转写独立窗口"
+                          title="打开转写独立窗口" aria-label="打开转写独立窗口"><span class="btn-glyph glyph-detach-tc" aria-hidden="true"></span></button>
+                        <button class="icon-action" data-action="create-detached-tl" data-tooltip="打开翻译独立窗口"
+                          title="打开翻译独立窗口" aria-label="打开翻译独立窗口"><span class="btn-glyph glyph-detach-tl" aria-hidden="true"></span></button>
                       </div>
                     </div>
                   </div>
 
                   <div class="status-strip realtime-runtime-strip" aria-label="实时录制概览">
-                    <span class="status-chip status-chip-strong realtime-runtime-item realtime-runtime-item-wide"><i aria-hidden="true"></i><span id="realtime-task-state">空闲</span><span class="sr-only" id="realtime-task-message">等待任务</span></span>
-                    <span class="status-chip realtime-runtime-item"><small>模型</small><span id="main-model-pill">未设置</span><span class="status-dot">·</span><span id="realtime-model-state">未加载</span><span class="sr-only" id="realtime-model-meta">等待同步</span><span class="sr-only" id="main-input-pill">未设置</span></span>
-                    <span class="status-chip realtime-runtime-item"><small>语言</small><span id="main-lang-pill">未设置</span><span class="sr-only" id="main-engine-pill">已关闭</span></span>
-                    <span class="status-chip realtime-runtime-item"><small>录制</small><span id="realtime-recording-timer">--:--:--</span></span>
-                    <span class="status-chip realtime-runtime-item"><small>缓冲</small><span id="realtime-recording-buffer">0/0 sec</span></span>
-                    <span class="status-chip realtime-runtime-item"><small>句数</small><span id="realtime-recording-sentences">0</span></span>
-                    <span class="status-chip realtime-runtime-item"><small>输入</small><span id="realtime-recording-device">输入未绑定</span></span>
+                    <span class="status-chip status-chip-strong status-chip-state realtime-runtime-item"><i aria-hidden="true"></i><span id="realtime-task-state">空闲</span><span class="sr-only" id="realtime-task-message">等待任务</span></span>
+                    <span class="status-chip status-chip-model realtime-runtime-item"><small>模型</small><span id="main-model-pill">未设置</span><span class="status-dot">·</span><span id="realtime-model-state">未加载</span><span class="sr-only" id="realtime-model-meta">等待同步</span></span>
+                    <span class="status-chip status-chip-language realtime-runtime-item"><small>语言</small><span id="main-lang-pill">未设置</span><span class="status-dot">·</span><span id="main-engine-pill">已关闭</span></span>
+                    <span class="status-chip status-chip-timer realtime-runtime-item"><small>录制</small><span id="realtime-recording-timer">--:--:--</span></span>
+                    <span class="status-chip status-chip-buffer realtime-runtime-item"><small>缓冲</small><span id="realtime-recording-buffer">0/0 sec</span></span>
+                    <span class="status-chip status-chip-sentences realtime-runtime-item"><small>句数</small><span id="realtime-recording-sentences">0</span></span>
+                    <span class="status-chip status-chip-device realtime-runtime-item"><small>输入</small><span id="realtime-recording-device">输入未绑定</span><span class="sr-only" id="main-input-pill">未设置</span></span>
                   </div>
 
                   <div class="output-grid transcript-shell" aria-label="实时输出">
@@ -1793,7 +1815,7 @@
     </section>
   </div>
 
-  <script src="app.js?v=20260618-ui-cn-55"></script>
+  <script src="app.js?v=20260619-ui-cn-63"></script>
 </body>
 
 </html>
