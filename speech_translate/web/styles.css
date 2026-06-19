@@ -7612,6 +7612,177 @@ button.btn-icon:hover {
   color: #344154;
 }
 
+#settings-shell .icon {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  color: currentColor;
+}
+
+#settings-shell .icon::before,
+#settings-shell .icon::after {
+  content: "";
+  position: absolute;
+  box-sizing: border-box;
+}
+
+#settings-shell .icon-save::before {
+  inset: 1px 2px 1px 2px;
+  border: 2px solid currentColor;
+  border-radius: 2px;
+}
+
+#settings-shell .icon-save::after {
+  left: 5px;
+  top: 4px;
+  width: 6px;
+  height: 2px;
+  background: currentColor;
+  box-shadow: 0 6px 0 0 currentColor;
+}
+
+#settings-shell .icon-plus::before,
+#settings-shell .icon-plus::after {
+  left: 3px;
+  top: 7px;
+  width: 10px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+#settings-shell .icon-plus::after {
+  transform: rotate(90deg);
+}
+
+#settings-shell .icon-folder::before {
+  left: 1px;
+  right: 1px;
+  top: 5px;
+  bottom: 2px;
+  border: 2px solid currentColor;
+  border-radius: 2px;
+}
+
+#settings-shell .icon-folder::after {
+  left: 2px;
+  top: 3px;
+  width: 6px;
+  height: 4px;
+  border: 2px solid currentColor;
+  border-bottom: 0;
+  border-radius: 2px 2px 0 0;
+}
+
+#settings-shell .icon-open::before {
+  left: 2px;
+  bottom: 2px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid currentColor;
+  border-radius: 2px;
+}
+
+#settings-shell .icon-open::after {
+  right: 1px;
+  top: 1px;
+  width: 8px;
+  height: 8px;
+  border-top: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+}
+
+#settings-shell .icon-refresh::before {
+  inset: 2px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+}
+
+#settings-shell .icon-refresh::after {
+  right: 1px;
+  top: 2px;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+}
+
+#settings-shell .icon-search::before {
+  left: 2px;
+  top: 2px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid currentColor;
+  border-radius: 999px;
+}
+
+#settings-shell .icon-search::after {
+  right: 2px;
+  bottom: 2px;
+  width: 6px;
+  height: 2px;
+  background: currentColor;
+  transform: rotate(45deg);
+  transform-origin: center;
+}
+
+#settings-shell .icon-x::before,
+#settings-shell .icon-x::after {
+  left: 2px;
+  top: 7px;
+  width: 12px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+#settings-shell .icon-x::before {
+  transform: rotate(45deg);
+}
+
+#settings-shell .icon-x::after {
+  transform: rotate(-45deg);
+}
+
+#settings-shell .icon-window::before {
+  left: 1px;
+  top: 3px;
+  width: 11px;
+  height: 9px;
+  border: 2px solid currentColor;
+  border-radius: 2px;
+}
+
+#settings-shell .icon-window::after {
+  right: 1px;
+  top: 7px;
+  width: 8px;
+  height: 2px;
+  background: currentColor;
+  box-shadow: 3px -3px 0 -1px currentColor, 3px 3px 0 -1px currentColor;
+}
+
+#settings-shell .icon-sliders::before {
+  left: 2px;
+  right: 2px;
+  top: 4px;
+  height: 2px;
+  background: currentColor;
+  box-shadow: 0 7px 0 currentColor;
+}
+
+#settings-shell .icon-sliders::after {
+  left: 4px;
+  top: 1px;
+  width: 6px;
+  height: 6px;
+  border: 2px solid currentColor;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 5px 7px 0 -2px #fff, 5px 7px 0 0 currentColor;
+}
+
 #settings-shell .icon-action-primary {
   border-color: var(--settings-action);
   background: var(--settings-action);
@@ -7961,6 +8132,353 @@ button.btn-icon:hover {
 
 #settings-shell .settings-vnext-bridge {
   display: none !important;
+}
+
+#settings-shell .settings-advanced-stack,
+#settings-shell .settings-vnext-panel {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+#settings-shell .settings-vnext-panel {
+  border: 1px solid var(--settings-border);
+  border-radius: 16px;
+  padding: 12px 14px 14px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(47, 125, 240, 0.018), transparent 34%),
+    linear-gradient(180deg, #fff 0%, #fbfcfe 100%);
+  box-shadow: 0 12px 30px rgba(17, 24, 39, 0.042);
+}
+
+#settings-shell .settings-vnext-panel.weight-low {
+  box-shadow: 0 5px 14px rgba(17, 24, 39, 0.03);
+}
+
+#settings-shell .settings-vnext-panel.weight-mid-high {
+  border-color: #d2dbe7;
+}
+
+#settings-shell .section-grid {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+#settings-shell .two-pane,
+#settings-shell .display-mirror,
+#settings-shell .detached-grid,
+#settings-shell .decode-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#settings-shell .three-col {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+#settings-shell .four-col {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+#settings-shell .span-3 {
+  grid-column: span 3;
+}
+
+#settings-shell .settings-vnext-section {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding-top: 11px;
+  border-top: 1px solid var(--settings-hairline);
+}
+
+#settings-shell .settings-vnext-panel > .settings-vnext-section:first-of-type,
+#settings-shell .section-grid > .settings-vnext-section {
+  padding-top: 0;
+  border-top: 0;
+}
+
+#settings-shell .section-head {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#settings-shell .section-head h3 {
+  margin: 0;
+  color: #182536;
+  font-size: 13px;
+  line-height: 1.15;
+  font-weight: 700;
+}
+
+#settings-shell .field textarea {
+  min-height: 76px;
+  padding: 9px 12px;
+  resize: vertical;
+  line-height: 1.35;
+}
+
+#settings-shell .path-control {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px 32px;
+  align-items: center;
+  overflow: hidden;
+  padding-left: 12px;
+  border: 1px solid var(--settings-border);
+  border-radius: 10px;
+  background: #fff;
+  color: #1f2c3e;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+#settings-shell .path-control:has(.icon-action:only-of-type) {
+  grid-template-columns: minmax(0, 1fr) 32px;
+}
+
+#settings-shell .path-text,
+#settings-shell .path-control input.path-text {
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #1f2c3e;
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#settings-shell .path-control .icon-action {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  border-width: 0 0 0 1px;
+  border-radius: 0;
+  background: transparent;
+}
+
+#settings-shell .path-control .icon-action:last-child {
+  border-top-right-radius: 9px;
+  border-bottom-right-radius: 9px;
+}
+
+#settings-shell .format-choice-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px 10px;
+  padding-top: 2px;
+}
+
+#settings-shell .format-choice {
+  position: relative;
+  min-width: 0;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--settings-border);
+  border-radius: 999px;
+  background: #fff;
+  color: #2b3748;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+#settings-shell .format-choice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#settings-shell .format-choice:has(input:checked) {
+  border-color: var(--settings-action);
+  background: var(--settings-action);
+  color: #fff;
+}
+
+#settings-shell .toggle-grid {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+#settings-shell .toggle-grid.two {
+  display: flex;
+}
+
+#settings-shell .field-switch {
+  align-self: end;
+  min-height: 28px;
+}
+
+#settings-shell .color-field > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+#settings-shell .color-field i {
+  width: 22px;
+  height: 22px;
+  border: 1px solid #cad5e2;
+  border-radius: 8px;
+  background: var(--swatch);
+}
+
+#settings-shell .range-field input[type="range"] {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  accent-color: #4b5563;
+}
+
+#settings-shell .confidence-row,
+#settings-shell .compact-section {
+  margin-top: 1px;
+}
+
+#settings-shell .detached-card {
+  gap: 12px;
+}
+
+#settings-shell .detached-head {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#settings-shell .detached-head h3 {
+  margin: 0;
+  color: #182536;
+  font-size: 13px;
+  line-height: 1.15;
+  font-weight: 700;
+}
+
+#settings-shell .detached-head h3 span {
+  color: #778397;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+#settings-shell .detached-head p {
+  margin: 6px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--settings-text-2);
+  font-size: 11.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+#settings-shell .detached-head p i {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #aab6c6;
+}
+
+#settings-shell .detached-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#settings-shell .prompt-layout {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 12px;
+}
+
+#settings-shell .prompt-side {
+  align-content: start;
+}
+
+#settings-shell .prompt-chip {
+  justify-self: start;
+}
+
+#settings-shell .prompt-editor textarea,
+#settings-shell #initial_prompts_container textarea {
+  width: 100%;
+  min-height: 74px;
+  padding: 9px 12px;
+  border: 1px solid var(--settings-border);
+  border-radius: 10px;
+  background: #fff;
+  color: #1f2c3e;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.36;
+  resize: vertical;
+}
+
+#settings-shell #initial_prompts_container {
+  display: grid;
+  gap: 8px;
+}
+
+#settings-shell .prompt-card {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--settings-hairline);
+  border-radius: 12px;
+  background: var(--settings-surface);
+}
+
+#settings-shell .prompt-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #344154;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+#settings-shell .prompt-card-head input {
+  height: 30px;
+  min-width: 0;
+  border: 1px solid var(--settings-border);
+  border-radius: 9px;
+  padding: 0 10px;
+}
+
+#settings-shell .settings-hidden-mirrors {
+  display: none !important;
+}
+
+#settings-shell .settings-panel-hidden,
+#settings-shell .settings-workbench-card-hidden {
+  display: none !important;
+}
+
+#settings-shell .settings-panel-match,
+#settings-shell .settings-workbench-card-match {
+  border-color: rgba(37, 99, 235, 0.42);
+  box-shadow:
+    0 0 0 1px rgba(37, 99, 235, 0.10),
+    0 12px 30px rgba(37, 99, 235, 0.08);
 }
 
 @media (max-width: 1080px) {

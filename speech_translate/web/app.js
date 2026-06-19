@@ -219,6 +219,12 @@ function syncMirroredFieldState() {
     [els.pathFilterFileImportFile, els.pathFilterFileImport, 'auto'],
     [els.filterFileImportSimilarityFile, els.filterFileImportSimilarity, '0.75'],
   ]);
+  document.querySelectorAll('[data-mirror-target]').forEach((mirror) => {
+    const target = $(mirror.getAttribute('data-mirror-target') || '');
+    if (target && 'value' in mirror && 'value' in target) {
+      mirror.value = target.value;
+    }
+  });
   syncToolbarMirrorChecks([
     [els.autoOpenDirExportFile, els.autoOpenDirExport, true],
     [els.filterFileImportFile, els.filterFileImport, true],
@@ -243,6 +249,19 @@ function bindSharedFieldMirrors() {
     [els.filterFileImport, els.filterFileImportFile],
     [els.filterFileImportExactMatch, els.filterFileImportExactMatchFile],
   ]);
+  document.querySelectorAll('[data-mirror-target]').forEach((mirror) => {
+    const target = $(mirror.getAttribute('data-mirror-target') || '');
+    if (!target || !('value' in mirror) || !('value' in target)) {
+      return;
+    }
+    mirror.addEventListener('change', () => {
+      target.value = mirror.value;
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    target.addEventListener('change', () => {
+      mirror.value = target.value;
+    });
+  });
 }
 
 function syncToolbarMirrorValues(pairs = []) {
@@ -3933,7 +3952,7 @@ async function quitApp() {
 }
 
 function getSettingsPanels() {
-  return Array.from(document.querySelectorAll('#settings-shell .advanced-panel'));
+  return Array.from(document.querySelectorAll('#settings-shell .settings-vnext-panel'));
 }
 
 function normalizeSearchText(value) {
@@ -3943,6 +3962,14 @@ function normalizeSearchText(value) {
 function getSettingsPanelTitle(summary) {
   if (!summary) {
     return '';
+  }
+  const dataTitle = summary.getAttribute?.('data-settings-title');
+  if (dataTitle) {
+    return String(dataTitle).trim();
+  }
+  const headingNode = summary.querySelector?.('.panel-head h2, .section-head h3, h2, h3');
+  if (headingNode) {
+    return String(headingNode.textContent || '').trim();
   }
   const titleNode = summary.querySelector('.settings-panel-title');
   if (titleNode) {
@@ -4011,15 +4038,15 @@ function jumpToSettingsSection(sectionTitle) {
   }
 
   const panel = getSettingsPanels().find((item) => {
-    const summary = item.querySelector('summary');
-    return normalizeSearchText(getSettingsPanelTitle(summary)).includes(normalized);
+    const title = getSettingsPanelTitle(item);
+    const category = normalizeSearchText(item.getAttribute('data-settings-category') || '');
+    return normalizeSearchText(title).includes(normalized) || category.includes(normalized);
   });
   if (!panel) {
     return false;
   }
 
-  const resolvedTitle = getSettingsPanelTitle(panel.querySelector('summary'));
-  panel.open = true;
+  const resolvedTitle = getSettingsPanelTitle(panel);
   panel.classList.add('settings-panel-match');
   window.setTimeout(() => panel.classList.remove('settings-panel-match'), 1600);
   panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -4092,20 +4119,17 @@ function collectSearchTerms(root, selectors) {
 function applySettingsFilter(rawQuery = '') {
   const query = normalizeSearchText(rawQuery);
   const panels = getSettingsPanels();
-  const workbenchCards = Array.from(document.querySelectorAll('.settings-workbench-card'));
+  const workbenchCards = Array.from(document.querySelectorAll('#settings-shell .settings-workbench-card'));
   let visibleCount = 0;
   let workbenchMatchCount = 0;
 
   for (const panel of panels) {
-    const summary = panel.querySelector('summary');
     const haystack = normalizeSearchText([
-      getSettingsPanelTitle(summary),
+      getSettingsPanelTitle(panel),
+      panel.getAttribute('data-settings-category') || '',
       collectSearchTerms(panel, [
-        '.settings-panel-title',
-        '.settings-panel-meta',
-        '.settings-section-title',
-        '.settings-workbench-section-title',
-        '.settings-workbench-section-meta',
+        '.panel-head',
+        '.section-head',
         '.setting-block',
         '.block-head',
         '.setting-row',
@@ -4122,9 +4146,6 @@ function applySettingsFilter(rawQuery = '') {
     panel.classList.toggle('settings-panel-match', Boolean(query && matched));
     if (matched) {
       visibleCount += 1;
-      if (query) {
-        panel.open = true;
-      }
     }
   }
 

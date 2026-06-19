@@ -53,10 +53,10 @@ class WebUiPreviewSyncTests(unittest.TestCase):
             'data-action="load-model"',
             'data-action="check-model-current"',
             'data-action="check-all-models"',
-            'data-settings-jump="Whisper 解码参数"',
-            'data-settings-jump="翻译网络与 LibreTranslate"',
-            'data-settings-jump="录制设置（麦克风 / 扬声器）"',
-            'data-settings-jump="系统与日志"',
+            'data-settings-jump="Whisper 解码"',
+            'data-settings-jump="网络与翻译"',
+            'data-settings-jump="录制设置"',
+            'data-settings-jump="系统与路径"',
         }
         for action in required_actions:
             with self.subTest(action=action):
@@ -77,7 +77,7 @@ class WebUiPreviewSyncTests(unittest.TestCase):
             'data-action="pick-export-dir"',
             'data-action="save-import-settings"',
             'data-settings-jump="导出与切分"',
-            'data-settings-jump="幻觉过滤 (Hallucination Filter)"',
+            'data-settings-jump="过滤与词典"',
         }
         for action in required_actions:
             with self.subTest(action=action):
