@@ -18,6 +18,8 @@ def normalize_detached_mode(mode: object) -> str:
 
 @dataclass(frozen=True)
 class DetachedWindowConfig:
+    geometry: object
+    position: object
     font: object
     font_size: object
     font_bold: object
@@ -35,6 +37,8 @@ class DetachedWindowConfig:
 
     def to_payload(self) -> JsonDict:
         return {
+            "geometry": self.geometry,
+            "position": self.position,
             "font": self.font,
             "font_size": self.font_size,
             "font_bold": self.font_bold,
@@ -63,6 +67,8 @@ class DetachedWindowSettings:
 def build_detached_window_config(settings_snapshot: Mapping[str, object], mode: object) -> DetachedWindowConfig:
     normalized_mode = normalize_detached_mode(mode)
     return DetachedWindowConfig(
+        geometry=settings_snapshot.get(f"ex_{normalized_mode}_geometry", DETACHED_WINDOW_DEFAULT_GEOMETRY),
+        position=settings_snapshot.get(f"ex_{normalized_mode}_pos", ""),
         font=settings_snapshot.get(f"tb_ex_{normalized_mode}_font", "Arial"),
         font_size=settings_snapshot.get(f"tb_ex_{normalized_mode}_font_size", 13),
         font_bold=settings_snapshot.get(f"tb_ex_{normalized_mode}_font_bold", True),

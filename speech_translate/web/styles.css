@@ -7535,6 +7535,434 @@ button.btn-icon:hover {
   gap: 9px 11px;
 }
 
+/* Settings vnext: migrated from the approved prototype, scoped to the formal settings tab. */
+#settings-shell {
+  --settings-bg: #f4f5f7;
+  --settings-panel: #ffffff;
+  --settings-surface: #f8f9fb;
+  --settings-surface-2: #f2f4f7;
+  --settings-border: #d9e0ea;
+  --settings-hairline: #e8edf3;
+  --settings-text: #111827;
+  --settings-text-2: #536174;
+  --settings-text-3: #7b8796;
+  --settings-action: #202b3a;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+#settings-shell .settings-vnext-toolbar,
+#settings-shell .settings-vnext-workbench {
+  grid-column: 1 / -1;
+  min-width: 0;
+  border: 1px solid var(--settings-border);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(47, 125, 240, 0.024), transparent 32%),
+    linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
+  box-shadow: 0 12px 30px rgba(17, 24, 39, 0.045);
+}
+
+#settings-shell .settings-vnext-toolbar {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+
+#settings-shell .settings-head,
+#settings-shell .panel-head,
+#settings-shell .block-head {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#settings-shell .settings-head h1,
+#settings-shell .panel-head h2 {
+  margin: 0;
+  color: var(--settings-text);
+  font-size: 15px;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+#settings-shell .head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#settings-shell .icon-action {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d5dde8;
+  border-radius: 10px;
+  background: #fff;
+  color: #344154;
+}
+
+#settings-shell .icon-action-primary {
+  border-color: var(--settings-action);
+  background: var(--settings-action);
+  color: #fff;
+}
+
+#settings-shell .icon-action:hover,
+#settings-shell .icon-action:focus-visible {
+  outline: none;
+  border-color: #c7d1de;
+  background: #f8fafc;
+}
+
+#settings-shell .icon-action-primary:hover,
+#settings-shell .icon-action-primary:focus-visible {
+  border-color: #121a25;
+  background: #121a25;
+}
+
+#settings-shell .settings-search-row {
+  height: 38px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px auto;
+  align-items: center;
+  gap: 8px;
+}
+
+#settings-shell .settings-search-vnext {
+  height: 34px;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--settings-border);
+  border-radius: 10px;
+  background: #fff;
+}
+
+#settings-shell .settings-search-vnext input {
+  min-width: 0;
+  width: 100%;
+  height: 30px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #1f2c3e;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+#settings-shell .category-strip {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+#settings-shell .category-chip,
+#settings-shell .status-chip {
+  height: 26px;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid #dce4ee;
+  border-radius: 999px;
+  background: #f4f7fa;
+  color: #2f3b4d;
+  font-size: 11.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+#settings-shell .category-chip.is-active {
+  background: #e7eef8;
+  color: #20324b;
+}
+
+#settings-shell .status-chip small {
+  color: #6f7d8e;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+#settings-shell .settings-vnext-workbench {
+  display: grid;
+  gap: 12px;
+  padding: 12px 14px 14px;
+}
+
+#settings-shell .panel-meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--settings-text-3);
+  font-size: 11.5px;
+  line-height: 1.2;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#settings-shell .workbench-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+#settings-shell .settings-column {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+#settings-shell .setting-block {
+  min-width: 0;
+  display: grid;
+  gap: 9px;
+  padding-top: 10px;
+  border-top: 1px solid var(--settings-hairline);
+}
+
+#settings-shell .setting-block:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+#settings-shell .block-head {
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+#settings-shell .block-head h3 {
+  margin: 0;
+  color: #182536;
+  font-size: 13px;
+  line-height: 1.15;
+  font-weight: 700;
+}
+
+#settings-shell .setting-row-list {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+#settings-shell .setting-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 106px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+#settings-shell .setting-row.has-switch {
+  grid-template-columns: 58px minmax(0, 1fr) 74px;
+}
+
+#settings-shell .setting-row > span:first-child,
+#settings-shell .field > span,
+#settings-shell .directory-row > span {
+  min-width: 0;
+  overflow: hidden;
+  color: #425166;
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#settings-shell .setting-row input,
+#settings-shell .field input,
+#settings-shell .field select,
+#settings-shell .text-like {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid var(--settings-border);
+  border-radius: 10px;
+  background: #fff;
+  color: #1f2c3e;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+#settings-shell .field {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+#settings-shell .field-grid {
+  min-width: 0;
+  display: grid;
+  gap: 8px 12px;
+}
+
+#settings-shell .two-col {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#settings-shell .span-2 {
+  grid-column: span 2;
+}
+
+#settings-shell .field select {
+  padding-right: 34px;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #64748b 50%),
+    linear-gradient(135deg, #64748b 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) calc(50% - 2px),
+    calc(100% - 11px) calc(50% - 2px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+#settings-shell .switch-control {
+  position: relative;
+  height: 28px;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #2d394c;
+  font-size: 11.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+#settings-shell .switch-control input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#settings-shell .switch-control i {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex: 0 0 auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #e8edf3;
+}
+
+#settings-shell .switch-control i::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.18);
+}
+
+#settings-shell .switch-control input:checked + i {
+  border-color: #68b89f;
+  background: #d8f0e7;
+}
+
+#settings-shell .switch-control input:checked + i::after {
+  background: #0f9f78;
+  transform: translateX(16px);
+}
+
+#settings-shell .switch-control b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font: inherit;
+}
+
+#settings-shell .directory-stack {
+  display: grid;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+#settings-shell .directory-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+#settings-shell .input-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px 32px;
+  align-items: center;
+  gap: 6px;
+}
+
+#settings-shell .text-like {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#settings-shell .field-toggle-inline {
+  align-self: end;
+  height: 34px;
+}
+
+#settings-shell .toggle-list {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 18px;
+  padding: 2px 0 0;
+}
+
+#settings-shell .toggle-column {
+  min-width: 0;
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+
+#settings-shell > .settings-vnext-workbench.settings-workbench-card-hidden {
+  display: none;
+}
+
+#settings-shell > .settings-vnext-workbench.settings-workbench-card-match {
+  border-color: rgba(37, 99, 235, 0.42);
+  box-shadow:
+    0 0 0 1px rgba(37, 99, 235, 0.10),
+    0 12px 30px rgba(37, 99, 235, 0.08);
+}
+
+#settings-shell .settings-vnext-bridge {
+  display: none !important;
+}
+
 @media (max-width: 1080px) {
   .model-selection-shell {
     grid-template-columns: minmax(0, 1fr);
@@ -7730,6 +8158,7 @@ button.btn-icon:hover {
 }
 
 #tab-realtime .switch-control {
+  position: relative;
   height: 28px;
   display: inline-flex;
   align-items: center;
@@ -8892,6 +9321,7 @@ body {
 }
 
 #tab-file .switch-control {
+  position: relative;
   height: 28px;
   display: inline-flex;
   align-items: center;
@@ -9392,3 +9822,473 @@ body {
 .glyph-settings { -webkit-mask-image: var(--st-icon-sliders); mask-image: var(--st-icon-sliders); }
 .glyph-trash { -webkit-mask-image: var(--st-icon-trash); mask-image: var(--st-icon-trash); }
 .glyph-close { -webkit-mask-image: var(--st-icon-close); mask-image: var(--st-icon-close); }
+
+#tab-model.workflow-card {
+  gap: 12px;
+}
+
+#tab-model .model-vnext-stack {
+  display: grid;
+  gap: 12px;
+}
+
+#tab-model .surface-panel {
+  min-width: 0;
+  border: 1px solid #d9e0ea;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fff 0%, #fbfcfe 100%);
+  box-shadow: 0 10px 28px rgba(17, 24, 39, 0.045);
+}
+
+#tab-model .model-vnext-runtime-panel,
+#tab-model .model-vnext-manager-panel {
+  padding: 11px 14px 13px;
+}
+
+#tab-model .model-vnext-runtime-panel {
+  border-radius: 15px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(47, 125, 240, 0.024), transparent 32%),
+    linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
+}
+
+#tab-model .model-vnext-head,
+#tab-model .model-vnext-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#tab-model .model-vnext-head h3,
+#tab-model .model-vnext-panel-head h4 {
+  margin: 0;
+  color: #111827;
+  font-size: 15px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+#tab-model .model-vnext-head-actions,
+#tab-model .model-vnext-toolbar-actions,
+#tab-model .model-vnext-runtime-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#tab-model .icon-action {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d5dde8;
+  border-radius: 10px;
+  background: #fff;
+  color: #344154;
+  box-shadow: 0 1px 1px rgba(17, 24, 39, 0.03);
+}
+
+#tab-model .icon-action:hover,
+#tab-model .icon-action:focus-visible {
+  outline: none;
+  border-color: #c7d1de;
+  background: #f8fafc;
+}
+
+#tab-model .icon-action .btn-glyph {
+  width: 14px;
+  height: 14px;
+}
+
+#tab-model .model-vnext-runtime-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(256px, 1fr);
+  gap: 8px 12px;
+  align-items: end;
+  margin-top: 10px;
+}
+
+#tab-model .model-vnext-field,
+#tab-model .model-vnext-directory {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+#tab-model .model-vnext-field > span,
+#tab-model .model-vnext-directory > small {
+  color: #536174;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+#tab-model .model-vnext-engine-bar {
+  height: 34px;
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #d9e0ea;
+  border-radius: 10px;
+  background: #f8f9fb;
+}
+
+#tab-model .model-engine-tab {
+  height: 26px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #425166;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+#tab-model .model-engine-tab.is-active {
+  background: #e7eef8;
+  color: #20324b;
+}
+
+#tab-model .model-vnext-field select {
+  width: 100%;
+  height: 34px;
+  min-width: 0;
+  padding: 0 36px 0 12px;
+  border: 1px solid #d9e0ea;
+  border-radius: 10px;
+  background-color: #fff;
+  color: #1f2c3e;
+  font-size: 13px;
+  font-weight: 500;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #64748b 50%),
+    linear-gradient(135deg, #64748b 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) calc(50% - 2px),
+    calc(100% - 11px) calc(50% - 2px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+#tab-model .model-vnext-field select:focus-visible {
+  outline: none;
+  border-color: #b7c7db;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
+}
+
+#tab-model .model-vnext-runtime-status,
+#tab-model .model-vnext-toolbar-status {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#tab-model .model-vnext-runtime-status {
+  grid-column: 1 / 2;
+}
+
+#tab-model .model-vnext-runtime-cta {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+#tab-model .model-vnext-chip {
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: #f4f7fa;
+  color: #2f3b4d;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+#tab-model .model-vnext-chip small {
+  color: #6f7d8e;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+#tab-model .model-vnext-chip > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#tab-model .model-vnext-chip-strong {
+  color: #1c2a3a;
+  background: #eef3f8;
+  border-color: #dce4ee;
+}
+
+#tab-model .model-vnext-chip-wide {
+  max-width: 230px;
+}
+
+#tab-model .model-vnext-load-action {
+  min-width: 104px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border: 1px solid #101827;
+  border-radius: 11px;
+  background: #202b3a;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+#tab-model .model-vnext-load-action:hover,
+#tab-model .model-vnext-load-action:focus-visible {
+  outline: none;
+  background: #121a25;
+}
+
+#tab-model .model-vnext-directory {
+  height: 34px;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid #d9e0ea;
+  border-radius: 10px;
+  background: #fff;
+}
+
+#tab-model .model-vnext-directory > span {
+  min-width: 0;
+  color: #1f2c3e;
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#tab-model .model-vnext-toolbar {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 144px;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+  padding: 4px 0 10px;
+  border-bottom: 1px solid #e8edf3;
+}
+
+#tab-model .model-vnext-toolbar-status {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+}
+
+#tab-model .model-vnext-toolbar-actions {
+  justify-content: flex-end;
+}
+
+#tab-model .model-vnext-toolbar-actions .icon-action {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+}
+
+#tab-model .model-vnext-model-list {
+  display: grid;
+  margin-top: 6px;
+}
+
+#tab-model .model-vnext-list-head,
+#tab-model .model-vnext-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.55fr) 92px 88px minmax(180px, 1fr) 88px;
+  gap: 12px;
+  align-items: center;
+}
+
+#tab-model .model-vnext-list-head {
+  min-height: 24px;
+  padding: 0 6px;
+  color: #647186;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+#tab-model .model-vnext-list-head span:nth-child(2),
+#tab-model .model-vnext-list-head span:nth-child(3),
+#tab-model .model-vnext-list-head span:nth-child(5) {
+  justify-self: center;
+}
+
+#tab-model .model-vnext-row {
+  min-height: 42px;
+  padding: 8px 6px;
+  border-top: 1px solid #e8edf3;
+}
+
+#tab-model .model-vnext-row.is-current {
+  background: linear-gradient(90deg, rgba(231, 238, 248, 0.76), rgba(255, 255, 255, 0));
+}
+
+#tab-model .model-vnext-row-main,
+#tab-model .model-vnext-row-progress {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+#tab-model .model-vnext-row-main strong {
+  min-width: 0;
+  color: #111827;
+  font-size: 13px;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+#tab-model .model-vnext-row-main span,
+#tab-model .model-vnext-row-size,
+#tab-model .model-vnext-row-meta {
+  color: #536174;
+  font-size: 11.5px;
+  line-height: 1.25;
+}
+
+#tab-model .model-vnext-row-size,
+#tab-model .model-vnext-row-action {
+  white-space: nowrap;
+}
+
+#tab-model .model-vnext-row-size {
+  justify-self: center;
+}
+
+#tab-model .model-vnext-row-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#tab-model .model-vnext-row-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#tab-model .model-vnext-row-state-chip {
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #f4f7fa;
+  color: #425166;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+#tab-model .model-vnext-row-state-chip.is-ready {
+  background: #e7f3ee;
+  color: #177456;
+}
+
+#tab-model .model-vnext-row-state-chip.is-busy {
+  background: #eef3f8;
+  color: #20324b;
+}
+
+#tab-model .model-vnext-row-state-chip.is-error {
+  background: #fbeaea;
+  color: #a33a3a;
+}
+
+#tab-model .model-vnext-progress-line {
+  height: 5px;
+  border-radius: 999px;
+  background: #e8edf3;
+  overflow: hidden;
+}
+
+#tab-model .model-vnext-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #324055;
+}
+
+#tab-model .model-vnext-download-btn {
+  min-width: 60px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 11px;
+  border: 1px solid #cad5e2;
+  border-radius: 10px;
+  background: #fff;
+  color: #26344a;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+#tab-model .model-vnext-download-btn:hover,
+#tab-model .model-vnext-download-btn:focus-visible {
+  outline: none;
+  border-color: #b9c6d7;
+  background: #f6f8fb;
+}
+
+#tab-model .model-vnext-download-btn.is-running {
+  color: #20324b;
+  background: #eef3f8;
+  border-color: #d6e0ec;
+}
+
+#tab-model .model-vnext-row-error {
+  color: #a33a3a;
+}
+
+#tab-model .model-vnext-empty {
+  display: grid;
+  gap: 4px;
+  padding: 16px 6px 6px;
+  color: #7b8796;
+}
+
+#tab-model .model-vnext-empty strong {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+@media (max-width: 860px) {
+  #tab-model .model-vnext-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #tab-model .model-vnext-toolbar-status {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #tab-model .model-vnext-toolbar-actions {
+    justify-content: flex-start;
+  }
+}

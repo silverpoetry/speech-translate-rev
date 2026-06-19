@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Mapping, cast
 
 from speech_translate.controller_protocols import JsonDict
+from speech_translate.detached_window_settings import DETACHED_WINDOW_DEFAULT_GEOMETRY
 from speech_translate.model_selection import normalize_model_key
 from speech_translate.ui_options import resolve_model_backend
 
@@ -155,6 +156,28 @@ def build_record_device_view_settings(settings_snapshot: Mapping[str, object], d
         threshold_silero_min=snapshot.get(f"threshold_silero_{device}_min"),
         threshold_db=snapshot.get(f"threshold_db_{device}"),
     )
+
+
+def _build_detached_window_view_settings(snapshot: Mapping[str, object]) -> JsonDict:
+    payload: JsonDict = {}
+    for mode in ("tc", "tl"):
+        payload[f"ex_{mode}_geometry"] = snapshot.get(f"ex_{mode}_geometry", DETACHED_WINDOW_DEFAULT_GEOMETRY)
+        payload[f"ex_{mode}_pos"] = snapshot.get(f"ex_{mode}_pos", "")
+        payload[f"ex_{mode}_always_on_top"] = snapshot.get(f"ex_{mode}_always_on_top", True)
+        payload[f"ex_{mode}_no_title_bar"] = snapshot.get(f"ex_{mode}_no_title_bar", True)
+        payload[f"ex_{mode}_click_through"] = snapshot.get(f"ex_{mode}_click_through", False)
+        payload[f"ex_{mode}_opacity"] = snapshot.get(f"ex_{mode}_opacity", 1.0)
+        payload[f"tb_ex_{mode}_font"] = snapshot.get(f"tb_ex_{mode}_font", "Arial")
+        payload[f"tb_ex_{mode}_font_bold"] = snapshot.get(f"tb_ex_{mode}_font_bold", True)
+        payload[f"tb_ex_{mode}_font_size"] = snapshot.get(f"tb_ex_{mode}_font_size", 13)
+        payload[f"tb_ex_{mode}_font_color"] = snapshot.get(f"tb_ex_{mode}_font_color", "#FFFFFF")
+        payload[f"tb_ex_{mode}_bg_color"] = snapshot.get(f"tb_ex_{mode}_bg_color", "#000000")
+        payload[f"tb_ex_{mode}_limit_max"] = snapshot.get(f"tb_ex_{mode}_limit_max", False)
+        payload[f"tb_ex_{mode}_limit_max_per_line"] = snapshot.get(f"tb_ex_{mode}_limit_max_per_line", False)
+        payload[f"tb_ex_{mode}_max"] = snapshot.get(f"tb_ex_{mode}_max", 120)
+        payload[f"tb_ex_{mode}_max_per_line"] = snapshot.get(f"tb_ex_{mode}_max_per_line", 30)
+        payload[f"tb_ex_{mode}_use_conf_color"] = snapshot.get(f"tb_ex_{mode}_use_conf_color", True)
+    return payload
 
 
 def build_state_view_settings(settings_snapshot: Mapping[str, object]) -> StateViewSettingsBundle:
@@ -309,6 +332,7 @@ def build_state_view_settings(settings_snapshot: Mapping[str, object]) -> StateV
                 "tb_mw_tl_font_size": snapshot.get("tb_mw_tl_font_size", 10),
                 "tb_mw_tl_font_color": snapshot.get("tb_mw_tl_font_color", "#FFFFFF"),
                 "tb_mw_tl_use_conf_color": snapshot.get("tb_mw_tl_use_conf_color", True),
+                **_build_detached_window_view_settings(snapshot),
             }
         ),
     )

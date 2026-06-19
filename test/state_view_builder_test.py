@@ -103,6 +103,38 @@ class FakeSettings:
             "colorize_per_word": False,
             "gradient_low_conf": "#112233",
             "gradient_high_conf": "#aabbcc",
+            "ex_tc_geometry": "980x280",
+            "ex_tc_pos": "100,120",
+            "ex_tc_always_on_top": True,
+            "ex_tc_no_title_bar": True,
+            "ex_tc_click_through": False,
+            "ex_tc_opacity": 0.92,
+            "tb_ex_tc_font": "Segoe UI",
+            "tb_ex_tc_font_bold": True,
+            "tb_ex_tc_font_size": 16,
+            "tb_ex_tc_font_color": "#ffffff",
+            "tb_ex_tc_bg_color": "#101820",
+            "tb_ex_tc_limit_max": True,
+            "tb_ex_tc_limit_max_per_line": False,
+            "tb_ex_tc_max": 80,
+            "tb_ex_tc_max_per_line": 24,
+            "tb_ex_tc_use_conf_color": True,
+            "ex_tl_geometry": "760x220",
+            "ex_tl_pos": "200,160",
+            "ex_tl_always_on_top": False,
+            "ex_tl_no_title_bar": True,
+            "ex_tl_click_through": True,
+            "ex_tl_opacity": 0.88,
+            "tb_ex_tl_font": "Consolas",
+            "tb_ex_tl_font_bold": False,
+            "tb_ex_tl_font_size": 15,
+            "tb_ex_tl_font_color": "#ddeeff",
+            "tb_ex_tl_bg_color": "#0b0f18",
+            "tb_ex_tl_limit_max": False,
+            "tb_ex_tl_limit_max_per_line": True,
+            "tb_ex_tl_max": 96,
+            "tb_ex_tl_max_per_line": 28,
+            "tb_ex_tl_use_conf_color": False,
             "tb_mw_tc_auto_scroll": True,
             "tb_mw_tc_limit_max": True,
             "tb_mw_tc_limit_max_per_line": False,
@@ -303,6 +335,13 @@ class StateViewBuilderTests(unittest.TestCase):
         self.assertEqual(compact["file_slice_start"], "5")
         self.assertFalse(compact["auto_open_dir_refinement"])
         self.assertEqual(compact["gradient_low_conf"], "#112233")
+        self.assertEqual(compact["ex_tc_geometry"], "980x280")
+        self.assertEqual(compact["ex_tc_pos"], "100,120")
+        self.assertEqual(compact["tb_ex_tc_font"], "Segoe UI")
+        self.assertEqual(compact["tb_ex_tc_max"], 80)
+        self.assertEqual(compact["ex_tl_geometry"], "760x220")
+        self.assertEqual(compact["ex_tl_click_through"], True)
+        self.assertEqual(compact["tb_ex_tl_bg_color"], "#0b0f18")
         self.assertEqual(compact["tb_mw_tc_font"], "Arial")
         self.assertEqual(compact["tb_mw_tc_font_color"], "#ddeeff")
         self.assertEqual(compact["tb_mw_tl_font"], "Consolas")

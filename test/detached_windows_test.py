@@ -187,6 +187,8 @@ class DetachedWindowHelpersTests(unittest.TestCase):
         self.assertEqual(
             config,
             {
+                "geometry": "900x240",
+                "position": "",
                 "font": "Consolas",
                 "font_size": 18,
                 "font_bold": False,

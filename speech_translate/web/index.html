@@ -53,110 +53,86 @@
         <section class="card workspace-hub" id="workspace-hub">
           <div class="workflow-panels">
             <article class="workflow-card tab-panel" id="tab-model" role="tabpanel">
-              <section class="panel-card core-card">
-                <div class="floating-action-row">
-                  <button class="btn-icon" data-action="save-import-settings" data-tooltip="保存模型配置" title="保存模型配置"><span
-                      class="btn-glyph glyph-save" aria-hidden="true"></span></button>
-                </div>
-                <div class="section-head">
-                  <div>
-                    <h3>模型选择</h3>
-                  </div>
-                </div>
-
-                <div class="hero-toolbar hero-toolbar-compact">
-                  <div class="hero-toolbar-main">
-                    <button class="btn-with-icon btn-major" data-action="load-model" id="btn-load-model">加载模型</button>
-                    <span class="hero-toolbar-caption">切换模型与后端后，统一加载到运行时。</span>
-                  </div>
-                  <div class="hero-toolbar-pills">
-                    <span class="pill pill-muted" id="import-model-pill">模型</span>
-                  </div>
-                </div>
-
-                <div class="model-selection-workbench">
-                  <div class="model-selection-shell">
-                    <div class="model-selection-main-card">
-                      <div class="model-selection-card-head">
-                        <div>
-                          <div class="model-selection-kicker">运行配置</div>
-                          <p class="model-selection-card-meta">先确定后端与模型，再统一加载到运行时。</p>
-                        </div>
+              <section class="model-vnext-shell">
+                <div class="model-vnext-stack">
+                  <section class="surface-panel model-vnext-runtime-panel">
+                    <header class="model-vnext-head">
+                      <h3>模型选择</h3>
+                      <div class="model-vnext-head-actions">
+                        <button class="icon-action" type="button" data-action="save-import-settings" title="保存模型设置" aria-label="保存模型设置">
+                          <span class="btn-glyph glyph-save" aria-hidden="true"></span>
+                        </button>
                       </div>
-                      <div class="form-grid import-grid model-select-grid model-select-inline">
-                        <div class="model-select-engine-inline">
-                          <span>Whisper 后端</span>
-                          <div class="model-engine-titlebar" id="model-import-engine-bar" role="tablist" aria-label="模型选择后端">
-                            <button type="button" class="model-engine-tab is-active" data-import-engine-option="whisper"
-                              role="tab" aria-selected="true">whisper</button>
-                            <button type="button" class="model-engine-tab" data-import-engine-option="faster-whisper"
-                              role="tab" aria-selected="false">faster-whisper</button>
-                          </div>
+                    </header>
+                    <div class="model-vnext-runtime-grid">
+                      <label class="model-vnext-field model-vnext-field-engine">
+                        <span>Whisper 后端</span>
+                        <div class="model-vnext-engine-bar" id="model-import-engine-bar" role="tablist" aria-label="模型选择后端">
+                          <button type="button" class="model-engine-tab is-active" data-import-engine-option="whisper" role="tab" aria-selected="true">whisper</button>
+                          <button type="button" class="model-engine-tab" data-import-engine-option="faster-whisper" role="tab" aria-selected="false">faster-whisper</button>
                         </div>
-                        <label>
-                          <span>模型</span>
-                          <select id="model_f_import"></select>
-                        </label>
+                      </label>
+                      <label class="model-vnext-field">
+                        <span>模型</span>
+                        <select id="model_f_import"></select>
+                      </label>
+                      <div class="model-vnext-runtime-status" aria-label="运行状态">
+                        <span class="model-vnext-chip model-vnext-chip-strong"><small>运行</small><span id="model-selection-runtime">未加载</span></span>
+                        <span class="model-vnext-chip"><small>当前模型</small><span id="import-model-pill">未选择</span></span>
+                        <span class="model-vnext-chip"><small>当前后端</small><span id="model-selection-runtime-meta">后端未知</span></span>
                       </div>
-                      <div class="model-selection-main-foot">
-                        <div class="status-row compact-status-row model-selection-runtime-row" aria-label="运行状态">
-                          <span class="pill pill-muted" id="model-selection-runtime">运行：未加载</span>
-                          <span class="model-selection-runtime-meta" id="model-selection-runtime-meta">加载后在这里同步当前模型</span>
-                        </div>
-                        <div class="model-selection-main-actions">
-                          <label class="toggle-row model-selection-inline-toggle"><input id="condition_on_previous_text" type="checkbox" />
-                            使用上一次输出作为提示</label>
-                          <div class="inline-actions compact-gap model-selection-dir-actions">
-                            <button type="button" class="btn-with-icon" data-action="pick-model-dir">设置模型目录</button>
-                            <button type="button" class="btn-with-icon" data-open-dir="model">打开模型目录</button>
-                          </div>
-                        </div>
+                      <div class="model-vnext-runtime-cta">
+                        <button class="model-vnext-load-action" type="button" data-action="load-model" id="btn-load-model">加载模型</button>
+                      </div>
+                      <div class="model-vnext-directory" title="">
+                        <small>模型目录</small>
+                        <span id="model-runtime-dir">默认位置</span>
+                      </div>
+                      <div class="model-vnext-runtime-actions">
+                        <button class="icon-action" type="button" data-action="pick-model-dir" title="设置模型目录" aria-label="设置模型目录">
+                          <span class="btn-glyph glyph-folder" aria-hidden="true"></span>
+                        </button>
+                        <button class="icon-action" type="button" data-open-dir="model" title="打开模型目录" aria-label="打开模型目录">
+                          <span class="btn-glyph glyph-folder-export" aria-hidden="true"></span>
+                        </button>
                       </div>
                     </div>
-                  </div>
+                  </section>
+
+                  <section class="surface-panel model-vnext-manager-panel">
+                    <header class="model-vnext-panel-head">
+                      <h4>模型检查与下载</h4>
+                    </header>
+                    <div class="model-vnext-toolbar">
+                      <div class="model-vnext-engine-bar" id="model-manager-engine-bar" role="tablist" aria-label="模型引擎">
+                        <button type="button" class="model-engine-tab is-active" data-engine-option="whisper" role="tab" aria-selected="true">whisper</button>
+                        <button type="button" class="model-engine-tab" data-engine-option="faster-whisper" role="tab" aria-selected="false">faster-whisper</button>
+                      </div>
+                      <div class="model-vnext-toolbar-status" aria-label="模型概览">
+                        <span class="model-vnext-chip model-vnext-chip-wide" id="model-manager-dir-pill">目录</span>
+                        <span class="model-vnext-chip" id="model-manager-selection-pill">当前</span>
+                        <span class="model-vnext-chip" id="model-manager-cache-pill">缓存</span>
+                        <span class="model-vnext-chip" id="model-manager-download-pill">下载</span>
+                      </div>
+                      <div class="model-vnext-toolbar-actions">
+                        <button class="icon-action" type="button" data-action="check-model-current" title="检查当前模型" aria-label="检查当前模型">
+                          <span class="btn-glyph glyph-refresh" aria-hidden="true"></span>
+                        </button>
+                        <button class="icon-action" type="button" data-action="check-all-models" title="检查当前引擎全部模型" aria-label="检查当前引擎全部模型">
+                          <span class="btn-glyph glyph-search" aria-hidden="true"></span>
+                        </button>
+                        <button class="icon-action" type="button" data-action="pick-model-dir" title="设置模型目录" aria-label="设置模型目录">
+                          <span class="btn-glyph glyph-folder" aria-hidden="true"></span>
+                        </button>
+                        <button class="icon-action" type="button" data-open-dir="model" title="打开模型目录" aria-label="打开模型目录">
+                          <span class="btn-glyph glyph-folder-export" aria-hidden="true"></span>
+                        </button>
+                      </div>
+                    </div>
+                    <div id="model-status-card" class="model-vnext-model-list" aria-live="polite"></div>
+                  </section>
                 </div>
               </section>
-
-              <details class="advanced-panel" open>
-                <summary>
-                  <span class="settings-panel-heading">
-                    <span class="settings-panel-title">模型检查与下载</span>
-                    <span class="settings-panel-meta">按引擎检查缓存、缺失模型与下载状态</span>
-                  </span>
-                </summary>
-                <div class="advanced-panel-body">
-                  <div class="model-manager-head">
-                    <div class="model-engine-titlebar" id="model-manager-engine-bar" role="tablist" aria-label="模型引擎">
-                      <button type="button" class="model-engine-tab is-active" data-engine-option="whisper" role="tab"
-                        aria-selected="true">whisper</button>
-                      <button type="button" class="model-engine-tab" data-engine-option="faster-whisper" role="tab"
-                        aria-selected="false">faster-whisper</button>
-                    </div>
-                    <div class="model-manager-tools">
-                      <button class="btn-icon" data-action="check-model-current" data-tooltip="检查当前选中模型"
-                        title="检查当前选中模型"><span class="btn-glyph glyph-refresh" aria-hidden="true"></span></button>
-                      <button class="btn-icon" data-action="check-all-models" data-tooltip="检查当前引擎全部模型"
-                        title="检查当前引擎全部模型"><span class="btn-glyph glyph-search" aria-hidden="true"></span></button>
-                      <button class="btn-icon btn-icon-blue" data-action="pick-model-dir" data-tooltip="设置模型目录"
-                        title="设置模型目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
-                    </div>
-                  </div>
-                  <div class="model-manager-workspace">
-                    <div class="model-manager-topline">
-                      <div class="section-head model-manager-hint-wrap">
-                        <p id="model-manager-hint">页面会自动检查当前引擎的全部模型。缺失模型可直接点击下载按钮。</p>
-                      </div>
-                      <div class="status-row import-status model-manager-summary-row">
-                        <span class="pill pill-muted" id="model-manager-dir-pill">模型目录</span>
-                        <span class="pill pill-muted" id="model-manager-selection-pill">模型</span>
-                        <span class="pill pill-muted" id="model-manager-cache-pill">缓存</span>
-                        <span class="pill pill-muted" id="model-manager-download-pill">下载</span>
-                      </div>
-                    </div>
-                    <div id="model-status-card" class="state-card model-status-card"></div>
-                  </div>
-                </div>
-              </details>
             </article>
 
             <article class="workflow-card tab-panel" id="tab-file" role="tabpanel">
@@ -562,282 +538,194 @@
         </section>
 
         <section class="card advanced-shell is-hidden" id="settings-shell">
-          <section class="settings-toolbar" id="settings_toolbar">
-            <div class="settings-toolbar-intro">
-              <div class="settings-toolbar-title">设置工作台</div>
-              <p class="settings-toolbar-meta">统一管理模型、录制、导出与调试策略。</p>
-            </div>
-            <div class="settings-toolbar-head">
-              <label class="settings-search">
-                <span>搜索</span>
-                <input id="settings_search" type="search" placeholder="搜索关键词，例如 代理、Whisper、日志、录制、字幕" />
-              </label>
-              <button type="button" class="btn-with-icon" id="settings_search_clear">清空筛选</button>
-            </div>
-            <div class="settings-toolbar-foot">
-              <div class="settings-shortcuts">
-                <button type="button" class="menu-item settings-shortcut" data-settings-jump="系统与日志">系统</button>
-                <button type="button" class="menu-item settings-shortcut" data-settings-jump="翻译网络与 LibreTranslate">网络</button>
-                <button type="button" class="menu-item settings-shortcut" data-settings-jump="导出与切分">导出</button>
-                <button type="button" class="menu-item settings-shortcut" data-settings-jump="Whisper 解码参数">解码</button>
-                <button type="button" class="menu-item settings-shortcut" data-settings-jump="独立窗口（TC / TL）">独立窗</button>
-                <button type="button" class="menu-item settings-shortcut" data-settings-jump="录制设置（麦克风 / 扬声器）">录制</button>
-                <button type="button" class="menu-item settings-shortcut" data-settings-jump="幻觉过滤 (Hallucination Filter)">过滤</button>
-                <button type="button" class="menu-item settings-shortcut" data-settings-jump="引导词">引导词</button>
+          <section class="settings-vnext-toolbar" id="settings_toolbar">
+            <header class="settings-head">
+              <h1>设置</h1>
+              <div class="head-actions">
+                <button class="icon-action icon-action-primary" type="button" data-action="save-all-settings" title="保存全部设置" aria-label="保存全部设置"><span class="btn-glyph glyph-save" aria-hidden="true"></span></button>
               </div>
-              <span class="settings-search-meta" id="settings_search_meta">显示全部设置</span>
+            </header>
+
+            <div class="settings-search-row" role="search">
+              <label class="settings-search settings-search-vnext">
+                <span class="btn-glyph glyph-search" aria-hidden="true"></span>
+                <input id="settings_search" type="search" placeholder="搜索设置，例如代理、日志、录制、字幕" />
+              </label>
+              <button class="icon-action" type="button" id="settings_search_clear" title="清空搜索" aria-label="清空搜索"><span class="btn-glyph glyph-close" aria-hidden="true"></span></button>
+              <span class="status-chip settings-search-meta" id="settings_search_meta"><small>结果</small><span>全部设置</span></span>
             </div>
-            <div class="inline-actions settings-toolbar-actions">
-              <button type="button" class="btn-with-icon" data-action="save-all-settings">保存设置</button>
-              <button type="button" class="btn-with-icon" data-action="refresh-audio-devices">刷新设备列表</button>
-              <button type="button" class="btn-with-icon" data-action="refresh">刷新状态</button>
-              <button type="button" class="btn-with-icon" data-action="show-main-window">显示主窗口</button>
-            </div>
+
+            <nav class="category-strip" aria-label="设置分类">
+              <button class="category-chip is-active" type="button" data-settings-jump="系统与日志">系统</button>
+              <button class="category-chip" type="button" data-settings-jump="翻译网络与 LibreTranslate">网络</button>
+              <button class="category-chip" type="button" data-settings-jump="导出与切分">导出</button>
+              <button class="category-chip" type="button" data-settings-jump="录制设置（麦克风 / 扬声器）">录制</button>
+              <button class="category-chip" type="button" data-settings-jump="Whisper 解码参数">解码</button>
+              <button class="category-chip" type="button" data-settings-jump="主界面文本显示">文本</button>
+              <button class="category-chip" type="button" data-settings-jump="独立窗口（TC / TL）">独立窗</button>
+              <button class="category-chip" type="button" data-settings-jump="Selenium 翻译窗口">翻译</button>
+              <button class="category-chip" type="button" data-settings-jump="幻觉过滤 (Hallucination Filter)">过滤</button>
+              <button class="category-chip" type="button" data-settings-jump="引导词">引导词</button>
+              <button class="category-chip" type="button" data-settings-jump="调试与排障">调试</button>
+            </nav>
           </section>
 
-          <section class="settings-workbench-board">
-            <div class="settings-workbench-grid">
-              <section class="settings-workbench-card settings-workbench-card-network-export settings-workbench-card-wide">
-                <div class="settings-workbench-head">
-                  <div class="settings-workbench-title">网络与导出</div>
-                  <p class="settings-workbench-meta">代理、命名与目录策略集中在这里。</p>
-                </div>
-                <div class="settings-workbench-section-grid settings-workbench-section-grid-single">
-                  <section class="settings-workbench-section settings-workbench-section-compact">
-                    <div class="settings-workbench-section-head">
-                      <span class="settings-workbench-section-title">网络</span>
-                      <span class="settings-workbench-section-meta">代理与 LibreTranslate</span>
+          <section class="settings-vnext-workbench settings-workbench-card">
+            <header class="panel-head">
+              <h2 class="settings-workbench-title">常用设置</h2>
+              <span class="panel-meta settings-workbench-meta">网络 · 目录 · 导出 · 运行</span>
+            </header>
+
+            <div class="workbench-grid">
+              <section class="settings-column" aria-label="网络与目录">
+                <section class="setting-block" aria-label="网络 代理 LibreTranslate">
+                  <header class="block-head">
+                    <h3 class="settings-workbench-section-title">网络</h3>
+                  </header>
+                  <div class="setting-row-list">
+                    <div class="setting-row has-switch">
+                      <span>HTTP</span>
+                      <input id="http_proxy_toolbar" type="text" placeholder="http://127.0.0.1:7890" />
+                      <label class="switch-control"><input id="http_proxy_enable_toolbar" type="checkbox" /><i></i><b>启用</b></label>
                     </div>
-                    <div class="form-grid settings-workbench-form">
-                      <label class="toggle-row"><input id="http_proxy_enable_toolbar" type="checkbox" /> HTTP 代理</label>
-                      <label class="toggle-row"><input id="https_proxy_enable_toolbar" type="checkbox" /> HTTPS 代理</label>
-                      <label>
-                        <span>HTTP 代理</span>
-                        <input id="http_proxy_toolbar" type="text" placeholder="http://127.0.0.1:7890" />
-                      </label>
-                      <label>
-                        <span>HTTPS 代理</span>
-                        <input id="https_proxy_toolbar" type="text" placeholder="http://127.0.0.1:7890" />
-                      </label>
-                      <label class="field-span-2">
-                        <span>LibreTranslate 地址</span>
-                        <input id="libre_link_toolbar" type="text" placeholder="https://libretranslate.example.com" />
-                      </label>
-                      <label class="field-span-2">
-                        <span>LibreTranslate API Key</span>
-                        <input id="libre_api_key_toolbar" type="password" placeholder="留空表示不使用 API Key" />
-                      </label>
+                    <div class="setting-row has-switch">
+                      <span>HTTPS</span>
+                      <input id="https_proxy_toolbar" type="text" placeholder="http://127.0.0.1:7890" />
+                      <label class="switch-control"><input id="https_proxy_enable_toolbar" type="checkbox" /><i></i><b>启用</b></label>
                     </div>
-                  </section>
-                  <section class="settings-workbench-section">
-                    <div class="settings-workbench-section-head">
-                      <span class="settings-workbench-section-title">导出</span>
-                      <span class="settings-workbench-section-meta">命名、切分与目录策略</span>
-                    </div>
-                    <div class="form-grid settings-workbench-form">
-                      <label class="field-span-2">
-                        <span>导出命名格式</span>
-                        <input id="export_format_toolbar" type="text" placeholder="%Y-%m-%d %f {file}/{task-lang}" />
-                      </label>
-                      <label class="toggle-row field-span-2">
-                        <input id="auto_open_dir_export_toolbar" type="checkbox" />
-                        完成后打开目录
-                      </label>
-                      <label>
-                        <span>分段最大词数</span>
-                        <input id="segment_max_words_toolbar" type="text" placeholder="留空表示不限制" />
-                      </label>
-                      <label>
-                        <span>分段最大字符数</span>
-                        <input id="segment_max_chars_toolbar" type="text" placeholder="留空表示不限制" />
-                      </label>
-                      <label>
-                        <span>切分模式</span>
-                        <select id="segment_split_or_newline_toolbar">
-                          <option value="split">Split</option>
-                          <option value="newline">Newline</option>
-                        </select>
-                      </label>
-                    </div>
-                  </section>
-                </div>
-              </section>
-              <section class="settings-workbench-card settings-workbench-card-recording">
-                <div class="settings-workbench-head">
-                  <div class="settings-workbench-title">录制与设备</div>
-                  <p class="settings-workbench-meta">节流、设备策略和关键开关。</p>
-                </div>
-                <div class="settings-workbench-section-grid">
-                  <section class="settings-workbench-section">
-                    <div class="settings-workbench-section-head">
-                      <span class="settings-workbench-section-title">录制</span>
-                      <span class="settings-workbench-section-meta">输入节流与设备策略</span>
-                    </div>
-                    <div class="form-grid settings-workbench-form">
-                      <label>
-                        <span>转写间隔 (ms)</span>
-                        <input id="transcribe_rate_toolbar" type="number" min="1" max="1000" step="1" />
-                      </label>
-                      <label>
-                        <span>主机 API</span>
-                        <select id="hostAPI_toolbar"></select>
-                      </label>
-                      <label>
-                        <span>模型设备策略</span>
-                        <select id="model_device_preference_toolbar">
-                          <option value="auto">AUTO</option>
-                          <option value="cpu">CPU</option>
-                          <option value="cuda">CUDA</option>
-                        </select>
-                      </label>
-                      <label class="toggle-row field-span-2">
-                        <input id="segment_even_split_toolbar" type="checkbox" />
-                        平均切分
-                      </label>
-                    </div>
-                  </section>
-                  <section class="settings-workbench-section">
-                    <div class="settings-workbench-section-head">
-                      <span class="settings-workbench-section-title">段级输出</span>
-                      <span class="settings-workbench-section-meta">控制导出粒度</span>
-                    </div>
-                    <div class="settings-workbench-toggle-grid settings-workbench-toggle-grid-single">
-                      <label class="toggle-row"><input id="segment_level_toolbar" type="checkbox" /> 保留 Segment 级</label>
-                      <label class="toggle-row"><input id="word_level_toolbar" type="checkbox" /> 保留 Word 级</label>
-                      <div class="detached-config-mini-grid settings-workbench-mini-grid">
-                        <label class="toggle-row"><input id="rec_ask_confirmation_first_toolbar" type="checkbox" /> 录前确认</label>
-                        <label class="toggle-row"><input id="supress_hidden_to_tray_toolbar" type="checkbox" /> 托盘静默</label>
+                    <label class="setting-row">
+                      <span>LibreTranslate</span>
+                      <input id="libre_link_toolbar" type="text" placeholder="https://libretranslate.example.com" />
+                    </label>
+                    <label class="setting-row">
+                      <span>API Key</span>
+                      <input id="libre_api_key_toolbar" type="password" placeholder="留空" />
+                    </label>
+                  </div>
+                </section>
+
+                <section class="setting-block">
+                  <header class="block-head">
+                    <h3 class="settings-workbench-section-title">目录</h3>
+                  </header>
+                  <div class="directory-stack">
+                    <div class="directory-row">
+                      <span>模型</span>
+                      <div class="input-row">
+                        <div class="text-like" id="settings_model_dir_summary">auto</div>
+                        <button class="icon-action" type="button" data-action="pick-model-dir" title="选择模型目录" aria-label="选择模型目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                        <button class="icon-action" type="button" data-open-dir="model" title="打开模型目录" aria-label="打开模型目录"><span class="btn-glyph glyph-folder-export" aria-hidden="true"></span></button>
                       </div>
                     </div>
-                  </section>
-                </div>
-              </section>
-              <section class="settings-workbench-card">
-                <div class="settings-workbench-head">
-                  <div class="settings-workbench-title">解码核心</div>
-                  <p class="settings-workbench-meta">预设、温度与精度控制。</p>
-                </div>
-                <section class="settings-workbench-section">
-                  <div class="settings-workbench-section-head">
-                    <span class="settings-workbench-section-title">核心参数</span>
-                    <span class="settings-workbench-section-meta">预设、温度与精度</span>
+                    <div class="directory-row">
+                      <span>导出</span>
+                      <div class="input-row">
+                        <div class="text-like" id="settings_export_dir_summary">auto</div>
+                        <button class="icon-action" type="button" data-action="pick-export-dir" title="选择导出目录" aria-label="选择导出目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                        <button class="icon-action" type="button" data-open-dir="export" title="打开导出目录" aria-label="打开导出目录"><span class="btn-glyph glyph-folder-export" aria-hidden="true"></span></button>
+                      </div>
+                    </div>
+                    <div class="directory-row">
+                      <span>日志</span>
+                      <div class="input-row">
+                        <div class="text-like" id="settings_log_dir_summary">auto</div>
+                        <button class="icon-action" type="button" data-action="pick-log-dir" title="选择日志目录" aria-label="选择日志目录"><span class="btn-glyph glyph-folder" aria-hidden="true"></span></button>
+                        <button class="icon-action" type="button" data-open-dir="log" title="打开日志目录" aria-label="打开日志目录"><span class="btn-glyph glyph-folder-export" aria-hidden="true"></span></button>
+                      </div>
+                    </div>
                   </div>
-                  <div class="form-grid settings-workbench-form">
-                    <label>
-                      <span>解码预设</span>
-                      <select id="decoding_preset_toolbar">
-                        <option value="greedy">greedy</option>
-                        <option value="beam search">beam search</option>
-                        <option value="custom">custom</option>
+                </section>
+              </section>
+
+              <section class="settings-column" aria-label="导出与运行">
+                <section class="setting-block">
+                  <header class="block-head">
+                    <h3 class="settings-workbench-section-title">导出</h3>
+                  </header>
+                  <div class="field-grid two-col">
+                    <label class="field span-2">
+                      <span>导出命名</span>
+                      <input id="export_format_toolbar" type="text" placeholder="%Y-%m-%d %f {file}/{task-lang}" />
+                    </label>
+                    <label class="field">
+                      <span>切片模式</span>
+                      <select id="segment_split_or_newline_toolbar">
+                        <option value="split">Split</option>
+                        <option value="newline">Newline</option>
                       </select>
                     </label>
-                    <label>
-                      <span>温度</span>
-                      <input id="temperature_toolbar" type="text" placeholder="0.0, 0.2, 0.4, 0.6, 0.8, 1.0" />
+                    <label class="field">
+                      <span>最大词数</span>
+                      <input id="segment_max_words_toolbar" type="text" placeholder="不限" />
                     </label>
-                    <label class="toggle-row field-span-2"><input id="use_en_model_toolbar" type="checkbox" /> 优先 .en 模型</label>
-                    <label class="toggle-row"><input id="fp16_toolbar" type="checkbox" /> 启用 FP16</label>
+                    <label class="field">
+                      <span>最大字符</span>
+                      <input id="segment_max_chars_toolbar" type="text" placeholder="不限" />
+                    </label>
+                    <label class="switch-control field-toggle-inline"><input id="auto_open_dir_export_toolbar" type="checkbox" /><i></i><b>任务完成后打开目录</b></label>
                   </div>
                 </section>
-              </section>
-              <section class="settings-workbench-card settings-workbench-card-thresholds settings-workbench-card-wide">
-                <div class="settings-workbench-head">
-                  <div class="settings-workbench-title">解码阈值</div>
-                  <p class="settings-workbench-meta">抑制空白与漏识别排查。</p>
-                </div>
-                <section class="settings-workbench-section">
-                  <div class="settings-workbench-section-head">
-                    <span class="settings-workbench-section-title">稳定性阈值</span>
-                    <span class="settings-workbench-section-meta">精度、空白抑制和候选策略</span>
-                  </div>
-                  <div class="form-grid settings-workbench-form">
-                    <label>
-                      <span>Best Of</span>
-                      <input id="best_of_toolbar" type="number" min="1" max="20" step="1" />
-                    </label>
-                    <label>
-                      <span>Beam Size</span>
-                      <input id="beam_size_toolbar" type="number" min="1" max="20" step="1" />
-                    </label>
-                    <label>
-                      <span>No Speech Threshold</span>
-                      <input id="no_speech_threshold_toolbar" type="number" min="0" max="1" step="0.01" />
-                    </label>
-                    <label>
-                      <span>Logprob Threshold</span>
-                      <input id="logprob_threshold_toolbar" type="number" min="-10" max="10" step="0.1" />
-                    </label>
-                    <label>
-                      <span>Patience</span>
-                      <input id="patience_toolbar" type="number" min="0" max="10" step="0.1" />
-                    </label>
-                    <label>
-                      <span>Compression Ratio</span>
-                      <input id="compression_ratio_threshold_toolbar" type="number" min="0" max="10" step="0.1" />
-                    </label>
-                    <label class="field-span-2-cols">
-                      <span>Suppress Tokens</span>
-                      <input id="suppress_tokens_toolbar" type="text" placeholder="-1 或 1,2,3" />
-                    </label>
-                    <label class="toggle-row field-span-2"><input id="suppress_blank_toolbar" type="checkbox" /> 抑制空白片段</label>
-                  </div>
-                </section>
-              </section>
-              <section class="settings-workbench-card settings-workbench-card-file-pipeline settings-workbench-card-wide">
-                <div class="settings-workbench-head">
-                  <div class="settings-workbench-title">文件导出与转写策略</div>
-                  <p class="settings-workbench-meta">格式切换与文件级运行策略放在同一工作区。</p>
-                </div>
-                <div class="settings-workbench-section-grid">
-                  <section class="settings-workbench-section settings-workbench-card-export">
-                    <div class="settings-workbench-section-head">
-                      <span class="settings-workbench-section-title">导出格式</span>
-                      <span class="settings-workbench-section-meta">与文件页输出设置保持一致</span>
+
+                <section class="setting-block">
+                  <header class="block-head">
+                    <h3 class="settings-workbench-section-title">运行</h3>
+                  </header>
+                  <div class="toggle-list">
+                    <div class="toggle-column">
+                      <label class="switch-control"><input id="rec_ask_confirmation_first_toolbar" type="checkbox" /><i></i><b>录制前确认</b></label>
+                      <label class="switch-control"><input id="supress_record_warning_toolbar" type="checkbox" /><i></i><b>忽略录制警告</b></label>
+                      <label class="switch-control"><input id="debug_realtime_record_toolbar" type="checkbox" /><i></i><b>实时调试日志</b></label>
                     </div>
-                    <div class="settings-workbench-toggle-grid format-chip-grid">
-                      <label class="toggle-row format-chip"><input id="export_txt_toolbar" type="checkbox" /> TXT</label>
-                      <label class="toggle-row format-chip"><input id="export_srt_toolbar" type="checkbox" /> SRT</label>
-                      <label class="toggle-row format-chip"><input id="export_vtt_toolbar" type="checkbox" /> VTT</label>
-                      <label class="toggle-row format-chip"><input id="export_json_toolbar" type="checkbox" /> JSON</label>
-                      <label class="toggle-row format-chip"><input id="export_ass_toolbar" type="checkbox" /> ASS</label>
-                      <label class="toggle-row format-chip"><input id="export_csv_toolbar" type="checkbox" /> CSV</label>
-                      <label class="toggle-row format-chip"><input id="export_tsv_toolbar" type="checkbox" /> TSV</label>
-                      <label class="toggle-row format-chip"><input id="export_mp4_toolbar" type="checkbox" /> MP4</label>
+                    <div class="toggle-column">
+                      <label class="switch-control"><input id="supress_hidden_to_tray_toolbar" type="checkbox" /><i></i><b>托盘不提示</b></label>
+                      <label class="switch-control"><input id="debug_translate_toolbar" type="checkbox" /><i></i><b>翻译调试日志</b></label>
+                      <label class="switch-control"><input id="segment_even_split_toolbar" type="checkbox" /><i></i><b>平均切分</b></label>
                     </div>
-                  </section>
-                  <section class="settings-workbench-section">
-                    <div class="settings-workbench-section-head">
-                      <span class="settings-workbench-section-title">文件转写策略</span>
-                      <span class="settings-workbench-section-meta">仅保留高频切换项</span>
-                    </div>
-                    <div class="settings-workbench-toggle-grid">
-                      <label class="toggle-row"><input id="use_temp_alt_toolbar" type="checkbox" /> 临时 WAV 模式</label>
-                      <label class="toggle-row"><input id="keep_temp_toolbar" type="checkbox" /> 保留临时文件</label>
-                      <label class="toggle-row"><input id="file_use_official_whisper_toolbar" type="checkbox" /> 文件转写走后端原生</label>
-                      <label class="toggle-row"><input id="supress_record_warning_toolbar" type="checkbox" /> 忽略录制警告</label>
-                    </div>
-                  </section>
-                </div>
-              </section>
-              <section class="settings-workbench-card settings-workbench-card-wide settings-workbench-card-debug">
-                <div class="settings-workbench-head">
-                  <div class="settings-workbench-title">调试与排障</div>
-                  <p class="settings-workbench-meta">记录关键日志，方便排查录制和翻译链路。</p>
-                </div>
-                <section class="settings-workbench-section settings-workbench-section-compact">
-                  <div class="settings-workbench-section-head">
-                    <span class="settings-workbench-section-title">调试开关</span>
-                    <span class="settings-workbench-section-meta">保持问题暴露，不做隐藏兜底</span>
-                  </div>
-                  <div class="settings-workbench-toggle-grid">
-                    <label class="toggle-row"><input id="debug_realtime_record_toolbar" type="checkbox" /> 实时转写调试日志</label>
-                    <label class="toggle-row"><input id="debug_translate_toolbar" type="checkbox" /> 翻译调试日志</label>
                   </div>
                 </section>
               </section>
             </div>
           </section>
 
+
+          <div class="settings-vnext-bridge" aria-hidden="true">
+            <select id="hostAPI_toolbar"></select>
+            <input id="transcribe_rate_toolbar" type="number" />
+            <input id="export_txt_toolbar" type="checkbox" />
+            <input id="export_srt_toolbar" type="checkbox" />
+            <input id="export_vtt_toolbar" type="checkbox" />
+            <input id="export_json_toolbar" type="checkbox" />
+            <input id="export_ass_toolbar" type="checkbox" />
+            <input id="export_csv_toolbar" type="checkbox" />
+            <input id="export_tsv_toolbar" type="checkbox" />
+            <input id="export_mp4_toolbar" type="checkbox" />
+            <select id="model_device_preference_toolbar">
+              <option value="auto">AUTO</option>
+              <option value="cpu">CPU</option>
+              <option value="cuda">CUDA</option>
+            </select>
+            <select id="decoding_preset_toolbar">
+              <option value="greedy">greedy</option>
+              <option value="beam search">beam search</option>
+              <option value="custom">custom</option>
+            </select>
+            <input id="temperature_toolbar" type="text" />
+            <input id="use_en_model_toolbar" type="checkbox" />
+            <input id="fp16_toolbar" type="checkbox" />
+            <input id="best_of_toolbar" type="number" />
+            <input id="beam_size_toolbar" type="number" />
+            <input id="no_speech_threshold_toolbar" type="number" />
+            <input id="logprob_threshold_toolbar" type="number" />
+            <input id="patience_toolbar" type="number" />
+            <input id="compression_ratio_threshold_toolbar" type="number" />
+            <input id="suppress_tokens_toolbar" type="text" />
+            <input id="suppress_blank_toolbar" type="checkbox" />
+            <input id="segment_level_toolbar" type="checkbox" />
+            <input id="word_level_toolbar" type="checkbox" />
+            <input id="use_temp_alt_toolbar" type="checkbox" />
+            <input id="keep_temp_toolbar" type="checkbox" />
+            <input id="file_use_official_whisper_toolbar" type="checkbox" />
+          </div>
           <details class="advanced-panel" open>
             <summary>系统与日志</summary>
             <div class="advanced-panel-body">

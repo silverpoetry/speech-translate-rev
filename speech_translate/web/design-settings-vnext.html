@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Settings UI VNext Prototype</title>
+  <link rel="stylesheet" href="./design-settings-vnext.css" />
+</head>
+<body>
+  <div class="vnext-shell">
+    <aside class="vnext-sidebar" aria-label="原型导航">
+      <div class="brand-mark">
+        <span class="brand-dot" aria-hidden="true"></span>
+        <span>语音翻译</span>
+      </div>
+      <nav class="nav-stack" aria-label="主导航">
+        <button class="nav-item" type="button"><span class="nav-icon icon-message"></span><span>实时转写</span></button>
+        <button class="nav-item" type="button"><span class="nav-icon icon-file"></span><span>文件转写</span></button>
+        <button class="nav-item" type="button"><span class="nav-icon icon-box"></span><span>模型选择</span></button>
+        <button class="nav-item is-active" type="button"><span class="nav-icon icon-settings"></span><span>设置</span></button>
+      </nav>
+      <div class="nav-tools">
+        <button class="side-action" type="button" title="模型目录" aria-label="模型目录"><span class="mini-icon icon-folder"></span></button>
+        <button class="side-action" type="button" title="导出目录" aria-label="导出目录"><span class="mini-icon icon-folder"></span></button>
+        <button class="side-action" type="button" title="隐藏到托盘" aria-label="隐藏到托盘"><span class="mini-icon icon-tray"></span></button>
+        <button class="side-action side-action-danger" type="button" title="退出程序" aria-label="退出程序"><span class="mini-icon icon-x"></span></button>
+      </div>
+    </aside>
+
+    <main class="vnext-content" aria-label="设置页原型">
+      <section class="frame" id="frame-settings-top" aria-label="设置搜索与分类">
+        <section class="surface-panel settings-vnext-toolbar">
+          <header class="settings-head">
+            <h1>设置</h1>
+            <button class="icon-action icon-action-primary" type="button" title="保存全部设置" aria-label="保存全部设置">
+              <span class="icon icon-save"></span>
+            </button>
+          </header>
+
+          <div class="settings-search-row" role="search">
+            <label class="settings-search">
+              <span class="icon icon-search" aria-hidden="true"></span>
+              <input type="search" placeholder="搜索设置，例如代理、日志、录制、字幕" />
+            </label>
+            <button class="icon-action" type="button" title="清空搜索" aria-label="清空搜索"><span class="icon icon-x"></span></button>
+            <span class="status-chip"><small>结果</small><span>全部设置</span></span>
+          </div>
+
+          <nav class="category-strip" aria-label="设置分类">
+            <button class="category-chip is-active" type="button">系统</button>
+            <button class="category-chip" type="button">网络</button>
+            <button class="category-chip" type="button">导出</button>
+            <button class="category-chip" type="button">文本</button>
+            <button class="category-chip" type="button">解码</button>
+            <button class="category-chip" type="button">录制</button>
+            <button class="category-chip" type="button">独立窗</button>
+            <button class="category-chip" type="button">过滤</button>
+            <button class="category-chip" type="button">引导词</button>
+          </nav>
+        </section>
+      </section>
+
+      <section class="frame" id="frame-settings-workbench" aria-label="常用设置">
+        <section class="surface-panel settings-vnext-workbench">
+          <header class="panel-head">
+            <h2>常用设置</h2>
+            <span class="panel-meta">网络 · 目录 · 导出 · 运行</span>
+          </header>
+
+          <div class="workbench-grid">
+            <section class="settings-column" aria-label="网络与目录">
+              <section class="setting-block">
+                <header class="block-head"><h3>网络</h3></header>
+                <div class="setting-row-list">
+                  <label class="setting-row has-switch">
+                    <span>HTTP</span>
+                    <input type="text" value="http://127.0.0.1:7890" />
+                    <span class="switch-control"><input type="checkbox" /><i></i><b>启用</b></span>
+                  </label>
+                  <label class="setting-row has-switch">
+                    <span>HTTPS</span>
+                    <input type="text" value="http://127.0.0.1:7890" />
+                    <span class="switch-control"><input type="checkbox" /><i></i><b>启用</b></span>
+                  </label>
+                  <label class="setting-row">
+                    <span>Libre</span>
+                    <input type="text" value="https://libretranslate.example.com" />
+                  </label>
+                  <label class="setting-row">
+                    <span>API Key</span>
+                    <input type="password" value="" placeholder="留空" />
+                  </label>
+                </div>
+              </section>
+
+              <section class="setting-block">
+                <header class="block-head"><h3>目录</h3></header>
+                <div class="directory-stack">
+                  <div class="directory-row">
+                    <span>模型</span>
+                    <div class="path-control" title="E:/whisper">
+                      <span class="path-text">E:/whisper</span>
+                      <button class="icon-action" type="button" title="选择模型目录" aria-label="选择模型目录"><span class="icon icon-folder"></span></button>
+                      <button class="icon-action" type="button" title="打开模型目录" aria-label="打开模型目录"><span class="icon icon-open"></span></button>
+                    </div>
+                  </div>
+                  <div class="directory-row">
+                    <span>导出</span>
+                    <div class="path-control" title="D:/Projects/speechtranslateProj/speech_translate/export">
+                      <span class="path-text">D:/Projects/speechtranslateProj/speech_translate/export</span>
+                      <button class="icon-action" type="button" title="选择导出目录" aria-label="选择导出目录"><span class="icon icon-folder"></span></button>
+                      <button class="icon-action" type="button" title="打开导出目录" aria-label="打开导出目录"><span class="icon icon-open"></span></button>
+                    </div>
+                  </div>
+                  <div class="directory-row">
+                    <span>日志</span>
+                    <div class="path-control" title="auto">
+                      <span class="path-text">auto</span>
+                      <button class="icon-action" type="button" title="选择日志目录" aria-label="选择日志目录"><span class="icon icon-folder"></span></button>
+                      <button class="icon-action" type="button" title="打开日志目录" aria-label="打开日志目录"><span class="icon icon-open"></span></button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </section>
+
+            <section class="settings-column" aria-label="导出与运行">
+              <section class="setting-block">
+                <header class="block-head"><h3>导出</h3></header>
+                <div class="field-grid two-col">
+                  <label class="field span-2"><span>导出命名</span><input type="text" value="%Y-%m-%d %f {file}/{task-lang}" /></label>
+                  <label class="field"><span>切分模式</span><select><option>split</option><option>newline</option></select></label>
+                  <label class="field"><span>日志级别</span><select><option>INFO</option><option>DEBUG</option><option>WARNING</option></select></label>
+                  <label class="field"><span>最大词数</span><input type="number" value="16" /></label>
+                  <label class="field"><span>最大字符</span><input type="number" value="90" /></label>
+                </div>
+              </section>
+
+              <section class="setting-block">
+                <header class="block-head"><h3>运行</h3></header>
+                <div class="toggle-list">
+                  <div class="toggle-column">
+                    <label class="switch-control"><input type="checkbox" checked /><i></i><b>任务完成后打开目录</b></label>
+                    <label class="switch-control"><input type="checkbox" /><i></i><b>录制前确认</b></label>
+                    <label class="switch-control"><input type="checkbox" /><i></i><b>忽略录制警告</b></label>
+                  </div>
+                  <div class="toggle-column">
+                    <label class="switch-control"><input type="checkbox" checked /><i></i><b>关闭到托盘</b></label>
+                    <label class="switch-control"><input type="checkbox" /><i></i><b>托盘不提示</b></label>
+                    <label class="switch-control"><input type="checkbox" checked /><i></i><b>日志自动滚动</b></label>
+                  </div>
+                </div>
+              </section>
+            </section>
+          </div>
+        </section>
+      </section>
+
+      <section class="frame settings-advanced-stack" id="frame-settings-advanced" aria-label="高级设置完整工作台">
+        <section class="surface-panel settings-vnext-panel weight-low" id="settings-advanced-system">
+          <header class="panel-head">
+            <h2>系统与路径</h2>
+          </header>
+          <div class="section-grid two-pane">
+            <section class="settings-vnext-section">
+              <header class="section-head"><h3>系统</h3></header>
+              <div class="field-grid two-col">
+                <label class="field"><span>日志级别</span><select><option>INFO</option><option>DEBUG</option><option>WARNING</option></select></label>
+                <label class="field"><span>当前日志</span><div class="text-like" title="2026-06-20.log">2026-06-20.log</div></label>
+                <label class="field span-2"><span>日志目录</span><div class="path-control" title="D:/Projects/speechtranslateProj/speech_translate/log"><span class="path-text">D:/Projects/speechtranslateProj/speech_translate/log</span><button class="icon-action" type="button" title="选择日志目录" aria-label="选择日志目录"><span class="icon icon-folder"></span></button><button class="icon-action" type="button" title="打开日志目录" aria-label="打开日志目录"><span class="icon icon-open"></span></button></div></label>
+              </div>
+            </section>
+            <section class="settings-vnext-section">
+              <header class="section-head"><h3>路径</h3></header>
+              <div class="directory-stack">
+                <div class="directory-row"><span>模型</span><div class="path-control" title="E:/whisper"><span class="path-text">E:/whisper</span><button class="icon-action" type="button" title="选择模型目录" aria-label="选择模型目录"><span class="icon icon-folder"></span></button><button class="icon-action" type="button" title="打开模型目录" aria-label="打开模型目录"><span class="icon icon-open"></span></button></div></div>
+                <div class="directory-row"><span>导出</span><div class="path-control" title="D:/Projects/speechtranslateProj/speech_translate/export"><span class="path-text">D:/Projects/speechtranslateProj/speech_translate/export</span><button class="icon-action" type="button" title="选择导出目录" aria-label="选择导出目录"><span class="icon icon-folder"></span></button><button class="icon-action" type="button" title="打开导出目录" aria-label="打开导出目录"><span class="icon icon-open"></span></button></div></div>
+                <div class="directory-row"><span>日志</span><div class="path-control" title="D:/Projects/speechtranslateProj/speech_translate/log"><span class="path-text">D:/Projects/speechtranslateProj/speech_translate/log</span><button class="icon-action" type="button" title="选择日志目录" aria-label="选择日志目录"><span class="icon icon-folder"></span></button><button class="icon-action" type="button" title="打开日志目录" aria-label="打开日志目录"><span class="icon icon-open"></span></button></div></div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="surface-panel settings-vnext-panel weight-mid-low" id="settings-advanced-network">
+          <header class="panel-head">
+            <h2>网络与翻译</h2>
+          </header>
+          <div class="section-grid two-pane">
+            <section class="settings-vnext-section">
+              <header class="section-head"><h3>代理与 LibreTranslate</h3></header>
+              <div class="setting-row-list">
+                <label class="setting-row has-switch"><span>HTTP</span><input type="text" value="http://127.0.0.1:7890" /><span class="switch-control"><input type="checkbox" /><i></i><b>启用</b></span></label>
+                <label class="setting-row has-switch"><span>HTTPS</span><input type="text" value="http://127.0.0.1:7890" /><span class="switch-control"><input type="checkbox" /><i></i><b>启用</b></span></label>
+                <label class="setting-row"><span>Libre</span><input type="text" value="https://libretranslate.example.com" /></label>
+                <label class="setting-row"><span>API Key</span><input type="password" placeholder="留空" /></label>
+              </div>
+            </section>
+            <section class="settings-vnext-section">
+              <header class="section-head"><h3>Selenium</h3></header>
+              <div class="field-grid two-col">
+                <label class="field"><span>窗口模式</span><select><option>compact</option><option>visible</option><option>headless</option></select></label>
+                <label class="field"><span>窗口层级</span><select><option>后台</option><option>前台</option></select></label>
+                <label class="field span-2"><span>Chrome 用户目录</span><div class="path-control" title="auto"><span class="path-text">auto</span><button class="icon-action" type="button" title="选择用户目录" aria-label="选择用户目录"><span class="icon icon-folder"></span></button><button class="icon-action" type="button" title="打开用户目录" aria-label="打开用户目录"><span class="icon icon-open"></span></button></div></label>
+              </div>
+              <div class="toggle-grid compact two">
+                <label class="switch-control"><input type="checkbox" checked /><i></i><b>任务结束关闭浏览器</b></label>
+                <label class="switch-control"><input type="checkbox" /><i></i><b>保留调试窗口</b></label>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="surface-panel settings-vnext-panel weight-mid" id="settings-advanced-export">
+          <header class="panel-head">
+            <h2>导出与切分</h2>
+          </header>
+          <div class="settings-vnext-section">
+            <div class="field-grid three-col">
+              <label class="field span-3"><span>导出命名</span><input type="text" value="%Y-%m-%d %f {file}/{task-lang}" /></label>
+              <label class="field"><span>去重复次数</span><input type="number" value="3" /></label>
+              <label class="field"><span>最大词数</span><input type="number" value="16" /></label>
+              <label class="field"><span>最大字符</span><input type="number" value="90" /></label>
+              <label class="field"><span>切分模式</span><select><option>split</option><option>newline</option><option>segment</option></select></label>
+              <label class="field"><span>切片起始</span><input type="number" value="0" /></label>
+              <label class="field"><span>切片结束</span><input type="number" value="-1" /></label>
+            </div>
+            <div class="toggle-grid compact two">
+              <label class="switch-control"><input type="checkbox" checked /><i></i><b>任务完成后打开目录</b></label>
+              <label class="switch-control"><input type="checkbox" /><i></i><b>覆盖同名文件</b></label>
+            </div>
+          </div>
+        </section>
+
+        <section class="surface-panel settings-vnext-panel weight-mid" id="settings-advanced-display">
+          <header class="panel-head">
+            <h2>文本显示</h2>
+          </header>
+          <div class="section-grid display-mirror">
+            <section class="settings-vnext-section">
+              <header class="section-head"><h3>转写显示</h3></header>
+              <div class="field-grid two-col">
+                <label class="field"><span>字体</span><input type="text" value="Segoe UI" /></label>
+                <label class="field"><span>字号</span><input type="number" value="16" /></label>
+                <label class="field color-field"><span>字色</span><div><i style="--swatch:#111827"></i><input type="text" value="#111827" /></div></label>
+                <label class="field"><span>最大字符</span><input type="number" value="300" /></label>
+                <label class="field"><span>每行字符</span><input type="number" value="0" /></label>
+              </div>
+              <div class="toggle-grid compact"><label class="switch-control"><input type="checkbox" checked /><i></i><b>自动滚动</b></label><label class="switch-control"><input type="checkbox" /><i></i><b>粗体</b></label><label class="switch-control"><input type="checkbox" checked /><i></i><b>置信度颜色</b></label></div>
+            </section>
+            <section class="settings-vnext-section">
+              <header class="section-head"><h3>翻译显示</h3></header>
+              <div class="field-grid two-col">
+                <label class="field"><span>字体</span><input type="text" value="Segoe UI" /></label>
+                <label class="field"><span>字号</span><input type="number" value="16" /></label>
+                <label class="field color-field"><span>字色</span><div><i style="--swatch:#1f2937"></i><input type="text" value="#1f2937" /></div></label>
+                <label class="field"><span>最大字符</span><input type="number" value="300" /></label>
+                <label class="field"><span>每行字符</span><input type="number" value="0" /></label>
+              </div>
+              <div class="toggle-grid compact"><label class="switch-control"><input type="checkbox" checked /><i></i><b>自动滚动</b></label><label class="switch-control"><input type="checkbox" /><i></i><b>粗体</b></label><label class="switch-control"><input type="checkbox" checked /><i></i><b>置信度颜色</b></label></div>
+            </section>
+          </div>
+          <section class="settings-vnext-section confidence-row">
+            <header class="section-head"><h3>置信度颜色</h3></header>
+            <div class="field-grid two-col">
+              <label class="field color-field"><span>低置信度</span><div><i style="--swatch:#b45353"></i><input type="text" value="#b45353" /></div></label>
+              <label class="field color-field"><span>高置信度</span><div><i style="--swatch:#0f9f78"></i><input type="text" value="#0f9f78" /></div></label>
+            </div>
+          </section>
+        </section>
+
+        <section class="surface-panel settings-vnext-panel weight-mid-low" id="settings-advanced-decode">
+          <header class="panel-head">
+            <h2>Whisper 解码</h2>
+          </header>
+          <div class="settings-vnext-section">
+            <header class="section-head"><h3>核心参数</h3></header>
+            <div class="field-grid three-col">
+              <label class="field"><span>解码预设</span><select><option>greedy</option><option>beam search</option><option>custom</option></select></label>
+              <label class="field"><span>Temperature</span><input type="text" value="0" /></label>
+              <label class="field"><span>Best Of</span><input type="number" value="5" /></label>
+              <label class="field"><span>Beam Size</span><input type="number" value="5" /></label>
+              <label class="field"><span>Patience</span><input type="number" value="1" /></label>
+              <label class="field"><span>Max Timestamp</span><input type="number" value="1.0" /></label>
+            </div>
+          </div>
+          <div class="section-grid decode-grid">
+            <section class="settings-vnext-section">
+              <header class="section-head"><h3>阈值</h3></header>
+              <div class="field-grid two-col">
+                <label class="field"><span>Compression</span><input type="number" value="2.4" /></label>
+                <label class="field"><span>Logprob</span><input type="number" value="-1.0" /></label>
+                <label class="field"><span>No Speech</span><input type="number" value="0.6" /></label>
+                <label class="field"><span>Suppress Tokens</span><input type="text" value="-1" /></label>
+              </div>
+              <div class="toggle-grid compact"><label class="switch-control"><input type="checkbox" checked /><i></i><b>FP16</b></label><label class="switch-control"><input type="checkbox" checked /><i></i><b>抑制空白</b></label><label class="switch-control"><input type="checkbox" /><i></i><b>优先 .en</b></label></div>
+            </section>
+            <section class="settings-vnext-section">
+              <header class="section-head"><h3>Prompt</h3></header>
+              <div class="field-grid two-col">
+                <label class="field span-2"><span>Initial Prompt</span><textarea rows="3">こんにちは。これは会議音声です。</textarea></label>
+                <label class="field"><span>Prefix</span><input type="text" value="" placeholder="留空" /></label>
+                <label class="field"><span>附加 Args</span><input type="text" value="" placeholder="--vad-filter" /></label>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="surface-panel settings-vnext-panel weight-mid-high" id="settings-advanced-recording">
+          <header class="panel-head">
+            <h2>录制设置</h2>
+          </header>
+          <section class="settings-vnext-section">
+            <header class="section-head"><h3>通用</h3></header>
+            <div class="field-grid four-col">
+              <label class="field"><span>模型设备</span><select><option>auto</option><option>cuda</option><option>cpu</option></select></label>
+              <label class="field"><span>转写间隔</span><input type="number" value="300" /></label>
+              <label class="field"><span>分隔符</span><input type="text" value=" " /></label>
+              <label class="switch-control field-switch"><input type="checkbox" /><i></i><b>详细录制日志</b></label>
+            </div>
+          </section>
+          <div class="section-grid display-mirror">
+            <section class="settings-vnext-section">
+              <header class="section-head"><h3>麦克风</h3></header>
+              <div class="field-grid three-col recording-device-grid">
+                <label class="field span-3"><span>设备</span><select><option>[ID: 2,5] Mi Monitor Microphone</option></select></label>
+                <label class="field"><span>采样率</span><input type="number" value="16000" /></label>
+                <label class="field"><span>块大小</span><input type="number" value="1024" /></label>
+                <label class="field"><span>声道</span><input type="number" value="1" /></label>
+              </div>
+            </section>
+            <section class="settings-vnext-section">
+              <header class="section-head"><h3>扬声器</h3></header>
+              <div class="field-grid three-col recording-device-grid">
+                <label class="field span-3"><span>设备</span><select><option>[ID: 2,2] Realtek Digital Output</option></select></label>
+                <label class="field"><span>采样率</span><input type="number" value="48000" /></label>
+                <label class="field"><span>块大小</span><input type="number" value="2048" /></label>
+                <label class="field"><span>声道</span><input type="number" value="2" /></label>
+              </div>
+            </section>
+          </div>
+          <section class="settings-vnext-section">
+            <header class="section-head"><h3>阈值与缓冲</h3></header>
+            <div class="field-grid three-col">
+              <label class="field"><span>最小输入时长</span><input type="number" value="0.5" /></label>
+              <label class="field"><span>最大缓冲</span><input type="number" value="10" /></label>
+              <label class="field"><span>最大句子数</span><input type="number" value="5" /></label>
+              <label class="field"><span>Silero 最小值</span><input type="number" value="0.3" /></label>
+              <label class="field"><span>阈值 dB</span><input type="number" value="-35" /></label>
+              <label class="switch-control field-switch"><input type="checkbox" checked /><i></i><b>自动级别</b></label>
+            </div>
+          </section>
+        </section>
+
+        <section class="surface-panel settings-vnext-panel weight-mid-high" id="settings-advanced-detached">
+          <header class="panel-head">
+            <h2>独立窗口</h2>
+          </header>
+          <div class="section-grid detached-grid">
+            <section class="settings-vnext-section detached-card">
+              <header class="detached-head">
+                <div><h3>转写窗口 <span>TC</span></h3><p><i></i>未打开 · 900x240 · auto</p></div>
+                <div class="detached-actions">
+                  <button class="icon-action icon-action-primary" type="button" title="打开转写窗口" aria-label="打开转写窗口"><span class="icon icon-window"></span></button>
+                  <button class="icon-action" type="button" title="转写窗口设置" aria-label="转写窗口设置"><span class="icon icon-sliders"></span></button>
+                </div>
+              </header>
+              <div class="field-grid two-col">
+                <label class="field"><span>尺寸</span><input type="text" value="900x240" /></label>
+                <label class="field"><span>位置</span><input type="text" value="auto" /></label>
+                <label class="field range-field"><span>透明度</span><input type="range" value="90" /></label>
+                <label class="field"><span>字号</span><input type="number" value="16" /></label>
+                <label class="field"><span>字体</span><input type="text" value="Segoe UI" /></label>
+                <label class="field"><span>最大字符</span><input type="number" value="300" /></label>
+                <label class="field color-field"><span>字色</span><div><i style="--swatch:#111827"></i><input type="text" value="#111827" /></div></label>
+                <label class="field color-field"><span>背景</span><div><i style="--swatch:#ffffff"></i><input type="text" value="#ffffff" /></div></label>
+              </div>
+              <div class="toggle-grid compact two"><label class="switch-control"><input type="checkbox" checked /><i></i><b>置顶</b></label><label class="switch-control"><input type="checkbox" checked /><i></i><b>无标题栏</b></label><label class="switch-control"><input type="checkbox" /><i></i><b>点击穿透</b></label><label class="switch-control"><input type="checkbox" checked /><i></i><b>置信度颜色</b></label></div>
+            </section>
+            <section class="settings-vnext-section detached-card">
+              <header class="detached-head">
+                <div><h3>翻译窗口 <span>TL</span></h3><p><i></i>未打开 · 900x240 · auto</p></div>
+                <div class="detached-actions">
+                  <button class="icon-action icon-action-primary" type="button" title="打开翻译窗口" aria-label="打开翻译窗口"><span class="icon icon-window"></span></button>
+                  <button class="icon-action" type="button" title="翻译窗口设置" aria-label="翻译窗口设置"><span class="icon icon-sliders"></span></button>
+                </div>
+              </header>
+              <div class="field-grid two-col">
+                <label class="field"><span>尺寸</span><input type="text" value="900x240" /></label>
+                <label class="field"><span>位置</span><input type="text" value="auto" /></label>
+                <label class="field range-field"><span>透明度</span><input type="range" value="90" /></label>
+                <label class="field"><span>字号</span><input type="number" value="16" /></label>
+                <label class="field"><span>字体</span><input type="text" value="Segoe UI" /></label>
+                <label class="field"><span>最大字符</span><input type="number" value="300" /></label>
+                <label class="field color-field"><span>字色</span><div><i style="--swatch:#111827"></i><input type="text" value="#111827" /></div></label>
+                <label class="field color-field"><span>背景</span><div><i style="--swatch:#ffffff"></i><input type="text" value="#ffffff" /></div></label>
+              </div>
+              <div class="toggle-grid compact two"><label class="switch-control"><input type="checkbox" checked /><i></i><b>置顶</b></label><label class="switch-control"><input type="checkbox" checked /><i></i><b>无标题栏</b></label><label class="switch-control"><input type="checkbox" /><i></i><b>点击穿透</b></label><label class="switch-control"><input type="checkbox" checked /><i></i><b>置信度颜色</b></label></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="surface-panel settings-vnext-panel weight-mid-low" id="settings-advanced-filter">
+          <header class="panel-head">
+            <h2>过滤与词典</h2>
+          </header>
+          <div class="section-grid two-pane">
+            <section class="settings-vnext-section">
+              <header class="section-head"><h3>实时过滤</h3></header>
+              <div class="field-grid two-col">
+                <label class="switch-control field-switch span-2"><input type="checkbox" checked /><i></i><b>启用实时过滤</b></label>
+                <label class="field span-2"><span>词典路径</span><div class="path-control" title="auto"><span class="path-text">auto</span><button class="icon-action" type="button" title="选择实时词典" aria-label="选择实时词典"><span class="icon icon-folder"></span></button><button class="icon-action" type="button" title="打开实时词典" aria-label="打开实时词典"><span class="icon icon-open"></span></button></div></label>
+              </div>
+            </section>
+            <section class="settings-vnext-section">
+              <header class="section-head"><h3>文件过滤</h3></header>
+              <div class="field-grid two-col">
+                <label class="switch-control field-switch span-2"><input type="checkbox" checked /><i></i><b>启用文件过滤</b></label>
+                <label class="field span-2"><span>词典路径</span><div class="path-control" title="auto"><span class="path-text">auto</span><button class="icon-action" type="button" title="选择文件词典" aria-label="选择文件词典"><span class="icon icon-folder"></span></button><button class="icon-action" type="button" title="打开文件词典" aria-label="打开文件词典"><span class="icon icon-open"></span></button></div></label>
+              </div>
+            </section>
+          </div>
+          <section class="settings-vnext-section compact-section">
+            <header class="section-head"><h3>匹配策略</h3></header>
+            <div class="field-grid three-col">
+              <label class="switch-control field-switch"><input type="checkbox" checked /><i></i><b>忽略标点</b></label>
+              <label class="field"><span>模糊阈值</span><input type="number" value="90" /></label>
+              <label class="field"><span>策略</span><select><option>精准匹配</option><option>模糊匹配</option></select></label>
+            </div>
+          </section>
+        </section>
+
+        <section class="surface-panel settings-vnext-panel weight-mid" id="settings-advanced-prompt">
+          <header class="panel-head">
+            <h2>引导词</h2>
+          </header>
+          <div class="prompt-layout">
+            <section class="settings-vnext-section prompt-side">
+              <header class="section-head"><h3>语言</h3></header>
+              <label class="field"><span>当前语言</span><select><option>Japanese</option><option>English</option><option>Chinese</option></select></label>
+              <label class="field"><span>自定义代码</span><input type="text" placeholder="ja-JP" /></label>
+              <label class="switch-control field-switch"><input type="checkbox" checked /><i></i><b>使用历史上下文</b></label>
+              <span class="status-chip prompt-chip"><small>当前</small><span>Japanese</span></span>
+            </section>
+            <section class="settings-vnext-section prompt-editor">
+              <header class="section-head"><h3>Prompt</h3></header>
+              <textarea rows="7">会议、访谈和课堂场景。保持人名、产品名和技术术语，不要补全未听清的内容。</textarea>
+            </section>
+          </div>
+        </section>
+      </section>
+
+      <div class="scroll-end-spacer" aria-hidden="true"></div>
+    </main>
+  </div>
+  <footer class="global-statusbar" aria-label="底部状态">
+    <span><strong>设置</strong><em>全部分类</em></span>
+    <span><strong>筛选</strong><em>全部设置</em></span>
+    <span><strong>保存</strong><em>无未保存更改</em></span>
+  </footer>
+</body>
+</html>

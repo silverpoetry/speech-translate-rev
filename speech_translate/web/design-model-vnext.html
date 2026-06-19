@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Model UI VNext Prototype</title>
+  <link rel="stylesheet" href="./design-model-vnext.css" />
+</head>
+<body>
+  <div class="vnext-shell">
+    <aside class="vnext-sidebar" aria-label="原型导航">
+      <div class="brand-mark">
+        <span class="brand-dot" aria-hidden="true"></span>
+        <span>语音翻译</span>
+      </div>
+      <nav class="nav-stack">
+        <button class="nav-item" type="button"><span class="nav-icon icon-message"></span><span>实时转写</span></button>
+        <button class="nav-item" type="button"><span class="nav-icon icon-file"></span><span>文件转写</span></button>
+        <button class="nav-item is-active" type="button"><span class="nav-icon icon-box"></span><span>模型选择</span></button>
+        <button class="nav-item" type="button"><span class="nav-icon icon-settings"></span><span>设置</span></button>
+      </nav>
+      <div class="nav-tools">
+        <button class="side-action" type="button" title="模型目录" aria-label="模型目录"><span class="mini-icon icon-folder"></span></button>
+        <button class="side-action" type="button" title="导出目录" aria-label="导出目录"><span class="mini-icon icon-folder"></span></button>
+        <span class="nav-divider" aria-hidden="true"></span>
+        <button class="side-action" type="button" title="隐藏到托盘" aria-label="隐藏到托盘"><span class="mini-icon icon-tray"></span></button>
+        <button class="side-action" type="button" title="退出程序" aria-label="退出程序"><span class="mini-icon icon-x"></span></button>
+      </div>
+    </aside>
+
+    <main class="vnext-content" aria-label="模型选择原型">
+      <section class="frame" id="frame-model-runtime" aria-label="运行配置">
+        <section class="surface-panel model-vnext-runtime-panel">
+          <header class="model-vnext-head">
+            <h1>模型选择</h1>
+            <button class="icon-action" type="button" title="保存模型设置" aria-label="保存模型设置"><span class="icon icon-save"></span></button>
+          </header>
+
+          <div class="model-vnext-runtime-grid">
+            <label class="field field-engine">
+              <span>Whisper 后端</span>
+              <div class="engine-bar" role="tablist" aria-label="模型选择后端">
+                <button class="engine-tab" type="button" aria-selected="false">whisper</button>
+                <button class="engine-tab is-active" type="button" aria-selected="true">faster-whisper</button>
+              </div>
+            </label>
+
+            <label class="field">
+              <span>模型</span>
+              <div class="select-like has-arrow">Tiny [1GB VRAM] (Fastest)<i></i></div>
+            </label>
+
+            <div class="runtime-chips" aria-label="运行状态">
+              <span class="status-chip status-chip-strong"><small>运行</small><span>未加载</span></span>
+              <span class="status-chip"><small>当前模型</small><span>tiny</span></span>
+              <span class="status-chip"><small>当前后端</small><span>faster-whisper</span></span>
+            </div>
+
+            <div class="runtime-cta">
+              <button class="primary-action" type="button">加载模型</button>
+            </div>
+
+            <div class="directory-field" title="D:\Models\whisper">
+              <small>模型目录</small>
+              <span>D:\Models\whisper</span>
+            </div>
+
+            <div class="runtime-actions" aria-label="目录操作">
+              <button class="icon-action" type="button" title="设置模型目录" aria-label="设置模型目录"><span class="icon icon-folder"></span></button>
+              <button class="icon-action" type="button" title="打开模型目录" aria-label="打开模型目录"><span class="icon icon-open"></span></button>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="frame" id="frame-model-manager" aria-label="模型检查与下载">
+        <section class="surface-panel model-vnext-manager-panel">
+          <header class="panel-head">
+            <h2>模型检查与下载</h2>
+          </header>
+
+          <div class="model-vnext-toolbar">
+            <div class="engine-bar" role="tablist" aria-label="模型引擎">
+              <button class="engine-tab" type="button" aria-selected="false">whisper</button>
+              <button class="engine-tab is-active" type="button" aria-selected="true">faster-whisper</button>
+            </div>
+
+            <div class="manager-chips" aria-label="下载概览">
+              <span class="status-chip status-chip-wide"><small>目录</small><span>D:\Models\whisper</span></span>
+              <span class="status-chip"><small>当前</small><span>tiny · 74 MB</span></span>
+              <span class="status-chip"><small>缓存</small><span>6 / 14</span></span>
+              <span class="status-chip"><small>下载</small><span>进行中</span></span>
+            </div>
+
+            <div class="toolbar-actions" aria-label="模型工具">
+              <button class="icon-action" type="button" title="检查当前模型" aria-label="检查当前模型"><span class="icon icon-refresh"></span></button>
+              <button class="icon-action" type="button" title="检查当前引擎全部模型" aria-label="检查当前引擎全部模型"><span class="icon icon-search"></span></button>
+              <button class="icon-action" type="button" title="设置模型目录" aria-label="设置模型目录"><span class="icon icon-folder"></span></button>
+              <button class="icon-action" type="button" title="打开模型目录" aria-label="打开模型目录"><span class="icon icon-open"></span></button>
+            </div>
+          </div>
+
+          <div class="model-vnext-list" id="frame-model-list" aria-label="模型下载列表">
+            <div class="list-head" aria-hidden="true">
+              <span>模型名</span>
+              <span>体积</span>
+              <span>状态</span>
+              <span>进度 / 速度</span>
+              <span>动作</span>
+            </div>
+
+            <article class="model-row is-current">
+              <div class="row-main">
+                <strong>tiny</strong>
+                <span>当前运行模型</span>
+              </div>
+              <div class="row-size">74 MB</div>
+              <div class="row-state"><span class="list-chip is-ready">已下载</span></div>
+              <div class="row-progress"><span class="row-meta">缓存可用</span></div>
+              <div class="row-action"></div>
+            </article>
+
+            <article class="model-row is-downloading">
+              <div class="row-main">
+                <strong>base</strong>
+                <span>faster-whisper</span>
+              </div>
+              <div class="row-size">142 MB</div>
+              <div class="row-state"><span class="list-chip is-busy">下载中</span></div>
+              <div class="row-progress">
+                <div class="progress-line"><i style="width:61%"></i></div>
+                <span class="row-meta">61% · 7.2 MB/s</span>
+              </div>
+              <div class="row-action"><button class="list-action" type="button">下载中</button></div>
+            </article>
+
+            <article class="model-row">
+              <div class="row-main">
+                <strong>small</strong>
+                <span>faster-whisper</span>
+              </div>
+              <div class="row-size">466 MB</div>
+              <div class="row-state"><span class="list-chip">缺失</span></div>
+              <div class="row-progress"><span class="row-meta">等待下载</span></div>
+              <div class="row-action"><button class="list-action" type="button">下载</button></div>
+            </article>
+
+            <article class="model-row has-error">
+              <div class="row-main">
+                <strong>large-v3</strong>
+                <span>whisper</span>
+              </div>
+              <div class="row-size">2.9 GB</div>
+              <div class="row-state"><span class="list-chip is-error">错误</span></div>
+              <div class="row-progress"><span class="row-meta row-error">校验失败：文件缺失</span></div>
+              <div class="row-action"><button class="list-action" type="button">下载</button></div>
+            </article>
+
+            <article class="model-row">
+              <div class="row-main">
+                <strong>medium</strong>
+                <span>faster-whisper</span>
+              </div>
+              <div class="row-size">1.5 GB</div>
+              <div class="row-state"><span class="list-chip">缺失</span></div>
+              <div class="row-progress"><span class="row-meta">未下载</span></div>
+              <div class="row-action"><button class="list-action" type="button">下载</button></div>
+            </article>
+          </div>
+        </section>
+      </section>
+
+      <div class="scroll-end-spacer" aria-hidden="true"></div>
+    </main>
+  </div>
+  <footer class="global-statusbar" aria-label="底部状态">
+    <span><strong>tiny</strong><em>faster-whisper</em></span>
+    <span><strong>缓存 6 / 14</strong><em>下载中</em></span>
+    <span><strong>模型目录</strong><em>D:\Models\whisper</em></span>
+  </footer>
+</body>
+</html>

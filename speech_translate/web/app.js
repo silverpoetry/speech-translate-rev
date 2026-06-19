@@ -950,10 +950,30 @@ function resolveModelRuntimeSummary(data) {
     selectedModelKey,
     selectedBackend,
     effectiveModelKey,
+    runtimeStateValue: runtimeLoaded ? '已加载' : runtimeLoading ? '加载中' : '未加载',
+    runtimeBackendValue: selectedBackend,
     runtimeStateLabel: runtimeLoaded ? '运行：已加载' : runtimeLoading ? '运行：加载中' : '运行：未加载',
     runtimeMetaLabel: runtimeMessage || (runtimeLoaded ? `当前运行：${effectiveModelKey}` : '等待加载'),
     taskPillLabel: `${runtimeLoaded ? effectiveModelKey : (selectedModelKey || '未选择')} / ${selectedBackend}`,
   };
+}
+
+function estimateModelManagerBytes(modelKey) {
+  const key = String(modelKey || '').trim().toLowerCase();
+  const map = {
+    tiny: 78_000_000,
+    base: 142_000_000,
+    small: 466_000_000,
+    'small.en': 466_000_000,
+    medium: 1_530_000_000,
+    'medium.en': 1_530_000_000,
+    large: 2_900_000_000,
+    'large-v1': 2_900_000_000,
+    'large-v2': 2_900_000_000,
+    'large-v3': 3_100_000_000,
+    turbo: 809_000_000,
+  };
+  return map[key] || 0;
 }
 
 function resolveFileProcessingSummary() {
@@ -1025,6 +1045,22 @@ function renderDetachedWindowSettingsFields(data) {
 function renderSettings(data) {
   const settings = data.settings || {};
   renderDetachedWindowSettingsFields(data);
+  const about = data.about || {};
+  const exportDir = String(settings.dir_export ?? about.export_dir ?? 'auto');
+  const modelDir = String(about.model_dir || settings.dir_model || 'auto');
+  const logDir = String(settings.dir_log ?? about.log_dir ?? 'auto');
+  if (els.settingsExportDirSummary) {
+    els.settingsExportDirSummary.textContent = exportDir;
+    els.settingsExportDirSummary.title = exportDir;
+  }
+  if (els.settingsModelDirSummary) {
+    els.settingsModelDirSummary.textContent = modelDir;
+    els.settingsModelDirSummary.title = modelDir;
+  }
+  if (els.settingsLogDirSummary) {
+    els.settingsLogDirSummary.textContent = logDir;
+    els.settingsLogDirSummary.title = logDir;
+  }
   if (els.dirExport) {
     els.dirExport.value = settings.dir_export ?? 'auto';
   }
@@ -1631,7 +1667,15 @@ function renderImportSettings(data) {
 
   els.transcribeImport.checked = Boolean(importUi.transcribe);
   els.translateImport.checked = Boolean(importUi.translate);
-  els.importModelPill.textContent = `模型：${importUi.selected_model_label || importUi.selected_model_key || importUi.selected_model || '未下载'}`;
+  if (els.importModelPill) {
+    els.importModelPill.textContent = importUi.selected_model_label || importUi.selected_model_key || importUi.selected_model || '未选择';
+    els.importModelPill.title = els.importModelPill.textContent;
+  }
+  if (els.modelRuntimeDir) {
+    const runtimeDir = importUi.model_dir || settings.dir_model || state.data?.about?.model_dir || 'auto';
+    els.modelRuntimeDir.textContent = runtimeDir;
+    els.modelRuntimeDir.parentElement?.setAttribute('title', runtimeDir);
+  }
   if (els.importEnginePill) {
     els.importEnginePill.textContent = importUi.selected_engine || '未知';
   }
@@ -1801,10 +1845,12 @@ function renderModelSelectionOverview(data) {
   const summary = resolveModelRuntimeSummary(data);
 
   if (els.modelSelectionRuntime) {
-    els.modelSelectionRuntime.textContent = summary.runtimeStateLabel;
+    els.modelSelectionRuntime.textContent = summary.runtimeStateValue;
+    els.modelSelectionRuntime.title = summary.runtimeMessage || summary.runtimeStateLabel;
   }
   if (els.modelSelectionRuntimeMeta) {
-    els.modelSelectionRuntimeMeta.textContent = summary.runtimeMetaLabel;
+    els.modelSelectionRuntimeMeta.textContent = summary.runtimeBackendValue;
+    els.modelSelectionRuntimeMeta.title = summary.runtimeMetaLabel;
   }
 }
 
@@ -2673,83 +2719,104 @@ function renderModelManagerState(data) {
   const selectedEstimateBytes = Number(modelUi.selected_model_estimate_bytes || 0);
   const selectedEstimateText = selectedEstimateBytes > 0 ? formatBytes(selectedEstimateBytes) : '未知体积';
   const rows = Array.isArray(modelUi.rows) ? modelUi.rows : [];
+  const downloadedCount = rows.filter((row) => row && row.downloaded === true).length;
+  const missingCount = rows.filter((row) => row && row.downloaded === false).length;
+  const totalCount = rows.length || (Array.isArray(modelUi.model_options) ? modelUi.model_options.length : 0);
   setSelectedModelManagerEngine(selectedEngine);
 
   if (els.modelManagerDirPill) {
-    els.modelManagerDirPill.textContent = `目录：${modelUi.model_dir || '默认位置'}`;
+    els.modelManagerDirPill.textContent = `目录 ${modelUi.model_dir || '默认位置'}`;
+    els.modelManagerDirPill.title = modelUi.model_dir || '默认位置';
   }
   if (els.modelManagerSelectionPill) {
-    els.modelManagerSelectionPill.textContent = `当前：${selectedEngine} · ${selectedModel} · ${selectedEstimateText}`;
+    els.modelManagerSelectionPill.textContent = `当前 ${selectedModel} · ${selectedEstimateText}`;
   }
   if (els.modelManagerCachePill) {
-    const downloadedCount = rows.filter((row) => row && row.downloaded === true).length;
-    const missingCount = rows.filter((row) => row && row.downloaded === false).length;
-    const totalCount = rows.length || (Array.isArray(modelUi.model_options) ? modelUi.model_options.length : 0);
     if (totalCount > 0) {
       els.modelManagerCachePill.textContent = missingCount > 0
-        ? `缓存：${downloadedCount} / ${totalCount}，缺 ${missingCount}`
-        : `缓存：${totalCount} / ${totalCount}，已齐全`;
+        ? `缓存 ${downloadedCount} / ${totalCount}`
+        : `缓存 ${totalCount} / ${totalCount}`;
     } else {
-      els.modelManagerCachePill.textContent = modelUi.download_running ? '缓存：刷新中' : '缓存：自动检查中';
+      els.modelManagerCachePill.textContent = modelUi.download_running ? '缓存 刷新中' : '缓存 扫描中';
     }
   }
   if (els.modelManagerDownloadPill) {
-    els.modelManagerDownloadPill.textContent = `下载：${modelUi.download_running ? '进行中' : '空闲'}`;
-  }
-  if (els.modelManagerHint) {
-    const missingCount = rows.filter((row) => row && row.downloaded === false).length;
-    const checked = modelUi.checked || null;
-    const checkedText = checked
-      ? `最近检查：${checked.model} / ${checked.engine} / ${checked.downloaded ? '已下载' : (checked.error ? `失败：${checked.error}` : '缺失')}`
-      : `当前模型：${selectedModel}，预计体积 ${selectedEstimateText}。`;
-    const downloadText = modelUi.download_running
-      ? '下载进行中，列表会持续刷新。'
-      : missingCount > 0
-        ? `当前仍缺 ${missingCount} 个模型。`
-        : '当前引擎模型已全部就绪。';
-    els.modelManagerHint.textContent = `当前展示 ${selectedEngine} 的全部模型。缺失项可直接下载；左侧按钮可检查当前模型或整个引擎。${downloadText} ${checkedText}`;
+    els.modelManagerDownloadPill.textContent = `下载 ${modelUi.download_running ? '进行中' : '空闲'}`;
   }
 
   if (els.modelStatusCard) {
+    const listHead = `
+      <div class="model-vnext-list-head" aria-hidden="true">
+        <span>模型名</span>
+        <span>体积</span>
+        <span>状态</span>
+        <span>进度 / 速度</span>
+        <span>动作</span>
+      </div>
+    `;
     const renderedRows = rows
       .map((row) => {
         const rowModel = String(row.model || '-');
         const rowEngine = String(row.engine || selectedEngine || 'whisper');
         const rowProgress = Math.max(0, Math.min(100, Number(row.progress) || 0));
         const rowSpeed = String(row.speed || '').trim();
-        const note = row.error ? `错误：${row.error}` : '';
-        const downloadAction = row.downloaded === true
-          ? `<button class="model-download-btn model-downloaded-btn" disabled>已下载</button>`
-          : row.downloaded === false && !row.downloading
-            ? `<button class="model-download-btn" data-action="download-model-row" data-model="${escapeHtml(rowModel)}" data-engine="${escapeHtml(rowEngine)}" title="下载 ${escapeHtml(rowModel)}">下载</button>`
-            : '';
+        const rowError = String(row.error || '').trim();
+        const estimatedBytes = estimateModelManagerBytes(rowModel);
+        const rowSizeText = estimatedBytes > 0 ? formatBytes(estimatedBytes) : '--';
+        const isCurrent = rowEngine === selectedEngine && rowModel === selectedModel;
+        const rowStateClass = row.downloading
+          ? 'is-busy'
+          : rowError
+            ? 'is-error'
+            : row.downloaded === true
+              ? 'is-ready'
+              : '';
+        const rowStateText = row.downloading
+          ? '下载中'
+          : rowError
+            ? '错误'
+            : row.downloaded === true
+              ? '已下载'
+              : row.downloaded === false
+                ? '缺失'
+                : '检测中';
         const rowProgressHtml = row.downloading
           ? `
-            <div class="model-download-progress" aria-label="下载进度">
-              <div class="model-download-progress-fill" style="--download-progress: ${rowProgress.toFixed(1)}%"></div>
+            <div class="model-vnext-progress-line" aria-label="下载进度">
+              <span class="model-vnext-progress-fill" style="width:${rowProgress.toFixed(1)}%"></span>
             </div>
-            <div class="model-download-meta">${rowProgress.toFixed(0)}%${rowSpeed ? ` | ${escapeHtml(rowSpeed)}` : ''}</div>
+            <span class="model-vnext-row-meta">${rowProgress.toFixed(0)}%${rowSpeed ? ` · ${escapeHtml(rowSpeed)}` : ''}</span>
           `
-          : '';
+          : rowError
+            ? `<span class="model-vnext-row-meta model-vnext-row-error">${escapeHtml(rowError)}</span>`
+            : `<span class="model-vnext-row-meta">${row.downloaded === true ? '缓存可用' : row.downloaded === false ? '等待下载' : '自动检查中'}</span>`;
+        const rowActionHtml = row.downloading
+          ? `<button class="model-vnext-download-btn is-running" type="button" disabled>下载中</button>`
+          : row.downloaded === true
+            ? ''
+            : `<button class="model-vnext-download-btn" type="button" data-action="download-model-row" data-model="${escapeHtml(rowModel)}" data-engine="${escapeHtml(rowEngine)}" title="下载 ${escapeHtml(rowModel)}">下载</button>`;
 
         return `
-          <div class="model-status-item">
-            <div class="model-status-head">
-              <span class="model-status-name">${escapeHtml(rowModel)}</span>
+          <article class="model-vnext-row${isCurrent ? ' is-current' : ''}">
+            <div class="model-vnext-row-main">
+              <strong title="${escapeHtml(rowModel)}">${escapeHtml(rowModel)}</strong>
+              <span title="${escapeHtml(rowEngine)}">${escapeHtml(rowEngine)}</span>
             </div>
-            ${downloadAction ? `<div class="model-status-value ${row.downloaded === false && !row.downloading ? 'is-missing' : ''}">${downloadAction}</div>` : ''}
-            ${rowProgressHtml}
-            ${note ? `<div class="error">${escapeHtml(note)}</div>` : ''}
-          </div>
+            <div class="model-vnext-row-size">${escapeHtml(rowSizeText)}</div>
+            <div class="model-vnext-row-status"><span class="model-vnext-row-state-chip ${rowStateClass}">${rowStateText}</span></div>
+            <div class="model-vnext-row-progress">${rowProgressHtml}</div>
+            <div class="model-vnext-row-action">${rowActionHtml}</div>
+          </article>
         `;
       })
       .join('');
     els.modelStatusCard.innerHTML = renderedRows
-      ? `<div class="model-status-grid">${renderedRows}</div>`
+      ? `${listHead}${renderedRows}`
       : `
-        <div class="model-empty-state">
-          <div class="model-empty-title">暂无模型状态</div>
-          <div class="model-empty-meta">点击右上角检查按钮，扫描当前引擎的本地模型缓存和下载状态。</div>
+        ${listHead}
+        <div class="model-vnext-empty">
+          <strong>暂无模型状态</strong>
+          <span>自动检查结果会显示在这里。</span>
         </div>
       `;
   }
@@ -3956,11 +4023,23 @@ function jumpToSettingsSection(sectionTitle) {
   panel.classList.add('settings-panel-match');
   window.setTimeout(() => panel.classList.remove('settings-panel-match'), 1600);
   panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  if (els.settingsSearchMeta) {
-    els.settingsSearchMeta.textContent = resolvedTitle ? `已跳转：${resolvedTitle}` : '已跳转到目标设置';
-  }
+  setSettingsSearchMeta('跳转', resolvedTitle || '目标设置');
   updatePageScrollIndicator();
   return resolvedTitle || true;
+}
+
+function setSettingsSearchMeta(prefix, value) {
+  if (!els.settingsSearchMeta) {
+    return;
+  }
+  const prefixNode = els.settingsSearchMeta.querySelector('small');
+  const valueNode = els.settingsSearchMeta.querySelector('span');
+  if (prefixNode && valueNode) {
+    prefixNode.textContent = prefix;
+    valueNode.textContent = value;
+    return;
+  }
+  els.settingsSearchMeta.textContent = `${prefix} ${value}`.trim();
 }
 
 function collectSearchTerms(root, selectors) {
@@ -4027,6 +4106,12 @@ function applySettingsFilter(rawQuery = '') {
         '.settings-section-title',
         '.settings-workbench-section-title',
         '.settings-workbench-section-meta',
+        '.setting-block',
+        '.block-head',
+        '.setting-row',
+        '.directory-row',
+        '.field',
+        '.switch-control',
         'label > span',
         'label.toggle-row',
         'button',
@@ -4049,6 +4134,12 @@ function applySettingsFilter(rawQuery = '') {
       '.settings-workbench-meta',
       '.settings-workbench-section-title',
       '.settings-workbench-section-meta',
+      '.setting-block',
+      '.block-head',
+      '.setting-row',
+      '.directory-row',
+      '.field',
+      '.switch-control',
       'label > span',
       'label.toggle-row',
     ]);
@@ -4066,10 +4157,10 @@ function applySettingsFilter(rawQuery = '') {
     shortcut.classList.toggle('is-active', Boolean(query && target.includes(query)));
   }
 
-  if (els.settingsSearchMeta) {
-    els.settingsSearchMeta.textContent = query
-      ? `筛选结果：${visibleCount} 个设置面板，${workbenchMatchCount} 个工作台卡片`
-      : '显示全部设置';
+  if (query) {
+    setSettingsSearchMeta('结果', `${visibleCount} 面板 · ${workbenchMatchCount} 工作台`);
+  } else {
+    setSettingsSearchMeta('结果', '全部设置');
   }
 
   updatePageScrollIndicator();
@@ -4667,6 +4758,7 @@ async function init() {
     els.btnImportStart = $('btn-import-start');
     els.modelManagerHint = $('model-manager-hint');
     els.modelStatusCard = $('model-status-card');
+    els.modelRuntimeDir = $('model-runtime-dir');
     els.globalModelState = $('global-model-state');
     els.globalModelMeta = $('global-model-meta');
     els.globalTaskState = $('global-task-state');
@@ -4715,6 +4807,9 @@ async function init() {
     els.settingsSearch = $('settings_search');
     els.settingsSearchClear = $('settings_search_clear');
     els.settingsSearchMeta = $('settings_search_meta');
+    els.settingsModelDirSummary = $('settings_model_dir_summary');
+    els.settingsExportDirSummary = $('settings_export_dir_summary');
+    els.settingsLogDirSummary = $('settings_log_dir_summary');
     els.decodePresetKpi = $('decode_preset_kpi');
     els.decodeTemperatureKpi = $('decode_temperature_kpi');
     els.decodeOutputKpi = $('decode_output_kpi');
