@@ -11460,58 +11460,54 @@ button.btn-with-icon:active,
 }
 
 /* Final vertical rhythm pass for compact controls. */
-#tab-realtime .record-action,
-#tab-realtime .switch-control,
-#tab-file .switch-control,
-#settings-shell .switch-control,
-#settings-shell .field-switch,
-#tab-realtime .status-chip,
-#tab-file .file-vnext-status-chip,
-#settings-shell .status-chip,
-#tab-model .model-vnext-row-state-chip,
-#tab-model .model-engine-tab,
-#tab-file .file-vnext-format-option,
-#tab-model .model-vnext-download-btn,
-#tab-model .model-vnext-load-action {
+.ui-control-row {
+  align-content: center;
+}
+
+.ui-control-row > * {
+  align-self: center;
+}
+
+.record-action,
+.switch-control,
+.field-switch,
+.status-chip,
+.file-vnext-status-chip,
+.model-vnext-row-state-chip,
+.model-engine-tab,
+.file-vnext-format-option,
+.model-vnext-download-btn,
+.model-vnext-load-action {
   align-items: center;
   line-height: 1;
 }
 
-#tab-model .model-engine-tab,
-#tab-file .file-vnext-format-option {
+.model-engine-tab,
+.file-vnext-format-option {
   display: inline-flex;
   justify-content: center;
 }
 
-#tab-realtime .switch-control b,
-#tab-file .switch-control b,
-#settings-shell .switch-control b,
-#settings-shell .field-switch b,
-#tab-realtime .status-chip > span,
-#tab-file .file-vnext-status-chip > span,
-#settings-shell .status-chip > span,
-#tab-model .model-vnext-row-state-chip > span {
+.switch-control b,
+.field-switch b,
+.status-chip > span,
+.file-vnext-status-chip > span,
+.model-vnext-row-state-chip > span {
   display: inline-flex;
   align-items: center;
   line-height: 1;
 }
 
-#tab-realtime .status-chip-strong i,
-#tab-file .file-vnext-status-chip-strong i,
-#tab-realtime .detached-card-head p i {
+.status-chip-strong i,
+.file-vnext-status-chip-strong i,
+.detached-card-head p i {
   align-self: center;
 }
 
-#tab-realtime .switch-control span,
-#tab-file .switch-control span,
-#settings-shell .switch-control i,
-#settings-shell .field-switch i {
+.switch-control span,
+.switch-control i,
+.field-switch i {
   align-self: center;
-}
-
-#tab-realtime .realtime-toolbar,
-#tab-model .model-vnext-engine-bar {
-  align-content: center;
 }
 
 #tab-realtime .output-panel {
