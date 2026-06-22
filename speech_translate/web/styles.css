@@ -7637,32 +7637,12 @@ button.btn-icon:hover {
   box-shadow: none;
 }
 
-#settings-shell .settings-vnext-toolbar,
-#settings-shell .settings-vnext-workbench {
+#settings-shell .settings-vnext-toolbar {
   grid-column: 1 / -1;
   min-width: 0;
-  border: 1px solid var(--settings-border);
-  border-radius: 16px;
-  background:
-    var(--shell-surface-gradient),
-    var(--color-surface);
-  box-shadow: var(--shell-shadow-panel);
-}
-
-#settings-shell .settings-vnext-toolbar {
   display: grid;
   gap: var(--tab-surface-gap);
   padding: var(--tab-panel-pad-y) var(--tab-panel-pad-x) calc(var(--tab-panel-pad-y) + 2px);
-}
-
-#settings-shell .settings-head,
-#settings-shell .panel-head,
-#settings-shell .block-head {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
 }
 
 #settings-shell .settings-head h1,
@@ -7678,209 +7658,6 @@ button.btn-icon:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-}
-
-#settings-shell .icon-action {
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #d5dde8;
-  border-radius: 10px;
-  background: var(--color-surface);
-  color: #344154;
-}
-
-#settings-shell .icon {
-  position: relative;
-  width: 16px;
-  height: 16px;
-  display: inline-block;
-  color: currentColor;
-}
-
-#settings-shell .icon::before,
-#settings-shell .icon::after {
-  content: "";
-  position: absolute;
-  box-sizing: border-box;
-}
-
-#settings-shell .icon-save::before {
-  inset: 1px 2px 1px 2px;
-  border: 2px solid currentColor;
-  border-radius: 2px;
-}
-
-#settings-shell .icon-save::after {
-  left: 5px;
-  top: 4px;
-  width: 6px;
-  height: 2px;
-  background: currentColor;
-  box-shadow: 0 6px 0 0 currentColor;
-}
-
-#settings-shell .icon-plus::before,
-#settings-shell .icon-plus::after {
-  left: 3px;
-  top: 7px;
-  width: 10px;
-  height: 2px;
-  border-radius: 999px;
-  background: currentColor;
-}
-
-#settings-shell .icon-plus::after {
-  transform: rotate(90deg);
-}
-
-#settings-shell .icon-folder::before {
-  left: 1px;
-  right: 1px;
-  top: 5px;
-  bottom: 2px;
-  border: 2px solid currentColor;
-  border-radius: 2px;
-}
-
-#settings-shell .icon-folder::after {
-  left: 2px;
-  top: 3px;
-  width: 6px;
-  height: 4px;
-  border: 2px solid currentColor;
-  border-bottom: 0;
-  border-radius: 2px 2px 0 0;
-}
-
-#settings-shell .icon-open::before {
-  left: 2px;
-  bottom: 2px;
-  width: 10px;
-  height: 10px;
-  border: 2px solid currentColor;
-  border-radius: 2px;
-}
-
-#settings-shell .icon-open::after {
-  right: 1px;
-  top: 1px;
-  width: 8px;
-  height: 8px;
-  border-top: 2px solid currentColor;
-  border-right: 2px solid currentColor;
-}
-
-#settings-shell .icon-refresh::before {
-  inset: 2px;
-  border: 2px solid currentColor;
-  border-right-color: transparent;
-  border-radius: 999px;
-}
-
-#settings-shell .icon-refresh::after {
-  right: 1px;
-  top: 2px;
-  border-left: 5px solid currentColor;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-}
-
-#settings-shell .icon-search::before {
-  left: 2px;
-  top: 2px;
-  width: 9px;
-  height: 9px;
-  border: 2px solid currentColor;
-  border-radius: 999px;
-}
-
-#settings-shell .icon-search::after {
-  right: 2px;
-  bottom: 2px;
-  width: 6px;
-  height: 2px;
-  background: currentColor;
-  transform: rotate(45deg);
-  transform-origin: center;
-}
-
-#settings-shell .icon-x::before,
-#settings-shell .icon-x::after {
-  left: 2px;
-  top: 7px;
-  width: 12px;
-  height: 2px;
-  border-radius: 999px;
-  background: currentColor;
-}
-
-#settings-shell .icon-x::before {
-  transform: rotate(45deg);
-}
-
-#settings-shell .icon-x::after {
-  transform: rotate(-45deg);
-}
-
-#settings-shell .icon-window::before {
-  left: 1px;
-  top: 3px;
-  width: 11px;
-  height: 9px;
-  border: 2px solid currentColor;
-  border-radius: 2px;
-}
-
-#settings-shell .icon-window::after {
-  right: 1px;
-  top: 7px;
-  width: 8px;
-  height: 2px;
-  background: currentColor;
-  box-shadow: 3px -3px 0 -1px currentColor, 3px 3px 0 -1px currentColor;
-}
-
-#settings-shell .icon-sliders::before {
-  left: 2px;
-  right: 2px;
-  top: 4px;
-  height: 2px;
-  background: currentColor;
-  box-shadow: 0 7px 0 currentColor;
-}
-
-#settings-shell .icon-sliders::after {
-  left: 4px;
-  top: 1px;
-  width: 6px;
-  height: 6px;
-  border: 2px solid currentColor;
-  border-radius: 999px;
-  background: var(--color-surface);
-  box-shadow: 5px 7px 0 -2px var(--color-surface), 5px 7px 0 0 currentColor;
-}
-
-#settings-shell .icon-action-primary {
-  border-color: var(--settings-action);
-  background: var(--settings-action);
-  color: var(--color-surface);
-}
-
-#settings-shell .icon-action:hover,
-#settings-shell .icon-action:focus-visible {
-  outline: none;
-  border-color: #c7d1de;
-  background: #f8fafc;
-}
-
-#settings-shell .icon-action-primary:hover,
-#settings-shell .icon-action-primary:focus-visible {
-  border-color: var(--color-accent-hover);
-  background: var(--color-accent-hover);
 }
 
 #settings-shell .settings-search-row {
@@ -8094,65 +7871,6 @@ button.btn-icon:hover {
   background-repeat: no-repeat;
 }
 
-#settings-shell .switch-control {
-  position: relative;
-  height: 28px;
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: #2d394c;
-  font-size: 11.5px;
-  font-weight: 650;
-  white-space: nowrap;
-}
-
-#settings-shell .switch-control input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-#settings-shell .switch-control i {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  flex: 0 0 auto;
-  border: 1px solid #cbd5e1;
-  border-radius: 999px;
-  background: var(--color-line-soft);
-}
-
-#settings-shell .switch-control i::after {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  background: var(--color-surface);
-  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.18);
-}
-
-#settings-shell .switch-control input:checked + i {
-  border-color: #68b89f;
-  background: #d8f0e7;
-}
-
-#settings-shell .switch-control input:checked + i::after {
-  background: #0f9f78;
-  transform: translateX(
-    calc(var(--control-switch-width) - var(--control-switch-thumb-size) - (var(--control-switch-thumb-inset) * 2))
-  );
-}
-
-#settings-shell .switch-control b {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font: inherit;
-}
 
 #settings-shell .directory-stack {
   display: grid;
@@ -8225,13 +7943,7 @@ button.btn-icon:hover {
 }
 
 #settings-shell .settings-vnext-panel {
-  border: 1px solid var(--settings-border);
-  border-radius: 16px;
   padding: 12px 14px 14px;
-  background:
-    var(--shell-surface-gradient),
-    var(--color-surface);
-  box-shadow: var(--shell-shadow-panel);
 }
 
 #settings-shell .settings-vnext-panel.weight-low {
@@ -8639,17 +8351,6 @@ button.btn-icon:hover {
   min-height: 577px;
 }
 
-#tab-realtime .work-header,
-#tab-realtime .panel-head,
-#tab-realtime .detached-card-head,
-#tab-realtime .output-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-
 #tab-realtime .work-header {
   height: 36px;
   margin: 0 0 var(--tab-top-gap);
@@ -8658,23 +8359,13 @@ button.btn-icon:hover {
   background: transparent;
 }
 
-#tab-realtime .work-header h1,
-#tab-realtime .panel-head h2,
-#tab-realtime .output-head h2 {
+#tab-realtime .work-header h1 {
   margin: 0;
   color: var(--rt-text);
   font-size: 15px;
   line-height: 1.2;
   font-weight: 700;
   letter-spacing: 0;
-}
-
-#tab-realtime .surface-panel {
-  min-width: 0;
-  border: 1px solid var(--rt-border);
-  border-radius: 16px;
-  background: var(--rt-panel);
-  box-shadow: var(--shell-shadow-panel);
 }
 
 #tab-realtime .hero-panel {
@@ -8755,65 +8446,6 @@ button.btn-icon:hover {
 #tab-realtime .mode-toggles {
   gap: var(--tab-section-gap);
   padding-left: 2px;
-}
-
-#tab-realtime .switch-control {
-  position: relative;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  color: #2d394c;
-  font-size: 11.5px;
-  font-weight: 650;
-  white-space: nowrap;
-}
-
-#tab-realtime .switch-control input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-#tab-realtime .switch-control span {
-  width: 36px;
-  height: 20px;
-  position: relative;
-  flex: 0 0 auto;
-  border: 1px solid #cbd5e1;
-  border-radius: 999px;
-  background: var(--color-line-soft);
-}
-
-#tab-realtime .switch-control span::after {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  background: var(--color-surface);
-  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.18);
-  transition: transform 140ms ease, background-color 140ms ease;
-}
-
-#tab-realtime .switch-control input:checked + span {
-  border-color: #68b89f;
-  background: #d8f0e7;
-}
-
-#tab-realtime .switch-control input:checked + span::after {
-  background: #0f9f78;
-  transform: translateX(
-    calc(var(--control-switch-width) - var(--control-switch-thumb-size) - (var(--control-switch-thumb-inset) * 2))
-  );
-}
-
-#tab-realtime .switch-control b {
-  font: inherit;
-  font-weight: 650;
 }
 
 #tab-realtime .audio-meter {
@@ -8990,11 +8622,7 @@ button.btn-icon:hover {
   position: relative;
   min-width: 0;
   min-height: 210px;
-  border: 1px solid var(--rt-border);
-  border-radius: 14px;
   overflow: hidden;
-  background: var(--color-surface);
-  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
 }
 
 #tab-realtime .output-head {
@@ -9009,7 +8637,6 @@ button.btn-icon:hover {
   background: transparent;
 }
 
-#tab-realtime .output-head h2,
 #tab-realtime .live-output-preview-label {
   color: #283447;
   font-size: 12.5px;
@@ -9068,46 +8695,6 @@ button.btn-icon:hover {
 
 #tab-realtime .panel-head {
   height: 34px;
-}
-
-#tab-realtime .icon-action {
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
-  min-height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid var(--rt-border);
-  border-radius: 10px;
-  color: #44546a;
-  background: var(--color-surface);
-  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
-}
-
-#tab-realtime .icon-action:hover,
-#tab-realtime .icon-action:focus-visible {
-  outline: none;
-  color: #182536;
-  border-color: #b9c6d7;
-  background: var(--color-control-hover);
-}
-
-#tab-realtime .icon-action:active {
-  box-shadow: inset 0 0 0 1px var(--shadow-hairline-pressed);
-}
-
-#tab-realtime .icon-action-primary {
-  border-color: var(--color-accent);
-  background: var(--color-accent);
-  color: var(--color-surface);
-}
-
-#tab-realtime .icon-action-primary:hover,
-#tab-realtime .icon-action-primary:focus-visible {
-  background: var(--color-accent-deep);
-  color: var(--color-surface);
 }
 
 #tab-realtime .detached-action-danger {
@@ -9197,10 +8784,6 @@ button.btn-icon:hover {
   gap: 12px;
   align-content: start;
   padding: 14px;
-  border: 1px solid var(--rt-border);
-  border-radius: 14px;
-  background: rgba(248, 249, 251, 0.82);
-  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
 }
 
 #tab-realtime .detached-card-head h3 {
@@ -9848,10 +9431,6 @@ body {
   flex-basis: 18px;
 }
 
-#tab-realtime .icon-action .btn-glyph {
-  display: block;
-}
-
 #tab-file.workflow-card {
   min-width: 0;
   display: grid;
@@ -9867,14 +9446,6 @@ body {
   align-content: start;
 }
 
-#tab-file .file-vnext-surface {
-  min-width: 0;
-  border: 1px solid var(--color-line);
-  border-radius: 14px;
-  background: var(--color-surface);
-  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
-}
-
 #tab-file .file-vnext-command-panel,
 #tab-file .file-vnext-config-panel,
 #tab-file .file-vnext-workbench-shell {
@@ -9887,65 +9458,15 @@ body {
   gap: var(--tab-section-gap);
 }
 
-#tab-file .file-vnext-head,
-#tab-file .file-vnext-panel-head {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
 #tab-file .file-vnext-head {
   height: 24px;
   align-items: end;
-}
-
-#tab-file .file-vnext-head h3,
-#tab-file .file-vnext-panel-head h4 {
-  margin: 0;
-  color: var(--color-text);
-  font-size: 15px;
-  line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: 0;
 }
 
 #tab-file .file-vnext-head-actions {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-}
-
-#tab-file .icon-action {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid #d3dce7;
-  border-radius: 10px;
-  background: var(--color-surface);
-  color: #46556b;
-}
-
-#tab-file .icon-action:hover,
-#tab-file .icon-action:focus-visible {
-  outline: none;
-  border-color: var(--color-control-hover-line);
-  background: var(--color-control-hover-muted);
-}
-
-#tab-file .icon-action.icon-action-danger:hover,
-#tab-file .icon-action.icon-action-danger:focus-visible {
-  color: var(--color-danger-muted);
-  border-color: var(--color-danger-line-strong);
-  background: var(--color-danger-card);
-}
-
-#tab-file .icon-action .btn-glyph {
-  display: block;
 }
 
 #tab-file .file-vnext-toolbar {
@@ -10048,59 +9569,6 @@ body {
   background: var(--color-line-soft);
 }
 
-#tab-file .switch-control {
-  position: relative;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  color: #2d394c;
-  font-size: 11.5px;
-  font-weight: 650;
-}
-
-#tab-file .switch-control input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-#tab-file .switch-control span {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  flex: 0 0 auto;
-  border: 1px solid #cbd5e1;
-  border-radius: 999px;
-  background: var(--color-line-soft);
-}
-
-#tab-file .switch-control span::after {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  background: var(--color-surface);
-  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.18);
-  transition: transform 140ms ease, background-color 140ms ease;
-}
-
-#tab-file .switch-control input:checked + span {
-  border-color: #68b89f;
-  background: #d8f0e7;
-}
-
-#tab-file .switch-control input:checked + span::after {
-  background: #0f9f78;
-  transform: translateX(
-    calc(var(--control-switch-width) - var(--control-switch-thumb-size) - (var(--control-switch-thumb-inset) * 2))
-  );
-}
-
 #tab-file .file-vnext-status {
   min-height: 28px;
   display: grid;
@@ -10161,16 +9629,6 @@ body {
   grid-template-columns: minmax(0, 62fr) minmax(294px, 38fr);
   gap: var(--tab-stack-gap);
   align-items: stretch;
-}
-
-#tab-file .file-vnext-queue-panel,
-#tab-file .file-vnext-side-panel {
-  min-width: 0;
-  min-height: 0;
-  border: 1px solid var(--color-line);
-  border-radius: 14px;
-  background: var(--color-surface);
-  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
 }
 
 #tab-file .file-vnext-queue-panel {
@@ -10743,14 +10201,6 @@ button.btn-with-icon[data-action="notify"]::before {
   gap: var(--tab-stack-gap);
 }
 
-#tab-model .surface-panel {
-  min-width: 0;
-  border: 1px solid var(--color-line);
-  border-radius: 16px;
-  background: linear-gradient(180deg, var(--color-surface) 0%, #fbfcfe 100%);
-  box-shadow: var(--shell-shadow-panel);
-}
-
 #tab-model .model-vnext-runtime-panel,
 #tab-model .model-vnext-manager-panel {
   padding: var(--tab-panel-pad-y) var(--tab-panel-pad-x) calc(var(--tab-panel-pad-y) + 1px);
@@ -10763,66 +10213,12 @@ button.btn-with-icon[data-action="notify"]::before {
     var(--color-surface);
 }
 
-#tab-model .model-vnext-head,
-#tab-model .model-vnext-panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-#tab-model .model-vnext-head h3,
-#tab-model .model-vnext-panel-head h4 {
-  margin: 0;
-  color: var(--color-text);
-  font-size: 15px;
-  line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-
 #tab-model .model-vnext-head-actions,
 #tab-model .model-vnext-toolbar-actions,
 #tab-model .model-vnext-runtime-actions {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-}
-
-#tab-model .icon-action {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #d5dde8;
-  border-radius: 10px;
-  background: var(--color-surface);
-  color: #344154;
-  box-shadow: 0 1px 1px rgba(17, 24, 39, 0.03);
-}
-
-#tab-model .icon-action:hover,
-#tab-model .icon-action:focus-visible {
-  outline: none;
-  border-color: #c7d1de;
-  background: #f8fafc;
-}
-
-#tab-model .icon-action .btn-glyph {
-  width: 18px;
-  height: 18px;
-}
-
-#tab-realtime .icon-action .btn-glyph,
-#tab-file .icon-action .btn-glyph,
-#tab-model .icon-action .btn-glyph,
-#settings-shell .icon-action .icon {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
-  -webkit-mask-size: 130%;
-  mask-size: 130%;
 }
 
 #tab-model .model-vnext-runtime-grid {
@@ -11307,6 +10703,15 @@ body,
   box-shadow: var(--shell-shadow-panel);
 }
 
+.tab-shell-subsurface {
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--shell-line);
+  border-radius: 14px;
+  background: var(--color-surface);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
+}
+
 .tab-shell-head {
   min-width: 0;
   display: flex;
@@ -11315,6 +10720,7 @@ body,
   gap: 12px;
 }
 
+.tab-shell-head h1,
 .tab-shell-head h2,
 .tab-shell-head h3,
 .tab-shell-head h4 {
@@ -11324,6 +10730,7 @@ body,
   letter-spacing: 0;
 }
 
+.tab-shell-head h1,
 .tab-shell-head h2,
 .tab-shell-head h3,
 .tab-shell-head h4,
@@ -11331,6 +10738,7 @@ body,
   min-width: 0;
 }
 
+.tab-shell-head h1,
 .tab-shell-head h2,
 .tab-shell-head h3 {
   font-size: 15px;
@@ -11398,10 +10806,7 @@ body,
 button.btn-icon,
 button.btn-with-icon,
 #tab-realtime .record-action,
-#tab-realtime .icon-action,
-#tab-file .icon-action,
-#tab-model .icon-action,
-#settings-shell .icon-action,
+.icon-action,
 #tab-model .model-vnext-download-btn {
   transition:
     background-color var(--motion-fast),
@@ -11418,10 +10823,7 @@ button.btn-with-icon,
 .side-action:focus-visible,
 button.btn-icon:focus-visible,
 button.btn-with-icon:focus-visible,
-#tab-realtime .icon-action:focus-visible,
-#tab-file .icon-action:focus-visible,
-#tab-model .icon-action:focus-visible,
-#settings-shell .icon-action:focus-visible,
+.icon-action:focus-visible,
 #tab-model .model-vnext-download-btn:focus-visible {
   box-shadow: 0 0 0 2px var(--shell-focus-ring);
 }
@@ -11430,13 +10832,34 @@ button.btn-with-icon:focus-visible,
 button.btn-icon:active,
 button.btn-with-icon:active,
 #tab-realtime .record-action:active,
-#tab-realtime .icon-action:active,
-#tab-file .icon-action:active,
-#tab-model .icon-action:active,
-#settings-shell .icon-action:active,
+.icon-action:active,
 #tab-model .model-vnext-download-btn:active {
   transform: none;
   box-shadow: inset 0 0 0 1px var(--shadow-hairline-pressed);
+}
+
+.icon-action {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #d5dde8;
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: #44546a;
+}
+
+.icon-action .btn-glyph,
+.icon-action .icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  -webkit-mask-size: 130%;
+  mask-size: 130%;
 }
 
 #tab-file.workflow-card,
@@ -11447,7 +10870,6 @@ button.btn-with-icon:active,
 
 #settings-shell .settings-vnext-toolbar,
 .tab-shell-surface,
-#settings-shell .settings-vnext-toolbar,
 #settings-shell .settings-vnext-panel.weight-low,
 #settings-shell .settings-vnext-panel.weight-mid-high {
   box-shadow: var(--shell-shadow-panel);
@@ -11527,14 +10949,8 @@ button.btn-with-icon:active,
   mask-image: var(--st-icon-record-stop);
 }
 
-#tab-realtime .icon-action:hover,
-#tab-realtime .icon-action:focus-visible,
-#tab-file .icon-action:hover,
-#tab-file .icon-action:focus-visible,
-#tab-model .icon-action:hover,
-#tab-model .icon-action:focus-visible,
-#settings-shell .icon-action:hover,
-#settings-shell .icon-action:focus-visible,
+.icon-action:hover,
+.icon-action:focus-visible,
 #tab-model .model-vnext-download-btn:hover,
 #tab-model .model-vnext-download-btn:focus-visible {
   border-color: var(--color-line-emphasis);
@@ -11542,23 +10958,20 @@ button.btn-with-icon:active,
   color: var(--color-brand);
 }
 
-#tab-realtime .icon-action-primary,
-#settings-shell .icon-action-primary {
+.icon-action-primary {
   border-color: var(--shell-accent-strong);
   background: var(--shell-accent-strong);
   color: var(--color-surface);
 }
 
-#tab-realtime .icon-action-primary:hover,
-#tab-realtime .icon-action-primary:focus-visible,
-#settings-shell .icon-action-primary:hover,
-#settings-shell .icon-action-primary:focus-visible {
+.icon-action-primary:hover,
+.icon-action-primary:focus-visible {
   border-color: var(--color-accent-strong-hover);
   background: var(--color-accent-strong-hover);
 }
 
-#tab-file .icon-action.icon-action-danger:hover,
-#tab-file .icon-action.icon-action-danger:focus-visible,
+.icon-action.icon-action-danger:hover,
+.icon-action.icon-action-danger:focus-visible,
 .side-action-danger:hover,
 .side-action-danger:focus-visible {
   color: var(--shell-danger);
@@ -11566,10 +10979,57 @@ button.btn-with-icon:active,
   background: var(--shell-danger-soft);
 }
 
-#tab-realtime .switch-control span,
-#tab-file .switch-control span,
-#settings-shell .switch-control i,
-#settings-shell .field-switch i,
+.switch-control,
+.field-switch {
+  position: relative;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #2d394c;
+  font-size: 11.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.switch-control input,
+.field-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.switch-control b,
+.field-switch b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font: inherit;
+}
+
+.switch-control span,
+.switch-control i,
+.field-switch i {
+  position: relative;
+  flex: 0 0 auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: var(--color-line-soft);
+}
+
+.switch-control span::after,
+.switch-control i::after,
+.field-switch i::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  background: var(--color-surface);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.18);
+}
+
+.switch-control span,
+.switch-control i,
+.field-switch i,
 .toggle-row input[type="checkbox"] {
   transition:
     background-color var(--motion-smooth),
@@ -11577,10 +11037,9 @@ button.btn-with-icon:active,
     box-shadow var(--motion-smooth);
 }
 
-#tab-realtime .switch-control span::after,
-#tab-file .switch-control span::after,
-#settings-shell .switch-control i::after,
-#settings-shell .field-switch i::after,
+.switch-control span::after,
+.switch-control i::after,
+.field-switch i::after,
 .toggle-row input[type="checkbox"]::after {
   transition:
     transform var(--motion-spring),
@@ -11588,19 +11047,17 @@ button.btn-with-icon:active,
     box-shadow var(--motion-smooth);
 }
 
-#tab-realtime .switch-control input:checked + span,
-#tab-file .switch-control input:checked + span,
-#settings-shell .switch-control input:checked + i,
-#settings-shell .field-switch input:checked + i,
+.switch-control input:checked + span,
+.switch-control input:checked + i,
+.field-switch input:checked + i,
 .toggle-row input[type="checkbox"]:checked {
   border-color: var(--shell-switch-line);
   background: var(--shell-switch-soft);
 }
 
-#tab-realtime .switch-control input:checked + span::after,
-#tab-file .switch-control input:checked + span::after,
-#settings-shell .switch-control input:checked + i::after,
-#settings-shell .field-switch input:checked + i::after,
+.switch-control input:checked + span::after,
+.switch-control input:checked + i::after,
+.field-switch input:checked + i::after,
 .toggle-row input[type="checkbox"]:checked::after {
   transform: translateX(
     calc(var(--control-switch-width) - var(--control-switch-thumb-size) - (var(--control-switch-thumb-inset) * 2))
@@ -11630,7 +11087,7 @@ button.btn-with-icon:active,
 
 #tab-realtime .status-chip-strong i,
 #tab-file .file-vnext-status-chip-strong i,
-#tab-realtime .detached-card-head p i {
+.detached-card-head p i {
   background: var(--shell-state);
   box-shadow: 0 0 0 3px var(--color-state-ring);
 }
@@ -11715,23 +11172,20 @@ button.btn-with-icon:active,
   min-height: var(--control-action-height);
 }
 
-#tab-realtime .switch-control,
-#tab-file .switch-control {
+.switch-control {
   min-height: var(--control-compact-height);
 }
 
-#tab-realtime .switch-control span,
-#tab-file .switch-control span,
-#settings-shell .switch-control i,
-#settings-shell .field-switch i {
+.switch-control span,
+.switch-control i,
+.field-switch i {
   width: var(--control-switch-width);
   height: var(--control-switch-height);
 }
 
-#tab-realtime .switch-control span::after,
-#tab-file .switch-control span::after,
-#settings-shell .switch-control i::after,
-#settings-shell .field-switch i::after {
+.switch-control span::after,
+.switch-control i::after,
+.field-switch i::after {
   width: var(--control-switch-thumb-size);
   height: var(--control-switch-thumb-size);
   top: var(--control-switch-thumb-inset);
@@ -11751,7 +11205,7 @@ button.btn-with-icon:active,
 
 #tab-realtime .status-chip-strong i,
 #tab-file .file-vnext-status-chip-strong i,
-#tab-realtime .detached-card-head p i {
+.detached-card-head p i {
   width: var(--control-dot-size);
   height: var(--control-dot-size);
   flex: 0 0 var(--control-dot-size);
@@ -11785,17 +11239,14 @@ textarea:focus {
   button.btn-icon,
   button.btn-with-icon,
   #tab-realtime .record-action,
-  #tab-realtime .icon-action,
-  #tab-file .icon-action,
-  #tab-model .icon-action,
-  #settings-shell .icon-action,
+  .icon-action,
   #tab-model .model-vnext-download-btn,
-  #tab-realtime .switch-control span,
-  #tab-file .switch-control span,
-  #settings-shell .switch-control i,
-  #tab-realtime .switch-control span::after,
-  #tab-file .switch-control span::after,
-  #settings-shell .switch-control i::after,
+  .switch-control span,
+  .switch-control i,
+  .field-switch i,
+  .switch-control span::after,
+  .switch-control i::after,
+  .field-switch i::after,
   input,
   select,
   textarea {
