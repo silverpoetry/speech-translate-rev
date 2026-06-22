@@ -187,7 +187,7 @@ body {
   margin: 0;
   font-size: 0.82rem;
   font-weight: 700;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   color: #000000;
 }
 
@@ -556,7 +556,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .realtime-status-meta {
@@ -1072,7 +1072,7 @@ body {
   font-size: 0.74rem;
   font-weight: 700;
   color: #334155;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 
 .settings-search input {
@@ -1381,7 +1381,7 @@ body {
 .hero h1 {
   margin: 8px 0 10px;
   font-size: clamp(2.2rem, 4vw, 4.1rem);
-  letter-spacing: -0.05em;
+  letter-spacing: 0;
   line-height: 0.95;
 }
 
@@ -1458,7 +1458,7 @@ body {
 .task-banner-title {
   font-size: 1.04rem;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .task-banner-message {
@@ -3528,7 +3528,7 @@ button.btn-icon[data-tooltip]::before {
 
 #settings-shell .advanced-panel:not([open]) .settings-panel-title {
   font-size: var(--ui-text-md);
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .advanced-panel:not([open]) > summary .settings-panel-meta {
@@ -3968,7 +3968,7 @@ button.btn-icon[data-tooltip]::before {
   color: #405166;
   font-size: 0.69rem;
   font-weight: 650;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   cursor: pointer;
   transition:
     background-color 140ms ease,
@@ -4022,7 +4022,7 @@ button.btn-icon[data-tooltip]::before {
   color: #263648;
   font-size: 0.83rem;
   line-height: 1.25;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 
 .compact-status-row {
@@ -5980,14 +5980,14 @@ textarea:focus {
 
 .workflow-card h3 {
   font-size: var(--ui-text-lg);
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   line-height: 1.28;
   color: #0f172a;
 }
 
 .section-head h2 {
   font-size: var(--ui-text-xl);
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   line-height: 1.24;
 }
 
@@ -6597,7 +6597,7 @@ button.btn-icon:hover {
   font-size: var(--ui-text-lg);
   font-weight: 700;
   line-height: 1.26;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   color: #0f172a;
 }
 
@@ -6971,7 +6971,7 @@ button.btn-icon:hover {
   font-size: 15px;
   line-height: 1.2;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 #tab-realtime .realtime-head-actions {
@@ -7037,7 +7037,7 @@ button.btn-icon:hover {
   color: #fff;
   font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 
 #tab-realtime .btn-recording::before {
@@ -8584,7 +8584,7 @@ button.btn-icon:hover {
   font-size: 15px;
   line-height: 1.2;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 #tab-realtime .surface-panel {
@@ -8645,7 +8645,7 @@ button.btn-icon:hover {
   color: #fff;
   font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 
 #tab-realtime .record-action:hover,
@@ -9821,7 +9821,7 @@ body {
   font-size: 15px;
   line-height: 1.2;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 #tab-file .file-vnext-head-actions {
@@ -9891,7 +9891,7 @@ body {
   border-radius: 11px;
   font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   white-space: nowrap;
 }
 
@@ -10299,7 +10299,7 @@ body {
   color: #2e3b4f;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 
 #tab-file .format-choice:hover span,
@@ -10689,7 +10689,7 @@ button.btn-with-icon[data-action="notify"]::before {
   font-size: 15px;
   line-height: 1.2;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 #tab-model .model-vnext-head-actions,
