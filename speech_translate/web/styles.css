@@ -163,7 +163,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: #f5f5f5 !important;
+  background: #f5f5f5;
   max-height: 100%;
   min-width: 0;
 }
@@ -4317,7 +4317,7 @@ button.btn-icon[data-tooltip]::before {
 }
 
 #tab-file .file-export-action-toggle input[type="checkbox"] {
-  margin-top: 1px !important;
+  margin-top: 1px;
 }
 
 #tab-realtime .realtime-config-panel .floating-action-row {
@@ -4599,17 +4599,17 @@ label {
 .toggle-row input[type="checkbox"] {
   -webkit-appearance: none;
   appearance: none;
-  width: 34px !important;
-  height: 18px !important;
-  padding: 0 !important;
-  margin: 0 !important;
+  width: 34px;
+  height: 18px;
+  padding: 0;
+  margin: 0;
   border-radius: 999px;
   border: 1px solid rgba(124, 142, 164, 0.36);
   background: rgba(123, 140, 165, 0.18);
   position: relative;
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease;
-  display: inline-block !important;
+  display: inline-block;
   vertical-align: middle;
 }
 
@@ -4677,11 +4677,11 @@ label {
 .format-chip input[type="checkbox"] {
   position: absolute;
   inset: 0;
-  width: 100% !important;
-  height: 100% !important;
+  width: 100%;
+  height: 100%;
   opacity: 0;
-  border: 0 !important;
-  background: transparent !important;
+  border: 0;
+  background: transparent;
   cursor: pointer;
 }
 
@@ -7058,8 +7058,8 @@ button.btn-icon:hover {
 
 #tab-realtime .realtime-session-actions .toggle-row input[type="checkbox"],
 #tab-realtime .detached-config-mini-grid .toggle-row input[type="checkbox"] {
-  width: 36px !important;
-  height: 20px !important;
+  width: 36px;
+  height: 20px;
 }
 
 #tab-realtime .realtime-live-meter {
@@ -9289,7 +9289,7 @@ body {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 10px;
-  background: transparent !important;
+  background: transparent;
   box-shadow: none;
 }
 
@@ -9397,8 +9397,11 @@ body {
   background: var(--shell-text);
 }
 
-.menu-icon::before {
-  content: none !important;
+.menu-icon.menu-icon-realtime::before,
+.menu-icon.menu-icon-file::before,
+.menu-icon.menu-icon-model::before,
+.menu-icon.menu-icon-settings::before {
+  content: none;
 }
 
 .sidebar-actions {
@@ -10381,9 +10384,9 @@ body {
   gap: 5px;
 }
 
-#tab-realtime .detached-action-button::before {
-  content: none !important;
-  display: none !important;
+#tab-realtime .detached-action-button[data-action]::before {
+  content: none;
+  display: none;
 }
 
 #tab-realtime button[data-detached-visibility].is-hidden {
@@ -10480,9 +10483,9 @@ body {
   mask-size: 128%;
 }
 
-#settings-shell .icon::before,
-#settings-shell .icon::after {
-  content: none !important;
+#settings-shell .icon[class*="icon-"]::before,
+#settings-shell .icon[class*="icon-"]::after {
+  content: none;
 }
 
 .menu-icon-realtime { -webkit-mask-image: var(--st-icon-live-transcript); mask-image: var(--st-icon-live-transcript); }
@@ -10639,8 +10642,8 @@ button.btn-with-icon[data-action="notify"]::before {
   mask-image: var(--st-icon-bell);
 }
 
-#tab-realtime .detached-action-button::before {
-  content: none !important;
+#tab-realtime .detached-action-button[data-action]::before {
+  content: none;
 }
 
 #tab-model.workflow-card {
