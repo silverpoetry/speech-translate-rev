@@ -3974,7 +3974,7 @@ button.btn-icon[data-tooltip]::before {
     background-color 140ms ease,
     border-color 140ms ease,
     color 140ms ease,
-    transform 140ms ease;
+    box-shadow 140ms ease;
 }
 
 .detached-action-button::before {
@@ -3988,7 +3988,7 @@ button.btn-icon[data-tooltip]::before {
 }
 
 .detached-action-button:active {
-  transform: translateY(1px);
+  box-shadow: inset 0 0 0 1px rgba(17, 24, 39, 0.08);
 }
 
 .detached-action-danger:hover {
@@ -4673,7 +4673,7 @@ label {
   text-overflow: ellipsis;
   cursor: pointer;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 1px 2px rgba(15, 23, 42, 0.04);
-  transition: border-color 120ms ease, background 120ms ease, color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease, box-shadow 120ms ease;
 }
 
 .format-chip input[type="checkbox"] {
@@ -4711,7 +4711,7 @@ label {
 }
 
 .format-chip:has(input[type="checkbox"]:active) {
-  transform: translateY(1px);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
 }
 
 .format-chip:has(input[type="checkbox"]:focus-visible) {
@@ -8999,7 +8999,7 @@ button.btn-icon:hover {
   border-radius: 10px;
   color: #44546a;
   background: #fff;
-  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
 }
 
 #tab-realtime .icon-action:hover,
@@ -9011,7 +9011,7 @@ button.btn-icon:hover {
 }
 
 #tab-realtime .icon-action:active {
-  transform: translateY(1px);
+  box-shadow: inset 0 0 0 1px rgba(17, 24, 39, 0.08);
 }
 
 #tab-realtime .icon-action-primary {
@@ -11255,6 +11255,7 @@ button.btn-with-icon:active,
 #tab-model .icon-action:active,
 #settings-shell .icon-action:active,
 #tab-model .model-vnext-download-btn:active {
+  transform: none;
   box-shadow: inset 0 0 0 1px rgba(17, 24, 39, 0.08);
 }
 
