@@ -11509,14 +11509,9 @@ button.btn-with-icon:active,
   align-self: center;
 }
 
-#tab-realtime .realtime-toolbar > * {
-  position: relative;
-  top: -2.25px;
-}
-
-#tab-model .model-vnext-engine-bar > .model-engine-tab {
-  position: relative;
-  top: -2px;
+#tab-realtime .realtime-toolbar,
+#tab-model .model-vnext-engine-bar {
+  align-content: center;
 }
 
 #tab-realtime .output-panel {
