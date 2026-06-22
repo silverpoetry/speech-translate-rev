@@ -325,7 +325,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 9px;
+  font-size: 10.5px;
   color: #f9fafb;
 }
 
@@ -540,7 +540,7 @@ body {
 }
 
 .realtime-status-label {
-  font-size: 0.56rem;
+  font-size: 0.66rem;
   letter-spacing: 0;
   text-transform: none;
   color: #64748b;
@@ -558,7 +558,7 @@ body {
 }
 
 .realtime-status-meta {
-  font-size: 0.6rem;
+  font-size: 0.66rem;
   color: #475569;
   min-width: 0;
   overflow: hidden;
@@ -1157,7 +1157,7 @@ body {
 }
 
 .settings-overview-label {
-  font-size: 0.62rem;
+  font-size: 0.66rem;
   letter-spacing: 0;
   text-transform: none;
   color: #64748b;
@@ -1177,7 +1177,7 @@ body {
 .settings-overview-meta {
   min-width: 0;
   color: #475569;
-  font-size: 0.64rem;
+  font-size: 0.66rem;
   line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1233,7 +1233,7 @@ body {
 .settings-workbench-meta {
   margin: 0;
   color: #475569;
-  font-size: 0.62rem;
+  font-size: 0.66rem;
   line-height: 1.3;
 }
 
@@ -1271,7 +1271,7 @@ body {
 }
 
 .settings-workbench-section-meta {
-  font-size: 0.61rem;
+  font-size: 0.66rem;
   color: #64748b;
   line-height: 1.25;
 }
@@ -1354,7 +1354,7 @@ body {
 
 .settings-workbench-mini-grid .toggle-row {
   min-height: 24px;
-  font-size: 0.62rem;
+  font-size: 0.66rem;
   line-height: 1.2;
   padding: 0;
 }
@@ -1890,7 +1890,7 @@ body {
   }
 
   .statusbar-label {
-    font-size: 0.64rem;
+    font-size: 0.66rem;
   }
 
   .statusbar-value {
@@ -2662,7 +2662,7 @@ button.btn-icon[data-tooltip]::before {
 
 .realtime-runtime-label {
   color: #64748b;
-  font-size: 0.64rem;
+  font-size: 0.66rem;
   line-height: 1.2;
 }
 
@@ -4035,7 +4035,7 @@ button.btn-icon[data-tooltip]::before {
 }
 
 .compact-status-row .pill {
-  font-size: 0.64rem;
+  font-size: 0.66rem;
 }
 
 .settings-toggle-cluster {
@@ -5082,7 +5082,7 @@ textarea:focus {
 }
 
 #tab-model .model-selection-status-grid .status-overview-label {
-  font-size: 0.62rem;
+  font-size: 0.66rem;
 }
 
 #tab-model .model-selection-status-grid .status-overview-meta {
@@ -5171,7 +5171,7 @@ textarea:focus {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.63rem;
+  font-size: 0.66rem;
 }
 
 @media (max-width: 920px) {
@@ -5415,7 +5415,7 @@ textarea:focus {
 }
 
 .model-manager-overview-label {
-  font-size: 0.62rem;
+  font-size: 0.66rem;
   letter-spacing: 0;
   text-transform: none;
   color: #64748b;
@@ -5579,7 +5579,7 @@ textarea:focus {
   border-radius: 999px;
   background: rgba(226, 232, 240, 0.9);
   color: #475569;
-  font-size: 0.62rem;
+  font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0;
   text-transform: none;
@@ -5865,7 +5865,7 @@ textarea:focus {
   --ui-surface: #ffffff;
   --ui-surface-soft: linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(255, 255, 255, 0.99));
   --ui-surface-tint: var(--shell-surface-gradient);
-  --ui-text-2xs: 0.63rem;
+  --ui-text-2xs: 0.66rem;
   --ui-text-xs: 0.69rem;
   --ui-text-sm: 0.75rem;
   --ui-text-md: 0.8rem;
@@ -6195,7 +6195,7 @@ button.btn-icon:hover {
 }
 
 .live-output-panel-badge {
-  font-size: 0.64rem;
+  font-size: 0.66rem;
   letter-spacing: 0;
 }
 
@@ -6321,7 +6321,7 @@ button.btn-icon:hover {
 }
 
 .file-ops-detail-key {
-  font-size: 0.64rem;
+  font-size: 0.66rem;
   color: #64748b;
   letter-spacing: 0;
   padding-top: 2px;
@@ -6340,7 +6340,7 @@ button.btn-icon:hover {
 .file-ops-detail-meta {
   grid-column: 2;
   min-width: 0;
-  font-size: 0.64rem;
+  font-size: 0.66rem;
   color: #475569;
   line-height: 1.32;
   word-break: break-word;
@@ -6540,7 +6540,7 @@ button.btn-icon:hover {
 }
 
 #tab-model .model-selection-status-grid .status-overview-card-compact .status-overview-meta {
-  font-size: 0.64rem;
+  font-size: 0.66rem;
   line-height: 1.28;
 }
 
