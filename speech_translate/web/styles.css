@@ -11283,6 +11283,65 @@ body,
   background: var(--shell-bg);
 }
 
+.tab-shell {
+  min-width: 0;
+  display: grid;
+  gap: var(--tab-stack-gap);
+  align-content: start;
+  align-items: start;
+}
+
+.tab-shell-frame,
+.tab-shell-stack {
+  min-width: 0;
+  display: grid;
+  gap: var(--tab-stack-gap);
+  align-content: start;
+}
+
+.tab-shell-surface {
+  min-width: 0;
+  border: 1px solid var(--shell-line);
+  border-radius: 16px;
+  background: var(--color-surface);
+  box-shadow: var(--shell-shadow-panel);
+}
+
+.tab-shell-head {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tab-shell-head h2,
+.tab-shell-head h3,
+.tab-shell-head h4 {
+  margin: 0;
+  color: var(--color-text);
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.tab-shell-head h2,
+.tab-shell-head h3,
+.tab-shell-head h4,
+.tab-shell-head .panel-meta {
+  min-width: 0;
+}
+
+.tab-shell-head h2,
+.tab-shell-head h3 {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.tab-shell-head h4 {
+  font-size: 15px;
+  font-weight: 700;
+}
+
 .sidebar-nav {
   border-right-color: var(--shell-line);
 }
@@ -11380,19 +11439,15 @@ button.btn-with-icon:active,
   box-shadow: inset 0 0 0 1px var(--shadow-hairline-pressed);
 }
 
-#tab-realtime .surface-panel,
-#tab-model .surface-panel,
 #tab-file.workflow-card,
-#settings-shell .settings-vnext-workbench,
-.workflow-card {
+.workflow-card,
+.tab-shell-surface {
   border-color: var(--shell-line);
 }
 
-#tab-realtime .surface-panel,
-#tab-model .surface-panel,
 #settings-shell .settings-vnext-toolbar,
-#settings-shell .settings-vnext-workbench,
-#settings-shell .settings-vnext-panel,
+.tab-shell-surface,
+#settings-shell .settings-vnext-toolbar,
 #settings-shell .settings-vnext-panel.weight-low,
 #settings-shell .settings-vnext-panel.weight-mid-high {
   box-shadow: var(--shell-shadow-panel);
