@@ -1,15 +1,16 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-app-name="语音翻译">
 
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>语音翻译</title>
-  <link rel="stylesheet" href="styles.css?v=20260619-ui-cn-63" />
+  <title></title>
+  <link rel="stylesheet" href="styles.css?v=20260622-ui-cn-64" />
 
 <script>
 (function () {
   const baseState = {
+    app_name: '语音翻译',
     settings: {
       dir_export: 'auto',
       dir_log: 'auto',
@@ -162,6 +163,7 @@
       initial_prompts_map: {}
     },
     about: {
+      name: '语音翻译',
       model_dir: 'D:/Models/whisper',
       log_file: 'D:/Projects/speechtranslateProj/speech_translate/_logs/app.log'
     },
@@ -377,7 +379,7 @@
         <div class="sidebar-brand">
           <div class="brand-row">
             <span class="brand-icon" aria-hidden="true"></span>
-            <h2>语音翻译</h2>
+            <h2 id="app-brand-name" data-app-name-target></h2>
           </div>
         </div>
         <nav class="menu-list" aria-label="主菜单">
@@ -1019,7 +1021,7 @@
     </section>
   </div>
 
-  <script src="app.js?v=20260619-ui-cn-63"></script>
+  <script src="app.js?v=20260622-ui-cn-64"></script>
 </body>
 
 </html>

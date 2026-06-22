@@ -8059,7 +8059,9 @@ button.btn-icon:hover {
 
 #settings-shell .switch-control input:checked + i::after {
   background: #0f9f78;
-  transform: translateX(16px);
+  transform: translateX(
+    calc(var(--control-switch-width) - var(--control-switch-thumb-size) - (var(--control-switch-thumb-inset) * 2))
+  );
 }
 
 #settings-shell .switch-control b {
@@ -8722,7 +8724,9 @@ button.btn-icon:hover {
 
 #tab-realtime .switch-control input:checked + span::after {
   background: #0f9f78;
-  transform: translateX(16px);
+  transform: translateX(
+    calc(var(--control-switch-width) - var(--control-switch-thumb-size) - (var(--control-switch-thumb-inset) * 2))
+  );
 }
 
 #tab-realtime .switch-control b {
@@ -10010,7 +10014,9 @@ body {
 
 #tab-file .switch-control input:checked + span::after {
   background: #0f9f78;
-  transform: translateX(16px);
+  transform: translateX(
+    calc(var(--control-switch-width) - var(--control-switch-thumb-size) - (var(--control-switch-thumb-inset) * 2))
+  );
 }
 
 #tab-file .file-vnext-status {
@@ -11154,6 +11160,17 @@ button.btn-with-icon[data-action="notify"]::before {
   --shell-shadow-panel: 0 1px 2px rgba(17, 24, 39, 0.035);
   --shell-surface-gradient:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 252, 254, 0.88) 100%);
+  --control-text-line-height: 1;
+  --control-action-height: 36px;
+  --control-compact-height: 28px;
+  --control-chip-height: 26px;
+  --control-tab-height: 26px;
+  --control-switch-width: 36px;
+  --control-switch-height: 20px;
+  --control-switch-thumb-size: 12px;
+  --control-switch-thumb-inset: 3px;
+  --control-glyph-size: 1.15em;
+  --control-dot-size: 7px;
   --motion-fast: 140ms cubic-bezier(0.2, 0, 0.2, 1);
   --motion-smooth: 190ms cubic-bezier(0.2, 0.8, 0.2, 1);
   --motion-spring: 220ms cubic-bezier(0.2, 0.9, 0.2, 1);
@@ -11312,9 +11329,9 @@ button.btn-with-icon:active,
 }
 
 #tab-realtime .record-glyph {
-  width: 17px;
-  height: 17px;
-  flex: 0 0 17px;
+  width: var(--control-glyph-size);
+  height: var(--control-glyph-size);
+  flex: 0 0 var(--control-glyph-size);
   background: currentColor;
   -webkit-mask-image: var(--st-icon-record-play);
   mask-image: var(--st-icon-record-play);
@@ -11322,8 +11339,8 @@ button.btn-with-icon:active,
   mask-position: center;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
-  -webkit-mask-size: 112%;
-  mask-size: 112%;
+  -webkit-mask-size: contain;
+  mask-size: contain;
   transition:
     background-color var(--motion-fast),
     transform var(--motion-fast);
@@ -11332,7 +11349,7 @@ button.btn-with-icon:active,
 #tab-realtime .record-label {
   display: inline-flex;
   align-items: center;
-  line-height: 1;
+  line-height: var(--control-text-line-height);
 }
 
 #tab-realtime .record-action.is-stop,
@@ -11430,6 +11447,9 @@ button.btn-with-icon:active,
 #settings-shell .switch-control input:checked + i::after,
 #settings-shell .field-switch input:checked + i::after,
 .toggle-row input[type="checkbox"]:checked::after {
+  transform: translateX(
+    calc(var(--control-switch-width) - var(--control-switch-thumb-size) - (var(--control-switch-thumb-inset) * 2))
+  );
   background: var(--shell-state);
   box-shadow: 0 1px 3px rgba(34, 116, 106, 0.24);
 }
@@ -11486,6 +11506,7 @@ button.btn-with-icon:active,
 
 /* Final vertical rhythm pass for compact controls. */
 .ui-control-row {
+  align-items: center;
   align-content: center;
 }
 
@@ -11503,13 +11524,13 @@ button.btn-with-icon:active,
 .file-vnext-format-option,
 .model-vnext-download-btn,
 .model-vnext-load-action {
+  display: inline-flex;
   align-items: center;
-  line-height: 1;
+  line-height: var(--control-text-line-height);
 }
 
 .model-engine-tab,
 .file-vnext-format-option {
-  display: inline-flex;
   justify-content: center;
 }
 
@@ -11520,7 +11541,7 @@ button.btn-with-icon:active,
 .model-vnext-row-state-chip > span {
   display: inline-flex;
   align-items: center;
-  line-height: 1;
+  line-height: var(--control-text-line-height);
 }
 
 .status-chip-strong i,
@@ -11533,6 +11554,52 @@ button.btn-with-icon:active,
 .switch-control i,
 .field-switch i {
   align-self: center;
+}
+
+#tab-realtime .record-action {
+  min-height: var(--control-action-height);
+}
+
+#tab-realtime .switch-control,
+#tab-file .switch-control {
+  min-height: var(--control-compact-height);
+}
+
+#tab-realtime .switch-control span,
+#tab-file .switch-control span,
+#settings-shell .switch-control i,
+#settings-shell .field-switch i {
+  width: var(--control-switch-width);
+  height: var(--control-switch-height);
+}
+
+#tab-realtime .switch-control span::after,
+#tab-file .switch-control span::after,
+#settings-shell .switch-control i::after,
+#settings-shell .field-switch i::after {
+  width: var(--control-switch-thumb-size);
+  height: var(--control-switch-thumb-size);
+  top: var(--control-switch-thumb-inset);
+  left: var(--control-switch-thumb-inset);
+}
+
+#tab-realtime .status-chip,
+#tab-file .file-vnext-status-chip,
+#tab-model .model-vnext-chip,
+#settings-shell .status-chip {
+  min-height: var(--control-chip-height);
+}
+
+#tab-model .model-engine-tab {
+  min-height: var(--control-tab-height);
+}
+
+#tab-realtime .status-chip-strong i,
+#tab-file .file-vnext-status-chip-strong i,
+#tab-realtime .detached-card-head p i {
+  width: var(--control-dot-size);
+  height: var(--control-dot-size);
+  flex: 0 0 var(--control-dot-size);
 }
 
 #tab-realtime .output-panel {

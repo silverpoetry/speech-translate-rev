@@ -31,6 +31,25 @@ function $(id) {
   return document.getElementById(id);
 }
 
+function resolveBootstrapAppName() {
+  return String(document.documentElement?.dataset?.appName || '').trim();
+}
+
+function resolveAppName(data = state.data || {}) {
+  return String(data?.about?.name || data?.app_name || resolveBootstrapAppName()).trim();
+}
+
+function syncAppIdentity(data = state.data || {}) {
+  const appName = resolveAppName(data);
+  if (!appName) {
+    return;
+  }
+  document.title = appName;
+  if (els.appBrandName) {
+    els.appBrandName.textContent = appName;
+  }
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll('&', '&amp;')
@@ -1518,7 +1537,7 @@ function renderAbout(data) {
   const modelDir = settings.dir_model || about.model_dir || 'auto';
   const mainSize = settings.mw_size || '未知';
   const rows = [
-    ['应用', about.name || data?.app_name || 'Speech Translate'],
+    ['应用', resolveAppName(data)],
     ['版本', about.version || data?.version || '未知'],
     ['系统', about.os || [data?.os_name, data?.os_release, data?.os_version].filter(Boolean).join(' ') || '未知'],
     ['CPU', about.cpu || data?.cpu || '未知'],
@@ -2941,6 +2960,7 @@ async function refreshState(options = {}) {
 
   const data = await apiCall('get_state');
   state.data = data;
+  syncAppIdentity(data);
   renderSettings(data);
   renderMainControls(data);
   renderRecordSettings(data);
@@ -4861,6 +4881,8 @@ async function init() {
     els.taskProgressText = $('task-progress-text');
     els.taskProgressFill = $('task-progress-fill');
     els.aboutCard = $('about-card');
+    els.appBrandName = $('app-brand-name');
+    syncAppIdentity();
 
     // Hallucination filters
     els.filterRec = $('filter_rec');
