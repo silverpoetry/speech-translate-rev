@@ -11128,15 +11128,15 @@ button.btn-with-icon[data-action="notify"]::before {
 
 /* Final color and motion polish: restrained, cool, production-tool tone. */
 :root {
-  --shell-bg: #f3f6f7;
-  --shell-surface-muted: #f7faf9;
-  --shell-surface-raised: #fbfcfc;
-  --shell-line: #d7e0e8;
-  --shell-line-soft: #e7edf2;
-  --shell-muted: #5a6878;
-  --shell-accent: #4f6f90;
-  --shell-accent-soft: #e8eef5;
-  --shell-accent-line: #cad8e6;
+  --shell-bg: #f4f5f7;
+  --shell-surface-muted: #f8f9fb;
+  --shell-surface-raised: #f8f9fb;
+  --shell-line: #d9e0ea;
+  --shell-line-soft: #e8edf3;
+  --shell-muted: #536174;
+  --shell-accent: #202b3a;
+  --shell-accent-soft: #e8edf3;
+  --shell-accent-line: #d9e0ea;
   --shell-accent-strong: #445f7e;
   --shell-state: #22746a;
   --shell-state-soft: #e3f2ef;
@@ -11186,7 +11186,7 @@ body,
   transition:
     background-color var(--motion-fast),
     color var(--motion-fast),
-    transform var(--motion-fast);
+    box-shadow var(--motion-fast);
 }
 
 .menu-item::before {
@@ -11227,8 +11227,7 @@ button.btn-with-icon,
     background-color var(--motion-fast),
     border-color var(--motion-fast),
     color var(--motion-fast),
-    box-shadow var(--motion-fast),
-    transform var(--motion-fast);
+    box-shadow var(--motion-fast);
 }
 
 .side-action:hover,
@@ -11256,7 +11255,7 @@ button.btn-with-icon:active,
 #tab-model .icon-action:active,
 #settings-shell .icon-action:active,
 #tab-model .model-vnext-download-btn:active {
-  transform: translateY(1px);
+  box-shadow: inset 0 0 0 1px rgba(17, 24, 39, 0.08);
 }
 
 #tab-realtime .surface-panel,
