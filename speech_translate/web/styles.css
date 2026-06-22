@@ -11509,6 +11509,16 @@ button.btn-with-icon:active,
   align-self: center;
 }
 
+#tab-realtime .realtime-toolbar > * {
+  position: relative;
+  top: -2.25px;
+}
+
+#tab-model .model-vnext-engine-bar > .model-engine-tab {
+  position: relative;
+  top: -2px;
+}
+
 #tab-realtime .output-panel {
   background:
     linear-gradient(180deg, rgba(245, 248, 252, 0.66) 0%, rgba(255, 255, 255, 0) 58px),
