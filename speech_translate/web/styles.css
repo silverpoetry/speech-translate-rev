@@ -230,7 +230,7 @@ body {
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
   color: #64748b;
 }
 
@@ -542,7 +542,7 @@ body {
 .realtime-status-label {
   font-size: 0.56rem;
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
   color: #64748b;
 }
 
@@ -741,7 +741,7 @@ body {
   font-size: 0.74rem;
   font-weight: 700;
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
   color: #64748b;
 }
 
@@ -982,7 +982,7 @@ body {
 .status-overview-label {
   font-size: 0.66rem;
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
   color: #64748b;
 }
 
@@ -1155,7 +1155,7 @@ body {
 .settings-overview-label {
   font-size: 0.62rem;
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
   color: #64748b;
 }
 
@@ -1385,7 +1385,7 @@ body {
 
 .eyebrow {
   margin: 0;
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0;
   color: var(--accent);
   font-size: 0.76rem;
@@ -1435,7 +1435,7 @@ body {
   border: 1px solid rgba(16, 62, 105, 0.12);
   font-size: 0.78rem;
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .task-badge.is-active {
@@ -1510,7 +1510,7 @@ body {
 #settings-shell .state-key {
   font-size: 0.68rem;
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
   color: #64748b;
 }
 
@@ -1699,7 +1699,7 @@ body {
 .statusbar-label {
   font-size: 0.7rem;
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
   color: #9ca3af;
   white-space: nowrap;
   flex: 0 0 auto;
@@ -3776,7 +3776,7 @@ button.btn-icon[data-tooltip]::before {
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
   color: #64748b;
 }
 
@@ -3828,7 +3828,7 @@ button.btn-icon[data-tooltip]::before {
   font-size: 0.84rem;
   font-weight: 700;
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
   color: #475569;
 }
 
@@ -4409,7 +4409,7 @@ button.btn-icon[data-tooltip]::before {
   margin: 0 0 4px;
   font-size: 0.95rem;
   color: var(--accent);
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0;
 }
 
@@ -5026,7 +5026,7 @@ textarea:focus {
   font-size: 0.74rem;
   font-weight: 700;
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
   color: #64748b;
 }
 
@@ -5409,7 +5409,7 @@ textarea:focus {
 .model-manager-overview-label {
   font-size: 0.62rem;
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
   color: #64748b;
 }
 
@@ -5509,7 +5509,7 @@ textarea:focus {
   color: var(--muted);
   font-size: 0.84rem;
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .transcript-shell {
@@ -5552,7 +5552,7 @@ textarea:focus {
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
   color: #334155;
 }
 
@@ -5574,7 +5574,7 @@ textarea:focus {
   font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -6618,7 +6618,7 @@ button.btn-icon:hover {
 .settings-search span {
   font-size: var(--ui-text-2xs);
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .settings-search input {
