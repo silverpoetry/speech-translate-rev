@@ -1501,7 +1501,7 @@ body {
 .task-banner-head {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--tab-stack-gap);
   align-items: center;
 }
 
@@ -3301,14 +3301,14 @@ button.btn-icon[data-tooltip]::before {
 
 .tab-panel.is-active {
   display: grid !important;
-  gap: 8px;
+  gap: var(--tab-stack-gap-compact);
   align-content: start;
   align-items: start;
 }
 
 .workflow-card {
   display: grid;
-  gap: 8px;
+  gap: var(--tab-stack-gap-compact);
   padding: 0;
   border-radius: 0;
   background: transparent;
@@ -3692,7 +3692,7 @@ button.btn-icon[data-tooltip]::before {
 .recording-rail-summary,
 .prompt-workbench-main {
   display: grid;
-  gap: 12px;
+  gap: var(--tab-stack-gap);
   min-width: 0;
 }
 
@@ -7015,7 +7015,7 @@ button.btn-icon:hover {
   --rt-text-3: var(--color-muted-2);
   --rt-action: var(--color-accent);
   display: grid;
-  gap: 12px;
+  gap: var(--tab-stack-gap);
 }
 
 #tab-realtime .realtime-vnext-core,
@@ -7651,8 +7651,8 @@ button.btn-icon:hover {
 
 #settings-shell .settings-vnext-toolbar {
   display: grid;
-  gap: 10px;
-  padding: 12px 14px 14px;
+  gap: var(--tab-surface-gap);
+  padding: var(--tab-panel-pad-y) var(--tab-panel-pad-x) calc(var(--tab-panel-pad-y) + 2px);
 }
 
 #settings-shell .settings-head,
@@ -7954,8 +7954,8 @@ button.btn-icon:hover {
 
 #settings-shell .settings-vnext-workbench {
   display: grid;
-  gap: 12px;
-  padding: 12px 14px 14px;
+  gap: var(--tab-stack-gap);
+  padding: var(--tab-panel-pad-y) var(--tab-panel-pad-x) calc(var(--tab-panel-pad-y) + 2px);
 }
 
 #settings-shell .panel-meta {
@@ -7973,22 +7973,22 @@ button.btn-icon:hover {
   min-width: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--tab-stack-gap);
   align-items: start;
 }
 
 #settings-shell .settings-column {
   min-width: 0;
   display: grid;
-  gap: 12px;
+  gap: var(--tab-stack-gap);
   align-content: start;
 }
 
 #settings-shell .setting-block {
   min-width: 0;
   display: grid;
-  gap: 9px;
-  padding-top: 10px;
+  gap: var(--tab-section-gap);
+  padding-top: var(--tab-section-gap);
   border-top: 1px solid var(--settings-hairline);
 }
 
@@ -8625,7 +8625,7 @@ button.btn-icon:hover {
 }
 
 #tab-realtime .frame-main {
-  min-height: 436px;
+  min-height: 0;
   display: grid;
   grid-template-rows: auto auto;
   gap: 0;
@@ -8652,7 +8652,7 @@ button.btn-icon:hover {
 
 #tab-realtime .work-header {
   height: 36px;
-  margin: 0 0 8px;
+  margin: 0 0 var(--tab-top-gap);
   padding: 0;
   border: 0;
   background: transparent;
@@ -8678,9 +8678,9 @@ button.btn-icon:hover {
 }
 
 #tab-realtime .hero-panel {
-  padding: 12px 14px 13px;
+  padding: var(--tab-panel-pad-y) var(--tab-panel-pad-x) calc(var(--tab-panel-pad-y) + 1px);
   display: grid;
-  gap: 12px;
+  gap: var(--tab-surface-gap);
   border-radius: 15px;
   background:
     var(--shell-surface-gradient),
@@ -8692,7 +8692,7 @@ button.btn-icon:hover {
   display: grid;
   grid-template-columns: auto auto minmax(240px, 1fr);
   align-items: center;
-  gap: 14px;
+  gap: var(--tab-surface-gap);
   padding: 6px 10px 6px 6px;
   border: 1px solid var(--rt-line);
   border-radius: 13px;
@@ -8753,7 +8753,7 @@ button.btn-icon:hover {
 }
 
 #tab-realtime .mode-toggles {
-  gap: 10px;
+  gap: var(--tab-section-gap);
   padding-left: 2px;
 }
 
@@ -8823,7 +8823,7 @@ button.btn-icon:hover {
   align-items: center;
   justify-self: stretch;
   justify-content: end;
-  gap: 12px;
+  gap: var(--tab-surface-gap);
   max-width: 364px;
   margin-left: auto;
 }
@@ -9719,7 +9719,7 @@ body {
 }
 
 #tab-realtime .frame-main {
-  min-height: 424px;
+  min-height: 0;
 }
 
 #tab-realtime .hero-panel {
@@ -9863,7 +9863,7 @@ body {
 #tab-file .file-vnext-stack {
   min-width: 0;
   display: grid;
-  gap: 12px;
+  gap: var(--tab-stack-gap);
   align-content: start;
 }
 
@@ -9878,13 +9878,13 @@ body {
 #tab-file .file-vnext-command-panel,
 #tab-file .file-vnext-config-panel,
 #tab-file .file-vnext-workbench-shell {
-  padding: 12px 14px;
+  padding: var(--tab-panel-pad-y) var(--tab-panel-pad-x);
   background: linear-gradient(180deg, var(--color-surface) 0%, #fbfcfe 100%);
 }
 
 #tab-file .file-vnext-command-panel {
   display: grid;
-  gap: 8px;
+  gap: var(--tab-section-gap);
 }
 
 #tab-file .file-vnext-head,
@@ -9954,7 +9954,7 @@ body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
+  gap: var(--tab-surface-gap);
   padding: 4px 8px 4px 5px;
   border: 1px solid var(--color-line-alt);
   border-radius: 13px;
@@ -10159,7 +10159,7 @@ body {
   min-height: 265px;
   display: grid;
   grid-template-columns: minmax(0, 62fr) minmax(294px, 38fr);
-  gap: 12px;
+  gap: var(--tab-stack-gap);
   align-items: stretch;
 }
 
@@ -10174,7 +10174,7 @@ body {
 }
 
 #tab-file .file-vnext-queue-panel {
-  padding: 12px 14px;
+  padding: var(--tab-panel-pad-y) var(--tab-panel-pad-x);
   display: grid;
   grid-template-rows: 24px 24px minmax(0, 1fr);
   gap: 6px;
@@ -10735,12 +10735,12 @@ button.btn-with-icon[data-action="notify"]::before {
 }
 
 #tab-model.workflow-card {
-  gap: 12px;
+  gap: var(--tab-stack-gap);
 }
 
 #tab-model .model-vnext-stack {
   display: grid;
-  gap: 12px;
+  gap: var(--tab-stack-gap);
 }
 
 #tab-model .surface-panel {
@@ -10753,7 +10753,7 @@ button.btn-with-icon[data-action="notify"]::before {
 
 #tab-model .model-vnext-runtime-panel,
 #tab-model .model-vnext-manager-panel {
-  padding: 11px 14px 13px;
+  padding: var(--tab-panel-pad-y) var(--tab-panel-pad-x) calc(var(--tab-panel-pad-y) + 1px);
 }
 
 #tab-model .model-vnext-runtime-panel {
@@ -10828,7 +10828,7 @@ button.btn-with-icon[data-action="notify"]::before {
 #tab-model .model-vnext-runtime-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(256px, 1fr);
-  gap: 8px 12px;
+  gap: 8px var(--tab-surface-gap);
   align-items: end;
   margin-top: 10px;
 }
@@ -11008,7 +11008,7 @@ button.btn-with-icon[data-action="notify"]::before {
 #tab-model .model-vnext-toolbar {
   display: grid;
   grid-template-columns: minmax(240px, 280px) minmax(0, 1fr) max-content;
-  gap: 10px;
+  gap: var(--tab-surface-gap);
   align-items: center;
   margin-top: 10px;
   padding: 4px 0 10px;
@@ -11267,6 +11267,13 @@ button.btn-with-icon[data-action="notify"]::before {
   --motion-spring: 220ms cubic-bezier(0.2, 0.9, 0.2, 1);
   --motion-tooltip-offset: 3px;
   --motion-rise-offset: 8px;
+  --tab-stack-gap: 12px;
+  --tab-stack-gap-compact: 8px;
+  --tab-panel-pad-y: 12px;
+  --tab-panel-pad-x: 14px;
+  --tab-surface-gap: 12px;
+  --tab-top-gap: 12px;
+  --tab-section-gap: 10px;
 }
 
 html,
