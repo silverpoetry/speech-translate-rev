@@ -8,6 +8,7 @@ from unittest.mock import patch
 to_add = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(to_add)
 
+from speech_translate._constants import APP_NAME
 from speech_translate.state_view_builder import StateViewBuilder, StateViewDependencies
 from speech_translate.state_view_settings import build_record_device_view_settings, build_state_view_settings
 from speech_translate.ui_protocol import UI_SECTION_STATE
@@ -297,7 +298,7 @@ class StateViewBuilderTests(unittest.TestCase):
 
         state = self.builder.build_state()
 
-        self.assertEqual(state["app_name"], "Speech Translate")
+        self.assertEqual(state["app_name"], APP_NAME)
         self.assertEqual(state["runtime_model"]["key"], "small")
         self.assertEqual(state["import_ui"]["verify_available"], False)
         self.assertEqual(state["main_ui"]["selected_model"], "tiny")

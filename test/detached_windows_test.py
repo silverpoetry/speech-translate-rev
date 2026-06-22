@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import call, patch
 
+from speech_translate._constants import APP_NAME
 from speech_translate.window_geometry import WindowPlacement
 from speech_translate.window_lifecycle import WindowLifecycleState
 
@@ -79,7 +80,7 @@ class DetachedWindowHelpersTests(unittest.TestCase):
         self.assertIs(manager.windows["tc"], window)
         self.assertEqual(len(fake_webview.calls), 1)
         args, kwargs = fake_webview.calls[0]
-        self.assertEqual(args[0], "Speech Translate - Transcribed")
+        self.assertEqual(args[0], f"{APP_NAME} - 转写窗口")
         self.assertIn("mode=tc", args[1])
         self.assertNotIn("outerWidth", args[1])
         self.assertEqual(kwargs["width"], 700)

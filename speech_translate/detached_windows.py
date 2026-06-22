@@ -5,6 +5,7 @@ from pathlib import Path
 from time import time
 from typing import Callable, Mapping, Optional
 
+from speech_translate._constants import APP_NAME
 from speech_translate.controller_protocols import (
     DetachedWindowManagerBridge,
     JsonDict,
@@ -277,7 +278,7 @@ class DetachedWindowManager:
             window_url = f"{html_path}?mode={mode}"
             window = create_preloaded_window(
                 webview,
-                f"Speech Translate - {'Transcribed' if mode == 'tc' else 'Translated'}",
+                f"{APP_NAME} - {'转写窗口' if mode == 'tc' else '翻译窗口'}",
                 window_url,
                 js_api=DetachedWindowApi(self),
                 placement=self._requested_placements[mode],
@@ -425,7 +426,7 @@ class DetachedWindowManager:
             requested = WindowPlacement(width=width, height=height, x=x, y=y)
             self.recording_window = create_preloaded_window(
                 webview,
-                "Speech Translate - Recording Session",
+                f"{APP_NAME} - 录制会话",
                 html_path,
                 js_api=recording_window_api,
                 placement=requested,

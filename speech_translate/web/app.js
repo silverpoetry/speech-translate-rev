@@ -2672,8 +2672,14 @@ function syncRecordingButton(recordingState) {
 
   const active = Boolean(recordingState?.active);
 
-  els.btnRecordingToggle.textContent = active ? '停止录制' : '开始录制';
+  const label = els.btnRecordingToggle.querySelector('.record-label');
+  if (label) {
+    label.textContent = active ? '停止录制' : '开始录制';
+  } else {
+    els.btnRecordingToggle.textContent = active ? '停止录制' : '开始录制';
+  }
   els.btnRecordingToggle.dataset.action = active ? 'stop-recording' : 'start-recording';
+  els.btnRecordingToggle.setAttribute('aria-pressed', String(active));
   els.btnRecordingToggle.classList.toggle('is-stop', active);
   if (active) {
     startTaskRefresh();

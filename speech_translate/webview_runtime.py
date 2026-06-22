@@ -102,9 +102,23 @@ def _patch_webview_runtime(webview_module) -> None:
                 instance = list(winforms_module.BrowserView.instances.values())[0]
                 instance.Invoke(winforms_module.Func[winforms_module.Type](create_callback))
 
+        def _apply_window_icon(browser) -> None:
+            try:
+                from speech_translate._path import p_app_icon
+
+                drawing = getattr(winforms_module, "Drawing", None)
+                icon_type = getattr(drawing, "Icon", None) if drawing is not None else None
+                if icon_type is None:
+                    from System.Drawing import Icon as icon_type  # type: ignore[import-not-found]
+
+                browser.Icon = icon_type(p_app_icon)
+            except Exception:
+                pass
+
         def _create_managed_window(window, contract):
             def create():
                 browser = winforms_module.BrowserView.BrowserForm(window, winforms_module.cache_dir)
+                _apply_window_icon(browser)
                 winforms_module.BrowserView.instances[window.uid] = browser
                 lifecycle_state = get_window_lifecycle_state(window)
                 if lifecycle_state is not None and not lifecycle_state.revealed:

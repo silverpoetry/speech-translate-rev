@@ -5,6 +5,7 @@ import time
 import weakref
 from pathlib import Path
 
+from speech_translate._constants import APP_NAME
 from speech_translate._path import p_app_icon
 from speech_translate.controller_protocols import AppTrayBridge
 from speech_translate.log_helpers import logger
@@ -96,7 +97,7 @@ class AppTray:
         except Exception:
             ico = self._fallback_image(64, 64, "black", "white")
 
-        self.icon = pystray.Icon("Speech Translate", ico, "Speech Translate")
+        self.icon = pystray.Icon("Speech Translate", ico, APP_NAME)
         self.icon.run_detached()
         self._install_pointer_actions()
 

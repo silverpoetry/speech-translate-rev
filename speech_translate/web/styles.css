@@ -10420,6 +10420,8 @@ body {
   --st-icon-sliders: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.48' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.8 7.7h6.5M15.3 7.7h3.9M4.8 16.1h3.9M12.7 16.1h6.5'/%3E%3Ccircle cx='13.3' cy='7.7' r='1.65'/%3E%3Ccircle cx='10.7' cy='16.1' r='1.65'/%3E%3C/svg%3E");
   --st-icon-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.55' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.4 12.3l3.7 3.7 7.5-8'/%3E%3C/svg%3E");
   --st-icon-refresh: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.48' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M17.7 7.8a6.5 6.5 0 00-11.2 2.4M6.3 16.2a6.5 6.5 0 0011.2-2.4'/%3E%3Cpath d='M17.8 5.2v2.9h-2.9M6.2 18.8v-2.9h2.9'/%3E%3C/svg%3E");
+  --st-icon-record-play: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M7.15 5.85v12.3L18 12z'/%3E%3C/svg%3E");
+  --st-icon-record-stop: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='6.15' y='6.15' width='11.7' height='11.7' rx='1.55' fill='black'/%3E%3C/svg%3E");
   --st-icon-search: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.48' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='10.7' cy='10.5' r='6.2'/%3E%3Cpath d='M15.2 15.1l4.2 4.2'/%3E%3C/svg%3E");
   --st-icon-folder: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.48' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.8 7.4h5.2l1.8 2.1h7.4v9H4.8z'/%3E%3Cpath d='M4.8 9.7h14.4'/%3E%3C/svg%3E");
   --st-icon-model-dir: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.48' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.8 7.4h5.2l1.8 2.1h7.4v9H4.8zM4.8 9.7h14.4'/%3E%3Cpath d='M11.2 14.6h2.1M15.9 14.6h1.1'/%3E%3Ccircle cx='14.5' cy='14.6' r='1.15'/%3E%3C/svg%3E");
@@ -11132,11 +11134,20 @@ button.btn-with-icon[data-action="notify"]::before {
   --shell-line: #d7e0e8;
   --shell-line-soft: #e7edf2;
   --shell-muted: #5a6878;
-  --shell-accent: #21736b;
-  --shell-accent-soft: #e4f2ef;
-  --shell-accent-line: #bddbd4;
-  --shell-accent-strong: #16675f;
+  --shell-accent: #4f6f90;
+  --shell-accent-soft: #e8eef5;
+  --shell-accent-line: #cad8e6;
+  --shell-accent-strong: #445f7e;
+  --shell-state: #22746a;
+  --shell-state-soft: #e3f2ef;
+  --shell-state-line: #badbd4;
+  --shell-switch-soft: #dff2ed;
+  --shell-switch-line: #9ed0c3;
   --shell-focus-ring: rgba(42, 112, 184, 0.16);
+  --shell-record: #26405f;
+  --shell-record-hover: #1f344f;
+  --shell-stop: #b64b4b;
+  --shell-stop-hover: #9f4141;
   --shell-danger-soft: #fff1f1;
   --shell-danger-line: #efc6c6;
   --motion-fast: 140ms cubic-bezier(0.2, 0, 0.2, 1);
@@ -11156,10 +11167,19 @@ body,
 }
 
 .brand-icon {
-  background: #202b3a;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
-    inset 0 -3px 0 rgba(33, 115, 107, 0.18);
+  width: 22px;
+  height: 22px;
+  border-radius: 0;
+  background: #263647;
+  box-shadow: none;
+  -webkit-mask-image: var(--st-icon-window);
+  mask-image: var(--st-icon-window);
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 118%;
+  mask-size: 118%;
 }
 
 .menu-item {
@@ -11176,7 +11196,7 @@ body,
 }
 
 .menu-item:hover {
-  background: #edf4f3;
+  background: #edf1f5;
   color: #223142;
 }
 
@@ -11186,12 +11206,12 @@ body,
 
 .menu-item.is-active,
 .menu-item.is-active:hover {
-  background: #e7eeef;
+  background: #e8edf3;
   color: var(--shell-text);
 }
 
 .menu-item.is-active::before {
-  background: var(--shell-accent);
+  background: #202b3a;
 }
 
 .side-action,
@@ -11213,7 +11233,7 @@ button.btn-with-icon,
 
 .side-action:hover,
 .side-action:focus-visible {
-  background: #edf4f3;
+  background: #edf1f5;
 }
 
 .side-action:focus-visible,
@@ -11250,35 +11270,64 @@ button.btn-with-icon:active,
 #tab-realtime .hero-panel,
 #tab-realtime .realtime-toolbar {
   background:
-    linear-gradient(180deg, rgba(247, 251, 250, 0.92) 0%, rgba(255, 255, 255, 0.96) 72px),
+    linear-gradient(180deg, rgba(247, 249, 252, 0.92) 0%, rgba(255, 255, 255, 0.96) 72px),
     #fff;
 }
 
 #tab-realtime .record-action {
-  border-color: #192333;
-  background: #202b3a;
+  border-color: var(--shell-record);
+  background: var(--shell-record);
   box-shadow: 0 1px 1px rgba(17, 24, 39, 0.08);
 }
 
 #tab-realtime .record-action:hover,
 #tab-realtime .record-action:focus-visible {
-  background: #172231;
+  background: var(--shell-record-hover);
   box-shadow: 0 2px 8px rgba(17, 24, 39, 0.12);
 }
 
-#tab-realtime .record-dot {
-  background: #8ea0b3;
+#tab-realtime .record-glyph {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  background: currentColor;
+  -webkit-mask-image: var(--st-icon-record-play);
+  mask-image: var(--st-icon-record-play);
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 112%;
+  mask-size: 112%;
   transition:
     background-color var(--motion-fast),
-    box-shadow var(--motion-fast),
     transform var(--motion-fast);
 }
 
-#tab-realtime .record-action.is-stop .record-dot,
-#tab-realtime .record-action[data-state="recording"] .record-dot,
-#tab-realtime .record-action[aria-pressed="true"] .record-dot {
-  background: #2da68b;
-  box-shadow: 0 0 0 3px rgba(45, 166, 139, 0.18);
+#tab-realtime .record-label {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+#tab-realtime .record-action.is-stop,
+#tab-realtime .record-action[aria-pressed="true"] {
+  border-color: var(--shell-stop);
+  background: var(--shell-stop);
+}
+
+#tab-realtime .record-action.is-stop:hover,
+#tab-realtime .record-action.is-stop:focus-visible,
+#tab-realtime .record-action[aria-pressed="true"]:hover,
+#tab-realtime .record-action[aria-pressed="true"]:focus-visible {
+  border-color: var(--shell-stop-hover);
+  background: var(--shell-stop-hover);
+}
+
+#tab-realtime .record-action.is-stop .record-glyph,
+#tab-realtime .record-action[aria-pressed="true"] .record-glyph {
+  -webkit-mask-image: var(--st-icon-record-stop);
+  mask-image: var(--st-icon-record-stop);
 }
 
 #tab-realtime .icon-action:hover,
@@ -11292,7 +11341,7 @@ button.btn-with-icon:active,
 #tab-model .model-vnext-download-btn:hover,
 #tab-model .model-vnext-download-btn:focus-visible {
   border-color: #bdcbd8;
-  background: #f2f7f6;
+  background: #f2f5f8;
   color: #263647;
 }
 
@@ -11307,8 +11356,8 @@ button.btn-with-icon:active,
 #tab-realtime .icon-action-primary:focus-visible,
 #settings-shell .icon-action-primary:hover,
 #settings-shell .icon-action-primary:focus-visible {
-  border-color: #105850;
-  background: #105850;
+  border-color: #3b536f;
+  background: #3b536f;
 }
 
 #tab-file .icon-action.icon-action-danger:hover,
@@ -11347,8 +11396,8 @@ button.btn-with-icon:active,
 #settings-shell .switch-control input:checked + i,
 #settings-shell .field-switch input:checked + i,
 .toggle-row input[type="checkbox"]:checked {
-  border-color: #9fd0c4;
-  background: #dff2ed;
+  border-color: var(--shell-switch-line);
+  background: var(--shell-switch-soft);
 }
 
 #tab-realtime .switch-control input:checked + span::after,
@@ -11356,8 +11405,8 @@ button.btn-with-icon:active,
 #settings-shell .switch-control input:checked + i::after,
 #settings-shell .field-switch input:checked + i::after,
 .toggle-row input[type="checkbox"]:checked::after {
-  background: var(--shell-accent);
-  box-shadow: 0 1px 3px rgba(22, 103, 95, 0.25);
+  background: var(--shell-state);
+  box-shadow: 0 1px 3px rgba(34, 116, 106, 0.24);
 }
 
 #tab-realtime .status-chip,
@@ -11374,16 +11423,16 @@ button.btn-with-icon:active,
 #tab-realtime .status-chip-strong,
 #tab-file .file-vnext-status-chip-strong,
 #tab-model .model-vnext-row-state-chip.is-ready {
-  color: #175f55;
-  background: var(--shell-accent-soft);
-  border-color: var(--shell-accent-line);
+  color: #185e55;
+  background: var(--shell-state-soft);
+  border-color: var(--shell-state-line);
 }
 
 #tab-realtime .status-chip-strong i,
 #tab-file .file-vnext-status-chip-strong i,
 #tab-realtime .detached-card-head p i {
-  background: var(--shell-accent);
-  box-shadow: 0 0 0 3px rgba(33, 115, 107, 0.14);
+  background: var(--shell-state);
+  box-shadow: 0 0 0 3px rgba(34, 116, 106, 0.14);
 }
 
 #tab-realtime .status-chip-model,
@@ -11407,12 +11456,62 @@ button.btn-with-icon:active,
 
 .statusbar-progress-fill,
 #tab-model .model-vnext-progress-fill {
-  background: linear-gradient(90deg, #2f6f87 0%, var(--shell-accent) 100%);
+  background: linear-gradient(90deg, #62a192 0%, var(--shell-state) 100%);
+}
+
+/* Final vertical rhythm pass for compact controls. */
+#tab-realtime .record-action,
+#tab-realtime .switch-control,
+#tab-file .switch-control,
+#settings-shell .switch-control,
+#settings-shell .field-switch,
+#tab-realtime .status-chip,
+#tab-file .file-vnext-status-chip,
+#settings-shell .status-chip,
+#tab-model .model-vnext-row-state-chip,
+#tab-model .model-engine-tab,
+#tab-file .file-vnext-format-option,
+#tab-model .model-vnext-download-btn,
+#tab-model .model-vnext-load-action {
+  align-items: center;
+  line-height: 1;
+}
+
+#tab-model .model-engine-tab,
+#tab-file .file-vnext-format-option {
+  display: inline-flex;
+  justify-content: center;
+}
+
+#tab-realtime .switch-control b,
+#tab-file .switch-control b,
+#settings-shell .switch-control b,
+#settings-shell .field-switch b,
+#tab-realtime .status-chip > span,
+#tab-file .file-vnext-status-chip > span,
+#settings-shell .status-chip > span,
+#tab-model .model-vnext-row-state-chip > span {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+#tab-realtime .status-chip-strong i,
+#tab-file .file-vnext-status-chip-strong i,
+#tab-realtime .detached-card-head p i {
+  align-self: center;
+}
+
+#tab-realtime .switch-control span,
+#tab-file .switch-control span,
+#settings-shell .switch-control i,
+#settings-shell .field-switch i {
+  align-self: center;
 }
 
 #tab-realtime .output-panel {
   background:
-    linear-gradient(180deg, rgba(244, 249, 248, 0.66) 0%, rgba(255, 255, 255, 0) 58px),
+    linear-gradient(180deg, rgba(245, 248, 252, 0.66) 0%, rgba(255, 255, 255, 0) 58px),
     #fff;
 }
 
