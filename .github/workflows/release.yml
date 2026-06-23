@@ -35,23 +35,18 @@ jobs:
           .\.venv314\Scripts\python.exe -m pip install --upgrade pip
           .\.venv314\Scripts\python.exe -m pip install -r requirements-dev.txt
 
+      - name: Smoke test source recording imports
+        run: .\.venv314\Scripts\python.exe -m speech_translate --smoke-test-recording-imports
+
       - name: Build executable
         run: .\.venv314\Scripts\python.exe build_windows.py build_exe
 
-      - name: Smoke test frozen recording imports
+      - name: Verify frozen recording modules
         shell: pwsh
-        timeout-minutes: 2
         run: |
           $version = .\.venv314\Scripts\python.exe -c "from speech_translate._version import __version__; print(__version__)"
-          $exe = "build\SpeechTranslateRev $version .venv314\SpeechTranslateRev.exe"
-          if (-not (Test-Path -LiteralPath $exe)) {
-            throw "Executable not found: $exe"
-          }
-          $env:SPEECH_TRANSLATE_SMOKE_TEST_RECORDING_IMPORTS = "1"
-          $process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -Wait -PassThru
-          if ($process.ExitCode -ne 0) {
-            throw "Frozen recording import smoke test failed with exit code $($process.ExitCode)."
-          }
+          $buildRoot = "build\SpeechTranslateRev $version .venv314"
+          .\.venv314\Scripts\python.exe scripts\verify_frozen_recording_modules.py "$buildRoot"
 
       - name: Package portable archive
         shell: pwsh
