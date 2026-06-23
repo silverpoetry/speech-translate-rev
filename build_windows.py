@@ -72,6 +72,31 @@ def prune_silero_runtime_assets(build_root: Path):
             remove_path(target)
 
 
+def prune_packaged_runtime_state(build_root: Path):
+    app_root = build_root / "lib" / "speech_translate"
+    for relative in ("_user", "debug", "export", "log", "temp"):
+        target = app_root / relative
+        if target.exists():
+            print(">> Removing packaged runtime state", target)
+            remove_path(target)
+
+
+def ensure_scipy_external_array_api_alias(build_root: Path):
+    scipy_root = build_root / "lib" / "scipy"
+    source = scipy_root / "_lib" / "array_api_compat"
+    target_root = scipy_root / "_external"
+    target = target_root / "array_api_compat"
+    if not source.exists() or target.exists():
+        return
+
+    print(">> Creating scipy._external.array_api_compat compatibility package")
+    target_root.mkdir(parents=True, exist_ok=True)
+    init_file = target_root / "__init__.py"
+    if not init_file.exists():
+        init_file.write_text("", encoding="utf-8")
+    shutil.copytree(source, target, dirs_exist_ok=True)
+
+
 def get_whisper_version():
     try:
         ver = get_version("openai-whisper")
@@ -156,6 +181,8 @@ if len(sys.argv) < 2 or sys.argv[1] != "build_exe":
 
 print(">> Copying some more files...")
 prune_silero_runtime_assets(Path(folder_name))
+prune_packaged_runtime_state(Path(folder_name))
+ensure_scipy_external_array_api_alias(Path(folder_name))
 
 # we need to copy av.libs to foldername/lib because cx_freeze doesn't copy it for some reason
 print(">> Copying av.libs to lib folder")
