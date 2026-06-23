@@ -64,7 +64,7 @@ def _run_recording_import_smoke_test() -> int:
     return 0
 
 
-if "--smoke-test-recording-imports" in sys.argv:
+if "--smoke-test-recording-imports" in sys.argv or environ.get("SPEECH_TRANSLATE_SMOKE_TEST_RECORDING_IMPORTS") == "1":
     import os
 
     os._exit(_run_recording_import_smoke_test())

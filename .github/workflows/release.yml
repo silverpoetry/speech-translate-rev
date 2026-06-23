@@ -47,7 +47,8 @@ jobs:
           if (-not (Test-Path -LiteralPath $exe)) {
             throw "Executable not found: $exe"
           }
-          $process = Start-Process -FilePath $exe -ArgumentList "--smoke-test-recording-imports" -WorkingDirectory (Split-Path $exe) -Wait -PassThru
+          $env:SPEECH_TRANSLATE_SMOKE_TEST_RECORDING_IMPORTS = "1"
+          $process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -Wait -PassThru
           if ($process.ExitCode -ne 0) {
             throw "Frozen recording import smoke test failed with exit code $($process.ExitCode)."
           }
