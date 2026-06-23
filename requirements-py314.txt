@@ -24,6 +24,6 @@ matplotlib>=3.10.0
 onnxruntime>=1.22.0
 demucs==4.0.1
 stable-ts>=2.19.0
-faster-whisper>=1.2.0
+faster-whisper>=1.2.1
 PyAudioWPatch==0.2.12.8; platform_system == "Windows"
 PyAudio==0.2.13; platform_system != "Windows"
