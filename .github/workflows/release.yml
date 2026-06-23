@@ -40,6 +40,7 @@ jobs:
 
       - name: Smoke test frozen recording imports
         shell: pwsh
+        timeout-minutes: 2
         run: |
           $version = .\.venv314\Scripts\python.exe -c "from speech_translate._version import __version__; print(__version__)"
           $exe = "build\SpeechTranslateRev $version .venv314\SpeechTranslateRev.exe"

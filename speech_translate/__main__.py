@@ -65,7 +65,9 @@ def _run_recording_import_smoke_test() -> int:
 
 
 if "--smoke-test-recording-imports" in sys.argv:
-    raise SystemExit(_run_recording_import_smoke_test())
+    import os
+
+    os._exit(_run_recording_import_smoke_test())
 
 # override loguru default format so we dont need to do logger.remove on the logger init
 environ["LOGURU_FORMAT"] = LOG_FORMAT
