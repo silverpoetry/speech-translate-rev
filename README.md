@@ -43,7 +43,7 @@ Speaker loopback capture depends on the operating system and audio setup. On Win
 
 ## Installation
 
-Prebuilt releases will be published from the [GitHub Releases](https://github.com/silverpoetry/speech-translate-rev/releases) page.
+Release notes are published from the [GitHub Releases](https://github.com/silverpoetry/speech-translate-rev/releases) page. Binary assets will be added after the packaging pipeline is validated for Rev builds.
 
 Install from source:
 
