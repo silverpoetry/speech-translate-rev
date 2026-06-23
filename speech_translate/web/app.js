@@ -1,3 +1,6 @@
+const DEFAULT_UI_LANGUAGE = 'zh-CN';
+const SUPPORTED_UI_LANGUAGES = new Set(['zh-CN', 'en-US']);
+
 const state = {
   data: null,
   taskTimer: null,
@@ -23,9 +26,413 @@ const state = {
   modelManagerState: null,
   modalBound: false,
   modalResolver: null,
+  uiLanguage: DEFAULT_UI_LANGUAGE,
 };
 
 const els = {};
+
+const I18N = {
+  'zh-CN': {
+    messages: {
+      'settings.language.label': '界面语言',
+      'settings.language.zhCN': '简体中文',
+      'settings.language.enUS': 'English',
+    },
+    static: {},
+  },
+  'en-US': {
+    messages: {
+      'settings.language.label': 'Interface language',
+      'settings.language.zhCN': 'Simplified Chinese',
+      'settings.language.enUS': 'English',
+    },
+    static: {
+      '语音翻译': 'Speech Translate',
+      '主菜单': 'Main menu',
+      '实时转写': 'Realtime',
+      '文件转写': 'Files',
+      '模型选择': 'Models',
+      '设置': 'Settings',
+      '窗口操作': 'Window actions',
+      '打开模型目录': 'Open model directory',
+      '打开导出目录': 'Open export directory',
+      '隐藏到托盘': 'Hide to tray',
+      '退出程序': 'Quit',
+      '保存模型设置': 'Save model settings',
+      'Whisper 后端': 'Whisper backend',
+      '模型': 'Model',
+      '运行状态': 'Runtime status',
+      '运行': 'Runtime',
+      '当前模型': 'Current model',
+      '当前后端': 'Current backend',
+      '未加载': 'Not loaded',
+      '未选择': 'Not selected',
+      '后端未知': 'Backend unknown',
+      '加载模型': 'Load model',
+      '模型目录': 'Model directory',
+      '默认位置': 'Default location',
+      '设置模型目录': 'Set model directory',
+      '模型检查与下载': 'Model check and download',
+      '模型引擎': 'Model engine',
+      '模型概览': 'Model overview',
+      '目录': 'Directory',
+      '当前': 'Current',
+      '缓存': 'Cache',
+      '下载': 'Download',
+      '检查当前模型': 'Check current model',
+      '检查当前引擎全部模型': 'Check all models for current engine',
+      '队列操作': 'Queue actions',
+      '导入文件': 'Import files',
+      '清空队列': 'Clear queue',
+      '文件处理控制': 'File processing controls',
+      '一键导入并处理': 'Import and process',
+      '开始处理': 'Start processing',
+      '输出开关': 'Output switches',
+      '转写': 'Transcribe',
+      '翻译': 'Translate',
+      '批处理状态': 'Batch status',
+      '队列': 'Queue',
+      '状态': 'Status',
+      '语言': 'Language',
+      '引擎': 'Engine',
+      '格式': 'Format',
+      '空闲': 'Idle',
+      '自动 → 自动': 'Auto -> Auto',
+      '未知': 'Unknown',
+      '待处理队列': 'Pending queue',
+      '0 个文件': '0 files',
+      '文件名': 'File',
+      '操作': 'Action',
+      '处理配置': 'Processing config',
+      '导出': 'Export',
+      '命名': 'Naming',
+      '过滤': 'Filter',
+      '已启用': 'Enabled',
+      '词典 auto · 精准匹配': 'Dictionary auto · Exact match',
+      '语言配置': 'Language config',
+      '源语言': 'Source language',
+      '目标语言': 'Target language',
+      '翻译引擎': 'Translate engine',
+      '输出与过滤': 'Output and filter',
+      '命名模板': 'Naming template',
+      '切片模式': 'Slice mode',
+      '任务完成后': 'After task',
+      '自动打开目录': 'Open directory automatically',
+      '起始位置': 'Start position',
+      '结束位置': 'End position',
+      '实时转写控制': 'Realtime controls',
+      '输出模式': 'Output mode',
+      '已关闭': 'Off',
+      '实时状态': 'Realtime status',
+      '输入': 'Input',
+      '后端': 'Backend',
+      '语言与引擎': 'Language and engine',
+      '录制控制': 'Recording controls',
+      '开始录制': 'Start recording',
+      '停止录制': 'Stop recording',
+      '打开转写窗口': 'Open transcription window',
+      '打开翻译窗口': 'Open translation window',
+      '转写窗口设置': 'Transcription window settings',
+      '翻译窗口设置': 'Translation window settings',
+      '显示转写窗口': 'Show transcription window',
+      '隐藏转写窗口': 'Hide transcription window',
+      '显示翻译窗口': 'Show translation window',
+      '隐藏翻译窗口': 'Hide translation window',
+      '实时输出': 'Live output',
+      '转写结果': 'Transcription',
+      '翻译结果': 'Translation',
+      '保存全部设置': 'Save all settings',
+      '搜索设置，例如代理、日志、录制、字幕': 'Search settings, for example proxy, logs, recording, subtitles',
+      '清空搜索': 'Clear search',
+      '结果': 'Result',
+      '全部设置': 'All settings',
+      '设置分类': 'Settings categories',
+      '系统': 'System',
+      '网络': 'Network',
+      '文本': 'Text',
+      '解码': 'Decode',
+      '录制': 'Recording',
+      '独立窗': 'Detached',
+      '引导词': 'Prompts',
+      '常用设置': 'Common settings',
+      '网络 · 目录 · 导出 · 运行': 'Network · directories · export · runtime',
+      '网络与目录': 'Network and directories',
+      '启用': 'Enable',
+      '留空': 'Empty',
+      '日志': 'Log',
+      '导出与运行': 'Export and runtime',
+      '导出命名': 'Export naming',
+      '切分模式': 'Split mode',
+      '日志级别': 'Log level',
+      '最大词数': 'Max words',
+      '最大字符': 'Max characters',
+      '任务完成后打开目录': 'Open directory when task finishes',
+      '录制前确认': 'Confirm before recording',
+      '忽略录制警告': 'Ignore recording warnings',
+      '托盘不提示': 'No tray notification',
+      '实时调试日志': 'Realtime debug log',
+      '翻译调试日志': 'Translation debug log',
+      '高级设置完整工作台': 'Advanced settings workbench',
+      '系统与路径': 'System and paths',
+      '主窗口尺寸': 'Main window size',
+      '当前日志': 'Current log',
+      '日志自动滚动': 'Auto-scroll logs',
+      '日志自动刷新': 'Auto-refresh logs',
+      '关闭到托盘': 'Close to tray',
+      '路径': 'Paths',
+      '选择模型目录': 'Choose model directory',
+      '选择导出目录': 'Choose export directory',
+      '选择日志目录': 'Choose log directory',
+      '网络与翻译': 'Network and translation',
+      '代理与 LibreTranslate': 'Proxy and LibreTranslate',
+      '窗口模式': 'Window mode',
+      '标准窗口': 'Standard window',
+      '紧凑模式': 'Compact mode',
+      '低干扰': 'Low distraction',
+      '最小干扰': 'Minimal distraction',
+      '窗口层级': 'Window layer',
+      '常规': 'Normal',
+      '主窗体后层': 'Behind main window',
+      '全局底层': 'Global bottom',
+      'Chrome 用户目录': 'Chrome user directory',
+      '选择 Chrome 用户目录': 'Choose Chrome user directory',
+      '打开 Chrome 用户目录': 'Open Chrome user directory',
+      '任务结束关闭浏览器': 'Close browser when task finishes',
+      '导出与切分': 'Export and splitting',
+      '去重复次数': 'Dedup count',
+      '切片起始': 'Slice start',
+      '切片结束': 'Slice end',
+      '去除重复': 'Remove duplicates',
+      '均匀切分': 'Even split',
+      '段级字幕': 'Segment subtitles',
+      '词级字幕': 'Word subtitles',
+      '导出格式': 'Export formats',
+      '文本显示': 'Text display',
+      '转写显示': 'Transcription display',
+      '翻译显示': 'Translation display',
+      '字体': 'Font',
+      '字号': 'Font size',
+      '字色': 'Text color',
+      '选择转写字色': 'Choose transcription text color',
+      '选择翻译字色': 'Choose translation text color',
+      '每行字符': 'Characters per line',
+      '自动滚动': 'Auto scroll',
+      '粗体': 'Bold',
+      '限制总长': 'Limit total length',
+      '限制行长': 'Limit line length',
+      '置信度颜色': 'Confidence colors',
+      '低置信度': 'Low confidence',
+      '高置信度': 'High confidence',
+      '录制设置': 'Recording settings',
+      '通用': 'General',
+      '详细日志': 'Verbose log',
+      '关闭': 'Off',
+      '开启': 'On',
+      '模型设备': 'Model device',
+      '转写间隔': 'Transcribe interval',
+      '分隔符': 'Separator',
+      '直接数组': 'Direct array',
+      '临时 wav': 'Temporary WAV',
+      '保留临时文件': 'Keep temporary files',
+      '文件用官方 Whisper': 'Use official Whisper for files',
+      '麦克风': 'Microphone',
+      '扬声器': 'Speaker',
+      '设备': 'Device',
+      '采样率': 'Sample rate',
+      '块大小': 'Chunk size',
+      '声道': 'Channels',
+      '自动采样率': 'Auto sample rate',
+      '自动声道': 'Auto channels',
+      '无限制': 'No limit',
+      '阈值与缓冲': 'Threshold and buffers',
+      '麦克风最小时长': 'Mic min duration',
+      '麦克风最大缓冲': 'Mic max buffer',
+      '麦克风最大句子': 'Mic max sentences',
+      '扬声器最小时长': 'Speaker min duration',
+      '扬声器最大缓冲': 'Speaker max buffer',
+      '扬声器最大句子': 'Speaker max sentences',
+      '麦克风自动级别': 'Mic auto level',
+      '麦克风 Silero': 'Mic Silero',
+      '麦克风阈值': 'Mic threshold',
+      '扬声器自动级别': 'Speaker auto level',
+      '扬声器 Silero': 'Speaker Silero',
+      '扬声器阈值': 'Speaker threshold',
+      '麦克风自动阈值': 'Mic auto threshold',
+      '麦克风 Silero 自动': 'Mic Silero auto',
+      '麦克风自动断句': 'Mic auto sentence split',
+      '扬声器自动阈值': 'Speaker auto threshold',
+      '扬声器 Silero 自动': 'Speaker Silero auto',
+      '扬声器自动断句': 'Speaker auto sentence split',
+      '独立窗口': 'Detached windows',
+      '转写窗口': 'Transcription window',
+      '翻译窗口': 'Translation window',
+      '未打开': 'Closed',
+      '置顶': 'Always on top',
+      '可交互': 'Interactive',
+      '尺寸': 'Size',
+      '位置': 'Position',
+      '透明度': 'Opacity',
+      '背景': 'Background',
+      '选择转写窗口字色': 'Choose transcription window text color',
+      '选择转写窗口背景色': 'Choose transcription window background',
+      '选择翻译窗口字色': 'Choose translation window text color',
+      '选择翻译窗口背景色': 'Choose translation window background',
+      '限制策略': 'Limit policy',
+      '无标题栏': 'No title bar',
+      '点击穿透': 'Click-through',
+      '过滤与词典': 'Filters and dictionaries',
+      '实时过滤': 'Realtime filter',
+      '启用实时过滤': 'Enable realtime filter',
+      '词典路径': 'Dictionary path',
+      '打开实时词典': 'Open realtime dictionary',
+      '文件过滤': 'File filter',
+      '启用文件过滤': 'Enable file filter',
+      '打开文件词典': 'Open file dictionary',
+      '区分大小写': 'Case sensitive',
+      '去除空白': 'Trim whitespace',
+      '精准匹配': 'Exact match',
+      '匹配策略': 'Match strategy',
+      '实时忽略标点': 'Realtime ignored punctuation',
+      '实时阈值': 'Realtime threshold',
+      '文件忽略标点': 'File ignored punctuation',
+      '文件阈值': 'File threshold',
+      '添加自定义语言': 'Add custom language',
+      '重置引导词': 'Reset prompts',
+      '清空引导词': 'Clear prompts',
+      '保存引导词': 'Save prompts',
+      '策略': 'Strategy',
+      '启用引导词': 'Enable prompts',
+      '使用历史上下文': 'Use previous context',
+      '编辑': 'Edit',
+      '按语言': 'By language',
+      '模型状态': 'Model',
+      '任务状态': 'Task',
+      '任务': 'Task',
+      '等待同步': 'Waiting for sync',
+      '等待任务': 'Waiting for task',
+      '任务进度': 'Task progress',
+      '确认操作': 'Confirm action',
+      '关闭弹窗': 'Close dialog',
+      '取消': 'Cancel',
+      '确认': 'Confirm',
+      '当前日志为空。': 'Current log is empty.',
+      '未找到设置：': 'Setting not found: ',
+    },
+  },
+};
+
+const textNodeOriginals = new WeakMap();
+
+function normalizeUiLanguage(value) {
+  const normalized = String(value || DEFAULT_UI_LANGUAGE).trim();
+  return SUPPORTED_UI_LANGUAGES.has(normalized) ? normalized : DEFAULT_UI_LANGUAGE;
+}
+
+function currentUiLanguage() {
+  return normalizeUiLanguage(state.uiLanguage || state.data?.settings?.ui_language || DEFAULT_UI_LANGUAGE);
+}
+
+function translateMessage(key, fallback = '') {
+  const locale = currentUiLanguage();
+  if (locale === DEFAULT_UI_LANGUAGE) {
+    return fallback || key;
+  }
+  return I18N[locale]?.messages?.[key] || fallback || key;
+}
+
+function translateStaticText(value, locale = currentUiLanguage()) {
+  const raw = String(value ?? '');
+  if (!raw || locale === DEFAULT_UI_LANGUAGE) {
+    return raw;
+  }
+  return I18N[locale]?.static?.[raw] || raw;
+}
+
+function translateUiText(value, locale = currentUiLanguage()) {
+  const raw = String(value ?? '');
+  const translated = translateStaticText(raw, locale);
+  if (translated !== raw) {
+    return translated;
+  }
+  if (locale === DEFAULT_UI_LANGUAGE) {
+    return raw;
+  }
+  return raw.replace(/(\d+)\s*个文件/g, '$1 files');
+}
+
+function isKnownUiTranslation(candidate, original) {
+  const normalizedCandidate = String(candidate ?? '').trim();
+  return Array.from(SUPPORTED_UI_LANGUAGES).some((locale) => (
+    translateUiText(original, locale).trim() === normalizedCandidate
+  ));
+}
+
+function setElementAttrI18n(el, attrName) {
+  const attrValue = el.getAttribute(attrName);
+  if (!attrValue) {
+    return;
+  }
+  const originalAttr = `data-i18n-original-${attrName}`;
+  if (!el.hasAttribute(originalAttr)) {
+    el.setAttribute(originalAttr, attrValue);
+  }
+  const original = el.getAttribute(originalAttr) || attrValue;
+  el.setAttribute(attrName, translateUiText(original));
+}
+
+function applyI18n(root = document) {
+  const locale = currentUiLanguage();
+  document.documentElement.lang = locale;
+
+  const scopedRoot = root instanceof Document ? root.body || root.documentElement : root;
+  if (!scopedRoot) {
+    return;
+  }
+
+  scopedRoot.querySelectorAll('[data-i18n]').forEach((el) => {
+    const key = el.getAttribute('data-i18n') || '';
+    const originalAttr = 'data-i18n-original-text';
+    if (!el.hasAttribute(originalAttr)) {
+      el.setAttribute(originalAttr, el.textContent || '');
+    }
+    el.textContent = translateMessage(key, el.getAttribute(originalAttr) || el.textContent || '');
+  });
+  scopedRoot.querySelectorAll('[title], [aria-label], [placeholder]').forEach((el) => {
+    setElementAttrI18n(el, 'title');
+    setElementAttrI18n(el, 'aria-label');
+    setElementAttrI18n(el, 'placeholder');
+  });
+
+  const walker = document.createTreeWalker(scopedRoot, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (!parent || ['SCRIPT', 'STYLE', 'TEXTAREA'].includes(parent.tagName)) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return String(node.nodeValue || '').trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+    },
+  });
+
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const current = String(node.nodeValue || '');
+    const previousOriginal = textNodeOriginals.get(node);
+    const original = previousOriginal && isKnownUiTranslation(current, previousOriginal)
+      ? previousOriginal
+      : current.trim();
+    textNodeOriginals.set(node, original);
+    node.nodeValue = current.replace(current.trim(), translateUiText(original));
+  }
+}
+
+function applyUiLanguage(value, root = document) {
+  state.uiLanguage = normalizeUiLanguage(value);
+  if (els.uiLanguage && els.uiLanguage.value !== state.uiLanguage) {
+    els.uiLanguage.value = state.uiLanguage;
+  }
+  syncAppIdentity(state.data || {});
+  applyI18n(root);
+}
 
 function $(id) {
   return document.getElementById(id);
@@ -44,9 +451,10 @@ function syncAppIdentity(data = state.data || {}) {
   if (!appName) {
     return;
   }
-  document.title = appName;
+  const displayName = translateUiText(appName);
+  document.title = displayName;
   if (els.appBrandName) {
-    els.appBrandName.textContent = appName;
+    els.appBrandName.textContent = displayName;
   }
 }
 
@@ -1237,6 +1645,10 @@ function renderDetachedWindowSettingsFields(data) {
 
 function renderSettings(data) {
   const settings = data.settings || {};
+  state.uiLanguage = normalizeUiLanguage(settings.ui_language || state.uiLanguage);
+  if (els.uiLanguage) {
+    els.uiLanguage.value = state.uiLanguage;
+  }
   renderDetachedWindowSettingsFields(data);
   const about = data.about || {};
   const exportDir = String(settings.dir_export ?? about.export_dir ?? 'auto');
@@ -3097,6 +3509,7 @@ async function refreshState(options = {}) {
 
   const data = await apiCall('get_state');
   state.data = data;
+  state.uiLanguage = normalizeUiLanguage(data?.settings?.ui_language || state.uiLanguage);
   syncAppIdentity(data);
   renderSettings(data);
   renderMainControls(data);
@@ -3110,6 +3523,7 @@ async function refreshState(options = {}) {
   renderSettingsPanelSummaries(data);
   renderSettingsToolbarOverview(data);
   syncLogAutoRefresh();
+  applyUiLanguage(state.uiLanguage);
   updatePageScrollIndicator();
 
   const runHeavyRefresh = async () => {
@@ -3168,6 +3582,7 @@ async function refreshTaskState() {
   renderDetachedWindowOverview(state.data || {});
   renderFileImportProcessingOverview();
   renderTaskRuntimePills(state.data || {});
+  applyUiLanguage(state.uiLanguage);
   try {
     const live = await apiCall('get_live_state');
     renderLiveOutputs({ live_ui: live, settings: state.data?.settings || {} });
@@ -3238,6 +3653,7 @@ async function saveSettings(shouldRefresh = true) {
 
   const updates = [
     ['dir_log', readStringValue(els.dirLog, currentSetting('dir_log', 'auto'))],
+    ['ui_language', normalizeUiLanguage(readStringValue(els.uiLanguage, currentSetting('ui_language', DEFAULT_UI_LANGUAGE)))],
     ['log_level', readStringValue(els.logLevel, currentSetting('log_level', 'DEBUG'))],
     ['mw_size', readStringValue(els.mainWindowSize, currentSetting('mw_size', '1140x680'))],
     ['input', readStringValue(els.inputMode, 'mic')],
@@ -3667,6 +4083,7 @@ async function pushDetachedConfigUpdates() {
 
 const AUTO_SAVE_BUCKETS = {
   settings: new Set([
+    'ui_language',
     'log_level', 'auto_scroll_log', 'auto_refresh_log',
     'mw_size',
     'input_mode', 'backend_mw', 'model_mw', 'source_lang_mw', 'target_lang_mw', 'tl_engine_mw',
@@ -3792,6 +4209,10 @@ function bindAutoSaveEvents() {
     const isAutoSaveControl = tag === 'select' || tag === 'textarea' || isInputControl;
     if (!isAutoSaveControl) {
       return;
+    }
+
+    if (target.id === 'ui_language') {
+      applyUiLanguage(target.value);
     }
 
     const bucket = resolveAutoSaveBucket(target.id || '');
@@ -4715,6 +5136,7 @@ async function init() {
     els.dirExportFile = $('dir_export_file');
     els.dirModel = $('dir_model');
     els.dirLog = $('dir_log');
+    els.uiLanguage = $('ui_language');
     els.currentLog = $('current_log');
     els.logContent = $('log_content');
     els.logLevel = $('log_level');

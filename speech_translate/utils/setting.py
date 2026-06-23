@@ -26,6 +26,7 @@ except ModuleNotFoundError:  # pragma: no cover - optional runtime dependency fa
 default_setting: SettingDict = {
     "version": __setting_version__,
     "first_open": True,
+    "ui_language": "zh-CN",
     # ------------------ #
     # App settings
     # runtime selection

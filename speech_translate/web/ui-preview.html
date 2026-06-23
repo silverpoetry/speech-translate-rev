@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title></title>
-  <link rel="stylesheet" href="styles.css?v=20260623-ui-cn-68" />
+  <link rel="stylesheet" href="styles.css?v=20260623-ui-cn-69" />
 
 <script>
 (function () {
@@ -14,6 +14,7 @@
     settings: {
       dir_export: 'auto',
       dir_log: 'auto',
+      ui_language: 'zh-CN',
       mw_size: '1140x680',
       log_level: 'INFO',
       auto_scroll_log: true,
@@ -925,7 +926,7 @@
           <section class="settings-advanced-stack tab-shell-stack" id="frame-settings-advanced" aria-label="高级设置完整工作台">
             <section class="surface-panel settings-vnext-panel weight-low tab-shell-surface" id="settings-advanced-system" data-settings-title="系统与路径" data-settings-category="系统 日志 目录 路径">
               <header class="panel-head tab-shell-head"><h2>系统与路径</h2></header><div class="section-grid two-pane"><section class="settings-vnext-section"><header class="section-head"><h3>系统</h3></header><div class="field-grid two-col">
-                <label class="field"><span>日志级别</span><select id="log_level_advanced" data-mirror-target="log_level"><option>INFO</option><option>DEBUG</option><option>WARNING</option><option>ERROR</option></select></label><label class="field"><span>主窗口尺寸</span><input id="mw_size" type="text" value="1033x601" /></label><label class="field span-2"><span>当前日志</span><input id="current_log" type="text" readonly /></label><label class="switch-control field-switch"><input id="auto_scroll_log" type="checkbox" checked /><i></i><b>日志自动滚动</b></label><label class="switch-control field-switch"><input id="auto_refresh_log" type="checkbox" /><i></i><b>日志自动刷新</b></label><label class="switch-control field-switch"><input id="close_to_tray_on_close" type="checkbox" /><i></i><b>关闭到托盘</b></label><label class="switch-control field-switch"><input id="rec_ask_confirmation_first" type="checkbox" /><i></i><b>录制前确认</b></label><label class="switch-control field-switch"><input id="supress_hidden_to_tray" type="checkbox" /><i></i><b>托盘不提示</b></label><label class="switch-control field-switch"><input id="supress_record_warning" type="checkbox" /><i></i><b>忽略录制警告</b></label><label class="switch-control field-switch"><input id="debug_realtime_record" type="checkbox" /><i></i><b>实时调试日志</b></label>
+                <label class="field"><span>日志级别</span><select id="log_level_advanced" data-mirror-target="log_level"><option>INFO</option><option>DEBUG</option><option>WARNING</option><option>ERROR</option></select></label><label class="field"><span data-i18n="settings.language.label">界面语言</span><select id="ui_language"><option value="zh-CN" data-i18n="settings.language.zhCN">简体中文</option><option value="en-US" data-i18n="settings.language.enUS">English</option></select></label><label class="field"><span>主窗口尺寸</span><input id="mw_size" type="text" value="1033x601" /></label><label class="field span-2"><span>当前日志</span><input id="current_log" type="text" readonly /></label><label class="switch-control field-switch"><input id="auto_scroll_log" type="checkbox" checked /><i></i><b>日志自动滚动</b></label><label class="switch-control field-switch"><input id="auto_refresh_log" type="checkbox" /><i></i><b>日志自动刷新</b></label><label class="switch-control field-switch"><input id="close_to_tray_on_close" type="checkbox" /><i></i><b>关闭到托盘</b></label><label class="switch-control field-switch"><input id="rec_ask_confirmation_first" type="checkbox" /><i></i><b>录制前确认</b></label><label class="switch-control field-switch"><input id="supress_hidden_to_tray" type="checkbox" /><i></i><b>托盘不提示</b></label><label class="switch-control field-switch"><input id="supress_record_warning" type="checkbox" /><i></i><b>忽略录制警告</b></label><label class="switch-control field-switch"><input id="debug_realtime_record" type="checkbox" /><i></i><b>实时调试日志</b></label>
               </div></section><section class="settings-vnext-section"><header class="section-head"><h3>路径</h3></header><div class="directory-stack">
                 <div class="directory-row"><span>模型</span><div class="path-control"><input class="path-text" id="dir_model" type="text" value="auto" /><button class="icon-action" type="button" data-action="pick-model-dir" title="选择模型目录" aria-label="选择模型目录"><span class="icon icon-folder"></span></button><button class="icon-action" type="button" data-open-dir="model" title="打开模型目录" aria-label="打开模型目录"><span class="icon icon-open"></span></button></div></div>
                 <div class="directory-row"><span>导出</span><div class="path-control"><input class="path-text" id="dir_export" type="text" value="auto" /><button class="icon-action" type="button" data-action="pick-export-dir" title="选择导出目录" aria-label="选择导出目录"><span class="icon icon-folder"></span></button><button class="icon-action" type="button" data-open-dir="export" title="打开导出目录" aria-label="打开导出目录"><span class="icon icon-open"></span></button></div></div>
@@ -1021,7 +1022,7 @@
     </section>
   </div>
 
-  <script src="app.js?v=20260623-ui-cn-68"></script>
+  <script src="app.js?v=20260623-ui-cn-69"></script>
 </body>
 
 </html>

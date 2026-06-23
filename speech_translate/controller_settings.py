@@ -135,6 +135,9 @@ def build_selenium_settings(payload: object) -> SeleniumSettings:
 
 
 def normalize_system_setting_value(key: str, value: object) -> object:
+    if key == "ui_language":
+        normalized = str(value or "zh-CN").strip()
+        return normalized if normalized in {"zh-CN", "en-US"} else "zh-CN"
     if key == "model_mw":
         return normalize_shared_model_key(value)
     if key == "selenium_compact_level":

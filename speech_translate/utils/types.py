@@ -84,6 +84,7 @@ class SettingDict(TypedDict):
     """
     version: str
     first_open: bool
+    ui_language: str
     # ------------------ #
     # App settings
     input: Literal["mic", "speaker"]
