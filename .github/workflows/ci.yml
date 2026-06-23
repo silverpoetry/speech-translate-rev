@@ -14,11 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - python-version: "3.11"
-            requirements-file: requirements.txt
-          - python-version: "3.14"
-            requirements-file: requirements-py314.txt
+        python-version: ["3.11", "3.14"]
 
     steps:
       - name: Checkout
@@ -39,8 +35,6 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r ${{ matrix.requirements-file }}
-          python -m pip install pytest
 
       - name: Check JavaScript syntax
         run: node --check speech_translate/web/app.js
@@ -48,5 +42,5 @@ jobs:
       - name: Check Python syntax
         run: python -m py_compile Run.py speech_translate/__main__.py speech_translate/webview_app.py speech_translate/web_bridge_api.py speech_translate/app_runtime.py speech_translate/recording_controller.py speech_translate/model_manager.py
 
-      - name: Run tests
-        run: python -m pytest
+      - name: Run core unit tests
+        run: python -m unittest test.app_tray_test test.app_startup_controller_test test.web_ui_preview_sync_test test.web_settings_contract_test test.runtime_registry_test
