@@ -13,8 +13,16 @@ from numpy import float32, frombuffer, iinfo, int16, log10, reshape, sqrt
 def _ensure_scipy_external_array_api_compat() -> None:
     try:
         scipy = importlib.import_module("scipy")
+    except Exception:
+        return
+
+    try:
         compat = importlib.import_module("scipy._lib.array_api_compat")
     except Exception:
+        try:
+            importlib.import_module("scipy._external.array_api_compat")
+        except Exception:
+            pass
         return
 
     external = sys.modules.get("scipy._external")

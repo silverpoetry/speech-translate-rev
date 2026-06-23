@@ -2,6 +2,7 @@ import os
 import shutil
 import subprocess
 import sys
+from importlib.util import find_spec
 from importlib.metadata import version as get_version
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
@@ -117,6 +118,13 @@ def get_whisper_version():
     return ver
 
 
+def optional_include(module_name: str) -> list[str]:
+    try:
+        return [module_name] if find_spec(module_name) is not None else []
+    except ModuleNotFoundError:
+        return []
+
+
 if "build_exe" in sys.argv:
     print(">> Clearing transient folders")
     clear_dir(str(ROOT / "speech_translate" / "export"))
@@ -153,11 +161,16 @@ build_exe_options = {
     "includes": [
         "webrtcvad",
         "_webrtcvad",
-        "scipy._lib.array_api_compat",
-        "scipy._lib.array_api_compat.common._fft",
-        "scipy._lib.array_api_compat.numpy",
-        "scipy._lib.array_api_compat.numpy.fft",
-        "scipy._lib.array_api_compat.numpy.linalg",
+        *optional_include("scipy._lib.array_api_compat"),
+        *optional_include("scipy._lib.array_api_compat.common._fft"),
+        *optional_include("scipy._lib.array_api_compat.numpy"),
+        *optional_include("scipy._lib.array_api_compat.numpy.fft"),
+        *optional_include("scipy._lib.array_api_compat.numpy.linalg"),
+        *optional_include("scipy._external.array_api_compat"),
+        *optional_include("scipy._external.array_api_compat.common._fft"),
+        *optional_include("scipy._external.array_api_compat.numpy"),
+        *optional_include("scipy._external.array_api_compat.numpy.fft"),
+        *optional_include("scipy._external.array_api_compat.numpy.linalg"),
     ],
     "packages": [
         "torch",
