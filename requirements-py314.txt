@@ -2,7 +2,7 @@
 # Keep original requirements.txt untouched for legacy environments.
 
 torch>=2.9.0
-torchaudio>=2.9.0
+torchaudio>=2.11.0
 
 deep-translator==1.11.1
 notify-py==0.3.42
