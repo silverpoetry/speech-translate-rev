@@ -38,6 +38,19 @@ jobs:
       - name: Build executable
         run: .\.venv314\Scripts\python.exe build_windows.py build_exe
 
+      - name: Smoke test frozen recording imports
+        shell: pwsh
+        run: |
+          $version = .\.venv314\Scripts\python.exe -c "from speech_translate._version import __version__; print(__version__)"
+          $exe = "build\SpeechTranslateRev $version .venv314\SpeechTranslateRev.exe"
+          if (-not (Test-Path -LiteralPath $exe)) {
+            throw "Executable not found: $exe"
+          }
+          $process = Start-Process -FilePath $exe -ArgumentList "--smoke-test-recording-imports" -WorkingDirectory (Split-Path $exe) -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "Frozen recording import smoke test failed with exit code $($process.ExitCode)."
+          }
+
       - name: Package portable archive
         shell: pwsh
         run: |

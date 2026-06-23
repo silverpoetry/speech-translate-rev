@@ -153,6 +153,11 @@ build_exe_options = {
     "includes": [
         "webrtcvad",
         "_webrtcvad",
+        "scipy._lib.array_api_compat",
+        "scipy._lib.array_api_compat.common._fft",
+        "scipy._lib.array_api_compat.numpy",
+        "scipy._lib.array_api_compat.numpy.fft",
+        "scipy._lib.array_api_compat.numpy.linalg",
     ],
     "packages": [
         "torch",

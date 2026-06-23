@@ -45,6 +45,28 @@ def _set_windows_app_user_model_id():
 _ensure_standard_streams()
 _set_windows_app_user_model_id()
 
+
+def _run_recording_import_smoke_test() -> int:
+    import importlib
+
+    import speech_translate.utils.audio.audio  # noqa: F401
+
+    required_modules = (
+        "scipy.signal",
+        "scipy._external.array_api_compat",
+        "scipy._external.array_api_compat.numpy",
+        "scipy._external.array_api_compat.numpy.fft",
+        "webrtcvad",
+        "_webrtcvad",
+    )
+    for module_name in required_modules:
+        importlib.import_module(module_name)
+    return 0
+
+
+if "--smoke-test-recording-imports" in sys.argv:
+    raise SystemExit(_run_recording_import_smoke_test())
+
 # override loguru default format so we dont need to do logger.remove on the logger init
 environ["LOGURU_FORMAT"] = LOG_FORMAT
 

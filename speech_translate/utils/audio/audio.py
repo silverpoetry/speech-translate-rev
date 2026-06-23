@@ -27,6 +27,27 @@ def _ensure_scipy_external_array_api_compat() -> None:
     sys.modules.setdefault("scipy._external.array_api_compat", compat)
     setattr(external, "array_api_compat", compat)
 
+    for relative_name in (
+        "common",
+        "common._aliases",
+        "common._fft",
+        "common._helpers",
+        "common._linalg",
+        "common._typing",
+        "numpy",
+        "numpy._aliases",
+        "numpy._info",
+        "numpy._typing",
+        "numpy.fft",
+        "numpy.linalg",
+    ):
+        source_name = f"scipy._lib.array_api_compat.{relative_name}"
+        target_name = f"scipy._external.array_api_compat.{relative_name}"
+        try:
+            sys.modules.setdefault(target_name, importlib.import_module(source_name))
+        except Exception:
+            pass
+
 
 _ensure_scipy_external_array_api_compat()
 
