@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from platform import processor, release, system, version
-from threading import Thread
+from threading import RLock, Thread
 from typing import Callable, Dict, Optional, Sequence
 
 from speech_translate._constants import APP_NAME
@@ -72,6 +72,7 @@ class StateViewBuilder:
         self.audio_source_cache: JsonDict = self._empty_audio_source_cache()
         self.audio_source_cache_ready = False
         self.audio_source_cache_loading = True
+        self._audio_source_lock = RLock()
 
     def start_audio_source_scan(self) -> None:
         Thread(target=self.prime_audio_source_cache, daemon=True).start()
@@ -92,6 +93,7 @@ class StateViewBuilder:
         return dict(self.settings.cache)
 
     def _build_system_state(self) -> AppState:
+        self._ensure_audio_source_cache_ready()
         view_settings = build_state_view_settings(self._settings_snapshot())
         return AppState(
             app_name=APP_NAME,
@@ -143,8 +145,8 @@ class StateViewBuilder:
         return build_record_device_view_settings(self._settings_snapshot(), device).to_payload()
 
     def build_record_ui(self) -> JsonDict:
-        view_settings = build_state_view_settings(self._settings_snapshot())
         audio_sources = self.build_audio_source_options()
+        view_settings = build_state_view_settings(self._settings_snapshot())
         return view_settings.record_ui.to_payload(audio_sources=audio_sources)
 
     def build_about(self) -> JsonDict:
@@ -174,6 +176,66 @@ class StateViewBuilder:
             "",
         )
 
+    @staticmethod
+    def _first_valid_option(options: object) -> str:
+        if not isinstance(options, list):
+            return ""
+        return next(
+            (
+                str(item)
+                for item in options
+                if (
+                    isinstance(item, str)
+                    and item
+                    and not item.startswith("[WARNING]")
+                    and not item.startswith("[ERROR]")
+                )
+            ),
+            "",
+        )
+
+    @staticmethod
+    def _contains_option(options: object, value: object) -> bool:
+        return isinstance(options, list) and value in options
+
+    def _reconcile_audio_device_settings(self, cache: JsonDict) -> None:
+        host_api_options = cache.get("host_api_options", [])
+        selected_host_api = str(self.settings.cache.get("hostAPI", "") or "")
+        default_host_api = str(cache.get("default_host_api", "") or "")
+        if not self._contains_option(host_api_options, selected_host_api):
+            selected_host_api = (
+                default_host_api
+                if self._contains_option(host_api_options, default_host_api)
+                else self._first_valid_option(host_api_options)
+            )
+
+        mic_options = cache.get("mic_options_by_host", {}).get(selected_host_api) or cache.get("mic_options_all", [])
+        speaker_options = cache.get("speaker_options_by_host", {}).get(selected_host_api) or cache.get(
+            "speaker_options_all", []
+        )
+        selected_mic = self.settings.cache.get("mic", "")
+        selected_speaker = self.settings.cache.get("speaker", "")
+
+        default_mic = str(cache.get("default_mic", "") or "")
+        if not self._contains_option(mic_options, selected_mic):
+            selected_mic = (
+                default_mic
+                if self._contains_option(mic_options, default_mic)
+                else self._first_valid_option(mic_options)
+            )
+
+        default_speaker = str(cache.get("default_speaker", "") or "")
+        if not self._contains_option(speaker_options, selected_speaker):
+            selected_speaker = (
+                default_speaker
+                if self._contains_option(speaker_options, default_speaker)
+                else self._first_valid_option(speaker_options)
+            )
+
+        for key, value in (("hostAPI", selected_host_api), ("mic", selected_mic), ("speaker", selected_speaker)):
+            if value and self.settings.cache.get(key) != value:
+                self.settings.save_key(key, value)
+
     def _build_audio_source_cache(self) -> JsonDict:
         host_api_options = get_host_apis()
         mic_options_all = get_input_devices("")
@@ -199,22 +261,42 @@ class StateViewBuilder:
             "default_speaker": self._find_default_device(get_default_output_device()[1], speaker_options_all),
         }
 
+    def _has_audio_source_options(self) -> bool:
+        return bool(self.audio_source_cache.get("host_api_options"))
+
+    def _ensure_audio_source_cache_ready(self) -> None:
+        if self._has_audio_source_options():
+            return
+        with self._audio_source_lock:
+            if self._has_audio_source_options():
+                return
+            self.audio_source_cache_loading = True
+            self.audio_source_cache = self._build_audio_source_cache()
+            self._reconcile_audio_device_settings(self.audio_source_cache)
+            self.audio_source_cache_loading = False
+            self.audio_source_cache_ready = True
+
     def prime_audio_source_cache(self) -> None:
         try:
-            self.audio_source_cache = self._build_audio_source_cache()
+            with self._audio_source_lock:
+                self.audio_source_cache_loading = True
+                self.audio_source_cache = self._build_audio_source_cache()
+                self._reconcile_audio_device_settings(self.audio_source_cache)
         except Exception as exc:
             logger.exception(exc)
-            self.audio_source_cache = {
-                **self._empty_audio_source_cache(),
-                "mic_options_all": ["[ERROR] Failed to load input devices"],
-                "speaker_options_all": ["[ERROR] Failed to load output devices"],
-            }
+            with self._audio_source_lock:
+                self.audio_source_cache = {
+                    **self._empty_audio_source_cache(),
+                    "mic_options_all": ["[ERROR] Failed to load input devices"],
+                    "speaker_options_all": ["[ERROR] Failed to load output devices"],
+                }
         finally:
             self.audio_source_cache_loading = False
             self.audio_source_cache_ready = True
             self.dependencies.emit_ui_update([UI_SECTION_STATE])
 
     def build_audio_source_options(self, selected_host_api: Optional[str] = None, host_api: Optional[str] = None) -> JsonDict:
+        self._ensure_audio_source_cache_ready()
         settings_snapshot = self._settings_snapshot()
         resolved_host_api = selected_host_api if selected_host_api is not None else host_api
         current_host_api = str(resolved_host_api if resolved_host_api is not None else settings_snapshot.get("hostAPI", ""))

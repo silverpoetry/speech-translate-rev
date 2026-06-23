@@ -1,10 +1,35 @@
 from io import BytesIO
+import importlib
+import sys
+import types
 from typing import Any
 from wave import Wave_read, Wave_write
 from wave import open as w_open
 
 from numpy import abs as np_abs
 from numpy import float32, frombuffer, iinfo, int16, log10, reshape, sqrt
+
+
+def _ensure_scipy_external_array_api_compat() -> None:
+    try:
+        scipy = importlib.import_module("scipy")
+        compat = importlib.import_module("scipy._lib.array_api_compat")
+    except Exception:
+        return
+
+    external = sys.modules.get("scipy._external")
+    if external is None:
+        external = types.ModuleType("scipy._external")
+        external.__path__ = []  # type: ignore[attr-defined]
+        sys.modules["scipy._external"] = external
+        setattr(scipy, "_external", external)
+
+    sys.modules.setdefault("scipy._external.array_api_compat", compat)
+    setattr(external, "array_api_compat", compat)
+
+
+_ensure_scipy_external_array_api_compat()
+
 from scipy.signal import butter, filtfilt, resample_poly
 
 from speech_translate._constants import WHISPER_SR
