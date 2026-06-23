@@ -1,6 +1,6 @@
 torch==2.1.1
 torchaudio==2.1.1
-deep-translator==1.11.1
+deep-translator==1.11.4
 notify-py==0.3.42
 loguru
 static-ffmpeg==2.5
