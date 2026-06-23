@@ -4,6 +4,8 @@ from typing import Any, Mapping, Literal
 from speech_translate.log_helpers import logger
 
 _PYAUDIO_IMPORT_ERROR: Exception | None = None
+_UNSUPPORTED_WINDOWS_HOST_APIS = {"MME"}
+_PREFERRED_WINDOWS_HOST_APIS = ("Windows WASAPI", "Windows DirectSound")
 
 try:
     if system() == "Windows":
@@ -39,6 +41,22 @@ def _coerce_audio_device_settings(settings: object) -> AudioDeviceSettings:
         raise TypeError("Audio device settings must expose a mapping-like cache")
 
     return AudioDeviceSettings(cache=cache)
+
+
+def _is_supported_host_api_name(name: object) -> bool:
+    if system() != "Windows":
+        return True
+    return str(name or "") not in _UNSUPPORTED_WINDOWS_HOST_APIS
+
+
+def _iter_supported_host_api_infos(p) -> list[dict[str, object]]:
+    host_apis: list[dict[str, object]] = []
+    for i in range(p.get_host_api_count()):
+        current_api_info = dict(p.get_host_api_info_by_index(i))
+        current_api_info.setdefault("index", i)
+        if _is_supported_host_api_name(current_api_info.get("name")):
+            host_apis.append(current_api_info)
+    return host_apis
 
 
 def get_channel_int(channel_string: str):
@@ -142,8 +160,8 @@ def get_input_devices(host_api: str):
     devices = []
     p = _require_pyaudio().PyAudio()
     try:
-        for i in range(p.get_host_api_count()):
-            current_api_info = p.get_host_api_info_by_index(i)
+        for current_api_info in _iter_supported_host_api_infos(p):
+            i = int(current_api_info["index"])
             # This will ccheck hostAPI parameter
             # If it is empty, get all devices. If specified, get only the devices from the specified hostAPI
             if (host_api == current_api_info["name"]) or (host_api == ""):
@@ -171,8 +189,8 @@ def get_output_devices(host_api: str):
     devices = []
     p = _require_pyaudio().PyAudio()
     try:
-        for i in range(p.get_host_api_count()):
-            current_api_info = p.get_host_api_info_by_index(i)
+        for current_api_info in _iter_supported_host_api_infos(p):
+            i = int(current_api_info["index"])
             # This will check hostAPI parameter
             # If it is empty, get all devices. If specified, get only the devices from the specified hostAPI
             if (host_api == current_api_info["name"]) or (host_api == ""):
@@ -200,8 +218,7 @@ def get_host_apis():
     host_apis = []
     p = _require_pyaudio().PyAudio()
     try:
-        for i in range(p.get_host_api_count()):
-            current_api_info = p.get_host_api_info_by_index(i)
+        for current_api_info in _iter_supported_host_api_infos(p):
             host_apis.append(f"{current_api_info['name']}")
 
         if len(host_apis) == 0:  # check if input empty or not
@@ -297,7 +314,21 @@ def get_default_host_api():
     sucess = False
     default_host_api = None
     try:
-        default_host_api = p.get_default_host_api_info()
+        host_apis = _iter_supported_host_api_infos(p)
+        if system() == "Windows":
+            by_name = {str(api.get("name") or ""): api for api in host_apis}
+            for preferred_name in _PREFERRED_WINDOWS_HOST_APIS:
+                if preferred_name in by_name:
+                    default_host_api = by_name[preferred_name]
+                    break
+            else:
+                default_host_api = host_apis[0] if host_apis else None
+        else:
+            default_host_api = p.get_default_host_api_info()
+            if not _is_supported_host_api_name(default_host_api.get("name")):
+                default_host_api = host_apis[0] if host_apis else None
+        if default_host_api is None:
+            raise OSError("No supported host api found.")
         sucess = True
     except OSError as e:
         logger.exception(e)

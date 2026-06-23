@@ -141,6 +141,10 @@ include_files = [
 
 build_exe_options = {
     "excludes": ["yapf", "ruff", "cx_Freeze", "pylint", "isort"],
+    "includes": [
+        "webrtcvad",
+        "_webrtcvad",
+    ],
     "packages": [
         "torch",
         "soundfile",

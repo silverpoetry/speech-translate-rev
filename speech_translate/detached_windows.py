@@ -35,7 +35,7 @@ from speech_translate.detached_window_runtime import DetachedWindowDeliveryRunti
 from speech_translate.log_helpers import logger
 from speech_translate.webview_runtime import load_webview_runtime
 from speech_translate.window_factory import create_preloaded_window
-from speech_translate.window_geometry import WindowPlacement
+from speech_translate.window_geometry import WindowPlacement, apply_native_window_placement, extract_window_placement
 from speech_translate.window_lifecycle import (
     is_preloaded_window,
     reveal_preloaded_window,
@@ -222,10 +222,39 @@ class DetachedWindowManager:
         if not is_preloaded_window(window):
             return
         try:
+            self._apply_requested_placement(mode, "before-reveal")
             reveal_preloaded_window(window, bring_to_front=False)
+            self._apply_requested_placement(mode, "after-reveal")
             logger.debug(f"[DetachedOpen] revealed detached window mode={mode}")
         except Exception:
             logger.exception(f"[DetachedOpen] failed to reveal detached window mode={mode}")
+
+    def _apply_requested_placement(self, mode: str, reason: str) -> bool:
+        placement = self._requested_placements.get(mode)
+        window = self.windows.get(mode)
+        if placement is None or window is None:
+            return False
+
+        native_window = getattr(window, "native", None)
+        applied = apply_native_window_placement(native_window, placement)
+        if native_window is None:
+            logger.debug(
+                f"[DetachedGeometry][apply-target] mode={mode} reason={reason} applied={applied} "
+                f"target={placement.width}x{placement.height}@{placement.x},{placement.y} native=missing"
+            )
+            return applied
+        try:
+            geometry = extract_window_placement(window)
+            logger.info(
+                f"[DetachedGeometry][apply-target] mode={mode} reason={reason} applied={applied} "
+                f"target={placement.width}x{placement.height}@{placement.x},{placement.y} "
+                f"actual={geometry.width}x{geometry.height}@{geometry.x},{geometry.y} "
+                f"raw_bounds={geometry.raw_x},{geometry.raw_y},{geometry.raw_width}x{geometry.raw_height} "
+                f"scale_factor={geometry.scale_factor:.3f} source={geometry.source}"
+            )
+        except Exception:
+            logger.exception(f"[DetachedGeometry][apply-target] failed to verify mode={mode} reason={reason}")
+        return applied
 
     def create_window(
         self,
@@ -293,6 +322,7 @@ class DetachedWindowManager:
 
             self.windows[mode] = window
             self._attach_window_events(mode, window)
+            self._apply_requested_placement(mode, "after-create")
             logger.info(f"Created detached window: {mode}")
             logger.debug(f"[DetachedOpen] before _flush_pending mode={mode}")
             self._flush_pending(mode, include_content=False)
