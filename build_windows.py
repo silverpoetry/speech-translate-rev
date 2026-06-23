@@ -116,7 +116,16 @@ include_files = [
 
 build_exe_options = {
     "excludes": ["yapf", "ruff", "cx_Freeze", "pylint", "isort"],
-    "packages": ["torch", "soundfile", "sounddevice", "av", "stable_whisper", "faster_whisper", "whisper"],
+    "packages": [
+        "torch",
+        "soundfile",
+        "sounddevice",
+        "av",
+        "stable_whisper",
+        "faster_whisper",
+        "whisper",
+        "webview",
+    ],
     "build_exe": folder_name,
     "include_msvcr": True,
     "include_files": include_files,
