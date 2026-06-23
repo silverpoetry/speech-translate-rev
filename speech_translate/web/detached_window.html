@@ -455,12 +455,14 @@
         content.style.fontWeight = config.font_bold ? 'bold' : 'normal';
       }
       
-      // Apply text color
-      if (state.windowMode !== 'tc' && config.font_color) {
+      // Apply text color for both detached modes. Confidence-colored spans can still
+      // override the inherited color when the payload includes explicit segment colors.
+      if (config.font_color) {
         content.style.color = config.font_color;
         root.style.setProperty('--line-color', config.font_color);
         root.style.setProperty('--latest-line-color', lightenColor(config.font_color, 0.65));
       } else {
+        content.style.color = '';
         root.style.setProperty('--line-color', 'inherit');
         root.style.setProperty('--latest-line-color', 'inherit');
       }

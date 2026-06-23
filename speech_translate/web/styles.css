@@ -7492,25 +7492,6 @@ button.btn-icon:hover {
   font-weight: 500;
 }
 
-#tab-realtime .detached-workbench-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-#tab-realtime .detached-workbench-card {
-  display: grid;
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid var(--rt-border);
-  border-radius: 14px;
-  background: var(--color-surface);
-  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
-}
-
-#tab-realtime .detached-window-row-head {
-  align-items: flex-start;
-}
-
 #tab-realtime .detached-workbench-card .settings-section-title {
   color: #283447;
   font-size: 13px;
@@ -7820,7 +7801,7 @@ button.btn-icon:hover {
 }
 
 #settings-shell .setting-row input,
-#settings-shell .field input,
+#settings-shell .field input:not([type="color"]),
 #settings-shell .field select,
 #settings-shell .text-like {
   width: 100%;
@@ -7979,7 +7960,7 @@ button.btn-icon:hover {
   grid-column: span 3;
 }
 
-#settings-shell .settings-vnext-section {
+#settings-shell .settings-vnext-section:not(.detached-card) {
   min-width: 0;
   display: grid;
   gap: 10px;
@@ -7988,8 +7969,8 @@ button.btn-icon:hover {
   border-top: 1px solid var(--settings-hairline);
 }
 
-#settings-shell .settings-vnext-panel > .settings-vnext-section:first-of-type,
-#settings-shell .section-grid > .settings-vnext-section {
+#settings-shell .settings-vnext-panel > .settings-vnext-section:not(.detached-card):first-of-type,
+#settings-shell .section-grid > .settings-vnext-section:not(.detached-card) {
   padding-top: 0;
   border-top: 0;
 }
@@ -8121,17 +8102,52 @@ button.btn-icon:hover {
 #settings-shell .color-field > div {
   min-width: 0;
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 8px;
 }
 
-#settings-shell .color-field i {
-  width: 22px;
-  height: 22px;
+#settings-shell .color-picker-input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 34px !important;
+  min-width: 34px !important;
+  max-width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+  display: block;
+  box-sizing: border-box;
+  align-self: stretch;
+  padding: 0 !important;
   border: 1px solid #cad5e2;
-  border-radius: 8px;
-  background: var(--swatch);
+  border-radius: 10px;
+  background-color: var(--color-surface);
+  background-image: none;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+#settings-shell .color-picker-input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 4px !important;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+#settings-shell .color-picker-input[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: 6px !important;
+}
+
+#settings-shell .color-picker-input[type="color"]::-moz-color-swatch {
+  border: 0;
+  border-radius: 6px !important;
+}
+
+#settings-shell .color-value {
+  width: 100%;
+  min-width: 0;
+  text-transform: uppercase;
 }
 
 #settings-shell .range-field input[type="range"] {
@@ -8147,7 +8163,7 @@ button.btn-icon:hover {
 }
 
 #settings-shell .detached-card {
-  gap: 12px;
+  min-width: 0;
 }
 
 #settings-shell .detached-head {
@@ -8744,7 +8760,7 @@ button.btn-icon:hover {
   font-weight: 650;
 }
 
-#tab-realtime input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+#tab-realtime input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
 #tab-realtime select {
   height: 34px;
   min-width: 0;
@@ -8771,88 +8787,278 @@ button.btn-icon:hover {
     var(--color-surface);
 }
 
-#tab-realtime .detached-grid,
-#tab-realtime .detached-workbench-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+:is(#tab-realtime, #settings-shell) .detached-workbench-card {
   gap: 12px;
 }
 
-#tab-realtime .detached-card {
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-window-row-head,
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
   min-width: 0;
-  display: grid;
-  gap: 12px;
-  align-content: start;
-  padding: 14px;
 }
 
-#tab-realtime .detached-card-head h3 {
-  margin: 0 0 4px;
-  color: var(--rt-text);
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-window-row-head > div:first-child,
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-window-row-head > div {
+  min-width: 0;
+}
+
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-window-row-head h3 {
+  margin: 0;
+  color: #182536;
   font-size: 13px;
+  line-height: 1.15;
   font-weight: 700;
 }
 
-#tab-realtime .detached-card-head h3 span {
-  color: var(--rt-text-3);
-  font-size: 11px;
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-window-row-head h3 span {
+  color: #778397;
+  font-size: 11.5px;
+  font-weight: 700;
 }
 
-#tab-realtime .detached-card-head p {
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-window-row-head p {
+  margin: 6px 0 0;
   display: flex;
   align-items: center;
-  gap: 7px;
-  margin: 0;
-  color: var(--rt-text-2);
+  gap: 6px;
+  color: #425166;
   font-size: 11.5px;
-  font-weight: 550;
+  font-weight: 650;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-#tab-realtime .detached-control-grid {
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-window-row-head p i {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #aab6c6;
+  flex: 0 0 auto;
+}
+
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-window-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+:is(#tab-realtime, #settings-shell) .detached-grid,
+:is(#tab-realtime, #settings-shell) .detached-workbench-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 513px));
+  justify-content: space-between;
+  gap: 12px;
+}
+
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-control-grid,
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-config-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px 12px;
   align-items: center;
   padding: 0;
 }
 
-#tab-realtime .detached-control-grid > label:has(input[type="range"]) {
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-config-mini-grid > label:not(.toggle-row),
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-control-grid label:not(.switch-control) {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-config-mini-grid > label:has(input[type="range"]),
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-control-grid > label:has(input[type="range"]) {
   grid-column: auto;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 6px;
 }
 
-#tab-realtime .detached-control-grid .field span,
-#tab-realtime .detached-control-grid label:not(.switch-control) > span {
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-config-mini-grid > label:not(.toggle-row) > span,
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-control-grid label:not(.switch-control) > span {
+  color: #425166;
   font-size: 11.5px;
+  line-height: 1.15;
+  font-weight: 650;
 }
 
-#tab-realtime .detached-control-grid input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-config-mini-grid input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-control-grid input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]) {
+  display: block;
+  width: 100%;
   height: 32px;
+  min-width: 0;
+  padding: 0 11px;
+  border: 1px solid #cfd8e5;
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: #1f2d3f;
   font-size: 12.5px;
+  font-weight: 500;
 }
 
-#tab-realtime .detached-control-grid .switch-control {
-  height: 24px;
-  min-height: 24px;
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-config-mini-grid input[type="range"],
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-control-grid input[type="range"] {
+  display: block;
+  width: 100%;
+  height: 34px;
+  min-width: 0;
+  margin: 0;
   padding: 0;
-  font-size: 11.5px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #1f2d3f;
+  font-size: 13px;
+  font-weight: 500;
+  accent-color: #4b5964;
 }
 
-#tab-realtime .detached-control-grid .switch-control span {
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .color-field > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 8px;
+}
+
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .color-picker-input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 34px !important;
+  min-width: 34px !important;
+  max-width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+  display: block;
+  box-sizing: border-box;
+  align-self: stretch;
+  padding: 0 !important;
+  border: 1px solid #cad5e2;
+  border-radius: 10px;
+  background-color: var(--color-surface);
+  background-image: none;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .color-picker-input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 4px !important;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .color-picker-input[type="color"]::-webkit-color-swatch,
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .color-picker-input[type="color"]::-moz-color-swatch {
+  border: 0;
+  border-radius: 6px !important;
+}
+
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-color-field > div {
+  --detached-preview-color: var(--color-surface);
+}
+
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-color-field .color-picker-input {
+  background-color: var(--detached-preview-color);
+}
+
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-color-field .color-picker-input[type="color"]::-webkit-color-swatch,
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-color-field .color-picker-input[type="color"]::-moz-color-swatch {
+  background: transparent !important;
+}
+
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .color-value {
+  width: 100%;
+  min-width: 0;
+  text-transform: uppercase;
+}
+
+#settings-shell .color-field > div,
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .color-field > div {
+  --color-preview-color: var(--color-surface);
+  position: relative;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 8px;
+}
+
+#settings-shell .color-field > div::before,
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .color-field > div::before {
+  content: "";
+  grid-column: 1;
+  grid-row: 1;
   width: 34px;
-  height: 19px;
+  height: 34px;
+  border: 1px solid #cad5e2;
+  border-radius: 10px;
+  background: var(--color-surface);
+  box-sizing: border-box;
 }
 
-#tab-realtime .detached-control-grid .switch-control span::after {
-  width: 11px;
-  height: 11px;
+#settings-shell .color-field > div::after,
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .color-field > div::after {
+  content: "";
+  grid-column: 1;
+  grid-row: 1;
+  width: 26px;
+  height: 26px;
+  margin: 4px;
+  border-radius: 6px;
+  background: var(--color-preview-color);
+  box-sizing: border-box;
+  justify-self: stretch;
+  align-self: stretch;
 }
 
-#tab-realtime .detached-control-grid .switch-control input:checked + span::after {
-  transform: translateX(15px);
+#settings-shell .color-picker-input,
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .color-picker-input {
+  appearance: none;
+  -webkit-appearance: none;
+  grid-column: 1;
+  grid-row: 1;
+  width: 34px !important;
+  min-width: 34px !important;
+  max-width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+  display: block;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 10px;
+  background: transparent !important;
+  box-shadow: none !important;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
 }
 
-#tab-realtime .detached-toggle-grid {
+#settings-shell .color-picker-input[type="color"]::-webkit-color-swatch-wrapper,
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .color-picker-input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+#settings-shell .color-picker-input[type="color"]::-webkit-color-swatch,
+#settings-shell .color-picker-input[type="color"]::-moz-color-swatch,
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .color-picker-input[type="color"]::-webkit-color-swatch,
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .color-picker-input[type="color"]::-moz-color-swatch {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-toggle-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 7px 12px;
@@ -8860,11 +9066,25 @@ button.btn-icon:hover {
   border-top: 1px solid #e4eaf2;
 }
 
-#tab-realtime .detached-toggle-grid .switch-control {
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-toggle-grid .switch-control {
   height: 24px;
   min-height: 24px;
   padding: 0;
   font-size: 11.5px;
+}
+
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-toggle-grid .switch-control span {
+  width: 34px;
+  height: 19px;
+}
+
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-toggle-grid .switch-control span::after {
+  width: 11px;
+  height: 11px;
+}
+
+:is(#tab-realtime, #settings-shell) .detached-workbench-card .detached-toggle-grid .switch-control input:checked + span::after {
+  transform: translateX(15px);
 }
 
 #tab-realtime input[readonly] {

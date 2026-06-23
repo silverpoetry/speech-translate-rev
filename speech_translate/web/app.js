@@ -225,6 +225,118 @@ function bindToolbarMirrorChecks(pairs = []) {
   bindPairedInputChecks(pairs);
 }
 
+function isValidHexColor(value) {
+  return /^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/.test(String(value || '').trim());
+}
+
+function normalizeHexColorValue(value, fallback = '#000000') {
+  const fallbackValue = isValidHexColor(fallback) ? String(fallback).trim() : '#000000';
+  const raw = String(value || '').trim();
+  if (!isValidHexColor(raw)) {
+    return fallbackValue.toLowerCase();
+  }
+  if (raw.length === 4) {
+    const [, r, g, b] = raw;
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  return raw.toLowerCase();
+}
+
+function getColorPickerNode(targetId) {
+  if (!targetId) {
+    return null;
+  }
+  return document.querySelector(`input[type="color"][data-color-target="${targetId}"]`);
+}
+
+function syncColorPickerControl(targetId, { normalize = false } = {}) {
+  const textInput = $(targetId);
+  const picker = getColorPickerNode(targetId);
+  if (!textInput || !picker || typeof textInput.value === 'undefined' || typeof picker.getAttribute !== 'function') {
+    return;
+  }
+  const fallback = picker.dataset.colorFallback || textInput.getAttribute('placeholder') || '#000000';
+  const nextValue = normalize
+    ? normalizeHexColorValue(textInput.value, fallback)
+    : (isValidHexColor(textInput.value) ? normalizeHexColorValue(textInput.value, fallback) : null);
+  if (!nextValue) {
+    return;
+  }
+  if (normalize && textInput.value !== nextValue) {
+    textInput.value = nextValue;
+  }
+  if (typeof picker.value !== 'undefined' && picker.value !== nextValue) {
+    try {
+      picker.value = nextValue;
+    } catch (_error) {
+      // Some embedded runtimes proxy color inputs; fall through to attribute sync.
+    }
+  }
+  picker.setAttribute('value', nextValue);
+  if (picker instanceof HTMLElement) {
+    picker.style.removeProperty('background-color');
+  }
+  const previewNodes = new Set();
+  if (picker.parentElement instanceof HTMLElement) {
+    previewNodes.add(picker.parentElement);
+  }
+  const preview = document.querySelector(`[data-color-preview="${targetId}"]`);
+  if (preview instanceof HTMLElement) {
+    previewNodes.add(preview);
+  }
+  previewNodes.forEach((node) => {
+    node.style.setProperty('--color-preview-color', nextValue);
+  });
+}
+
+function syncAllColorPickerControls() {
+  document.querySelectorAll('input[type="color"][data-color-target]').forEach((picker) => {
+    syncColorPickerControl(picker.dataset.colorTarget || '', { normalize: true });
+  });
+}
+
+function bindColorFieldControls() {
+  if (state.colorFieldBindingsApplied) {
+    return;
+  }
+  document.querySelectorAll('input[type="color"][data-color-target]').forEach((picker) => {
+    const targetId = picker.dataset.colorTarget || '';
+    const textInput = $(targetId);
+    if (!textInput || typeof textInput.value === 'undefined') {
+      return;
+    }
+    const pushPickerValue = (eventName) => {
+      const normalized = normalizeHexColorValue(
+        picker.value,
+        picker.dataset.colorFallback || textInput.getAttribute('placeholder') || '#000000'
+      );
+      if (textInput.value !== normalized) {
+        textInput.value = normalized;
+      }
+      textInput.dispatchEvent(new Event(eventName, { bubbles: true }));
+    };
+    picker.addEventListener('input', () => {
+      pushPickerValue('input');
+    });
+    picker.addEventListener('change', () => {
+      pushPickerValue('change');
+    });
+  });
+  document.querySelectorAll('input.color-value[id]').forEach((textInput) => {
+    if (!(textInput instanceof HTMLInputElement)) {
+      return;
+    }
+    textInput.addEventListener('input', () => {
+      syncColorPickerControl(textInput.id, { normalize: false });
+    });
+    textInput.addEventListener('change', () => {
+      syncColorPickerControl(textInput.id, { normalize: true });
+    });
+  });
+  state.colorFieldBindingsApplied = true;
+  syncAllColorPickerControls();
+}
+
 function syncMirroredFieldState() {
   syncToolbarMirrorValues([
     [els.dirExportFile, els.dirExport, 'auto'],
@@ -249,6 +361,7 @@ function syncMirroredFieldState() {
     [els.filterFileImportFile, els.filterFileImport, true],
     [els.filterFileImportExactMatchFile, els.filterFileImportExactMatch, false],
   ]);
+  syncAllColorPickerControls();
 }
 
 function bindSharedFieldMirrors() {
@@ -325,6 +438,14 @@ function collectRecordDeviceSelection() {
     mic: readStringValue(els.mic, ''),
     speaker: readStringValue(els.speaker, ''),
   };
+}
+
+function populateMirroredSelects(nodes = [], options = [], selectedValue = '', allowCustom = true) {
+  nodes.forEach((node) => {
+    if (node) {
+      populateSelect(node, options, selectedValue, allowCustom);
+    }
+  });
 }
 
 async function persistCurrentRecordDeviceSelection() {
@@ -514,6 +635,7 @@ const DETACHED_WINDOW_MIRROR_PAIRS = {
   tc: [
     ['ex_tc_geometry_main', 'ex_tc_geometry'],
     ['ex_tc_pos_main', 'ex_tc_pos'],
+    ['ex_tc_pos_settings', 'ex_tc_pos'],
     ['ex_tc_opacity_main', 'ex_tc_opacity'],
     ['tb_ex_tc_font_main', 'tb_ex_tc_font'],
     ['tb_ex_tc_font_size_main', 'tb_ex_tc_font_size'],
@@ -532,6 +654,7 @@ const DETACHED_WINDOW_MIRROR_PAIRS = {
   tl: [
     ['ex_tl_geometry_main', 'ex_tl_geometry'],
     ['ex_tl_pos_main', 'ex_tl_pos'],
+    ['ex_tl_pos_settings', 'ex_tl_pos'],
     ['ex_tl_opacity_main', 'ex_tl_opacity'],
     ['tb_ex_tl_font_main', 'tb_ex_tl_font'],
     ['tb_ex_tl_font_size_main', 'tb_ex_tl_font_size'],
@@ -1041,8 +1164,8 @@ function resolveFileProcessingSummary() {
 function updateDetachedLimitPolicy(mode) {
   const normalized = normalizeDetachedMode(mode);
   const prefix = normalized === 'tl' ? 'tl' : 'tc';
-  const limitMax = Boolean(readInputValue($(`tb_ex_${prefix}_limit_max_main`), false));
-  const limitLine = Boolean(readInputValue($(`tb_ex_${prefix}_limit_max_per_line_main`), false));
+  const limitMax = Boolean(readInputValue($(`tb_ex_${prefix}_limit_max_main`) || $(`tb_ex_${prefix}_limit_max`), false));
+  const limitLine = Boolean(readInputValue($(`tb_ex_${prefix}_limit_max_per_line_main`) || $(`tb_ex_${prefix}_limit_max_per_line`), false));
   const policy = limitMax && limitLine
     ? '最大字符 + 每行'
     : limitMax
@@ -1051,11 +1174,42 @@ function updateDetachedLimitPolicy(mode) {
         ? '每行'
         : '关闭';
   writeInputValue($(`tb_ex_${prefix}_limit_policy_main`), policy, '关闭');
+  writeInputValue($(`tb_ex_${prefix}_limit_policy_settings`), policy, '关闭');
 }
 
 function updateDetachedLimitPolicies() {
   updateDetachedLimitPolicy('tc');
   updateDetachedLimitPolicy('tl');
+}
+
+function updateDetachedActionButtons(mode, open, visible, labelPrefix) {
+  const toggleButtons = Array.from(document.querySelectorAll(`button[data-detached-toggle="${mode}"]`));
+  for (const toggleButton of toggleButtons) {
+    toggleButton.dataset.action = open ? `close-detached-${mode}` : `create-detached-${mode}`;
+    toggleButton.classList.toggle('detached-action-danger', open);
+    toggleButton.classList.toggle('detached-action-primary', !open);
+    toggleButton.classList.toggle('icon-action-primary', !open);
+    toggleButton.setAttribute('aria-label', open ? `关闭${labelPrefix}窗口` : `打开${labelPrefix}窗口`);
+    toggleButton.setAttribute('title', open ? `关闭${labelPrefix}窗口` : `打开${labelPrefix}窗口`);
+    const icon = toggleButton.querySelector('.btn-glyph, .icon');
+    if (icon) {
+      icon.classList.toggle('glyph-close', open);
+      icon.classList.toggle('glyph-window', !open);
+    }
+  }
+
+  const visibilityButtons = Array.from(document.querySelectorAll(`button[data-detached-visibility="${mode}"]`));
+  for (const visibilityButton of visibilityButtons) {
+    visibilityButton.classList.toggle('is-hidden', !open);
+    visibilityButton.dataset.action = visible ? `hide-detached-${mode}` : `show-detached-${mode}`;
+    visibilityButton.setAttribute('aria-label', visible ? `隐藏${labelPrefix}窗口` : `显示${labelPrefix}窗口`);
+    visibilityButton.setAttribute('title', visible ? `隐藏${labelPrefix}窗口` : `显示${labelPrefix}窗口`);
+    const icon = visibilityButton.querySelector('.btn-glyph, .icon');
+    if (icon) {
+      icon.classList.toggle('glyph-eye-off', visible);
+      icon.classList.toggle('glyph-eye', !visible);
+    }
+  }
 }
 
 function renderDetachedWindowSettingsFields(data) {
@@ -1078,6 +1232,7 @@ function renderDetachedWindowSettingsFields(data) {
     }
   }
   updateDetachedLimitPolicies();
+  syncAllColorPickerControls();
 }
 
 function renderSettings(data) {
@@ -1630,8 +1785,16 @@ function renderMainControls(data) {
   };
   if (els.inputMode) populateSelect(els.inputMode, mainUi.input_options || [], mainUi.selected_input || '');
   if (els.hostAPI) populateSelect(els.hostAPI, recordUi.host_api_options || [], recordUi.selected_host_api || recordUi.host_api || '');
-  if (els.mic) populateSelect(els.mic, recordUi.mic_options || [], recordUi.selected_mic || recordUi.mic || '');
-  if (els.speaker) populateSelect(els.speaker, recordUi.speaker_options || [], recordUi.selected_speaker || recordUi.speaker || '');
+  populateMirroredSelects(
+    [els.mic, els.micSettings],
+    recordUi.mic_options || [],
+    recordUi.selected_mic || recordUi.mic || ''
+  );
+  populateMirroredSelects(
+    [els.speaker, els.speakerSettings],
+    recordUi.speaker_options || [],
+    recordUi.selected_speaker || recordUi.speaker || ''
+  );
   if (els.backendMain) {
     populateSelect(els.backendMain, mainUi.backend_options || ['whisper', 'faster-whisper'], mainUi.selected_backend || 'faster-whisper', false);
   }
@@ -1682,8 +1845,8 @@ async function refreshAudioSourceOptions(hostApiValue, persistSelection = false)
     : (payload.selected_speaker || speakerOptions[0] || '');
 
   populateSelect(els.hostAPI, hostOptions, nextHostApi);
-  populateSelect(els.mic, micOptions, nextMic);
-  populateSelect(els.speaker, speakerOptions, nextSpeaker);
+  populateMirroredSelects([els.mic, els.micSettings], micOptions, nextMic);
+  populateMirroredSelects([els.speaker, els.speakerSettings], speakerOptions, nextSpeaker);
 
   if (persistSelection) {
     await persistRecordDeviceSelection(
@@ -2088,33 +2251,7 @@ function renderDetachedWindowOverview(data) {
     }
 
     const labelPrefix = mode === 'tc' ? '转写' : '翻译';
-    const toggleButton = document.querySelector(`button[data-detached-toggle="${mode}"]`);
-    if (toggleButton) {
-      toggleButton.dataset.action = open ? `close-detached-${mode}` : `create-detached-${mode}`;
-      toggleButton.classList.toggle('detached-action-danger', open);
-      toggleButton.classList.toggle('detached-action-primary', !open);
-      toggleButton.classList.toggle('icon-action-primary', !open);
-      toggleButton.setAttribute('aria-label', open ? `关闭${labelPrefix}窗口` : `打开${labelPrefix}窗口`);
-      toggleButton.setAttribute('title', open ? `关闭${labelPrefix}窗口` : `打开${labelPrefix}窗口`);
-      const icon = toggleButton.querySelector('.btn-glyph, .icon');
-      if (icon) {
-        icon.classList.toggle('glyph-close', open);
-        icon.classList.toggle('glyph-window', !open);
-      }
-    }
-
-    const visibilityButton = document.querySelector(`button[data-detached-visibility="${mode}"]`);
-    if (visibilityButton) {
-      visibilityButton.classList.toggle('is-hidden', !open);
-      visibilityButton.dataset.action = visible ? `hide-detached-${mode}` : `show-detached-${mode}`;
-      visibilityButton.setAttribute('aria-label', visible ? `隐藏${labelPrefix}窗口` : `显示${labelPrefix}窗口`);
-      visibilityButton.setAttribute('title', visible ? `隐藏${labelPrefix}窗口` : `显示${labelPrefix}窗口`);
-      const icon = visibilityButton.querySelector('.btn-glyph, .icon');
-      if (icon) {
-        icon.classList.toggle('glyph-eye-off', visible);
-        icon.classList.toggle('glyph-eye', !visible);
-      }
-    }
+    updateDetachedActionButtons(mode, open, visible, labelPrefix);
   }
 }
 
@@ -4512,6 +4649,7 @@ function bindEvents() {
       [els.wordLevelToolbar, els.wordLevel],
     ]);
     bindSharedFieldMirrors();
+    bindColorFieldControls();
     if (els.hostAPIToolbar) {
       els.hostAPIToolbar.addEventListener('change', async () => {
         if (els.hostAPI) {
@@ -4727,7 +4865,9 @@ async function init() {
     els.hostAPI = $('hostAPI');
     els.hostAPIToolbar = $('hostAPI_toolbar');
     els.mic = $('mic');
+    els.micSettings = $('mic_settings');
     els.speaker = $('speaker');
+    els.speakerSettings = $('speaker_settings');
     els.verboseRecord = $('verbose_record');
     els.modelDevicePreference = $('model_device_preference');
     els.modelDevicePreferenceToolbar = $('model_device_preference_toolbar');
