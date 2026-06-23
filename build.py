@@ -19,7 +19,7 @@ def app_version():
 
 # If you get cuda error try to remove your cuda from your system path because cx_freeze will try to include it from there
 # instead of the one in the python folder
-print(">> Building SpeechTranslate version", app_version())
+print(">> Building Speech Translate Rev version", app_version())
 print(">> Environment:", get_env_name())
 # run build_patch.py
 print(">> Running build_patch.py")
@@ -63,7 +63,7 @@ clear_dir("./speech_translate/assets/silero-vad/__pycache__")
 print(">> Done")
 print("Whisper version:", get_whisper_version())
 
-folder_name = f"build/SpeechTranslate {app_version()} {get_env_name()}"
+folder_name = f"build/SpeechTranslateRev {app_version()} {get_env_name()}"
 root = os.path.dirname(os.path.abspath(__file__))
 
 print("ROOT:", root)
@@ -80,9 +80,9 @@ build_exe_options = {
 BASE = "Win32GUI" if sys.platform == "win32" else None
 
 setup(
-    name="SpeechTranslate",
+    name="SpeechTranslateRev",
     version=app_version(),
-    description="Speech Translate",
+    description="Speech Translate Rev",
     options={
         "build_exe": build_exe_options,
     },
@@ -91,7 +91,7 @@ setup(
             "Run.py",
             base=BASE,
             icon="speech_translate/assets/icon.ico",
-            target_name="SpeechTranslate.exe",
+            target_name="SpeechTranslateRev.exe",
         )
     ],
 )
@@ -134,7 +134,7 @@ with open(f"{folder_name}/version.txt", "w", encoding="utf-8") as f:
 print(">> Creating link to repo")
 with open(f"{folder_name}/homepage.url", "w", encoding="utf-8") as f:
     f.write("[InternetShortcut]\n")
-    f.write("URL=https://github.com/Dadangdut33/Speech-Translate")
+    f.write("URL=https://github.com/silverpoetry/speech-translate-rev")
 
 print(">> Opening output folder")
 output_folder = os.path.abspath(folder_name)

@@ -296,7 +296,7 @@ def get_whisper_lang_similar(similar: str, debug: bool = True) -> str:
         return should_be_there[0]
     raise ValueError(
         f"Fail to get whisper language from similar while searching for {similar}. "
-        "Please report this as a bug to https://github.com/Dadangdut33/Speech-Translate/issues"
+        "Please report this as a bug to https://github.com/silverpoetry/speech-translate-rev/issues"
     )
 
 

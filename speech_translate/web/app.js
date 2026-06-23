@@ -47,7 +47,7 @@ const I18N = {
       'settings.language.enUS': 'English',
     },
     static: {
-      '语音翻译': 'Speech Translate',
+      '语音翻译': 'Speech Translate Rev',
       '主菜单': 'Main menu',
       '实时转写': 'Realtime',
       '文件转写': 'Files',
@@ -5008,7 +5008,7 @@ function bindEvents() {
       } else if (action === 'quit-app') {
         await quitApp();
       } else if (action === 'open-repo') {
-        await apiCall('open_link', 'https://github.com/Dadangdut33/Speech-Translate');
+        await apiCall('open_link', 'https://github.com/silverpoetry/speech-translate-rev');
       } else if (action === 'open-current-log') {
         await openCurrentLogFile();
       } else if (action === 'open-filter-rec') {

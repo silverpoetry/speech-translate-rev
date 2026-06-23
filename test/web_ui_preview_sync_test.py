@@ -15,6 +15,12 @@ class WebUiPreviewSyncTests(unittest.TestCase):
         cls.index_html = (web_dir / "index.html").read_text(encoding="utf-8")
         cls.preview_html = (web_dir / "ui-preview.html").read_text(encoding="utf-8")
 
+    def _panel_classes(self, html: str, panel_id: str) -> set[str]:
+        pattern = rf'<article\s+class="([^"]+)"\s+id="{re.escape(panel_id)}"'
+        match = re.search(pattern, html)
+        self.assertIsNotNone(match, f"Missing panel {panel_id}")
+        return set(match.group(1).split())
+
     def test_preview_contains_model_manager_summary_nodes(self) -> None:
         for node_id in (
             "model-manager-dir-pill",
@@ -132,13 +138,15 @@ class WebUiPreviewSyncTests(unittest.TestCase):
     def test_index_and_preview_default_to_realtime_panel(self) -> None:
         self.assertIn('class="menu-item is-active" data-nav-target="realtime"', self.index_html)
         self.assertIn('class="menu-item is-active" data-nav-target="realtime"', self.preview_html)
-        self.assertIn('class="workflow-card tab-panel is-active" id="tab-realtime"', self.index_html)
-        self.assertIn('class="workflow-card tab-panel is-active" id="tab-realtime"', self.preview_html)
+        self.assertIn("is-active", self._panel_classes(self.index_html, "tab-realtime"))
+        self.assertIn("is-active", self._panel_classes(self.preview_html, "tab-realtime"))
 
     def test_only_one_default_active_panel_per_page(self) -> None:
-        active_panel_pattern = r'class="workflow-card tab-panel is-active"'
-        self.assertEqual(len(re.findall(active_panel_pattern, self.index_html)), 1)
-        self.assertEqual(len(re.findall(active_panel_pattern, self.preview_html)), 1)
+        panel_pattern = r'<article\s+class="([^"]*\bworkflow-card\b[^"]*\btab-panel\b[^"]*)"'
+        index_active = [classes for classes in re.findall(panel_pattern, self.index_html) if "is-active" in classes.split()]
+        preview_active = [classes for classes in re.findall(panel_pattern, self.preview_html) if "is-active" in classes.split()]
+        self.assertEqual(len(index_active), 1)
+        self.assertEqual(len(preview_active), 1)
 
     def test_index_and_preview_expose_dedicated_detached_window_setting_ids(self) -> None:
         detached_ids = {

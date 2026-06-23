@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>语音翻译 - 字幕窗口</title>
+  <title>Speech Translate Rev - 字幕窗口</title>
   <style>
     * {
       margin: 0;
@@ -138,7 +138,7 @@
 
     // Update window title
     const currentTitle = '翻译字幕窗口';
-    document.title = `语音翻译 - ${currentTitle}`;
+    document.title = `Speech Translate Rev - ${currentTitle}`;
     // Listen for content updates from parent window
     window.addEventListener('message', (e) => {
       if (e.data.type === 'update-content') {

@@ -170,7 +170,7 @@ class SeleniumWebTranslator:
             keywords.append(str(APP_NAME))
         except Exception:
             pass
-        keywords.extend(["Speech Translate", "语音翻译"])
+        keywords.extend(["Speech Translate Rev", "Speech Translate", "语音翻译"])
 
         for keyword in keywords:
             if not keyword:

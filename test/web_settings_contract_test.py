@@ -96,10 +96,10 @@ class WebSettingsContractTests(unittest.TestCase):
 
     def test_file_workbench_exposes_jump_actions(self) -> None:
         self.assertIn('data-settings-jump="导出与切分"', self.index_html)
-        self.assertIn('data-settings-jump="幻觉过滤 (Hallucination Filter)"', self.index_html)
+        self.assertIn('data-settings-jump="过滤与词典"', self.index_html)
 
     def test_model_workbench_exposes_network_jump_action(self) -> None:
-        self.assertIn('data-settings-jump="翻译网络与 LibreTranslate"', self.index_html)
+        self.assertIn('data-settings-jump="网络与翻译"', self.index_html)
 
     def test_settings_toolbar_workbench_fields_are_bound(self) -> None:
         self.assertIn("els.httpProxyEnableToolbar = $('http_proxy_enable_toolbar');", self.app_js)
@@ -137,7 +137,7 @@ class WebSettingsContractTests(unittest.TestCase):
         self.assertIn('data-action="refresh-audio-devices"', self.index_html)
 
     def test_show_main_window_and_open_current_log_actions_exist(self) -> None:
-        self.assertIn("data-action=\"show-main-window\"", self.index_html)
+        self.assertIn("data-action=\"show-main-window\"", self.app_js)
         self.assertIn("await apiCall('show_main_window');", self.app_js)
         self.assertIn("data-action=\"open-current-log\"", self.app_js)
         self.assertIn("await apiCall('open_link', `file:///${logDir.replace(/\\\\\\\\/g, '/')", self.app_js)

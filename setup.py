@@ -20,20 +20,26 @@ def install_requires():
 
 
 setup(
-    name="SpeechTranslate",
+    name="speech-translate-rev",
     version=version(),
-    description="A realtime speech transcription and translation application using Whisper OpenAI and free translation API."
-    " Interface made with a webview frontend. Code written fully in Python.",
+    description="A modern WebView-based desktop app for realtime speech transcription, translation, and file transcription.",
     long_description=read_me(),
     long_description_content_type="text/markdown",
-    python_requires=">=3.8",
-    author="Dadangdut33",
-    url="https://github.com/Dadangdut33/Speech-Translate",
+    python_requires=">=3.10",
+    author="silverpoetry",
+    maintainer="silverpoetry",
+    url="https://github.com/silverpoetry/speech-translate-rev",
+    project_urls={
+        "Source": "https://github.com/silverpoetry/speech-translate-rev",
+        "Issues": "https://github.com/silverpoetry/speech-translate-rev/issues",
+        "Original project": "https://github.com/Dadangdut33/Speech-Translate",
+    },
     license="MIT",
     packages=find_packages(),
     install_requires=install_requires(),
     entry_points={"console_scripts": [
         "speech-translate=speech_translate.__main__:main",
+        "speech-translate-rev=speech_translate.__main__:main",
     ]},
     include_package_data=True,
 )

@@ -5,6 +5,7 @@ from typing import List
 import inspect
 import threading
 
+from speech_translate._constants import APP_NAME
 from speech_translate._version import __setting_version__
 from speech_translate.log_helpers import logger
 from speech_translate.model_selection import normalize_model_key
@@ -335,7 +336,7 @@ class SettingJson:
         Notify from setting
         """
         notification = Notify()
-        notification.application_name = "Speech Translate"
+        notification.application_name = APP_NAME
         notification.title = title
         notification.message = msg
         try:

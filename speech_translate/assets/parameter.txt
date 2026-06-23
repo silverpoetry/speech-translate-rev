@@ -1,6 +1,6 @@
 Command line arguments to be used. (Usage value shown as example here are only for reference). 
 
-For more information, see https://github.com/jianfch/stable-ts or https://github.com/Dadangdut33/Speech-Translate/wiki
+For more information, see https://github.com/jianfch/stable-ts or https://github.com/silverpoetry/speech-translate-rev
 # [command]
 * description of command
 * type: data type, default xxx

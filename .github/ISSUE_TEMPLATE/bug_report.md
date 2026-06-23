@@ -1,35 +1,38 @@
 ---
 name: Bug report
-about: Create a report to help us improve
-title: "[BUG]"
+about: Report a reproducible problem in Speech Translate Rev
+title: "[Bug]: "
 labels: bug
-assignees: ''
-
+assignees: ""
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+## Summary
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+Describe the bug clearly.
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+## Steps To Reproduce
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+1.
+2.
+3.
 
-**Log**
-Add the log file or copy it if possible
+## Expected Behavior
 
-**Desktop (please complete the following information):**
- - OS: [e.g. windows 10]
- - App Installation version: [e.g. prebuilt / module / git] 
- - App / Python version: ...
+What should have happened?
 
-**Additional context**
-Add any other context about the problem here.
+## Actual Behavior
+
+What happened instead?
+
+## Environment
+
+- OS:
+- Python version:
+- Install method: source / editable install / release build
+- Speech Translate Rev version or commit:
+- WebView runtime:
+- Audio input mode: microphone / speaker / file
+
+## Logs And Screenshots
+
+Attach relevant logs from `speech_translate/log/` and screenshots if they help explain the issue.

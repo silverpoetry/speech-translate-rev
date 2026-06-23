@@ -1,9 +1,9 @@
 param(
-    [string]$ShortcutPath = (Join-Path ([Environment]::GetFolderPath("Desktop")) "Speech Translate.lnk"),
+    [string]$ShortcutPath = (Join-Path ([Environment]::GetFolderPath("Desktop")) "Speech Translate Rev.lnk"),
     [string]$PythonwPath = "",
     [string]$ScriptPath = (Join-Path $PSScriptRoot "Run.pyw"),
     [string]$IconPath = (Join-Path $PSScriptRoot "speech_translate\assets\icon.ico"),
-    [string]$AppUserModelId = "Dadangdut33.SpeechTranslate.WebviewUI"
+    [string]$AppUserModelId = "silverpoetry.SpeechTranslateRev.WebviewUI"
 )
 
 $ErrorActionPreference = "Stop"
@@ -201,7 +201,7 @@ $shortcut.TargetPath = $PythonwPath
 $shortcut.Arguments = ('"{0}"' -f $ScriptPath)
 $shortcut.WorkingDirectory = $PSScriptRoot
 $shortcut.IconLocation = $IconPath
-$shortcut.Description = "Speech Translate (pythonw launcher, AppID: $AppUserModelId)"
+$shortcut.Description = "Speech Translate Rev (pythonw launcher, AppID: $AppUserModelId)"
 $shortcut.Save()
 [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($shortcut)
 [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($shell)

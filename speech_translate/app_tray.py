@@ -97,7 +97,7 @@ class AppTray:
         except Exception:
             ico = self._fallback_image(64, 64, "black", "white")
 
-        self.icon = pystray.Icon("Speech Translate", ico, APP_NAME)
+        self.icon = pystray.Icon(APP_NAME, ico, APP_NAME)
         self.icon.run_detached()
         self._install_pointer_actions()
 
@@ -322,7 +322,7 @@ class AppTray:
         requested = WindowPlacement(width=self.PANEL_WIDTH, height=self.PANEL_HEIGHT, x=x, y=y)
         self.panel_window = create_preloaded_window(
             webview,
-            "Speech Translate",
+            APP_NAME,
             html_path,
             js_api=TrayPanelApi(),
             placement=requested,

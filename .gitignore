@@ -1,10 +1,13 @@
 __pycache__/
+.pytest_cache/
+.agents/
 
 # Environments
 .env
 .envcpu
 .envgpu
 .venv
+.venv*/
 .venvcpu
 .venvgpu
 env/
@@ -27,6 +30,9 @@ speech_translate/log/
 build/
 dist/
 output/
+tmp/
+tmp_ui_debug/
+tmp_*.png
 
 # ignore
 ignore/
@@ -36,3 +42,4 @@ LICENSE.txt
 requirements_temp.txt
 *.spec
 SpeechTranslate.egg-info/
+speech_translate_rev.egg-info/
