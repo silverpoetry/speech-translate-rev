@@ -38,7 +38,7 @@ jobs:
       - name: Build executable
         run: .\.venv314\Scripts\python.exe build_windows.py build_exe
 
-      - name: Package zip
+      - name: Package portable archive
         shell: pwsh
         run: |
           $version = .\.venv314\Scripts\python.exe -c "from speech_translate._version import __version__; print(__version__)"
@@ -47,9 +47,38 @@ jobs:
             throw "Build directory not found: $buildDir"
           }
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $zipPath = "dist\SpeechTranslateRev-$version-windows-x64.zip"
+          $zipPath = "dist\SpeechTranslateRev-$version-windows-x64-portable.zip"
           Compress-Archive -Path "$buildDir\*" -DestinationPath $zipPath -Force
-          "ZIP_PATH=$zipPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          $maxPartBytes = 1900MB
+          $zipItem = Get-Item -LiteralPath $zipPath
+          if ($zipItem.Length -gt $maxPartBytes) {
+            $buffer = New-Object byte[] (8MB)
+            $inputStream = [System.IO.File]::OpenRead($zipPath)
+            try {
+              $part = 1
+              while ($inputStream.Position -lt $inputStream.Length) {
+                $partPath = "{0}.{1:D3}" -f $zipPath, $part
+                $outputStream = [System.IO.File]::Create($partPath)
+                try {
+                  $remaining = [Math]::Min($maxPartBytes, $inputStream.Length - $inputStream.Position)
+                  while ($remaining -gt 0) {
+                    $readSize = [Math]::Min($buffer.Length, $remaining)
+                    $read = $inputStream.Read($buffer, 0, $readSize)
+                    if ($read -le 0) { break }
+                    $outputStream.Write($buffer, 0, $read)
+                    $remaining -= $read
+                  }
+                } finally {
+                  $outputStream.Dispose()
+                }
+                $part += 1
+              }
+            } finally {
+              $inputStream.Dispose()
+            }
+            Remove-Item -LiteralPath $zipPath -Force
+          }
 
       - name: Build installer
         shell: pwsh
@@ -73,9 +102,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: speech-translate-rev-windows
-          path: |
-            ${{ env.ZIP_PATH }}
-            ${{ env.INSTALLER_PATH }}
+          path: dist/SpeechTranslateRev-*
           if-no-files-found: error
 
       - name: Upload release assets
@@ -91,4 +118,9 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($tag)) {
             throw "No release tag provided."
           }
-          gh release upload $tag "$env:ZIP_PATH" "$env:INSTALLER_PATH" --repo $env:GITHUB_REPOSITORY --clobber
+          $version = .\.venv314\Scripts\python.exe -c "from speech_translate._version import __version__; print(__version__)"
+          $assets = Get-ChildItem -LiteralPath dist -File | Where-Object { $_.Name -like "SpeechTranslateRev-$version-windows-x64*" }
+          if (-not $assets) {
+            throw "No release assets found."
+          }
+          gh release upload $tag @($assets.FullName) --repo $env:GITHUB_REPOSITORY --clobber
