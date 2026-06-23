@@ -14,9 +14,12 @@ def read_me():
 
 
 def install_requires():
-    with open("requirements.txt", "r", encoding="utf-8") as f:
-        req = f.read().splitlines()
-        return req
+    with open("requirements-py314.txt", "r", encoding="utf-8") as f:
+        return [
+            line.strip()
+            for line in f.read().splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
 
 
 setup(
@@ -25,7 +28,7 @@ setup(
     description="A modern WebView-based desktop app for realtime speech transcription, translation, and file transcription.",
     long_description=read_me(),
     long_description_content_type="text/markdown",
-    python_requires=">=3.10",
+    python_requires=">=3.14",
     author="silverpoetry",
     maintainer="silverpoetry",
     url="https://github.com/silverpoetry/speech-translate-rev",
@@ -35,6 +38,15 @@ setup(
         "Original project": "https://github.com/Dadangdut33/Speech-Translate",
     },
     license="MIT",
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Environment :: Win32 (MS Windows)",
+        "Intended Audience :: End Users/Desktop",
+        "Operating System :: Microsoft :: Windows",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.14",
+        "Topic :: Multimedia :: Sound/Audio :: Speech",
+    ],
     packages=find_packages(),
     install_requires=install_requires(),
     entry_points={"console_scripts": [

@@ -5,7 +5,7 @@ Speech Translate Rev is a modern WebView-based speech transcription and translat
 [![CI](https://github.com/silverpoetry/speech-translate-rev/actions/workflows/ci.yml/badge.svg)](https://github.com/silverpoetry/speech-translate-rev/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/silverpoetry/speech-translate-rev?include_prereleases&label=release)](https://github.com/silverpoetry/speech-translate-rev/releases)
 [![License](https://img.shields.io/github/license/silverpoetry/speech-translate-rev)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.10%2B-3776ab)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.14-3776ab)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-495057)](#requirements)
 [![Downloads](https://img.shields.io/github/downloads/silverpoetry/speech-translate-rev/total?label=downloads)](https://github.com/silverpoetry/speech-translate-rev/releases)
 
@@ -33,7 +33,7 @@ This repository keeps the original `speech_translate` Python package name for co
 
 ## Requirements
 
-- Python 3.10 or newer.
+- Python 3.14. Rev development and CI are validated against Python 3.14.
 - Windows, macOS, or Linux for source installation.
 - Windows 10 or newer is recommended for the current WebView-focused desktop experience.
 - Optional CUDA-capable GPU for faster Whisper inference.
@@ -50,16 +50,12 @@ Install from source:
 ```powershell
 git clone --recurse-submodules https://github.com/silverpoetry/speech-translate-rev.git
 cd speech-translate-rev
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-For Python 3.14, use the compatibility requirements file:
-
-```powershell
+python -m venv .venv314
+.\.venv314\Scripts\Activate.ps1
 pip install -r requirements-py314.txt
 ```
+
+Older Python versions may work with `requirements.txt`, but they are not the primary Rev validation target.
 
 For CUDA builds, install the matching PyTorch packages for your machine before or alongside the requirements. See the official PyTorch installation guide for the correct index URL.
 
@@ -124,8 +120,12 @@ Run the fast checks:
 
 ```powershell
 node --check speech_translate/web/app.js
-python -m py_compile Run.py speech_translate/__main__.py speech_translate/webview_app.py speech_translate/web_bridge_api.py
-python -m unittest test.app_tray_test test.app_startup_controller_test test.web_ui_preview_sync_test test.web_settings_contract_test test.runtime_registry_test
+.\.venv314\Scripts\python.exe -m py_compile Run.py speech_translate/__main__.py speech_translate/webview_app.py speech_translate/web_bridge_api.py
+.\.venv314\Scripts\python.exe -m unittest discover -s test -p app_tray_test.py
+.\.venv314\Scripts\python.exe -m unittest discover -s test -p app_startup_controller_test.py
+.\.venv314\Scripts\python.exe -m unittest discover -s test -p web_ui_preview_sync_test.py
+.\.venv314\Scripts\python.exe -m unittest discover -s test -p web_settings_contract_test.py
+.\.venv314\Scripts\python.exe -m unittest discover -s test -p runtime_registry_test.py
 ```
 
 Useful project areas:

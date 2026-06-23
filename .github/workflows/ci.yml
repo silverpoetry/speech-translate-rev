@@ -9,12 +9,8 @@ on:
 
 jobs:
   test:
-    name: Python ${{ matrix.python-version }} on Windows
+    name: Python 3.14 on Windows
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.11", "3.14"]
 
     steps:
       - name: Checkout
@@ -22,10 +18,10 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Set up Python
+      - name: Set up Python 3.14
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.14"
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -43,4 +39,9 @@ jobs:
         run: python -m py_compile Run.py speech_translate/__main__.py speech_translate/webview_app.py speech_translate/web_bridge_api.py speech_translate/app_runtime.py speech_translate/recording_controller.py speech_translate/model_manager.py
 
       - name: Run core unit tests
-        run: python -m unittest test.app_tray_test test.app_startup_controller_test test.web_ui_preview_sync_test test.web_settings_contract_test test.runtime_registry_test
+        run: |
+          python -m unittest discover -s test -p app_tray_test.py
+          python -m unittest discover -s test -p app_startup_controller_test.py
+          python -m unittest discover -s test -p web_ui_preview_sync_test.py
+          python -m unittest discover -s test -p web_settings_contract_test.py
+          python -m unittest discover -s test -p runtime_registry_test.py
