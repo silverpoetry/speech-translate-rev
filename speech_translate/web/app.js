@@ -97,6 +97,53 @@ const I18N = {
       '引擎': 'Engine',
       '格式': 'Format',
       '空闲': 'Idle',
+      '待启动': 'Not started',
+      '进行中': 'In progress',
+      '模型名': 'Model name',
+      '体积': 'Size',
+      '进度 / 速度': 'Progress / speed',
+      '动作': 'Action',
+      '已下载': 'Downloaded',
+      '下载中': 'Downloading',
+      '缺失': 'Missing',
+      '等待下载': 'Waiting to download',
+      '文件缺失': 'File missing',
+      '执行中': 'Running',
+      '处理中...': 'Processing...',
+      '等待操作。': 'Waiting for action.',
+      '错误': 'Error',
+      '已完成': 'Completed',
+      '文件状态': 'File status',
+      '标题': 'Title',
+      '进度': 'Progress',
+      '消息': 'Message',
+      '正在处理任务...': 'Processing task...',
+      '任务异常': 'Task error',
+      '等待录制': 'Waiting to record',
+      '监听中': 'Listening',
+      '等待输入': 'Waiting for input',
+      '输入电平': 'Input level',
+      '阈值': 'Threshold',
+      '阈值 - dB': 'Threshold - dB',
+      '缓冲': 'Buffer',
+      '句数': 'Sentences',
+      '输入未绑定': 'No input bound',
+      '麦克风': 'Microphone',
+      '扬声器': 'Speaker',
+      '等待语音输入': 'Waiting for speech input',
+      '等待翻译输出': 'Waiting for translation output',
+      '等待开始': 'Waiting to start',
+      '模型未预加载': 'Model not preloaded',
+      '缓存可用': 'Cache available',
+      '准备缓存': 'Preparing cache',
+      '未预加载': 'Not preloaded',
+      '加载中': 'Loading',
+      '等待中': 'Waiting',
+      '已暂停': 'Paused',
+      '停止中': 'Stopping',
+      '录制中': 'Recording',
+      '转写中': 'Transcribing',
+      '翻译中': 'Translating',
       '自动 → 自动': 'Auto -> Auto',
       '未知': 'Unknown',
       '待处理队列': 'Pending queue',
@@ -108,7 +155,15 @@ const I18N = {
       '命名': 'Naming',
       '过滤': 'Filter',
       '已启用': 'Enabled',
+      '已加载': 'Loaded',
+      '未设置': 'Not set',
       '词典 auto · 精准匹配': 'Dictionary auto · Exact match',
+      '每段最多词数': 'Max words per segment',
+      '每段最多字符': 'Max characters per segment',
+      '过滤词典': 'Filter dictionary',
+      '导入过滤': 'Import filter',
+      '启用过滤': 'Enable filter',
+      '相似度阈值': 'Similarity threshold',
       '语言配置': 'Language config',
       '源语言': 'Source language',
       '目标语言': 'Target language',
@@ -125,6 +180,8 @@ const I18N = {
       '已关闭': 'Off',
       '实时状态': 'Realtime status',
       '输入': 'Input',
+      '设备配置': 'Device config',
+      '主机 API': 'Host API',
       '后端': 'Backend',
       '语言与引擎': 'Language and engine',
       '录制控制': 'Recording controls',
@@ -150,7 +207,15 @@ const I18N = {
       '系统': 'System',
       '网络': 'Network',
       '文本': 'Text',
+      'Whisper 解码': 'Whisper decoding',
       '解码': 'Decode',
+      '核心参数': 'Core parameters',
+      '解码预设': 'Decoding preset',
+      '抑制空白': 'Suppress blank',
+      '优先 .en': 'Prefer .en',
+      '附加 Args': 'Extra args',
+      '中文 (zh)': 'Chinese (zh)',
+      '日本語 (ja)': 'Japanese (ja)',
       '录制': 'Recording',
       '独立窗': 'Detached',
       '引导词': 'Prompts',
@@ -223,6 +288,8 @@ const I18N = {
       '置信度颜色': 'Confidence colors',
       '低置信度': 'Low confidence',
       '高置信度': 'High confidence',
+      '按段着色': 'Color by segment',
+      '按词着色': 'Color by word',
       '录制设置': 'Recording settings',
       '通用': 'General',
       '详细日志': 'Verbose log',
@@ -268,6 +335,8 @@ const I18N = {
       '翻译窗口': 'Translation window',
       '未打开': 'Closed',
       '置顶': 'Always on top',
+      '常规': 'Normal',
+      '穿透': 'Click-through',
       '可交互': 'Interactive',
       '尺寸': 'Size',
       '位置': 'Position',
@@ -357,7 +426,30 @@ function translateUiText(value, locale = currentUiLanguage()) {
   if (locale === DEFAULT_UI_LANGUAGE) {
     return raw;
   }
-  return raw.replace(/(\d+)\s*个文件/g, '$1 files');
+  return raw
+    .replace(/(\d+)\s*个文件/g, '$1 files')
+    .replace(/缓冲\s+([^\s·]+)/g, 'Buffer $1')
+    .replace(/已收\s+(\d+)\s+段/g, 'Captured $1 segments')
+    .replace(/(\d+)\s*句/g, '$1 sentences')
+    .replace(/词典\s+auto\s+·\s+相似度\s+([0-9.]+)/g, 'Dictionary auto · Similarity $1')
+    .replace(/阈值\s+(-?\d+(?:\.\d+)?)\s*dB/g, 'Threshold $1 dB')
+    .replace(/模型就绪：/g, 'Model ready: ')
+    .replace(/正在加载模型：/g, 'Loading model: ')
+    .replace(/模型加载失败：/g, 'Model load failed: ')
+    .replace(/日志:/g, 'Log:')
+    .replace(/^目录\s+/g, 'Directory ')
+    .replace(/^当前\s+/g, 'Current ')
+    .replace(/^缓存\s+/g, 'Cache ')
+    .replace(/^下载\s+/g, 'Download ')
+    .replace(/进行中/g, 'In progress')
+    .replace(/模型：/g, 'Model: ')
+    .replace(/导出：/g, 'Export: ')
+    .replace(/输入：/g, 'Input: ')
+    .replace(/模式：/g, 'Mode: ')
+    .replace(/置顶/g, 'Always on top')
+    .replace(/可交互/g, 'Interactive')
+    .replace(/穿透/g, 'Click-through')
+    .replace(/常规/g, 'Normal');
 }
 
 function isKnownUiTranslation(candidate, original) {
@@ -3589,6 +3681,7 @@ async function refreshTaskState() {
   } catch (error) {
     console.debug('Live state refresh skipped', error);
   }
+  applyUiLanguage(state.uiLanguage);
   updatePageScrollIndicator();
 }
 
