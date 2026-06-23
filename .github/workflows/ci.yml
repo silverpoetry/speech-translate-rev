@@ -30,13 +30,16 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade pip build
 
       - name: Check JavaScript syntax
         run: node --check speech_translate/web/app.js
 
       - name: Check Python syntax
-        run: python -m py_compile Run.py speech_translate/__main__.py speech_translate/webview_app.py speech_translate/web_bridge_api.py speech_translate/app_runtime.py speech_translate/recording_controller.py speech_translate/model_manager.py
+        run: python -m py_compile Run.py build_windows.py speech_translate/__main__.py speech_translate/webview_app.py speech_translate/web_bridge_api.py speech_translate/app_runtime.py speech_translate/recording_controller.py speech_translate/model_manager.py
+
+      - name: Build Python package
+        run: python -m build --sdist --wheel
 
       - name: Run core unit tests
         run: |

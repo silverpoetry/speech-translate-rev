@@ -1,5 +1,5 @@
-# Python 3.14 compatibility requirements (CPU-first)
-# Keep original requirements.txt untouched for legacy environments.
+# Python 3.14 runtime requirements (CPU-first).
+# Legacy dependency snapshots live under docs/legacy/.
 
 torch>=2.9.0
 torchaudio>=2.9.0

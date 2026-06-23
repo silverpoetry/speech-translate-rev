@@ -9,7 +9,7 @@ git clone --recurse-submodules https://github.com/silverpoetry/speech-translate-
 cd speech-translate-rev
 python -m venv .venv314
 .\.venv314\Scripts\Activate.ps1
-pip install -r requirements-py314.txt
+pip install -r requirements-dev.txt
 ```
 
 Rev is currently validated with Python 3.14.
@@ -25,6 +25,7 @@ Run checks:
 ```powershell
 node --check speech_translate/web/app.js
 .\.venv314\Scripts\python.exe -m py_compile Run.py speech_translate/__main__.py speech_translate/webview_app.py speech_translate/web_bridge_api.py
+.\.venv314\Scripts\python.exe -m build
 .\.venv314\Scripts\python.exe -m unittest discover -s test -p app_tray_test.py
 .\.venv314\Scripts\python.exe -m unittest discover -s test -p app_startup_controller_test.py
 .\.venv314\Scripts\python.exe -m unittest discover -s test -p web_ui_preview_sync_test.py

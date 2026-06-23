@@ -53,7 +53,7 @@ Speaker loopback capture depends on the operating system and audio setup. On Win
 
 ## Installation
 
-Release notes are published from the [GitHub Releases](https://github.com/silverpoetry/speech-translate-rev/releases) page. Binary assets will be added after the packaging pipeline is validated for Rev builds.
+Windows release downloads are published from the [GitHub Releases](https://github.com/silverpoetry/speech-translate-rev/releases) page. Each release is built by the Release workflow and is expected to include a portable zip plus an Inno Setup installer.
 
 Install from source:
 
@@ -65,7 +65,7 @@ python -m venv .venv314
 pip install -r requirements-py314.txt
 ```
 
-Older Python versions may work with `requirements.txt`, but they are not the primary Rev validation target.
+Older Python versions are not the primary Rev validation target. The last legacy dependency snapshot is archived at `docs/legacy/requirements-py310.txt`.
 
 For CUDA builds, install the matching PyTorch packages for your machine before or alongside the requirements. See the official PyTorch installation guide for the correct index URL.
 
@@ -95,12 +95,10 @@ The legacy `speech-translate` console command is kept as a compatibility alias.
 Windows executable build:
 
 ```powershell
-python build.py build_exe
+.\.venv314\Scripts\python.exe build_windows.py build_exe
 ```
 
-The build script uses cx_Freeze and outputs to `build/SpeechTranslateRev <version> <environment>`. The Inno Setup script in `installer.iss` can create an installer after the executable build succeeds.
-
-Packaging and release automation are intentionally conservative in the first Rev release. CI validates syntax and tests, while release assets should be reviewed before publishing.
+The build script uses cx_Freeze and outputs to `build/SpeechTranslateRev <version> <environment>`. The Inno Setup script in `installer.iss` can create an installer after the executable build succeeds. GitHub release assets are produced by `.github/workflows/release.yml`.
 
 ## Configuration
 
@@ -129,8 +127,10 @@ The interface language can be changed from the settings page. Runtime strings th
 Run the fast checks:
 
 ```powershell
+.\.venv314\Scripts\python.exe -m pip install -r requirements-dev.txt
 node --check speech_translate/web/app.js
 .\.venv314\Scripts\python.exe -m py_compile Run.py speech_translate/__main__.py speech_translate/webview_app.py speech_translate/web_bridge_api.py
+.\.venv314\Scripts\python.exe -m build
 .\.venv314\Scripts\python.exe -m unittest discover -s test -p app_tray_test.py
 .\.venv314\Scripts\python.exe -m unittest discover -s test -p app_startup_controller_test.py
 .\.venv314\Scripts\python.exe -m unittest discover -s test -p web_ui_preview_sync_test.py
@@ -145,6 +145,8 @@ Useful project areas:
 - `speech_translate/app_runtime.py` and controller modules - runtime coordination.
 - `speech_translate/model_manager.py` - model cache and loading state.
 - `test/` - unit tests for controllers, runtime state, WebView contracts, and workflows.
+
+Architecture overview: [docs/architecture.md](docs/architecture.md).
 
 ## Attribution
 

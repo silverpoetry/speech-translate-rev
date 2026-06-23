@@ -1,3 +1,11 @@
 include speech_translate/assets/silero-vad/files/*
-include speech_translate/assets/silero-vad/*
+include speech_translate/assets/silero-vad/LICENSE
+include speech_translate/assets/silero-vad/README.md
+include speech_translate/assets/silero-vad/hubconf.py
+include speech_translate/assets/silero-vad/utils_vad.py
 include speech_translate/assets/*
+recursive-include speech_translate/web *
+include NOTICE.md
+prune speech_translate/assets/silero-vad/.git
+prune speech_translate/assets/silero-vad/examples
+exclude speech_translate/assets/silero-vad/*.ipynb

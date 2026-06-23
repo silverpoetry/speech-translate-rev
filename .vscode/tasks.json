@@ -1,0 +1,17 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Check JavaScript",
+      "type": "shell",
+      "command": "node --check speech_translate/web/app.js",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Core Tests",
+      "type": "shell",
+      "command": ".\\.venv314\\Scripts\\python.exe -m unittest discover -s test -p app_tray_test.py; .\\.venv314\\Scripts\\python.exe -m unittest discover -s test -p app_startup_controller_test.py; .\\.venv314\\Scripts\\python.exe -m unittest discover -s test -p web_ui_preview_sync_test.py; .\\.venv314\\Scripts\\python.exe -m unittest discover -s test -p web_settings_contract_test.py; .\\.venv314\\Scripts\\python.exe -m unittest discover -s test -p runtime_registry_test.py",
+      "problemMatcher": []
+    }
+  ]
+}

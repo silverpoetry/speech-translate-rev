@@ -588,10 +588,10 @@ TC/TL 设置必须完整保留真实功能，同时保持紧凑。
 
 ## 11. 工程检查
 
-UI 原型改动至少运行：
+UI 结构或样式改动至少运行：
 
 ```powershell
-git diff --check -- speech_translate\web\design-realtime-vnext.html speech_translate\web\design-realtime-vnext.css
+git diff --check -- speech_translate\web\index.html speech_translate\web\ui-preview.html speech_translate\web\styles.css
 ```
 
 正式 UI 改动按需运行：

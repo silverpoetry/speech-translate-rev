@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to upload assets to
+        required: false
+        type: string
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Build Windows release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Create .venv314
+        run: |
+          python -m venv .venv314
+          .\.venv314\Scripts\python.exe -m pip install --upgrade pip
+          .\.venv314\Scripts\python.exe -m pip install -r requirements-dev.txt
+
+      - name: Build executable
+        run: .\.venv314\Scripts\python.exe build_windows.py build_exe
+
+      - name: Package zip
+        shell: pwsh
+        run: |
+          $version = .\.venv314\Scripts\python.exe -c "from speech_translate._version import __version__; print(__version__)"
+          $buildDir = "build\SpeechTranslateRev $version .venv314"
+          if (-not (Test-Path -LiteralPath $buildDir)) {
+            throw "Build directory not found: $buildDir"
+          }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $zipPath = "dist\SpeechTranslateRev-$version-windows-x64.zip"
+          Compress-Archive -Path "$buildDir\*" -DestinationPath $zipPath -Force
+          "ZIP_PATH=$zipPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $version = .\.venv314\Scripts\python.exe -c "from speech_translate._version import __version__; print(__version__)"
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path -LiteralPath $iscc)) {
+            throw "ISCC.exe not found: $iscc"
+          }
+          & $iscc "/DMyAppVersion=$version" "/DEnvName= .venv314" installer.iss
+          $installer = "dist\SpeechTranslateRev.exe"
+          if (-not (Test-Path -LiteralPath $installer)) {
+            throw "Installer not found: $installer"
+          }
+          $target = "dist\SpeechTranslateRev-$version-windows-x64-setup.exe"
+          Move-Item -Force -LiteralPath $installer -Destination $target
+          "INSTALLER_PATH=$target" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: speech-translate-rev-windows
+          path: |
+            ${{ env.ZIP_PATH }}
+            ${{ env.INSTALLER_PATH }}
+          if-no-files-found: error
+
+      - name: Upload release assets
+        if: github.event_name == 'release' || inputs.tag != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.event.release.tag_name }}"
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            $tag = "${{ inputs.tag }}"
+          }
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            throw "No release tag provided."
+          }
+          gh release upload $tag "$env:ZIP_PATH" "$env:INSTALLER_PATH" --repo $env:GITHUB_REPOSITORY --clobber

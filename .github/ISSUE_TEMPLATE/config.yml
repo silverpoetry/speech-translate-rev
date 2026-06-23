@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Support and usage questions
+    url: https://github.com/silverpoetry/speech-translate-rev/blob/main/SUPPORT.md
+    about: Read support guidance before opening a general usage issue.
+  - name: Security reports
+    url: https://github.com/silverpoetry/speech-translate-rev/blob/main/SECURITY.md
+    about: Please do not report sensitive security issues in public issues.

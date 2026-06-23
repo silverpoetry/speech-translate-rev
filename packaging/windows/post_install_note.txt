@@ -1,0 +1,6 @@
+Thank you for installing Speech Translate Rev.
+
+Project page:
+https://github.com/silverpoetry/speech-translate-rev
+
+Please report reproducible bugs with your operating system, app version, install method, logs, and screenshots when possible.

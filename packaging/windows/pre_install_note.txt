@@ -1,0 +1,5 @@
+Speech Translate Rev
+
+Speech Translate Rev is a heavily modified derivative of Dadangdut33/Speech-Translate, originally licensed under the MIT License.
+
+This Windows build is produced from the Speech Translate Rev release pipeline. It includes the desktop WebView UI, runtime bridge, local assets, and the bundled third-party files required by the packaged application.

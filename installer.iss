@@ -3,12 +3,16 @@
 
 #define MyAppName "Speech Translate Rev"
 ; #define MyAppName "Speech Translate Rev CPU"
+#ifndef MyAppVersion
 #define MyAppVersion "0.1.0"
+#endif
 #define MyAppPublisher "silverpoetry"
 #define MyAppURL "https://github.com/silverpoetry/speech-translate-rev"
 #define MyAppExeName "SpeechTranslateRev.exe"
-#define EnvName " .venv"
-; note the space before .venv
+#ifndef EnvName
+#define EnvName " .venv314"
+#endif
+; note the space before the environment name
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
@@ -25,9 +29,9 @@ AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
-LicenseFile=build\SpeechTranslateRev {#MyAppVersion}{#EnvName}\LICENSE.txt
-InfoBeforeFile=build\pre_install_note.txt
-InfoAfterFile=build\post_install_note.txt
+LicenseFile=build\SpeechTranslateRev {#MyAppVersion}{#EnvName}\license.txt
+InfoBeforeFile=packaging\windows\pre_install_note.txt
+InfoAfterFile=packaging\windows\post_install_note.txt
 ; Remove the following line to run in administrative install mode (install for all users.)
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=commandline

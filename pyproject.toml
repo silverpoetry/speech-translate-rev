@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=80", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "speech-translate-rev"
+dynamic = ["dependencies", "readme", "version"]
+description = "A modern WebView-based desktop app for realtime speech transcription, translation, and file transcription."
+requires-python = ">=3.14"
+license = "MIT"
+authors = [{ name = "silverpoetry" }]
+maintainers = [{ name = "silverpoetry" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Win32 (MS Windows)",
+  "Intended Audience :: End Users/Desktop",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+
+[project.urls]
+Source = "https://github.com/silverpoetry/speech-translate-rev"
+Issues = "https://github.com/silverpoetry/speech-translate-rev/issues"
+"Original project" = "https://github.com/Dadangdut33/Speech-Translate"
+
+[project.scripts]
+speech-translate = "speech_translate.__main__:main"
+speech-translate-rev = "speech_translate.__main__:main"
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements-py314.txt"] }
+readme = { file = ["README.md"], content-type = "text/markdown" }
+version = { attr = "speech_translate._version.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["speech_translate*"]
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.package-data]
+speech_translate = [
+  "assets/*.ico",
+  "assets/*.json",
+  "assets/*.mp3",
+  "assets/*.png",
+  "assets/*.ttf",
+  "assets/*.txt",
+  "assets/silero-vad/LICENSE",
+  "assets/silero-vad/README.md",
+  "assets/silero-vad/hubconf.py",
+  "assets/silero-vad/utils_vad.py",
+  "assets/silero-vad/files/*",
+  "web/**/*",
+]
+
+[tool.setuptools.exclude-package-data]
+speech_translate = [
+  "assets/silero-vad/.git",
+  "assets/silero-vad/*.ipynb",
+  "assets/silero-vad/examples",
+  "assets/silero-vad/examples/*",
+  "assets/silero-vad/examples/**/*",
+]
