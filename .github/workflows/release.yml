@@ -50,7 +50,7 @@ jobs:
           $zipPath = "dist\SpeechTranslateRev-$version-windows-x64-portable.zip"
           Compress-Archive -Path "$buildDir\*" -DestinationPath $zipPath -Force
 
-          $maxPartBytes = 1900MB
+          [Int64]$maxPartBytes = 1900L * 1024L * 1024L
           $zipItem = Get-Item -LiteralPath $zipPath
           if ($zipItem.Length -gt $maxPartBytes) {
             $buffer = New-Object byte[] (8MB)
@@ -61,9 +61,10 @@ jobs:
                 $partPath = "{0}.{1:D3}" -f $zipPath, $part
                 $outputStream = [System.IO.File]::Create($partPath)
                 try {
-                  $remaining = [Math]::Min($maxPartBytes, $inputStream.Length - $inputStream.Position)
+                  [Int64]$remainingTotal = $inputStream.Length - $inputStream.Position
+                  [Int64]$remaining = [Math]::Min($maxPartBytes, $remainingTotal)
                   while ($remaining -gt 0) {
-                    $readSize = [Math]::Min($buffer.Length, $remaining)
+                    [Int32]$readSize = [Math]::Min([Int64]$buffer.Length, $remaining)
                     $read = $inputStream.Read($buffer, 0, $readSize)
                     if ($read -le 0) { break }
                     $outputStream.Write($buffer, 0, $read)
@@ -98,11 +99,22 @@ jobs:
           Move-Item -Force -LiteralPath $installer -Destination $target
           "INSTALLER_PATH=$target" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      - name: Create checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem -LiteralPath dist -File |
+            Sort-Object Name |
+            Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
+            Set-Content -LiteralPath dist\SHA256SUMS.txt -Encoding utf8
+
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
           name: speech-translate-rev-windows
-          path: dist/SpeechTranslateRev-*
+          path: |
+            dist/SpeechTranslateRev-*
+            dist/SHA256SUMS.txt
           if-no-files-found: error
 
       - name: Upload release assets
@@ -119,7 +131,9 @@ jobs:
             throw "No release tag provided."
           }
           $version = .\.venv314\Scripts\python.exe -c "from speech_translate._version import __version__; print(__version__)"
-          $assets = Get-ChildItem -LiteralPath dist -File | Where-Object { $_.Name -like "SpeechTranslateRev-$version-windows-x64*" }
+          $assets = Get-ChildItem -LiteralPath dist -File | Where-Object {
+            $_.Name -like "SpeechTranslateRev-$version-windows-x64*" -or $_.Name -eq "SHA256SUMS.txt"
+          }
           if (-not $assets) {
             throw "No release assets found."
           }

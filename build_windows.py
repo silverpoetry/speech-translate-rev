@@ -81,6 +81,15 @@ def prune_packaged_runtime_state(build_root: Path):
             remove_path(target)
 
 
+def assert_no_packaged_runtime_state(build_root: Path):
+    app_root = build_root / "lib" / "speech_translate"
+    runtime_state = ("_user", "debug", "export", "log", "temp")
+    leftovers = [str(app_root / relative) for relative in runtime_state if (app_root / relative).exists()]
+    if leftovers:
+        joined = "\n".join(leftovers)
+        raise RuntimeError(f"Packaged runtime state directories were not removed:\n{joined}")
+
+
 def ensure_scipy_external_array_api_alias(build_root: Path):
     scipy_root = build_root / "lib" / "scipy"
     source = scipy_root / "_lib" / "array_api_compat"
@@ -186,6 +195,7 @@ if len(sys.argv) < 2 or sys.argv[1] != "build_exe":
 print(">> Copying some more files...")
 prune_silero_runtime_assets(Path(folder_name))
 prune_packaged_runtime_state(Path(folder_name))
+assert_no_packaged_runtime_state(Path(folder_name))
 ensure_scipy_external_array_api_alias(Path(folder_name))
 
 # we need to copy av.libs to foldername/lib because cx_freeze doesn't copy it for some reason
