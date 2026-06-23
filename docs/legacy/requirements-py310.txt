@@ -4,7 +4,7 @@ deep-translator==1.11.1
 notify-py==0.3.42
 loguru
 static-ffmpeg==2.5
-pillow==9.5.0
+pillow==12.2.0
 pystray==0.19.5
 pywebview>=5.0
 selenium>=4.30.0
