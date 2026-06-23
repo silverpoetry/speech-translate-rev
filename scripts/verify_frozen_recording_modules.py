@@ -26,13 +26,24 @@ def main() -> int:
 
     checks = {
         "_webrtcvad extension": any(lib_root.glob("_webrtcvad*.pyd")),
-        "scipy array api numpy fft": (
-            has_path("scipy/_external/array_api_compat/numpy/fft.py")
-            or has_path("scipy/_external/array_api_compat/numpy/fft.pyc")
-            or has_path("scipy/_lib/array_api_compat/numpy/fft.py")
-            or has_path("scipy/_lib/array_api_compat/numpy/fft.pyc")
-        ),
     }
+    for module_path in (
+        "common/_aliases",
+        "common/_fft",
+        "common/_helpers",
+        "common/_linalg",
+        "common/_typing",
+        "numpy/_aliases",
+        "numpy/_info",
+        "numpy/_typing",
+        "numpy/fft",
+        "numpy/linalg",
+    ):
+        checks[f"scipy array api {module_path}"] = any(
+            has_path(f"scipy/{root}/array_api_compat/{module_path}.{suffix}")
+            for root in ("_external", "_lib")
+            for suffix in ("py", "pyc")
+        )
     failed = [name for name, ok in checks.items() if not ok]
     for name, ok in checks.items():
         print(f"{name}: {'ok' if ok else 'missing'}")
