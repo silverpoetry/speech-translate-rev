@@ -20,7 +20,7 @@ sounddevice==0.4.6
 soundfile==0.12.1
 webrtcvad @ git+https://github.com/wiseman/py-webrtcvad.git@e283ca41df3a84b0e87fb1f5cb9b21580a286b09
 darkdetect==0.8.0
-matplotlib>=3.10.0
+matplotlib>=3.11.0
 onnxruntime>=1.22.0
 demucs==4.0.1
 stable-ts>=2.19.0
