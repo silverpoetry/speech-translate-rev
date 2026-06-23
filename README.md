@@ -10,7 +10,7 @@ Speech Translate Rev is a modern WebView-based speech transcription and translat
 [![Downloads](https://img.shields.io/github/downloads/silverpoetry/speech-translate-rev/total?label=downloads)](https://github.com/silverpoetry/speech-translate-rev/releases)
 
 <p align="center">
-  <img src="speech_translate/assets/splash.png" width="720" alt="Speech Translate Rev preview">
+  <img src="docs/assets/brand/speech-translate-rev-hero.png" width="920" alt="Speech Translate Rev product overview">
 </p>
 
 ## Overview
@@ -30,6 +30,16 @@ This repository keeps the original `speech_translate` Python package name for co
 - Runtime/controller refactor for WebView bridge state, recording, models, settings, and imports.
 - Interface language support for Simplified Chinese and English.
 - Configurable text rendering, recording behavior, proxy settings, decoding options, and export paths.
+
+## Screenshots
+
+| Realtime workspace | File transcription |
+| --- | --- |
+| <img src="docs/assets/screenshots/speech-translate-rev-realtime.png" alt="Realtime transcription workspace"> | <img src="docs/assets/screenshots/speech-translate-rev-file.png" alt="File transcription workbench"> |
+
+| Model manager | Settings |
+| --- | --- |
+| <img src="docs/assets/screenshots/speech-translate-rev-model.png" alt="Model manager and download table"> | <img src="docs/assets/screenshots/speech-translate-rev-settings.png" alt="Settings workbench"> |
 
 ## Requirements
 
