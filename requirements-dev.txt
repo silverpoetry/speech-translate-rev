@@ -1,4 +1,4 @@
 -r requirements-py314.txt
 
 build>=1.5.0
-cx_Freeze>=8.4.0
+cx_Freeze>=8.6.4
